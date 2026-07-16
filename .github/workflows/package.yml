@@ -1,0 +1,90 @@
+name: Package addon
+
+# Packages the addon in src/ into a zip whose single top-level folder is named
+# after the repository. A user unzips it straight into their Windower addons/
+# directory, producing addons/<repo-name>/.
+#
+# Windower loads an addon from addons/<folder>/<folder>.lua, so the main .lua in
+# src/ must be named <repo-name>.lua. The "Check source" step warns if it isn't.
+#
+#   push to main / rc/**  -> build + upload a workflow artifact
+#   push a vX.Y.Z tag     -> build + create a GitHub Release with the zip attached
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # required to create releases
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve name and version
+        id: meta
+        run: |
+          name="${{ github.event.repository.name }}"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            version="${{ github.ref_name }}"
+            version="${version#v}"                       # v1.2.0 -> 1.2.0
+          else
+            version="${{ github.ref_name }}-$(git rev-parse --short HEAD)"
+            version="${version//\//-}"                   # rc/1.2 -> rc-1.2
+          fi
+          {
+            echo "name=$name"
+            echo "version=$version"
+            echo "zip=${name}-${version}.zip"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check source
+        id: check
+        run: |
+          name="${{ steps.meta.outputs.name }}"
+          if ! ls src/*.lua >/dev/null 2>&1; then
+            echo "::warning::No .lua files in src/ — nothing to package. Populate src/ with your addon source."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ ! -f "src/${name}.lua" ]; then
+            echo "::warning::Windower loads addons/${name}/${name}.lua, but src/${name}.lua is missing. Rename your main .lua to ${name}.lua (or rename the repository) or the packaged addon will not load."
+          fi
+
+      - name: Stage and zip
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          name="${{ steps.meta.outputs.name }}"
+          mkdir -p dist
+          cp -r src "dist/${name}"
+          rm -rf "dist/${name}/data"                     # runtime user settings, never shipped
+          find "dist/${name}" -name '.DS_Store' -delete
+          ( cd dist && zip -r "../${{ steps.meta.outputs.zip }}" "${name}" )
+
+      - name: Upload build artifact
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.zip }}
+          path: ${{ steps.meta.outputs.zip }}
+          if-no-files-found: error
+
+      - name: Publish release
+        if: github.ref_type == 'tag' && steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "${{ github.ref_name }}" in
+            *-*) prerelease="--prerelease" ;;            # semver pre-release, e.g. v1.2.0-rc.1
+          esac
+          gh release create "${{ github.ref_name }}" \
+            "${{ steps.meta.outputs.zip }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes $prerelease
