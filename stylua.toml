@@ -1,2 +1,4 @@
 indent_type = "Spaces"
 indent_width = 2
+# .gitattributes checks out CRLF (Windows/Windower target); StyLua defaults to LF, so pin it.
+line_endings = "Windows"

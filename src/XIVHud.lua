@@ -1,18 +1,14 @@
---[[ Template addon entry point. See CLAUDE.md > Modular design & testing.
-
-     RENAME this file to match the repository name: the packaging workflow names
-     the addon folder after the repo, and Windower loads addons/<folder>/<folder>.lua,
-     so the main file must be <repo-name>.lua.
+--[[ XIVHud entry point. See CLAUDE.md > Modular design & testing.
 
      This is the ONLY file allowed to touch Windower globals. It builds a plain
      `deps` table from the live API and injects it into the pure modules under
      lib/. Everything testable lives in lib/; this file just wires the real
      Windower surface in and registers events. ]]
 
-_addon.name = "Example"
-_addon.author = "you"
+_addon.name = "XIVHud"
+_addon.author = "Azureblood2"
 _addon.version = "0.1.0"
-_addon.command = "ex"
+_addon.command = "xh"
 
 local new_status = require("lib.status")
 
