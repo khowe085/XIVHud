@@ -49,6 +49,7 @@ images = require("images")
 files = require("files")
 
 local new_core = require("lib.core")
+local new_guard = require("lib.guard")
 local new_parambar = require("components.parambar.parambar")
 
 local CHAT_COLOR = 207
@@ -57,18 +58,34 @@ local OVERLAY_TEXTURE = "assets/overlay.png"
 
 local core
 
+local function chat(message)
+  windower.add_to_chat(CHAT_COLOR, "[XIVHud] " .. message)
+end
+
+-- Every Windower handler goes through this, so a bug here degrades to a
+-- message and a dead handler rather than an unexplained freeze.
+local guard = new_guard({ notify = chat })
+
 -- Registered only while layout mode is on, so normal play carries no
 -- input-handling cost at all.
 local mouse_event_id, keyboard_event_id
 
 local function set_input_capture(on)
   if on and not mouse_event_id then
-    mouse_event_id = windower.register_event("mouse", function(mouse_type, x, y, delta, blocked)
-      return core.on_mouse(mouse_type, x, y, delta, blocked)
-    end)
-    keyboard_event_id = windower.register_event("keyboard", function(key, down)
-      return core.on_keyboard(key, down)
-    end)
+    -- These fall back to false: a handler that dies must never keep swallowing
+    -- the player's mouse and keyboard, which is indistinguishable from a hang.
+    mouse_event_id = windower.register_event(
+      "mouse",
+      guard.wrap("mouse", function(mouse_type, x, y, delta, blocked)
+        return core.on_mouse(mouse_type, x, y, delta, blocked)
+      end, false)
+    )
+    keyboard_event_id = windower.register_event(
+      "keyboard",
+      guard.wrap("keyboard", function(key, down)
+        return core.on_keyboard(key, down)
+      end, false)
+    )
   elseif not on and mouse_event_id then
     windower.unregister_event(mouse_event_id)
     windower.unregister_event(keyboard_event_id)
@@ -234,9 +251,7 @@ core = new_core({
   end,
   screen = screen,
   now = os.clock,
-  chat = function(message)
-    windower.add_to_chat(CHAT_COLOR, "[XIVHud] " .. message)
-  end,
+  chat = chat,
   set_input_capture = set_input_capture,
   new_image = wrap_image,
   new_text = wrap_text,
@@ -257,42 +272,94 @@ core.register(new_parambar({
   end,
 }))
 
-windower.register_event("load", function()
-  core.on_load()
-end)
+-- Textures fail silently: a prim with a bad path simply draws nothing, so an
+-- incomplete install looks like a broken addon. Say so at load instead.
+local function check_assets()
+  local missing = {}
+  local expected = { OVERLAY_TEXTURE }
+  for _, texture in ipairs({ "bar_bg.png", "bar_compact.png", "hp_fg.png", "mp_fg.png", "tp_fg.png" }) do
+    expected[#expected + 1] = "components/parambar/assets/" .. texture
+  end
 
-windower.register_event("unload", function()
-  core.on_unload()
-end)
+  for _, relative_path in ipairs(expected) do
+    if not files.exists(relative_path) then
+      missing[#missing + 1] = relative_path
+    end
+  end
 
-windower.register_event("login", function()
-  core.on_login()
-end)
+  if #missing > 0 then
+    chat(("%d texture(s) are missing from this install:"):format(#missing))
+    for _, relative_path in ipairs(missing) do
+      chat("  " .. relative_path)
+    end
+    chat("  the addon folder is incomplete — re-copy every file and folder under src/")
+  end
+end
 
-windower.register_event("logout", function()
-  core.on_logout()
-end)
+windower.register_event(
+  "load",
+  guard.wrap("load", function()
+    check_assets()
+    core.on_load()
+  end)
+)
 
-windower.register_event("addon command", function(...)
-  core.on_command({ ... })
-end)
+windower.register_event(
+  "unload",
+  guard.wrap("unload", function()
+    core.on_unload()
+  end)
+)
 
-windower.register_event("prerender", function()
-  core.on_prerender()
-end)
+windower.register_event(
+  "login",
+  guard.wrap("login", function()
+    core.on_login()
+  end)
+)
 
-windower.register_event("status change", function(new_status, old_status)
-  core.on_status_change(new_status, old_status)
-end)
+windower.register_event(
+  "logout",
+  guard.wrap("logout", function()
+    core.on_logout()
+  end)
+)
 
-windower.register_event("zone change", function()
-  core.on_zone_change()
-end)
+windower.register_event(
+  "addon command",
+  guard.wrap("command", function(...)
+    core.on_command({ ... })
+  end)
+)
+
+windower.register_event(
+  "prerender",
+  guard.wrap("prerender", function()
+    core.on_prerender()
+  end)
+)
+
+windower.register_event(
+  "status change",
+  guard.wrap("status change", function(new_status, old_status)
+    core.on_status_change(new_status, old_status)
+  end)
+)
+
+windower.register_event(
+  "zone change",
+  guard.wrap("zone change", function()
+    core.on_zone_change()
+  end)
+)
 
 -- FFXI reports vitals as two independent streams, absolute and percent; both
 -- are forwarded, and the component reconciles them.
 for _, vital in ipairs({ "hp", "hpp", "mp", "mpp", "tp" }) do
-  windower.register_event(vital .. " change", function(new_value, old_value)
-    core.dispatch(vital, new_value, old_value)
-  end)
+  windower.register_event(
+    vital .. " change",
+    guard.wrap(vital .. " change", function(new_value, old_value)
+      core.dispatch(vital, new_value, old_value)
+    end)
+  )
 end
