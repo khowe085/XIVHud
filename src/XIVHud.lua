@@ -41,12 +41,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 _addon.name = "XIVHud"
 _addon.author = "Azureblood2"
 _addon.version = "0.1.0"
--- Both fields are set on purpose. The load trace proves the chunk completes and
--- registers its handler, yet `//xh` never reaches it, so the shortcut itself is
--- not being registered. Which of the two fields a given Windower build honours
--- is the open question, so declare the command in both -- `VisibleFavor` in the
--- addon repository does the same. `//lua c xivhud <args>` always works
--- regardless, since it routes by addon name rather than by shortcut.
+-- Redundant, and knowingly so. Both were set while chasing an addon that
+-- answered no commands; the cause proved to be elsewhere, so which field
+-- Windower honours here was never established. The convention is
+-- `_addon.commands` alone (all but one addon in the repository picks one field
+-- or the other), and dropping `_addon.command` needs a live client to confirm
+-- `//xh` still routes -- which is the only reason it is still here.
 _addon.command = "xh"
 _addon.commands = { "xh", "xivhud" }
 

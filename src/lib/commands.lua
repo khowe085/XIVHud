@@ -154,6 +154,15 @@ local function new(deps)
       return fail("'//xh copy' takes a source and a destination character, nothing more")
     end
 
+    -- Both names become path segments, and the destination is deleted before it
+    -- is written. A name containing a separator or a dot could reach out of
+    -- data/ entirely, so only plain words are allowed through.
+    for _, name in ipairs({ source, destination }) do
+      if not name:match("^[%w_]+$") then
+        return fail("'" .. name .. "' is not a character name")
+      end
+    end
+
     return { action = "copy", source = source, destination = destination }
   end
 

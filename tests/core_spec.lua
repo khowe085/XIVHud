@@ -830,6 +830,16 @@ describe("core", function()
       assert.is_nil(env.fs.files["data/Bravo/bar.lua"])
     end)
 
+    it("refuses a destination that is not a plain character name", function()
+      -- Defence in depth: the parser rejects these, but the destination is
+      -- deleted before it is written, so core does not take it on trust.
+      for _, bad in ipairs({ "..", ".", "../..", "bar/baz" }) do
+        core.on_command({ "copy", "Alpha", bad })
+      end
+      assert.is_not_nil(env.fs.files["data/Alpha/bar.lua"], "the source must be untouched")
+      assert.is_not_nil(env.said():lower():find("character name"))
+    end)
+
     it("refuses to copy a character onto itself", function()
       core.on_command({ "copy", "Alpha", "alpha" })
       assert.is_not_nil(env.said():lower():find("same character"))

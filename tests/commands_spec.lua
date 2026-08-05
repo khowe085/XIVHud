@@ -144,6 +144,15 @@ describe("commands", function()
       assert_error(parse("copy", "Azureblood"), "destination")
     end)
 
+    it("refuses names that could climb out of the data directory", function()
+      -- The destination is deleted before the copy, so a name like ".." would
+      -- take the addon's own files with it.
+      for _, bad in ipairs({ "..", ".", "a/b", "a\\b", "..\\..\\x" }) do
+        assert_error(parse("copy", "Alpha", bad), "character")
+        assert_error(parse("copy", bad, "Alpha"), "character")
+      end
+    end)
+
     it("rejects extra arguments", function()
       assert_error(parse("copy", "Azureblood", "Altcharacter", "confirm"), "copy")
     end)

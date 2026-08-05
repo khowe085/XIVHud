@@ -647,12 +647,9 @@ local function new(deps)
   end
 
   -- Copies a config tree file by file, recursing into the directories a
-  -- component may claim for itself. Returns how many files were written.
-  --
-  -- This overlays rather than replaces: a file the target has and the source
-  -- lacks is left alone. Deleting config the user did not ask us to delete is
-  -- the worse failure, so the wording everywhere says "overwrites", not
-  -- "replaces".
+  -- component may claim for itself. Returns how many files were written and how
+  -- many failed. The destination is emptied by delete_tree first, so what this
+  -- leaves behind is the source's configuration and nothing else.
   local function copy_tree(from, to)
     local copied, failed = 0, 0
     for _, entry in ipairs(deps.list_dir(from) or {}) do
@@ -679,6 +676,16 @@ local function new(deps)
   -- tree is emptied before the copy, so what remains is the source's
   -- configuration and nothing else. There is no undo.
   local function run_copy(action)
+    -- Defence in depth. The parser already rejects these, but this deletes a
+    -- directory tree, and "the caller validated it" is not a good enough reason
+    -- to hand an unchecked string to delete_tree.
+    for _, name in ipairs({ action.source, action.destination }) do
+      if type(name) ~= "string" or not name:match("^[%w_]+$") then
+        say("'" .. tostring(name) .. "' is not a character name")
+        return
+      end
+    end
+
     local known = character_dirs()
 
     local source = resolve_character(action.source, known)
