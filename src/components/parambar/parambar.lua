@@ -89,7 +89,12 @@ local function new(ctx)
     number.draggable(false)
     number.bg_visible(false)
     number.bg_alpha(0)
-    number.right_justified(true)
+    -- Deliberately NOT right-justified. texts.pos adds ui_x_res to x when the
+    -- right flag is set, because a right-justified text is positioned from the
+    -- screen's right edge -- so these numbers would be drawn off screen. The
+    -- offsets below come from XIVBar, whose own right_justified() call passes
+    -- no argument and is therefore a getter, so it renders left-justified and
+    -- its offsets are tuned for that.
     number.hide()
     numbers[index] = number
   end

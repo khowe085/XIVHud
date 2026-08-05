@@ -72,9 +72,10 @@ describe("parambar widget", function()
       end
     end)
 
-    it("right-justifies the numbers, because the offsets are right-edge anchors", function()
+    it("does not right-justify the numbers, which would push them off screen", function()
+      -- texts.pos offsets x by the screen width when the right flag is set.
       for index = 1, 3 do
-        assert.is_true(number(index).last.right_justified, "number " .. index)
+        assert.is_nil(number(index).last.right_justified, "number " .. index)
       end
     end)
 
