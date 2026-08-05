@@ -57,6 +57,27 @@ local function chat(message)
   windower.add_to_chat(CHAT_COLOR, "[XIVHud] " .. message)
 end
 
+--[[ Load trace, written straight to <addon>/load.log with raw io.
+
+     Chat is not a reliable diagnostic channel here: if the main chunk dies
+     before its handlers register, the addon is silent no matter what it wanted
+     to say, and a client that then crashes takes the console with it. This uses
+     nothing but `io`, so it works before any library has loaded and survives
+     the process going down. The last line in the file is the last thing that
+     ran. ]]
+local function trace(message, mode)
+  pcall(function()
+    local file = io.open(windower.addon_path .. "load.log", mode or "a")
+    if not file then
+      return
+    end
+    file:write(os.date("%Y-%m-%d %H:%M:%S ") .. message .. "\n")
+    file:close()
+  end)
+end
+
+trace("---- chunk started, version " .. _addon.version, "w")
+
 -- Loading is done in isolated steps. An addon whose main chunk dies part way
 -- registers none of its events, so it answers no commands and cannot be
 -- diagnosed from inside the game -- the worst possible failure. Instead each
@@ -65,13 +86,19 @@ local load_error = nil
 
 local function step(description, fn)
   if load_error then
+    trace("skipped " .. description .. " (already failed)")
     return nil
   end
+
+  trace("begin " .. description)
   local ok, result = pcall(fn)
   if ok then
+    trace("  ok   " .. description)
     return result
   end
+
   load_error = description .. ": " .. tostring(result)
+  trace("  FAIL " .. load_error)
   return nil
 end
 
@@ -339,18 +366,22 @@ end
 -- no commands cannot be diagnosed from inside the game, so //xh always replies:
 -- with the failure if there was one, and normally otherwise.
 windower.register_event("addon command", function(...)
+  trace("command received")
   if load_error then
     chat("did not load — " .. load_error)
     return
   end
   return command_handler(...)
 end)
+trace("command handler registered")
 
 if load_error then
   windower.register_event("load", function()
+    trace("load event: reporting the failure")
     chat("did not load — " .. load_error)
     chat("  nothing will be drawn. Type //xh to see this again.")
   end)
+  trace("---- stopped: " .. load_error)
   return
 end
 
@@ -418,3 +449,6 @@ for _, vital in ipairs({ "hp", "hpp", "mp", "mpp", "tp" }) do
     end)
   )
 end
+
+trace("---- chunk finished, every handler registered")
+chat("loaded — type //xh for commands")

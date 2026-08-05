@@ -10,4 +10,4 @@
 
 # Packaging output (see .github/workflows/package.yml)
 /dist/
-/*.zip
+/*.zipload.log
