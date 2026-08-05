@@ -54,6 +54,10 @@ local new_visibility = require("lib/visibility")
 -- How often on_prerender may ask the client for a character before one is
 -- known. Only relevant in the gap between the login event and get_player().
 local CHARACTER_RETRY_SECONDS = 1
+-- Once the client says we are logged in, the only thing still missing is the
+-- player data, which arrives within a moment: this is the visible delay before
+-- the HUD comes up, so it is checked far more often than character select is.
+local LOADING_RETRY_SECONDS = 0.05
 
 local CORE_NAMESPACE = "core"
 local CORE_DEFAULTS = {
@@ -88,6 +92,7 @@ local function new(deps)
   local registry
   local core_handle
   local next_character_check = nil
+  local awaiting_login = false
 
   local function say(message)
     deps.chat(message)
@@ -327,7 +332,12 @@ local function new(deps)
     return true
   end
 
-  local function character_name()
+  -- The character to scope configuration to, or nil while the client cannot say
+  -- yet. Deliberately asks for nothing but the name: a component that needs the
+  -- player's data waits for it itself, because the client fills that in field by
+  -- field and there is no one signal that says it is all there. parambar does
+  -- exactly that.
+  local function character_to_scope()
     if deps.logged_in and not deps.logged_in() then
       return nil
     end
@@ -342,12 +352,32 @@ local function new(deps)
     return name
   end
 
+  -- A login the client cannot resolve yet leaves the character already scoped
+  -- alone - dropping one is on_logout's job - and leaves `awaiting_login` set,
+  -- because the login event is a one-shot and on_prerender otherwise only looks
+  -- when there is no character at all.
+  local function catch_up()
+    local name = character_to_scope()
+    if name then
+      awaiting_login = false
+      set_character(name)
+    end
+  end
+
+  local function login_event()
+    awaiting_login = true
+    -- Whatever slot the retry booked while nobody was logged in is a second the
+    -- player would now spend watching a blank HUD.
+    next_character_check = nil
+    catch_up()
+  end
+
   function self.on_load()
-    set_character(character_name())
+    login_event()
   end
 
   function self.on_login()
-    set_character(character_name())
+    login_event()
   end
 
   function self.on_logout()
@@ -384,16 +414,17 @@ local function new(deps)
   -- its own refresh. Components keep receiving updates while suppressed so
   -- their data is current the moment they come back.
   function self.on_prerender()
-    -- The `login` event can fire before get_player() has a name, so keep
-    -- looking until it does. Throttled: asking the client sixty times a second
-    -- is not something addons normally do, and this only needs to catch up
-    -- within a second of login.
-    if not settings.character() then
+    -- The `login` event can fire before get_player() has a name, so keep looking
+    -- until it does. Throttled, at two speeds: a login already
+    -- under way is the player watching a blank HUD, while an empty character
+    -- select is worth no more than a poll a second.
+    if awaiting_login or not settings.character() then
       local now = deps.now()
       if not next_character_check or now >= next_character_check then
-        next_character_check = now + CHARACTER_RETRY_SECONDS
-        if deps.logged_in and deps.logged_in() then
-          set_character(character_name())
+        local live = deps.logged_in and deps.logged_in() or false
+        next_character_check = now + (live and LOADING_RETRY_SECONDS or CHARACTER_RETRY_SECONDS)
+        if live then
+          catch_up()
         end
       end
     end

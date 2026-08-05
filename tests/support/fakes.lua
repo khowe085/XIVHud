@@ -291,8 +291,14 @@ function M.core_deps(overrides)
     return table.concat(recorder.chat, "\n")
   end
 
+  -- A character the client has finished loading. Core scopes on the name alone,
+  -- so the vitals here are for the components reading them.
   function recorder.login(name)
-    recorder.player = { name = name, status = 0, vitals = {} }
+    recorder.player = {
+      name = name,
+      status = 0,
+      vitals = { hp = 1000, max_hp = 1000, hpp = 100, mp = 500, max_mp = 500, mpp = 100, tp = 0 },
+    }
   end
 
   return deps, recorder

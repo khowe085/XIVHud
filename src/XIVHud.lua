@@ -451,6 +451,7 @@ step("building the parambar component", function()
     new_image = wrap_image,
     screen = screen,
     get_player = get_player,
+    now = os.clock,
     asset = asset,
   }))
 end)

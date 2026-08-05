@@ -30,6 +30,65 @@ describe("parambar logic", function()
       assert.are.equal("0", plan.hp.text)
     end)
 
+    -- The seed can find nothing at all: get_player() is unreadable around
+    -- zone-in, and the widget is attached whether or not it answered.
+    it("fills in vitals from a player it was never seeded with", function()
+      assert.is_true(logic.awaiting_vitals())
+      logic.fill_missing({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 250 })
+      local plan = settle()
+      assert.are.equal("1200", plan.hp.text)
+      assert.are.equal("300", plan.mp.text)
+      assert.is_false(logic.awaiting_vitals(), "still waiting on a vital the client has reported")
+    end)
+
+    it("treats a vital an event reported as no longer missing, zero or not", function()
+      logic.seed({ hp = 1200, hpp = 100, mp = 0, mpp = 0, tp = 0 })
+      logic.set_vital("mp", 0)
+      logic.set_vital("mpp", 0)
+      logic.fill_missing({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+      local plan = settle()
+      assert.are.equal("0", plan.mp.text)
+    end)
+
+    -- The client fills its vitals table in field by field, so one bar can still
+    -- be waiting for its first real number while its neighbours are current.
+    it("fills in only the vitals still reading zero", function()
+      logic.seed({ hp = 1200, hpp = 100, mp = 0, mpp = 0, tp = 0 })
+      logic.fill_missing({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+      local plan = settle()
+      assert.are.equal("1200", plan.hp.text)
+      assert.are.equal("300", plan.mp.text)
+    end)
+
+    it("leaves a vital a change event already delivered alone", function()
+      logic.seed({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+      logic.set_vital("mp", 120)
+      logic.fill_missing({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+      local plan = settle()
+      assert.are.equal("120", plan.mp.text)
+    end)
+
+    it("does not refill a vital an event drove to zero", function()
+      logic.seed({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+      logic.set_vital("hpp", 0)
+      logic.fill_missing({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+      local plan = settle()
+      assert.are.equal(0, plan.hp.width)
+      assert.is_true(plan.hp.hidden)
+    end)
+
+    it("does not redraw a bar it had nothing to fill in", function()
+      logic.seed({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+      settle()
+      -- Only TP is still unknown, so it is the only bar fill_missing could have
+      -- touched - and the client reporting the same zero is not news.
+      logic.fill_missing({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+      local plan = logic.tick()
+      assert.is_false(plan.tp.dirty)
+      assert.is_false(plan.hp.dirty)
+      assert.is_false(plan.mp.dirty)
+    end)
+
     it("takes the whole vitals table from the player", function()
       logic.seed({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 250 })
       local plan = settle()
