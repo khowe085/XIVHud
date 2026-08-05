@@ -48,8 +48,9 @@ local FILL_TEXTURES = { "hp_fg.png", "mp_fg.png", "tp_fg.png" }
 -- missing by then. The client fills vitals in field by field - in a live client
 -- HP landed with MP still zero - and MP does not tick on its own outside
 -- resting, so a single seed can leave a bar reading 0 until the player happens
--- to cast. The reading stops the moment every vital has a number, so the ceiling
--- only matters for a vital that is legitimately zero (no TP, a dead character).
+-- to cast. The reading stops early once every vital has a number, but a vital
+-- that is legitimately zero - no TP, a dead character, a job with no MP - never
+-- reports one, so in practice this ceiling is what usually ends it.
 local SEED_SETTLE_SECONDS = 10
 
 local function new(ctx)

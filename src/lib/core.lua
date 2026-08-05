@@ -414,8 +414,8 @@ local function new(deps)
   -- its own refresh. Components keep receiving updates while suppressed so
   -- their data is current the moment they come back.
   function self.on_prerender()
-    -- The `login` event can fire before get_player() has a name or its vitals,
-    -- so keep looking until it does. Throttled, at two speeds: a login already
+    -- The `login` event can fire before get_player() has a name, so keep looking
+    -- until it does. Throttled, at two speeds: a login already
     -- under way is the player watching a blank HUD, while an empty character
     -- select is worth no more than a poll a second.
     if awaiting_login or not settings.character() then

@@ -80,8 +80,11 @@ describe("parambar logic", function()
     it("does not redraw a bar it had nothing to fill in", function()
       logic.seed({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
       settle()
+      -- Only TP is still unknown, so it is the only bar fill_missing could have
+      -- touched - and the client reporting the same zero is not news.
       logic.fill_missing({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
       local plan = logic.tick()
+      assert.is_false(plan.tp.dirty)
       assert.is_false(plan.hp.dirty)
       assert.is_false(plan.mp.dirty)
     end)

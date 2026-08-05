@@ -150,6 +150,18 @@ describe("parambar widget", function()
       assert.are.equal(before, reads, "still polling the client with every vital already known")
     end)
 
+    it("stops re-reading the player when it is detached", function()
+      player = { vitals = { hp = 1000, hpp = 100, mp = 0, mpp = 0, tp = 0 } }
+      attach()
+      widget.set_pos(0, 0)
+      settle()
+      widget.detach()
+
+      local before = reads
+      settle()
+      assert.are.equal(before, reads, "still polling the client for a character it is no longer showing")
+    end)
+
     it("stops re-reading the player once the vitals have had time to settle", function()
       player = { vitals = { hp = 1000, hpp = 100, mp = 0, mpp = 0, tp = 0, max_hp = 1000 } }
       attach()

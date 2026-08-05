@@ -291,8 +291,8 @@ function M.core_deps(overrides)
     return table.concat(recorder.chat, "\n")
   end
 
-  -- A character the client has finished loading: core waits for the vitals, so
-  -- an empty `vitals` here is the not-yet-loaded state, not a shortcut.
+  -- A character the client has finished loading. Core scopes on the name alone,
+  -- so the vitals here are for the components reading them.
   function recorder.login(name)
     recorder.player = {
       name = name,
