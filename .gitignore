@@ -11,3 +11,6 @@
 # Packaging output (see .github/workflows/package.yml)
 /dist/
 /*.zip
+
+# Runtime load trace written by src/XIVHud.lua
+load.log

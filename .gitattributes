@@ -6,3 +6,7 @@
 
 # Consumed by the Linux devcontainer — must stay LF.
 .devcontainer/Dockerfile text eol=lf
+
+# Component art. text=auto would normally detect these, but say it outright so
+# no line-ending rule can ever corrupt a texture.
+*.png binary

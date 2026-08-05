@@ -1,0 +1,888 @@
+local new_core = require("lib/core")
+local fakes = require("tests/support/fakes")
+
+local MOVE, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, WHEEL = 0, 1, 2, 4, 10
+local EVENT_STATUS = 4
+
+describe("core", function()
+  local deps, env, core
+
+  local function slot_defaults(x, y)
+    return { slots = { default = { pos = { x = x, y = y }, scale = 1, visible = true } } }
+  end
+
+  local function bar(name, x, y)
+    return fakes.widget(name or "bar", slot_defaults(x or 100, y or 200))
+  end
+
+  local function login(name)
+    env.login(name or "Azureblood")
+    core.on_login()
+  end
+
+  before_each(function()
+    deps, env = fakes.core_deps()
+    core = new_core(deps)
+  end)
+
+  describe("registration", function()
+    it("returns the component and lists it", function()
+      local widget = bar()
+      assert.are.equal(widget, core.register(widget))
+      assert.are.same({ "bar" }, core.names())
+    end)
+
+    it("refuses a component named after a reserved command", function()
+      assert.has_error(function()
+        core.register(fakes.widget("layout"))
+      end)
+    end)
+
+    it("leaves a component detached while logged out", function()
+      local widget = core.register(bar())
+      assert.is_nil(widget.config)
+      assert.is_false(widget.shown)
+    end)
+  end)
+
+  describe("login and logout", function()
+    it("attaches every component to its own config once a character is known", function()
+      local widget = core.register(bar())
+      login()
+      assert.is_not_nil(widget.config)
+      assert.are.same({ x = 100, y = 200 }, widget.config.slots.default.pos)
+    end)
+
+    it("gives each component a config of its own", function()
+      local one = core.register(fakes.widget("one", { size = 1 }))
+      local two = core.register(fakes.widget("two", { size = 2 }))
+      login()
+      one.config.size = 99
+      assert.are.equal(2, two.config.size)
+    end)
+
+    it("reads back what a character saved before", function()
+      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { pos = { x = 40, y = 50 } } } }")
+      local widget = core.register(bar())
+      login()
+      assert.are.same({ 40, 50 }, widget.pos)
+    end)
+
+    it("writes the framework's own config out, so its options are discoverable", function()
+      core.register(bar())
+      login()
+      local written = env.fs.files["data/Azureblood/core.lua"]
+      assert.is_not_nil(written, "core.lua was never created")
+      assert.is_not_nil(written:find("hideCutscene", 1, true))
+      assert.is_not_nil(written:find("snap", 1, true))
+    end)
+
+    it("does not overwrite a core config the user has edited", function()
+      env.fs.put("data/Azureblood/core.lua", "return { snap = 25 }")
+      core.register(bar())
+      login()
+      assert.are.equal("return { snap = 25 }", env.fs.files["data/Azureblood/core.lua"])
+    end)
+
+    it("ignores a blank character name until the real one arrives", function()
+      local widget = core.register(bar())
+      env.player = { name = "", vitals = {} }
+      core.on_login()
+      assert.is_nil(widget.config)
+      env.login("Azureblood")
+      core.on_prerender()
+      assert.is_not_nil(widget.config)
+    end)
+
+    it("swaps configs when a different character logs in", function()
+      env.fs.put("data/Alpha/bar.lua", "return { slots = { default = { pos = { x = 10, y = 10 } } } }")
+      env.fs.put("data/Bravo/bar.lua", "return { slots = { default = { pos = { x = 20, y = 20 } } } }")
+      local widget = core.register(bar())
+      login("Alpha")
+      assert.are.same({ 10, 10 }, widget.pos)
+      core.on_logout()
+      login("Bravo")
+      assert.are.same({ 20, 20 }, widget.pos)
+    end)
+
+    it("detaches and hides on logout", function()
+      local widget = core.register(bar())
+      login()
+      core.on_logout()
+      assert.is_nil(widget.config)
+      assert.is_false(widget.shown)
+    end)
+
+    it("initialises on load when the client is already logged in", function()
+      local widget = core.register(bar())
+      env.login("Azureblood")
+      core.on_load()
+      assert.is_not_nil(widget.config)
+      assert.is_true(widget.shown)
+    end)
+
+    it("does nothing on load while logged out", function()
+      local widget = core.register(bar())
+      core.on_load()
+      assert.is_nil(widget.config)
+    end)
+
+    it("picks the character up on a later frame when it was not readable at login", function()
+      local logged_in = true
+      local late_deps, late_env = fakes.core_deps({
+        logged_in = function()
+          return logged_in
+        end,
+      })
+      local late_core = new_core(late_deps)
+      local widget = late_core.register(bar())
+
+      late_core.on_login()
+      assert.is_nil(widget.config, "get_player() has not caught up yet")
+
+      late_env.login("Azureblood")
+      late_core.on_prerender()
+      assert.is_not_nil(widget.config)
+    end)
+
+    it("reports the character its configuration is scoped to", function()
+      core.register(bar())
+      assert.is_nil(core.character())
+      login()
+      assert.are.equal("Azureblood", core.character())
+      core.on_logout()
+      assert.is_nil(core.character())
+    end)
+
+    it("does not ask the client for a character on every single frame", function()
+      local polls = 0
+      local polled_deps, polled_env = fakes.core_deps({
+        logged_in = function()
+          polls = polls + 1
+          return true
+        end,
+      })
+      local polled_core = new_core(polled_deps)
+      local widget = polled_core.register(bar())
+
+      for _ = 1, 200 do
+        polled_core.on_prerender()
+      end
+      assert.is_true(polls <= 2, "polled " .. polls .. " times across 200 frames")
+
+      -- but it must still notice when the character finally appears
+      polled_env.login("Azureblood")
+      polled_env.clock = 5
+      polled_core.on_prerender()
+      assert.is_not_nil(widget.config)
+    end)
+
+    it("does not go looking for a character while logged out", function()
+      local widget = core.register(bar())
+      core.on_prerender()
+      assert.is_nil(widget.config)
+    end)
+
+    it("hands a component a way to save its own config", function()
+      local widget = core.register(bar())
+      login()
+      widget.config.compact = true
+      widget.save()
+      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("compact = true", 1, true))
+    end)
+
+    it("takes the save callback away on logout", function()
+      local widget = core.register(bar())
+      login()
+      core.on_logout()
+      assert.is_nil(widget.save)
+    end)
+
+    it("attaches a component registered after login", function()
+      login()
+      local widget = core.register(bar())
+      assert.is_not_nil(widget.config)
+      assert.is_true(widget.shown)
+    end)
+  end)
+
+  describe("applying layout state", function()
+    it("pushes position, scale and visibility from the active slot", function()
+      local widget = core.register(bar("bar", 300, 400))
+      login()
+      assert.are.same({ 300, 400 }, widget.pos)
+      assert.are.equal(1, widget.scale)
+      assert.is_true(widget.shown)
+      assert.is_false(widget.preview)
+    end)
+
+    it("hides a component switched off in its slot", function()
+      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { visible = false } } }")
+      local widget = core.register(bar())
+      login()
+      assert.is_false(widget.shown)
+    end)
+
+    it("pulls a stored position that is off screen back into reach", function()
+      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { pos = { x = 5000, y = 4000 } } } }")
+      local widget = core.register(bar())
+      login()
+      assert.are.same({ 1720, 980 }, widget.pos, "otherwise layout mode can never grab it")
+
+      core.on_command({ "list" })
+      assert.is_not_nil(env.said():find("1720", 1, true), "said: " .. env.said())
+    end)
+
+    it("repairs a scale below the floor, in the stored state as well as on screen", function()
+      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { scale = 0.05 } } }")
+      local widget = core.register(bar())
+      login()
+      assert.are.equal(0.25, widget.scale)
+
+      core.on_command({ "list" })
+      assert.is_not_nil(env.said():find("0.25", 1, true), "said: " .. env.said())
+
+      core.on_command({ "layout" })
+      core.on_mouse(WHEEL, 150, 250, 100)
+      assert.are.equal(1.25, widget.scale, "the next wheel step must start from the repaired value")
+    end)
+  end)
+
+  describe("auto-hide", function()
+    it("hides everything during a cutscene and restores afterwards", function()
+      local widget = core.register(bar())
+      login()
+      core.on_status_change(EVENT_STATUS)
+      assert.is_false(widget.shown)
+      core.on_status_change(0)
+      assert.is_true(widget.shown)
+    end)
+
+    it("takes the current status into account at login, not just on the next change", function()
+      local widget = core.register(bar())
+      env.login("Azureblood")
+      env.player.status = 4
+      core.on_login()
+      assert.is_false(widget.shown, "reloading mid-cutscene must not flash the HUD back on")
+      core.on_status_change(0)
+      assert.is_true(widget.shown)
+    end)
+
+    it("passes the status change on to components so they can re-seed", function()
+      local widget = core.register(bar())
+      login()
+      core.on_status_change(EVENT_STATUS, 0)
+      assert.are.same({ "status", EVENT_STATUS, 0 }, widget.updates[#widget.updates])
+    end)
+
+    it("hides on zone change and re-shows only after the settle window", function()
+      local widget = core.register(bar())
+      login()
+      core.on_zone_change()
+      assert.is_false(widget.shown)
+
+      env.clock = 2
+      core.on_prerender()
+      assert.is_false(widget.shown)
+
+      env.clock = 3
+      core.on_prerender()
+      assert.is_true(widget.shown)
+    end)
+
+    it("obeys the hideCutscene core option", function()
+      env.fs.put("data/Azureblood/core.lua", "return { hideCutscene = false }")
+      local widget = core.register(bar())
+      login()
+      core.on_status_change(EVENT_STATUS)
+      assert.is_true(widget.shown)
+    end)
+
+    it("outranks layout mode", function()
+      local widget = core.register(bar())
+      login()
+      core.on_command({ "layout" })
+      assert.is_true(widget.shown)
+      core.on_status_change(EVENT_STATUS)
+      assert.is_false(widget.shown)
+      assert.is_true(core.layout_active(), "the mode itself stays on")
+    end)
+  end)
+
+  describe("the render loop", function()
+    it("ticks every attached component once per frame", function()
+      local widget = core.register(bar())
+      login()
+      core.on_prerender()
+      core.on_prerender()
+      assert.are.equal(2, #widget.updates)
+      assert.are.same({}, widget.updates[1])
+    end)
+
+    it("does not tick while logged out", function()
+      local widget = core.register(bar())
+      core.on_prerender()
+      assert.are.equal(0, #widget.updates)
+    end)
+
+    it("keeps feeding a suppressed component so its data is current when it returns", function()
+      local widget = core.register(bar())
+      login()
+      core.on_status_change(EVENT_STATUS)
+      core.on_prerender()
+      assert.is_true(#widget.updates > 0)
+    end)
+
+    it("forwards game events to every component", function()
+      local widget = core.register(bar())
+      login()
+      core.dispatch("hp", 500, 600)
+      assert.are.same({ "hp", 500, 600 }, widget.updates[#widget.updates])
+    end)
+  end)
+
+  describe("layout mode", function()
+    it("captures input while on and releases it when off", function()
+      core.register(bar())
+      login()
+      core.on_command({ "layout" })
+      assert.is_true(env.capture)
+      assert.is_true(core.layout_active())
+      core.on_command({ "setup" })
+      assert.is_false(env.capture)
+      assert.is_false(core.layout_active())
+    end)
+
+    it("previews and force-shows even a component switched off", function()
+      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { visible = false } } }")
+      local widget = core.register(bar())
+      login()
+      core.on_command({ "layout" })
+      assert.is_true(widget.shown)
+      assert.is_true(widget.preview)
+
+      core.on_command({ "layout" })
+      assert.is_false(widget.shown)
+      assert.is_false(widget.preview)
+    end)
+
+    it("draws a highlight over each widget, and clears it on the way out", function()
+      core.register(bar("bar", 100, 200))
+      login()
+      assert.are.equal(0, #env.prims.images, "no overlay prims until the mode is used")
+
+      core.on_command({ "layout" })
+      local highlight = env.prims.images[1]
+      assert.is_true(highlight.visible)
+      assert.are.same({ 100, 200 }, { highlight.x, highlight.y })
+      assert.are.same({ 200, 100 }, { highlight.width, highlight.height })
+      assert.are.equal("bar", env.prims.texts[1].last.text)
+
+      core.on_command({ "layout" })
+      assert.is_false(highlight.visible)
+      assert.is_false(env.prims.texts[1].visible)
+    end)
+
+    it("follows the widget as it is dragged", function()
+      core.register(bar("bar", 100, 200))
+      login()
+      core.on_command({ "layout" })
+      core.on_mouse(LEFT_DOWN, 150, 250)
+      core.on_mouse(MOVE, 400, 500)
+      assert.are.same({ 350, 450 }, { env.prims.images[1].x, env.prims.images[1].y })
+    end)
+
+    it("marks a widget the right-click toggle has switched off", function()
+      core.register(bar())
+      login()
+      core.on_command({ "layout" })
+      core.on_mouse(RIGHT_DOWN, 150, 250)
+      assert.is_not_nil(env.prims.texts[1].last.text:lower():find("hidden"))
+    end)
+
+    it("clears the highlight while something is suppressing", function()
+      core.register(bar())
+      login()
+      core.on_command({ "layout" })
+      core.on_status_change(EVENT_STATUS)
+      assert.is_false(env.prims.images[1].visible)
+    end)
+
+    it("needs a character before it will start", function()
+      core.register(bar())
+      core.on_command({ "layout" })
+      assert.is_false(core.layout_active())
+      assert.is_not_nil(env.said():lower():find("log in"))
+    end)
+
+    it("drags a widget and writes the new position to its own config file", function()
+      local widget = core.register(bar("bar", 100, 200))
+      login()
+      core.on_command({ "layout" })
+
+      assert.is_true(core.on_mouse(LEFT_DOWN, 150, 250))
+      assert.is_true(core.on_mouse(MOVE, 400, 500))
+      assert.is_true(core.on_mouse(LEFT_UP, 400, 500))
+
+      assert.are.same({ 350, 450 }, widget.pos)
+      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("x = 350", 1, true))
+    end)
+
+    it("scales with the wheel and saves", function()
+      local widget = core.register(bar())
+      login()
+      core.on_command({ "layout" })
+      assert.is_true(core.on_mouse(WHEEL, 150, 250, 120))
+      assert.are.equal(2.2, widget.scale)
+      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("scale = 2.2", 1, true))
+    end)
+
+    it("toggles a widget off with a right click and saves", function()
+      local widget = core.register(bar())
+      login()
+      core.on_command({ "layout" })
+      assert.is_true(core.on_mouse(RIGHT_DOWN, 150, 250))
+      assert.is_true(widget.shown, "still force-shown while positioning")
+      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("visible = false", 1, true))
+
+      core.on_command({ "layout" })
+      assert.is_false(widget.shown)
+    end)
+
+    it("ignores input the game has already blocked", function()
+      core.register(bar())
+      login()
+      core.on_command({ "layout" })
+      assert.is_false(core.on_mouse(LEFT_DOWN, 150, 250, 0, true))
+      assert.is_false(core.on_mouse(MOVE, 400, 500))
+    end)
+
+    it("ignores mouse input while something is suppressing, so hidden widgets cannot be dragged", function()
+      local widget = core.register(bar("bar", 100, 200))
+      login()
+      core.on_command({ "layout" })
+      core.on_status_change(EVENT_STATUS)
+      assert.is_false(core.on_mouse(LEFT_DOWN, 150, 250))
+      core.on_mouse(MOVE, 400, 500)
+      assert.are.same({ 100, 200 }, widget.pos)
+    end)
+
+    it("ignores mouse input entirely when the mode is off", function()
+      core.register(bar())
+      login()
+      assert.is_false(core.on_mouse(LEFT_DOWN, 150, 250))
+    end)
+
+    it("frees the grid while CTRL is held", function()
+      local widget = core.register(bar("bar", 100, 200))
+      login()
+      core.on_command({ "layout" })
+      core.on_keyboard(29, true)
+      core.on_mouse(LEFT_DOWN, 150, 250)
+      core.on_mouse(MOVE, 404, 456)
+      assert.are.same({ 354, 406 }, widget.pos)
+    end)
+
+    it("leaves the mode on logout so a re-login is not stuck in it", function()
+      core.register(bar())
+      login()
+      core.on_command({ "layout" })
+      core.on_logout()
+      assert.is_false(core.layout_active())
+      assert.is_false(env.capture)
+    end)
+  end)
+
+  describe("commands", function()
+    it("answers a bare command with help", function()
+      core.on_command({})
+      assert.is_not_nil(env.said():find("//xh layout", 1, true))
+    end)
+
+    it("reports every component with its state", function()
+      core.register(bar("bar", 100, 200))
+      login()
+      core.on_command({ "list" })
+      local said = env.said()
+      assert.is_not_nil(said:find("bar", 1, true))
+      assert.is_not_nil(said:find("100", 1, true))
+    end)
+
+    it("reports a hand-edited non-boolean visible the way the screen reads it", function()
+      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { visible = 1 } } }")
+      local widget = core.register(bar())
+      login()
+      assert.is_false(widget.shown)
+      core.on_command({ "list" })
+      assert.is_not_nil(env.said():find("hidden", 1, true), "said: " .. env.said())
+    end)
+
+    it("says so when there are no components", function()
+      core.on_command({ "list" })
+      assert.is_not_nil(env.said():lower():find("no components"))
+    end)
+
+    it("shows and hides a component, saving each time", function()
+      local widget = core.register(bar())
+      login()
+      core.on_command({ "hide", "bar" })
+      assert.is_false(widget.shown)
+      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("visible = false", 1, true))
+
+      core.on_command({ "show", "BAR" })
+      assert.is_true(widget.shown)
+      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("visible = true", 1, true))
+    end)
+
+    it("resets one component back to its defaults", function()
+      local widget = core.register(bar("bar", 100, 200))
+      login()
+      core.on_command({ "layout" })
+      core.on_mouse(LEFT_DOWN, 150, 250)
+      core.on_mouse(LEFT_UP, 800, 800)
+      core.on_command({ "layout" })
+
+      core.on_command({ "reset", "bar" })
+      assert.are.same({ 100, 200 }, widget.pos)
+      assert.is_not_nil(widget.config, "the component is re-attached to the fresh config")
+    end)
+
+    it("resets everything at once", function()
+      local one = core.register(fakes.widget("one", slot_defaults(10, 10)))
+      local two = core.register(fakes.widget("two", slot_defaults(20, 20)))
+      login()
+      core.on_command({ "hide", "one" })
+      core.on_command({ "hide", "two" })
+      core.on_command({ "reset", "all" })
+      assert.is_true(one.shown)
+      assert.is_true(two.shown)
+    end)
+
+    it("needs a character before it will change anything", function()
+      core.register(bar())
+      core.on_command({ "hide", "bar" })
+      assert.is_not_nil(env.said():lower():find("log in"))
+    end)
+
+    it("passes unrecognised arguments to the component that owns them", function()
+      local widget = core.register(bar())
+      widget.handle_command = function(args)
+        return "got " .. table.concat(args, " ")
+      end
+      login()
+      core.on_command({ "bar", "width", "150" })
+      assert.is_not_nil(env.said():find("got width 150", 1, true))
+    end)
+
+    it("refuses a component command while logged out, rather than losing the change", function()
+      local widget = core.register(bar())
+      widget.handle_command = function()
+        return "changed"
+      end
+      core.on_command({ "bar", "width", "200" })
+      assert.is_not_nil(env.said():lower():find("log in"))
+      assert.is_nil(env.said():find("changed", 1, true))
+    end)
+
+    it("says a component takes no commands rather than swallowing them", function()
+      core.register(bar())
+      login()
+      core.on_command({ "bar", "width" })
+      assert.is_not_nil(env.said():lower():find("no commands"))
+    end)
+
+    it("reports unknown input", function()
+      core.on_command({ "bogus" })
+      assert.is_not_nil(env.said():find("bogus", 1, true))
+      assert.is_not_nil(env.said():find("//xh help", 1, true))
+    end)
+  end)
+
+  describe("layout slots", function()
+    local widget
+
+    before_each(function()
+      widget = core.register(bar("bar", 100, 200))
+      login()
+    end)
+
+    -- Grabs the widget wherever it currently is, so this still works after a
+    -- slot switch has moved it.
+    local function move_to(x, y)
+      core.on_command({ "layout" })
+      core.on_mouse(LEFT_DOWN, widget.pos[1] + 50, widget.pos[2] + 50)
+      core.on_mouse(LEFT_UP, x + 50, y + 50)
+      core.on_command({ "layout" })
+    end
+
+    it("starts on the default slot and lists it as active", function()
+      core.on_command({ "slot", "list" })
+      local said = env.said()
+      assert.is_not_nil(said:find("default", 1, true))
+      assert.is_not_nil(said:lower():find("active"))
+    end)
+
+    it("creates a slot from the active one without switching to it", function()
+      move_to(300, 400)
+      core.on_command({ "slot", "create", "raid" })
+
+      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("raid", 1, true))
+      core.on_command({ "slot", "list" })
+      assert.is_not_nil(env.said():find("raid", 1, true))
+      assert.are.same({ 300, 400 }, widget.pos, "creating must not move anything")
+    end)
+
+    it("switches between slots, restoring each one's layout", function()
+      move_to(300, 400)
+      core.on_command({ "slot", "create", "raid" })
+      core.on_command({ "slot", "raid" })
+      move_to(600, 700)
+      assert.are.same({ 600, 700 }, widget.pos)
+
+      core.on_command({ "slot", "default" })
+      assert.are.same({ 300, 400 }, widget.pos)
+      core.on_command({ "slot", "raid" })
+      assert.are.same({ 600, 700 }, widget.pos)
+    end)
+
+    it("remembers the active slot across a re-login", function()
+      core.on_command({ "slot", "create", "raid" })
+      core.on_command({ "slot", "raid" })
+      core.on_logout()
+      login()
+      core.on_command({ "slot", "list" })
+      assert.is_not_nil(env.said():find("raid  (active)", 1, true), "said: " .. env.said())
+    end)
+
+    it("gives a component with no entry for the slot its default layout", function()
+      core.on_command({ "slot", "create", "raid" })
+      core.on_command({ "slot", "raid" })
+      local late = core.register(fakes.widget("late", slot_defaults(11, 22)))
+      assert.are.same({ 11, 22 }, late.pos)
+    end)
+
+    it("falls back to the default slot when the stored active slot is nonsense", function()
+      env.fs.put("data/Azureblood/core.lua", "return { slot = 7 }")
+      core.on_logout()
+      login()
+      assert.has_no.errors(function()
+        core.on_command({ "slot", "list" })
+      end)
+      assert.is_not_nil(env.said():find("default  (active)", 1, true), "said: " .. env.said())
+    end)
+
+    it("keeps every component's slots in step", function()
+      local clock = core.register(fakes.widget("clock", slot_defaults(10, 20)))
+      core.on_command({ "slot", "create", "raid" })
+      core.on_command({ "slot", "raid" })
+
+      for _, name in ipairs({ "bar", "clock" }) do
+        assert.is_not_nil(env.fs.files["data/Azureblood/" .. name .. ".lua"]:find("raid", 1, true), name)
+      end
+
+      move_to(500, 500)
+      assert.are.same({ 10, 20 }, clock.pos, "the other component keeps its own layout")
+
+      core.on_command({ "slot", "default" })
+      assert.are.same({ 100, 200 }, widget.pos)
+      assert.are.same({ 10, 20 }, clock.pos)
+
+      core.on_command({ "slot", "delete", "raid" })
+      for _, name in ipairs({ "bar", "clock" }) do
+        assert.is_nil(env.fs.files["data/Azureblood/" .. name .. ".lua"]:find("raid", 1, true), name)
+      end
+    end)
+
+    it("matches a hand-edited slot name whatever its case", function()
+      env.fs.put(
+        "data/Azureblood/bar.lua",
+        "return { slots = { default = { pos = { x = 1, y = 2 } }, Raid = { pos = { x = 300, y = 400 } } } }"
+      )
+      core.on_logout()
+      login()
+
+      core.on_command({ "slot", "raid" })
+      assert.are.same({ 300, 400 }, widget.pos)
+      assert.is_nil(env.said():lower():find("no layout slot"))
+
+      core.on_command({ "slot", "default" })
+      core.on_command({ "slot", "delete", "RAID" })
+      assert.is_nil(env.fs.files["data/Azureblood/bar.lua"]:find("Raid", 1, true))
+    end)
+
+    it("refuses to create a slot whose name differs only by case", function()
+      core.on_command({ "slot", "create", "raid" })
+      core.on_command({ "slot", "create", "RAID" })
+      assert.is_not_nil(env.said():lower():find("already"))
+    end)
+
+    it("refuses to switch to a slot that does not exist, and lists the ones that do", function()
+      core.on_command({ "slot", "nope" })
+      local said = env.said()
+      assert.is_not_nil(said:find("nope", 1, true))
+      assert.is_not_nil(said:find("default", 1, true))
+    end)
+
+    it("refuses to create a slot twice", function()
+      core.on_command({ "slot", "create", "raid" })
+      core.on_command({ "slot", "create", "raid" })
+      assert.is_not_nil(env.said():lower():find("already"))
+    end)
+
+    it("deletes a slot", function()
+      core.on_command({ "slot", "create", "raid" })
+      core.on_command({ "slot", "delete", "raid" })
+      assert.is_nil(env.fs.files["data/Azureblood/bar.lua"]:find("raid", 1, true))
+    end)
+
+    it("refuses to delete the default slot", function()
+      core.on_command({ "slot", "delete", "default" })
+      assert.is_not_nil(env.said():lower():find("cannot be deleted"))
+    end)
+
+    it("refuses to delete the active slot", function()
+      core.on_command({ "slot", "create", "raid" })
+      core.on_command({ "slot", "raid" })
+      core.on_command({ "slot", "delete", "raid" })
+      assert.is_not_nil(env.said():lower():find("active"))
+      core.on_command({ "slot", "list" })
+      assert.is_not_nil(env.said():find("raid", 1, true))
+    end)
+
+    it("refuses to delete a slot that never existed", function()
+      core.on_command({ "slot", "delete", "nope" })
+      assert.is_not_nil(env.said():find("nope", 1, true))
+    end)
+
+    it("needs a character before it will touch slots", function()
+      core.on_logout()
+      core.on_command({ "slot", "create", "raid" })
+      assert.is_not_nil(env.said():lower():find("log in"))
+    end)
+  end)
+
+  describe("copying one character's configuration onto another", function()
+    local widget
+
+    before_each(function()
+      env.fs.put("data/Alpha/bar.lua", "return { slots = { default = { pos = { x = 40, y = 50 } } } }")
+      env.fs.put("data/Alpha/core.lua", "return { snap = 25 }")
+      env.fs.put("data/Alpha/bar/extra.lua", "return { deep = true }")
+      widget = core.register(bar("bar", 100, 200))
+      login("Azureblood")
+    end)
+
+    it("copies every file, including a component's own directory", function()
+      core.on_command({ "copy", "Alpha", "Bravo" })
+      assert.is_not_nil(env.fs.files["data/Bravo/bar.lua"]:find("x = 40", 1, true))
+      assert.are.equal("return { snap = 25 }", env.fs.files["data/Bravo/core.lua"])
+      assert.are.equal("return { deep = true }", env.fs.files["data/Bravo/bar/extra.lua"])
+    end)
+
+    it("needs no confirmation", function()
+      core.on_command({ "copy", "Alpha", "Bravo" })
+      assert.is_not_nil(env.fs.files["data/Bravo/bar.lua"])
+    end)
+
+    it("wipes the destination first, so nothing of its own survives", function()
+      env.fs.put("data/Bravo/clock.lua", "return { stale = true }")
+      env.fs.put("data/Bravo/clock/nested.lua", "return { alsostale = true }")
+
+      core.on_command({ "copy", "Alpha", "Bravo" })
+      assert.is_nil(env.fs.files["data/Bravo/clock.lua"], "a file the source lacks must not survive")
+      assert.is_nil(env.fs.files["data/Bravo/clock/nested.lua"])
+      assert.is_not_nil(env.fs.files["data/Bravo/bar.lua"])
+    end)
+
+    it("leaves other characters alone", function()
+      env.fs.put("data/Charlie/bar.lua", "return { mine = true }")
+      core.on_command({ "copy", "Alpha", "Bravo" })
+      assert.are.equal("return { mine = true }", env.fs.files["data/Charlie/bar.lua"])
+    end)
+
+    it("reloads and re-applies when the destination is the character being played", function()
+      core.on_command({ "copy", "Alpha", "Azureblood" })
+      assert.are.same({ 40, 50 }, widget.pos)
+      assert.is_not_nil(widget.config)
+    end)
+
+    it("does not disturb the running HUD when copying to someone else", function()
+      core.on_command({ "copy", "Alpha", "Bravo" })
+      assert.are.same({ 100, 200 }, widget.pos)
+    end)
+
+    it("copies from the character being played too", function()
+      core.on_command({ "hide", "bar" })
+      core.on_command({ "copy", "Azureblood", "Bravo" })
+      assert.is_not_nil(env.fs.files["data/Bravo/bar.lua"]:find("visible = false", 1, true))
+    end)
+
+    it("matches both character names case-insensitively", function()
+      core.on_command({ "copy", "alpha", "AZUREBLOOD" })
+      assert.are.same({ 40, 50 }, widget.pos)
+    end)
+
+    it("lists the characters it knows when the source is unknown", function()
+      core.on_command({ "copy", "Nobody", "Bravo" })
+      local said = env.said()
+      assert.is_not_nil(said:find("Nobody", 1, true))
+      assert.is_not_nil(said:find("Alpha", 1, true))
+      assert.is_nil(env.fs.files["data/Bravo/bar.lua"])
+    end)
+
+    it("refuses a destination that is not a plain character name", function()
+      -- Defence in depth: the parser rejects these, but the destination is
+      -- deleted before it is written, so core does not take it on trust.
+      for _, bad in ipairs({ "..", ".", "../..", "bar/baz" }) do
+        core.on_command({ "copy", "Alpha", bad })
+      end
+      assert.is_not_nil(env.fs.files["data/Alpha/bar.lua"], "the source must be untouched")
+      assert.is_not_nil(env.said():lower():find("character name"))
+    end)
+
+    it("refuses to copy a character onto itself", function()
+      core.on_command({ "copy", "Alpha", "alpha" })
+      assert.is_not_nil(env.said():lower():find("same character"))
+    end)
+
+    it("says so when a file could not be copied, instead of claiming success", function()
+      env.fs.fail_write_paths["data/Bravo/bar.lua"] = true
+      core.on_command({ "copy", "Alpha", "Bravo" })
+      assert.is_not_nil(env.said():lower():find("could not"))
+    end)
+
+    it("does not walk the . and .. entries a directory listing may include", function()
+      env.fs.dot_entries = true
+      assert.has_no.errors(function()
+        core.on_command({ "copy", "Alpha", "Bravo" })
+      end)
+      assert.is_not_nil(env.fs.files["data/Bravo/bar.lua"])
+    end)
+  end)
+  describe("unload", function()
+    it("destroys every component and drops the registry", function()
+      local widget = core.register(bar())
+      login()
+      core.on_unload()
+      assert.are.equal(1, widget.destroyed)
+      assert.are.same({}, core.names())
+    end)
+
+    it("disposes the layout-mode overlays too", function()
+      core.register(bar())
+      login()
+      core.on_command({ "layout" })
+      core.on_unload()
+      assert.are.equal(1, env.prims.images[1].destroyed)
+      assert.are.equal(1, env.prims.texts[1].destroyed)
+    end)
+
+    it("releases input capture", function()
+      core.register(bar())
+      login()
+      core.on_command({ "layout" })
+      core.on_unload()
+      assert.is_false(env.capture)
+    end)
+  end)
+end)

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-**XIVHud** — a **Windower 4 addon** for Final Fantasy XI, written in **Lua 5.1**: a configurable HUD framework of composable widgets designed to work in the style of Final Fantasy XIV's HUD system, arranged through the addon's settings rather than one fixed display. Windower is a Windows-only launcher/injection platform that loads addons at runtime and exposes them a global API. The addon's source lives in **`src/`**; a GitHub Action packages it into a zip that users unzip straight into their Windower `addons/` directory (see Packaging & releases below). The repo started from the Windower addon template; the illustrative `status` module and its spec remain as the working example of the DI pattern until real HUD modules exist.
+**XIVHud** — a **Windower 4 addon** for Final Fantasy XI, written in **Lua 5.1**: a configurable HUD framework of composable widgets designed to work in the style of Final Fantasy XIV's HUD system, arranged through the addon's settings rather than one fixed display. Windower is a Windows-only launcher/injection platform that loads addons at runtime and exposes them a global API. The addon's source lives in **`src/`**; a GitHub Action packages it into a zip that users unzip straight into their Windower `addons/` directory (see Packaging & releases below).
 
 Because addons run inside Windower on Windows, they cannot be executed or fully tested in this Linux devcontainer. Development here is authoring, linting, and formatting; runtime verification happens in a live Windower/FFXI client on Windows.
 
@@ -12,48 +12,107 @@ Because addons run inside Windower on Windows, they cannot be executed or fully 
 
 The devcontainer (Alpine) provides Lua 5.1, luacheck, StyLua, busted, and the GitHub CLI.
 
-- **Test:** `busted` — runs every `tests/*_spec.lua` (config in `.busted`). Filter with `busted tests/status_spec.lua` or `busted --filter "status"`.
+- **Test:** `busted` — runs every `*_spec.lua` under `tests/`, including `tests/components/` (config in `.busted`). Filter with `busted tests/core_spec.lua` or `busted --filter "layout"`.
 - **Lint:** `luacheck .` — config in `.luacheckrc` (std `lua51`). luacheck auto-applies its `busted` std to `*_spec.lua`, so `describe`/`it`/`assert` need no whitelist.
 - **Format:** `stylua .` (or `stylua --check .`) — config in `stylua.toml` (2-space indent). Also runs on save in VS Code via the StyLua extension.
 - **Run a script standalone:** `lua <file>` — only for pure Lua with no Windower globals; anything touching the addon API must run inside Windower.
 
 There is no build step. "Passing" locally means green `busted` + clean `luacheck` + `stylua --check`.
 
+**Green locally does not mean it loads.** Nothing here exercises `require` resolution inside Windower, the real `texts`/`images`/`files` libraries, or the prim layer — and this addon has already shipped a build that passed every check and then failed to register a single event in the client. Treat any claim about the Windower API as unverified until it is read in the [library sources](https://github.com/Windower/Lua/tree/dev/addons/libs) or confirmed in a live client; the wiki documents what a function returns far more often than how it behaves at the edges.
+
 ## Windower addon conventions
 
 These are platform facts about how Windower loads and runs addons:
 
-- **Globals in `.luacheckrc`.** The whitelisted globals are `windower`, `texts`, `res`, `packets`, `files`, `_addon`. Two kinds are mixed here:
+- **Globals in `.luacheckrc`.** The whitelisted globals are `windower`, `texts`, `images`, `res`, `packets`, `_addon`. (`files` is deliberately absent — see the file I/O note below.) Two kinds are mixed here:
   - *Truly injected by Windower:* `windower` (core API — events, chat, packet send, ffxi/player/target data) and `_addon` (addon metadata: name, version, author, commands).
-  - *Libraries assigned to globals by convention:* `texts`/`res`/`packets` are loaded with `require('texts')` / `require('resources')` / `require('packets')` and conventionally stored in a same-named global; `files` similarly wraps addon-relative file I/O. See the Libraries wiki below. When you introduce a new global, register it in `.luacheckrc` so luacheck stays clean.
-- **Addon layout.** Installed, an addon is a folder under `Windower4/addons/` whose main `.lua` **must share the folder's name** (Windower loads `addons/<folder>/<folder>.lua`). Here the source lives in `src/` and the packaging step wraps it in a folder named after the repository — so the main file is **`src/XIVHud.lua`** (the Action warns if it's missing). The main file declares metadata on the injected `_addon` table: `_addon.name`, `_addon.author`, `_addon.version`, `_addon.command` (single `//` shortcut — here `//xh`), and optional `_addon.commands` (aliases). At runtime, user settings live in `<addon>/data/settings.xml` — generated by the client, never committed (gitignored, and stripped from the package). Every source file carries the **BSD 3-clause license header** (Windower convention — fill in `<YEAR>`/`<COPYRIGHT HOLDER>`).
-- **Settings.** Use the `config` library with hardcoded defaults: `settings = config.load(T{...})`, then `settings:save()` (per-character) or `settings:save('all')` (global). New keys in defaults are merged into the user's XML automatically.
+  - *Libraries assigned to globals by convention:* `texts`/`images`/`res`/`packets` are loaded with `require('texts')` / `require('images')` / `require('resources')` / `require('packets')` and conventionally stored in a same-named global; `files` similarly wraps addon-relative file I/O. See the Libraries wiki below. When you introduce a new global, register it in `.luacheckrc` so luacheck stays clean.
+- **Addon layout.** Installed, an addon is a folder under `Windower4/addons/` whose main `.lua` **must share the folder's name** (Windower loads `addons/<folder>/<folder>.lua`). Here the source lives in `src/` and the packaging step wraps it in a folder named after the repository — so the main file is **`src/XIVHud.lua`** (the Action warns if it's missing). The main file declares metadata on the injected `_addon` table: `_addon.name`, `_addon.author`, `_addon.version`, and its commands. **The convention is `_addon.commands`, listing the primary name first** — of roughly forty addons in the Windower repository, all but one set either `_addon.command` (a single name) or `_addon.commands` (a list), never both. This addon currently sets both, which is redundant: it was added while chasing an addon that answered no commands at all, and the cause of that turned out to be elsewhere entirely, so which field Windower honours was never actually established. Reducing it to `_addon.commands` alone needs a live client to confirm `//xh` still routes. At runtime, user settings live under `<addon>/data/` — generated by the addon, never committed (gitignored, and stripped from the package); see Settings below for the per-component scheme this repo uses instead of a single `settings.xml`. Every source file carries the **BSD 3-clause license header** (Windower convention — © 2026, Azureblood2).
+- **Settings.** This repo does **not** use Windower's `config` library — see Settings below. (For reference, the platform convention is `settings = config.load(T{...})` then `settings:save()`; `config` can only serialize XML, and the character name is not known until login, neither of which fits the per-component scheme here.)
 - **Events.** Behavior is driven by handlers registered with `windower.register_event(...)`. Common events: `'load'`, `'unload'`, `'addon command'` (from the addon's command), `'incoming text'` / `'outgoing text'`, `'incoming chunk'` / `'outgoing chunk'` (packets), `'prerender'` / `'postrender'`, `'login'` / `'logout'`, `'zone change'`, `'status change'`. Text/chunk events may return modified data or a block flag.
 - **Common libraries** (`require(...)`): `config` (Windower-XML settings load/save), `logger`, `tables`/`strings`/`sets`/`lists`/`functions` (data-structure & functional helpers), `resources`, `packets`, `texts`, `images`, `json`, `chat`. See the Libraries reference below.
 - **Gotchas that cause real bugs** (fuller treatment in the mirrored Lua guide below):
   - `windower.ffxi.get_player()` / `get_mob_by_index()` can return `nil` (not logged in, index not loaded) — guard before indexing. A PC has both a permanent ID and a per-zone **mob index**; use `target_index`/index for in-zone lookups.
   - Windower and Lua **fail silently**: too few/many function args yield `nil`/dropped values, and undefined table keys return `nil`, all without erroring. A `nil` in an array also halts `ipairs`/`#` iteration early. Validate inputs yourself.
   - Tables are **1-indexed**; there's no built-in string split or table slice (use `strings`/`tables`). `T{}` (from `tables`) is needed for method-style calls like `t:map(...)`; convert the mob/player arrays with `T(...)`.
+- **Library setters that are also getters** (verified against the `dev` sources; each cost real debugging):
+  - `texts`/`images` accessors return the current value when called with **no argument**. `text:right_justified()` does not right-justify — it *reads* the flag. Always pass the value: `text:right_justified(true)`.
+  - `stroke_transparency` and `transparency` take **0..1**, and internally compute `alpha = 255 * (1 - value)`. Passing a 0–255 alpha to them produces a wildly negative alpha. Use `stroke_alpha`/`alpha` for 0–255.
+  - The guards are `if not x` / `x == nil`, and **`0` is truthy in Lua**, so a numeric zero is *not* mistaken for "no argument". `color(0, g, b)` and `stroke_width(0)` behave.
+  - `image:fit(true)` sizes a prim to its texture, which defeats explicit `size()`. Anything scaled or stretched must set `fit(false)`.
+- **Do not write config through the `files` library.** Reading its source suggests `files.new(path):write(contents)` creates any missing directories (`write` → `create()` → `create_path()` → `windower.create_dir`), and that reading is what this repo originally relied on — but `files.create` **ignores the error from `create_path`** and then indexes the nil handle from `io.open`. In practice that printed `New file: data/…` and produced no file, for days. `src/XIVHud.lua` builds each directory itself with `windower.create_dir`, checks the result, re-checks with `dir_exists` (success can be reported for a directory that is not there), and writes with plain `io.open`. Raw `io` against `windower.addon_path` is the one file operation proven to work here.
+- **Other I/O facts** (verified): `windower.get_dir(path)` returns files and directories together, so classify entries with `windower.dir_exists`. A texture path that does not exist fails **silently** — the prim simply draws nothing.
+- **Never shell out.** The addon runs inside the game process, so `os.execute` and `io.popen` flash a console window over the client. Every file operation here calls straight into the C library instead: `io.open` for reading and writing, `os.remove` for deletion — none of which create a process. `tests/sources_spec.lua` fails the build on a process-spawning call in `src/`.
+- **Chat is not UTF-8.** Anything passed to `windower.add_to_chat` must be plain ASCII: an em dash reaches the player as `â€”`. Write `-` in user-facing strings, never `—`. Comments are exempt — they are never displayed, and the licence headers keep their `©`. `tests/sources_spec.lua` fails the build on a non-ASCII byte outside a comment.
+- **`src/XIVHud.lua` traces its own load** to `<addon>/load.log` with raw `io` — every load step, `addon_path`, and the result of each `create_dir`. An empty file named `safe_mode` beside it loads the framework and commands but no component or render loop, which is the bisect to reach for when the client misbehaves. Both are load-time only and deliberately kept: an addon whose chunk dies is silent, and a client that then crashes takes the console with it. **Nothing traces from the render loop** — a heartbeat there found a crash once and was removed the same day, because per-frame disk I/O is not something to ship.
 
 ## Modular design & testing
 
 Addons are structured so the logic is unit-testable **without a running Windower client**, using **dependency injection**. The rule: pure logic never touches Windower globals directly — it receives what it needs as a `deps` table.
 
-Layout (the `status` module shows it working):
-
 ```
 src/
-  XIVHud.lua       -- entry point: the ONLY file that reads Windower globals
-  lib/*.lua        -- pure modules; factory style `new(deps) -> instance`
+  XIVHud.lua              -- entry point: the ONLY file that reads Windower globals
+  lib/                    -- the framework; pure, factory style `new(deps) -> instance`
+    core.lua              -- orchestration: registry + settings + visibility + layout mode + commands
+    registry.lua          -- component registration, enumeration, teardown
+    settings.lua          -- per-component config service (data/<Character>/<component>.lua)
+    serialize.lua         -- Lua-literal serializer with stable key order
+    commands.lua          -- `//xh` parser -> action tables
+    layout.lua            -- snap/clamp maths and per-slot layout state
+    layout_mode.lua       -- `//xh layout` drag/scale/toggle state machine
+    overlay.lua           -- layout-mode highlight box + name label per component
+    visibility.lua        -- auto-hide suppression resolver
+  assets/overlay.png      -- framework art (white square, tinted for the highlight)
+  components/<name>/      -- ALL of a component's code, isolated per component
 tests/
-  *_spec.lua       -- busted specs; inject fake deps, no globals needed
-  support/*.lua    -- reusable fakes / builders for deps tables
+  *_spec.lua              -- one spec per lib module
+  components/*_spec.lua   -- component specs, mirroring src/components/
+  support/fakes.lua       -- fake deps, file system, prim recorder, widget
 ```
 
 - **Pure modules (`src/lib/`).** Each returns a constructor `new(deps)`. It calls `deps.get_player()` etc. — never `windower.*` directly. Because deps are plain functions, a test "mock" is just a table of stubs; no mocking framework required.
-- **Entry point (`src/XIVHud.lua`).** The only place that reads globals. It builds the real `deps` from the live API (`get_player = function() return windower.ffxi.get_player() end`), injects it into the `lib/` modules, and wires `windower.register_event(...)`. Keep it thin — anything worth testing belongs in `lib/`.
-- **Tests (`tests/`).** busted specs `require` a `lib/` module and pass a fake `deps`. See `tests/status_spec.lua` and `tests/support/fakes.lua`.
-- **Require paths.** `.busted` sets `lpath` to include `src/`, so `require('lib.foo')` resolves both in tests and at Windower runtime (where the addon's own folder is the require root — matching `src/` as that folder's stand-in here).
+- **Entry point (`src/XIVHud.lua`).** The only place that reads globals. It builds the real `deps` from the live API, wraps Windower's method-style prims (`t:pos(x, y)`) as plain function tables for components, constructs and registers each component, and wires `windower.register_event(...)`. Keep it thin — anything worth testing belongs in `lib/` or a component.
+- **Component isolation.** A component's whole implementation lives in `src/components/<name>/`, entry file `<name>.lua`. It may require `lib/`, never a sibling component; cross-component needs go through the framework. The name is the shared key across code dir, config namespace, registry entry and command word, and is validated at registration (it cannot collide with a reserved `//xh` verb).
+- **Widget contract.** `new(ctx) -> widget` exposing `name`, `defaults`, `attach(config, save)`, `detach()`, `set_pos(x, y)`, `set_scale(s)`, `set_preview(on)`, `show()`, `hide()`, `get_bounds() -> x, y, w, h`, `update(event, ...)` (no arguments is the per-frame tick), optional `handle_command(args) -> message`, and `destroy()`. Core owns visibility and layout persistence; a component never decides whether it is on screen. **`get_bounds()` must return the same origin `set_pos` was given** — core clamps the widget on screen by comparing the two, and layout mode's drag offsets assume it.
+- **Tests (`tests/`).** busted specs `require` a module and pass fake deps. See `tests/core_spec.lua` and `tests/support/fakes.lua`. `tests/sources_spec.lua` is the exception: it `loadfile`s every file under `src/` so the entry point — which reads Windower globals and so can never be *run* here — is at least known to compile, and checks the licence headers and the require convention.
+- **Require paths — use slashes, not dots.** Internal modules are required as `require('lib/core')` and `require('components/parambar/logic')`. Dot form *should* work (Lua's own loader rewrites `.` to the path separator), but the only addon in the Windower repository that requires across subdirectories — `bluguide` — uses slashes, and that is the form with evidence behind it. Both resolve under busted, because `.busted` sets `lpath` to include `src/` and `?` is substituted literally; at Windower runtime the addon's own folder is the require root, with `src/` as its stand-in here. `tests/sources_spec.lua` fails the build if dot form reappears.
+- **A failed load must stay diagnosable.** If the main chunk dies part way, every `register_event` after the failure never runs: the addon answers no commands, writes no config, and cannot be investigated from inside the game — the worst possible failure, and one this repo has already hit. So `src/XIVHud.lua` loads in isolated steps that record why they failed, and registers the `addon command` handler **before** any of them; `//xh` then reports the failure. If loading fails, nothing else is registered and nothing is drawn.
+- **Every Windower handler is wrapped** by `lib/guard`. `prerender` runs each frame, so an error there recurs sixty times a second and buries the one useful message; guard reports the first distinct error per handler, swallows repeats, and disables a handler after five failures. The mouse and keyboard handlers fall back to `false`, because a dead handler that keeps swallowing input is indistinguishable from a frozen client.
+
+## Settings
+
+Per-component isolation: every component owns its own configuration file and can never reach another's.
+
+- **Storage:** `data/<Character>/<component>.lua`, relative to the addon root. Framework options live in `data/<Character>/core.lua` (`snap`, `slot`, `hideCutscene`). A component needing more than one file owns the directory `data/<Character>/<component>/`.
+- **Format: Lua, not XML.** Windower's `config` lib can only serialize XML and the bundled `json` lib has no encoder, so `lib/settings` owns persistence itself: files are read with `loadstring` in an **empty environment** behind a `pcall` (config files are code — a broken or hostile one degrades to defaults plus a warning), and written by `lib/serialize` with stable key order for clean diffs.
+- **Defaults merge:** user values win; default keys the user has never seen are added; keys the defaults do not mention (user-created layout slots) are preserved.
+- **Character scoping:** the character name is unknown until login, so components are attached on login and detached on logout, and nothing renders while logged out.
+- **Layout slots:** position, scale and visibility live under named slots — `slots = { default = { pos = {x, y}, scale = 1, visible = true } }`. `default` always exists and cannot be deleted. Slot names are matched case-insensitively and stored lowercase. The set of slots is the union across components; the active slot name is in core's config, and every layout write persists into it immediately. A component with no entry for a slot falls back to its default layout.
+- **`//xh copy <source> <destination>`** replaces the destination's `data/<Character>/` tree with the source's: the destination is emptied first, so what remains is the source's configuration and nothing else. Both ends are named explicitly, so it does not depend on who is logged in, and it reloads only when the destination is the character being played. It is destructive and has no undo and no confirmation step.
+
+## Commands
+
+`//xh` (alias `//xivhud`). Verbs and component names match case-insensitively; unknown input always answers with a hint, never silence.
+
+```
+//xh | //xh help              -- command list
+//xh layout | setup           -- toggle layout mode
+//xh list                     -- components with state, position and scale
+//xh show|hide <component>
+//xh reset <component|all>    -- restores defaults, which drops that component's named slots
+//xh slot <name>              -- switch layout slot
+//xh slot list|create <name>|delete <name>
+//xh copy <source> <destination> -- replace the destination's config with the source's
+//xh <component> [...]        -- passthrough to the component's handle_command
+```
+
+In layout mode: left-drag moves a widget (snapped to the grid; hold CTRL for free movement), the wheel scales it (floor 0.25), right-click toggles it on or off. Every change persists immediately. Auto-hide outranks layout mode: the HUD stays hidden during a cutscene (player status 4, disable with `hideCutscene`), while zoning (plus a ~3s settle), and while logged out.
+
+## Components
+
+- **`parambar`** (`src/components/parambar/`) — the FFXIV parameter bar: HP/MP/TP fills with numbers, re-implemented from XIVBar. `logic.lua` is the pure state machine (easing, colour bands, layout maths, its command parser); `parambar.lua` owns the prims. `assets/` holds XIVBar's `ffxiv` theme art, redistributed under the BSD 3-clause notice in `assets/LICENSE.txt` (© 2017 SirEdeonX) — that file ships with the addon. Commands: `//xh parambar [width|spacing|offset <px> | compact on|off]`.
 
 ## Packaging & releases
 

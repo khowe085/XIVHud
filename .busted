@@ -4,7 +4,7 @@ return {
     ROOT = { "tests" },
     pattern = "_spec",
     -- Resolve require paths from the repo root and from src/ (the addon's own
-    -- dir), so `require('lib.status')` works in both tests and at Windower runtime.
+    -- dir), so `require('lib.foo')` works in both tests and at Windower runtime.
     lpath = "./?.lua;./?/init.lua;./src/?.lua",
   },
 }
