@@ -51,6 +51,10 @@ local new_registry = require("lib/registry")
 local new_settings = require("lib/settings")
 local new_visibility = require("lib/visibility")
 
+-- How often on_prerender may ask the client for a character before one is
+-- known. Only relevant in the gap between the login event and get_player().
+local CHARACTER_RETRY_SECONDS = 1
+
 local CORE_NAMESPACE = "core"
 local CORE_DEFAULTS = {
   -- Grid the drag in layout mode snaps to; CTRL frees it.
@@ -83,6 +87,7 @@ local function new(deps)
   local self = {}
   local registry
   local core_handle
+  local next_character_check = nil
 
   local function say(message)
     deps.chat(message)
@@ -249,6 +254,10 @@ local function new(deps)
     return layout_mode.active()
   end
 
+  function self.character()
+    return settings.character()
+  end
+
   function self.names()
     return registry.names()
   end
@@ -376,10 +385,17 @@ local function new(deps)
   -- their data is current the moment they come back.
   function self.on_prerender()
     -- The `login` event can fire before get_player() has a name, so keep
-    -- looking until it does. Only ever runs in the window where the client says
-    -- we are logged in but no config has been loaded yet.
-    if not settings.character() and deps.logged_in and deps.logged_in() then
-      set_character(character_name())
+    -- looking until it does. Throttled: asking the client sixty times a second
+    -- is not something addons normally do, and this only needs to catch up
+    -- within a second of login.
+    if not settings.character() then
+      local now = deps.now()
+      if not next_character_check or now >= next_character_check then
+        next_character_check = now + CHARACTER_RETRY_SECONDS
+        if deps.logged_in and deps.logged_in() then
+          set_character(character_name())
+        end
+      end
     end
 
     if visibility.tick() then

@@ -145,6 +145,38 @@ describe("core", function()
       assert.is_not_nil(widget.config)
     end)
 
+    it("reports the character its configuration is scoped to", function()
+      core.register(bar())
+      assert.is_nil(core.character())
+      login()
+      assert.are.equal("Azureblood", core.character())
+      core.on_logout()
+      assert.is_nil(core.character())
+    end)
+
+    it("does not ask the client for a character on every single frame", function()
+      local polls = 0
+      local polled_deps, polled_env = fakes.core_deps({
+        logged_in = function()
+          polls = polls + 1
+          return true
+        end,
+      })
+      local polled_core = new_core(polled_deps)
+      local widget = polled_core.register(bar())
+
+      for _ = 1, 200 do
+        polled_core.on_prerender()
+      end
+      assert.is_true(polls <= 2, "polled " .. polls .. " times across 200 frames")
+
+      -- but it must still notice when the character finally appears
+      polled_env.login("Azureblood")
+      polled_env.clock = 5
+      polled_core.on_prerender()
+      assert.is_not_nil(widget.config)
+    end)
+
     it("does not go looking for a character while logged out", function()
       local widget = core.register(bar())
       core.on_prerender()

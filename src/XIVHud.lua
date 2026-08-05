@@ -41,10 +41,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 _addon.name = "XIVHud"
 _addon.author = "Azureblood2"
 _addon.version = "0.1.0"
--- Every alias goes in `_addon.commands`, including the primary one. Almost no
--- addon in the Windower repository sets `_addon.command` as well, and setting
--- both risks the single-command field being ignored in favour of the list --
--- which would leave the primary `//xh` unregistered.
+-- Both fields are set on purpose. The load trace proves the chunk completes and
+-- registers its handler, yet `//xh` never reaches it, so the shortcut itself is
+-- not being registered. Which of the two fields a given Windower build honours
+-- is the open question, so declare the command in both -- `VisibleFavor` in the
+-- addon repository does the same. `//lua c xivhud <args>` always works
+-- regardless, since it routes by addon name rather than by shortcut.
+_addon.command = "xh"
 _addon.commands = { "xh", "xivhud" }
 
 local CHAT_COLOR = 207
@@ -78,6 +81,23 @@ end
 
 trace("---- chunk started, version " .. _addon.version, "w")
 
+-- Safe mode: drop an empty file named `safe_mode` beside this one and the addon
+-- loads the framework and its commands but registers no component and no render
+-- loop. It is the one bisect available without working commands — if the client
+-- still dies in safe mode the fault is not in the drawing code.
+local safe_mode = false
+pcall(function()
+  local file = io.open(windower.addon_path .. "safe_mode", "r")
+  if file then
+    file:close()
+    safe_mode = true
+  end
+end)
+
+if safe_mode then
+  trace("SAFE MODE: no component, no render loop")
+end
+
 -- Loading is done in isolated steps. An addon whose main chunk dies part way
 -- registers none of its events, so it answers no commands and cannot be
 -- diagnosed from inside the game -- the worst possible failure. Instead each
@@ -104,10 +124,10 @@ end
 
 -- Windower's own libraries, stored in the globals they are conventionally
 -- assigned to.
+-- `files` is deliberately absent: config I/O uses raw io (see below).
 step("loading the Windower libraries", function()
   texts = require("texts")
   images = require("images")
-  files = require("files")
 end)
 
 local new_guard = step("loading lib/guard", function()
@@ -151,24 +171,63 @@ local function set_input_capture(on)
   end
 end
 
+--[[ Config I/O deliberately does not use the `files` library.
+
+     `files.write` on a missing file calls `create()`, which calls
+     `create_path()` and then **ignores its error**, so a directory that could
+     not be created is reported as "New file: ..." and then dies indexing a nil
+     handle. That is exactly what happened here: load.log, which sits directly
+     in the addon folder and is written with raw io, appeared every time, while
+     data/<Character>/<component>.lua -- two directories deep -- never did.
+
+     So the directories are built explicitly, the result of every step is
+     checked, and the file is written with plain io. ]]
+
 local function read_file(path)
-  local file = files.new(path)
-  if not file:exists() then
+  local file = io.open(windower.addon_path .. path, "r")
+  if not file then
     return nil
   end
-  return file:read()
+  local contents = file:read("*a")
+  file:close()
+  return contents
 end
 
--- files.write() calls f:create() for a file that does not exist, which calls
--- create_path() -> windower.create_dir for each missing directory. So the
--- per-character data/ tree appears on the first save without help from here.
+-- Builds `data`, then `data/Character`, ... reporting the first one that fails
+-- rather than pressing on to a write that cannot succeed.
+local function ensure_dir(relative_dir)
+  local built = windower.addon_path
+  for segment in relative_dir:gmatch("[^/\\]+") do
+    built = built .. segment .. "/"
+    if not windower.dir_exists(built) then
+      local created, err = windower.create_dir(built)
+      if not created then
+        return false, "could not create " .. built .. (err and (": " .. err) or "")
+      end
+    end
+  end
+  return true
+end
+
 local function write_file(path, contents)
-  local ok, err = pcall(function()
-    files.new(path):write(contents)
-  end)
-  if not ok then
+  local directory = path:match("^(.*)[/\\][^/\\]*$")
+  if directory then
+    local ok, err = ensure_dir(directory)
+    if not ok then
+      trace("write failed: " .. tostring(err))
+      return false, err
+    end
+  end
+
+  local file, err = io.open(windower.addon_path .. path, "w")
+  if not file then
+    trace("write failed: could not open " .. path .. ": " .. tostring(err))
     return false, err
   end
+
+  file:write(contents)
+  file:close()
+  trace("wrote " .. path)
   return true
 end
 
@@ -327,6 +386,9 @@ end)
 -- Components are wired explicitly — no directory scanning — so the set of
 -- registered components is always readable from here.
 step("building the parambar component", function()
+  if safe_mode then
+    return
+  end
   core.register(new_parambar({
     new_text = wrap_text,
     new_image = wrap_image,
@@ -348,7 +410,7 @@ local function check_assets()
   end
 
   for _, relative_path in ipairs(expected) do
-    if not files.exists(relative_path) then
+    if not read_file(relative_path) then
       missing[#missing + 1] = relative_path
     end
   end
@@ -392,8 +454,10 @@ end)
 windower.register_event(
   "load",
   guard.wrap("load", function()
+    trace("load event")
     check_assets()
     core.on_load()
+    trace("load event done, character = " .. tostring(core.character()))
   end)
 )
 
@@ -418,12 +482,24 @@ windower.register_event(
   end)
 )
 
-windower.register_event(
-  "prerender",
-  guard.wrap("prerender", function()
-    core.on_prerender()
-  end)
-)
+-- A heartbeat, so the log locates a crash in time. If the last line is a
+-- heartbeat and the client died, it died while the render loop was running; if
+-- the heartbeats stop long before the crash, this handler was not the cause.
+local frames = 0
+local HEARTBEAT_FRAMES = 300
+
+if not safe_mode then
+  windower.register_event(
+    "prerender",
+    guard.wrap("prerender", function()
+      frames = frames + 1
+      if frames == 1 or frames % HEARTBEAT_FRAMES == 0 then
+        trace("prerender frame " .. frames)
+      end
+      core.on_prerender()
+    end)
+  )
+end
 
 windower.register_event(
   "status change",
