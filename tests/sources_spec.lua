@@ -54,6 +54,23 @@ describe("sources", function()
     end
   end)
 
+  -- The addon runs inside the game process. Anything that shells out flashes a
+  -- console window over the client, so the file operations it does use must be
+  -- the ones that call straight into the C library: io.open, os.remove.
+  it("never spawns a process, which would flash a console over the game", function()
+    local forbidden = { "os%.execute", "io%.popen", "os%.tmpname" }
+    for _, path in ipairs(paths) do
+      local file = assert(io.open(path, "r"))
+      local body = file:read("*a")
+      file:close()
+
+      for _, pattern in ipairs(forbidden) do
+        local found = body:find(pattern)
+        assert.is_nil(found, path .. " uses " .. pattern:gsub("%%", "") .. ", which spawns a shell")
+      end
+    end
+  end)
+
   it("requires internal modules with slashes, the form Windower resolves", function()
     for _, path in ipairs(paths) do
       local file = assert(io.open(path, "r"))
