@@ -54,6 +54,14 @@ local new_visibility = require("lib/visibility")
 -- How often on_prerender may ask the client for a character before one is
 -- known. Only relevant in the gap between the login event and get_player().
 local CHARACTER_RETRY_SECONDS = 1
+-- Once the client says we are logged in, the only thing still missing is the
+-- player data, which arrives within a moment: this is the visible delay before
+-- the HUD comes up, so it is checked far more often than character select is.
+local LOADING_RETRY_SECONDS = 0.05
+-- How long that wait may last before core attaches on the name alone. The race
+-- it covers is sub-second; the margin is for a slow client, not for a max_hp
+-- that is never coming, and it is the blank-HUD cost if the field name is wrong.
+local VITALS_WAIT_SECONDS = 3
 
 local CORE_NAMESPACE = "core"
 local CORE_DEFAULTS = {
@@ -88,6 +96,7 @@ local function new(deps)
   local registry
   local core_handle
   local next_character_check = nil
+  local named_since = nil
 
   local function say(message)
     deps.chat(message)
@@ -327,7 +336,10 @@ local function new(deps)
     return true
   end
 
-  local function character_name()
+  -- The character to scope configuration to, or nil while the client cannot say
+  -- yet. Not a pure query: it times the vitals wait below, and reports giving up
+  -- on it.
+  local function character_to_scope()
     if deps.logged_in and not deps.logged_in() then
       return nil
     end
@@ -335,22 +347,64 @@ local function new(deps)
     local name = player and player.name
     -- The name is briefly an empty string around zone-in; scoping configs to
     -- `data//<component>.lua` on the strength of that would be worse than
-    -- waiting a frame.
+    -- waiting a frame. Note what this does *not* do: reset the vitals wait
+    -- below. Only logging out does that - a timer any flicker rewinds is not a
+    -- bound, and never timing out is the failure the bound exists to prevent.
     if type(name) ~= "string" or name == "" then
       return nil
     end
+    -- Nothing registered means nothing that could latch a stale zero, and no
+    -- render loop to retry from either (safe mode) - so the wait below has only
+    -- a cost, and the cost is every character-scoped `//xh` verb.
+    if #registry.all() == 0 then
+      return name
+    end
+
+    -- The client reports the name before it has filled the vitals in, and the
+    -- `hp change` events only fire on an actual change - so a component that
+    -- reads the player in that window shows zeros until something moves. max_hp
+    -- is nonzero for any loaded character, a dead one included, so it is the
+    -- signal that the player data behind the name is real.
+    local vitals = player.vitals
+    if vitals and (tonumber(vitals.max_hp) or 0) > 0 then
+      named_since = nil
+      return name
+    end
+
+    -- max_hp is taken from the wiki and has never been read out of a live
+    -- client, so waiting on it forever would risk the worst failure this addon
+    -- has: nothing on screen, no configuration, all session, with no way to
+    -- tell why. Time the wait out and attach anyway - a stale zero is visible
+    -- and self-corrects on the first change event.
+    named_since = named_since or deps.now()
+    if deps.now() - named_since < VITALS_WAIT_SECONDS then
+      return nil
+    end
+    -- Said once per login: giving up scopes the character, so nothing asks again
+    -- until the next logout, which clears the wait.
+    say("the client never reported this character's vitals - HP/MP may read 0 until they change")
     return name
   end
 
+  -- A login the client cannot resolve yet leaves the character already scoped
+  -- alone - dropping one is on_logout's job - and on_prerender keeps trying.
+  local function catch_up()
+    local name = character_to_scope()
+    if name then
+      set_character(name)
+    end
+  end
+
   function self.on_load()
-    set_character(character_name())
+    catch_up()
   end
 
   function self.on_login()
-    set_character(character_name())
+    catch_up()
   end
 
   function self.on_logout()
+    named_since = nil
     if layout_mode.active() then
       set_layout_mode(false)
     end
@@ -384,16 +438,19 @@ local function new(deps)
   -- its own refresh. Components keep receiving updates while suppressed so
   -- their data is current the moment they come back.
   function self.on_prerender()
-    -- The `login` event can fire before get_player() has a name, so keep
-    -- looking until it does. Throttled: asking the client sixty times a second
-    -- is not something addons normally do, and this only needs to catch up
-    -- within a second of login.
+    -- The `login` event can fire before get_player() has a name or its vitals,
+    -- so keep looking until it does. Throttled, at two speeds: a login already
+    -- under way is the player watching a blank HUD, while an empty character
+    -- select is worth no more than a poll a second.
     if not settings.character() then
       local now = deps.now()
       if not next_character_check or now >= next_character_check then
-        next_character_check = now + CHARACTER_RETRY_SECONDS
-        if deps.logged_in and deps.logged_in() then
-          set_character(character_name())
+        local live = deps.logged_in and deps.logged_in() or false
+        next_character_check = now + (live and LOADING_RETRY_SECONDS or CHARACTER_RETRY_SECONDS)
+        if live then
+          catch_up()
+        else
+          named_since = nil
         end
       end
     end
