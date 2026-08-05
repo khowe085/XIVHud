@@ -137,15 +137,24 @@ local function new(deps)
     return { action = "slot", op = "switch", name = op }
   end
 
+  -- `//xh copy <source> <destination>`. Both ends are named explicitly, so the
+  -- command reads the same whichever character is logged in, and neither end is
+  -- implied. Character names keep the case they were typed with.
   local function parse_copy(words)
-    local character = words[2]
-    if not character then
-      return fail("'//xh copy' needs a character name")
+    local source = words[2]
+    if not source then
+      return fail("'//xh copy' needs a source character")
     end
-    if #words > 3 or (words[3] and words[3]:lower() ~= "confirm") then
-      return fail("'//xh copy " .. character .. " confirm' overwrites this character's config")
+
+    local destination = words[3]
+    if not destination then
+      return fail("'//xh copy " .. source .. " <destination>' needs a destination character")
     end
-    return { action = "copy", character = character, confirmed = words[3] ~= nil }
+    if #words > 3 then
+      return fail("'//xh copy' takes a source and a destination character, nothing more")
+    end
+
+    return { action = "copy", source = source, destination = destination }
   end
 
   -- Parses one `//xh ...` invocation into an action table. Never returns nil.

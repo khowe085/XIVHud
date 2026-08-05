@@ -45,6 +45,14 @@ function M.file_system(seed)
     return entries
   end
 
+  function fs.delete_file(path)
+    if fs.files[path] == nil then
+      return false
+    end
+    fs.files[path] = nil
+    return true
+  end
+
   function fs.is_dir(path)
     local prefix = path .. "/"
     for name in pairs(fs.files) do
@@ -263,6 +271,7 @@ function M.core_deps(overrides)
     end,
     list_dir = fs.list_dir,
     is_dir = fs.is_dir,
+    delete_file = fs.delete_file,
     new_image = prims.new_image,
     new_text = prims.new_text,
     overlay_texture = function()

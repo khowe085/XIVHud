@@ -79,7 +79,7 @@ local HELP = {
   "  //xh slot list            layout slots, active one marked",
   "  //xh slot create <name>   new slot, copied from the active one",
   "  //xh slot delete <name>   remove a slot",
-  "  //xh copy <char> confirm  overwrite this character's config with another's",
+  "  //xh copy <from> <to>     replace one character's config with another's",
   "  //xh <name> ...           pass a command to a component",
 }
 
@@ -603,19 +603,47 @@ local function new(deps)
 
   --[[ Copying another character's configuration ---------------------------- ]]
 
-  -- Characters with saved configuration, excluding the one being played:
-  -- copying onto yourself is refused, so offering it would be noise.
-  local function character_dirs(except)
+  -- Every character with saved configuration. Both ends of a copy are named
+  -- explicitly, so the character being played is no longer a special case.
+  local function character_dirs()
     local names = {}
     for _, entry in ipairs((deps.list_dir and deps.list_dir("data")) or {}) do
       if entry ~= "." and entry ~= ".." and deps.is_dir("data/" .. entry) then
-        if not except or entry:lower() ~= except:lower() then
-          names[#names + 1] = entry
-        end
+        names[#names + 1] = entry
       end
     end
     table.sort(names)
     return names
+  end
+
+  local function resolve_character(name, known)
+    for _, entry in ipairs(known) do
+      if entry:lower() == name:lower() then
+        return entry
+      end
+    end
+    return nil
+  end
+
+  -- Empties a config tree. Deleting the files is what makes a copy a
+  -- replacement; a directory left behind because it cannot be removed is
+  -- harmless, so its failure is not worth reporting.
+  local function delete_tree(path)
+    local removed = 0
+    for _, entry in ipairs(deps.list_dir(path) or {}) do
+      if entry ~= "." and entry ~= ".." then
+        local child = path .. "/" .. entry
+        if deps.is_dir(child) then
+          removed = removed + delete_tree(child)
+        elseif deps.delete_file and deps.delete_file(child) then
+          removed = removed + 1
+        end
+      end
+    end
+    if deps.delete_file then
+      deps.delete_file(path)
+    end
+    return removed
   end
 
   -- Copies a config tree file by file, recursing into the directories a
@@ -647,50 +675,43 @@ local function new(deps)
     return copied, failed
   end
 
+  -- `//xh copy <source> <destination>` replaces the destination outright: its
+  -- tree is emptied before the copy, so what remains is the source's
+  -- configuration and nothing else. There is no undo.
   local function run_copy(action)
-    local character = settings.character()
+    local known = character_dirs()
 
-    -- Checked before the source lookup, because character_dirs deliberately
-    -- leaves the current character out of the list it offers.
-    if action.character:lower() == character:lower() then
-      say("'" .. action.character .. "' is already the character you are playing")
-      return
-    end
-
-    local known = character_dirs(character)
-    local source = nil
-    for _, name in ipairs(known) do
-      if name:lower() == action.character:lower() then
-        source = name
-      end
-    end
-
+    local source = resolve_character(action.source, known)
     if not source then
-      say("no saved configuration for '" .. action.character .. "'")
-      say(
-        #known == 0 and "  no other character has saved configuration yet" or ("  known: " .. table.concat(known, ", "))
-      )
-      return
-    end
-    if not action.confirmed then
-      say(("'//xh copy %s confirm' overwrites %s's settings with %s's"):format(source, character, source))
+      say("no saved configuration for '" .. action.source .. "'")
+      say(#known == 0 and "  no character has saved configuration yet" or ("  known: " .. table.concat(known, ", ")))
       return
     end
 
-    local copied, failed = copy_tree("data/" .. source, "data/" .. character)
-    settings.reload()
-    apply_settings(character)
+    -- The destination need not exist yet; that is half the point.
+    local destination = resolve_character(action.destination, known) or action.destination
+    if source:lower() == destination:lower() then
+      say("'" .. source .. "' is the same character at both ends")
+      return
+    end
+
+    local removed = delete_tree("data/" .. destination)
+    local copied, failed = copy_tree("data/" .. source, "data/" .. destination)
+
+    -- Only the character being played has anything loaded to refresh.
+    local character = settings.character()
+    if character and destination:lower() == character:lower() then
+      settings.reload()
+      apply_settings(character)
+    end
 
     if failed > 0 then
-      -- Half a copy is a config that is half each character's, so say so rather
-      -- than reporting a number that looks like success.
-      say(("%d file(s) could not be copied from %s; %d were"):format(failed, source, copied))
-      say(("  %s's configuration is now a mix of both - '//xh reset all' starts over"):format(character))
+      say(("%d file(s) could not be copied from %s to %s; %d were"):format(failed, source, destination, copied))
+      say(("  %s's configuration is now incomplete - '//xh reset all' starts over"):format(destination))
       return
     end
 
-    say(("copied %d file(s) from %s - configuration reloaded"):format(copied, source))
-    say(("  anything %s has that %s does not was left as it was"):format(character, source))
+    say(("copied %d file(s) from %s to %s, replacing %d"):format(copied, source, destination, removed))
   end
 
   local function run(action)
@@ -736,9 +757,7 @@ local function new(deps)
         run_slot(action)
       end
     elseif action.action == "copy" then
-      if require_character() then
-        run_copy(action)
-      end
+      run_copy(action)
     elseif action.action == "component" then
       if not require_character() then
         return

@@ -260,6 +260,13 @@ local function is_dir(path)
   return windower.dir_exists(windower.addon_path .. path)
 end
 
+-- Used by `//xh copy` to empty the destination first. os.remove deletes files;
+-- on a directory it simply fails, which is fine -- an empty directory left
+-- behind changes nothing.
+local function delete_file(path)
+  return os.remove(windower.addon_path .. path) and true or false
+end
+
 local function wrap_image()
   local image = images.new({ draggable = false })
   return {
@@ -375,6 +382,7 @@ step("building the framework", function()
     write_file = write_file,
     list_dir = list_dir,
     is_dir = is_dir,
+    delete_file = delete_file,
     get_player = get_player,
     logged_in = function()
       return windower.ffxi.get_info().logged_in

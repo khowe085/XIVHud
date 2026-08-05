@@ -89,7 +89,7 @@ Per-component isolation: every component owns its own configuration file and can
 - **Defaults merge:** user values win; default keys the user has never seen are added; keys the defaults do not mention (user-created layout slots) are preserved.
 - **Character scoping:** the character name is unknown until login, so components are attached on login and detached on logout, and nothing renders while logged out.
 - **Layout slots:** position, scale and visibility live under named slots — `slots = { default = { pos = {x, y}, scale = 1, visible = true } }`. `default` always exists and cannot be deleted. Slot names are matched case-insensitively and stored lowercase. The set of slots is the union across components; the active slot name is in core's config, and every layout write persists into it immediately. A component with no entry for a slot falls back to its default layout.
-- **`//xh copy`** overlays another character's `data/<Character>/` tree onto this one, then reloads and re-applies. It overwrites, but does not delete: a file this character has that the source lacks is left alone. It needs the literal word `confirm`.
+- **`//xh copy <source> <destination>`** replaces the destination's `data/<Character>/` tree with the source's: the destination is emptied first, so what remains is the source's configuration and nothing else. Both ends are named explicitly, so it does not depend on who is logged in, and it reloads only when the destination is the character being played. It is destructive and has no undo and no confirmation step.
 
 ## Commands
 
@@ -103,7 +103,7 @@ Per-component isolation: every component owns its own configuration file and can
 //xh reset <component|all>    -- restores defaults, which drops that component's named slots
 //xh slot <name>              -- switch layout slot
 //xh slot list|create <name>|delete <name>
-//xh copy <character> confirm -- overwrite this character's config with another's
+//xh copy <source> <destination> -- replace the destination's config with the source's
 //xh <component> [...]        -- passthrough to the component's handle_command
 ```
 
