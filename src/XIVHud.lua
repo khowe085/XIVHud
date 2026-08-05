@@ -236,7 +236,6 @@ local function write_file(path, contents)
 
   file:write(contents)
   file:close()
-  trace("wrote " .. path)
   return true
 end
 
@@ -437,7 +436,6 @@ end
 -- no commands cannot be diagnosed from inside the game, so //xh always replies:
 -- with the failure if there was one, and normally otherwise.
 windower.register_event("addon command", function(...)
-  trace("command received")
   if load_error then
     chat("did not load — " .. load_error)
     return
@@ -491,20 +489,10 @@ windower.register_event(
   end)
 )
 
--- A heartbeat, so the log locates a crash in time. If the last line is a
--- heartbeat and the client died, it died while the render loop was running; if
--- the heartbeats stop long before the crash, this handler was not the cause.
-local frames = 0
-local HEARTBEAT_FRAMES = 300
-
 if not safe_mode then
   windower.register_event(
     "prerender",
     guard.wrap("prerender", function()
-      frames = frames + 1
-      if frames == 1 or frames % HEARTBEAT_FRAMES == 0 then
-        trace("prerender frame " .. frames)
-      end
       core.on_prerender()
     end)
   )
