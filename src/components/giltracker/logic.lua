@@ -58,13 +58,13 @@ local HANDLED_CHUNKS = {
 -- grouped. The number is left-justified inside that reserved width so the icon
 -- beside it never moves as digits come and go.
 local RESERVED_CHARACTERS = 11
--- Fraction of the font size one character occupies. Measured, not guessed: 0.6
--- was the first estimate and it was too narrow -- a capped value ran two
--- characters under the icon in `//xh layout`, which puts the real width near
--- 0.75. This is that plus a little slack. Nothing here can measure a font, so
--- a change to the default font or size wants the same check: open layout mode,
--- whose preview shows the widest value the widget can ever hold.
-local CHARACTER_WIDTH_RATIO = 0.8
+-- Fraction of the font size one character occupies. The real width is nearer
+-- 0.75 -- verified in `//xh layout`, where a capped value runs about two
+-- characters under the icon -- but 0.6 is deliberate: reserving the true width
+-- parks the icon 75px from a single-digit value, and a gap that wide at every
+-- ordinary balance is worse than an overlap nobody will see below 100,000,000
+-- gil. Widen it if that day comes.
+local CHARACTER_WIDTH_RATIO = 0.6
 -- Ascender to descender, as a multiple of the font size. Only decides the box
 -- height for a font too tall for the icon.
 local TEXT_HEIGHT_RATIO = 1.5

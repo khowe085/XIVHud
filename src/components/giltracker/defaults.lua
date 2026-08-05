@@ -39,9 +39,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 -- off the anchor and the widget lands on the same footprint.
 local FONT_SIZE = 9
 -- Mirrors the reserved width logic.lua computes (11 characters of the gil cap,
--- each about 0.8 of the font size). Derived rather than hardcoded so changing
+-- each about 0.6 of the font size). Derived rather than hardcoded so changing
 -- the font size below moves the default anchor with it.
-local RESERVED_WIDTH = math.ceil(11 * FONT_SIZE * 0.8)
+local RESERVED_WIDTH = math.ceil(11 * FONT_SIZE * 0.6)
 local ANCHOR_FROM_RIGHT = 285 + RESERVED_WIDTH
 local ANCHOR_FROM_BOTTOM = 35
 
