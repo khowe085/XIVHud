@@ -19,6 +19,8 @@ The devcontainer (Alpine) provides Lua 5.1, luacheck, StyLua, busted, and the Gi
 
 There is no build step. "Passing" locally means green `busted` + clean `luacheck` + `stylua --check`.
 
+**Green locally does not mean it loads.** Nothing here exercises `require` resolution inside Windower, the real `texts`/`images`/`files` libraries, or the prim layer — and this addon has already shipped a build that passed every check and then failed to register a single event in the client. Treat any claim about the Windower API as unverified until it is read in the [library sources](https://github.com/Windower/Lua/tree/dev/addons/libs) or confirmed in a live client; the wiki documents what a function returns far more often than how it behaves at the edges.
+
 ## Windower addon conventions
 
 These are platform facts about how Windower loads and runs addons:
@@ -34,6 +36,12 @@ These are platform facts about how Windower loads and runs addons:
   - `windower.ffxi.get_player()` / `get_mob_by_index()` can return `nil` (not logged in, index not loaded) — guard before indexing. A PC has both a permanent ID and a per-zone **mob index**; use `target_index`/index for in-zone lookups.
   - Windower and Lua **fail silently**: too few/many function args yield `nil`/dropped values, and undefined table keys return `nil`, all without erroring. A `nil` in an array also halts `ipairs`/`#` iteration early. Validate inputs yourself.
   - Tables are **1-indexed**; there's no built-in string split or table slice (use `strings`/`tables`). `T{}` (from `tables`) is needed for method-style calls like `t:map(...)`; convert the mob/player arrays with `T(...)`.
+- **Library setters that are also getters** (verified against the `dev` sources; each cost real debugging):
+  - `texts`/`images` accessors return the current value when called with **no argument**. `text:right_justified()` does not right-justify — it *reads* the flag. Always pass the value: `text:right_justified(true)`.
+  - `stroke_transparency` and `transparency` take **0..1**, and internally compute `alpha = 255 * (1 - value)`. Passing a 0–255 alpha to them produces a wildly negative alpha. Use `stroke_alpha`/`alpha` for 0–255.
+  - The guards are `if not x` / `x == nil`, and **`0` is truthy in Lua**, so a numeric zero is *not* mistaken for "no argument". `color(0, g, b)` and `stroke_width(0)` behave.
+  - `image:fit(true)` sizes a prim to its texture, which defeats explicit `size()`. Anything scaled or stretched must set `fit(false)`.
+- **Directory and file I/O** (verified): `files.new(path):write(contents)` creates the file *and* any missing directories — `files.write` → `create()` → `create_path()` → `windower.create_dir` per path segment. `windower.get_dir(path)` returns files and directories together, so classify entries with `windower.dir_exists`. A texture path that does not exist fails **silently**: the prim simply draws nothing.
 
 ## Modular design & testing
 
@@ -64,8 +72,10 @@ tests/
 - **Entry point (`src/XIVHud.lua`).** The only place that reads globals. It builds the real `deps` from the live API, wraps Windower's method-style prims (`t:pos(x, y)`) as plain function tables for components, constructs and registers each component, and wires `windower.register_event(...)`. Keep it thin — anything worth testing belongs in `lib/` or a component.
 - **Component isolation.** A component's whole implementation lives in `src/components/<name>/`, entry file `<name>.lua`. It may require `lib/`, never a sibling component; cross-component needs go through the framework. The name is the shared key across code dir, config namespace, registry entry and command word, and is validated at registration (it cannot collide with a reserved `//xh` verb).
 - **Widget contract.** `new(ctx) -> widget` exposing `name`, `defaults`, `attach(config, save)`, `detach()`, `set_pos(x, y)`, `set_scale(s)`, `set_preview(on)`, `show()`, `hide()`, `get_bounds() -> x, y, w, h`, `update(event, ...)` (no arguments is the per-frame tick), optional `handle_command(args) -> message`, and `destroy()`. Core owns visibility and layout persistence; a component never decides whether it is on screen. **`get_bounds()` must return the same origin `set_pos` was given** — core clamps the widget on screen by comparing the two, and layout mode's drag offsets assume it.
-- **Tests (`tests/`).** busted specs `require` a module and pass fake deps. See `tests/core_spec.lua` and `tests/support/fakes.lua`.
-- **Require paths.** `.busted` sets `lpath` to include `src/`, so `require('lib.foo')` and `require('components.parambar.logic')` resolve both in tests and at Windower runtime (where the addon's own folder is the require root — matching `src/` as that folder's stand-in here).
+- **Tests (`tests/`).** busted specs `require` a module and pass fake deps. See `tests/core_spec.lua` and `tests/support/fakes.lua`. `tests/sources_spec.lua` is the exception: it `loadfile`s every file under `src/` so the entry point — which reads Windower globals and so can never be *run* here — is at least known to compile, and checks the licence headers and the require convention.
+- **Require paths — use slashes, not dots.** Internal modules are required as `require('lib/core')` and `require('components/parambar/logic')`. Dot form *should* work (Lua's own loader rewrites `.` to the path separator), but the only addon in the Windower repository that requires across subdirectories — `bluguide` — uses slashes, and that is the form with evidence behind it. Both resolve under busted, because `.busted` sets `lpath` to include `src/` and `?` is substituted literally; at Windower runtime the addon's own folder is the require root, with `src/` as its stand-in here. `tests/sources_spec.lua` fails the build if dot form reappears.
+- **A failed load must stay diagnosable.** If the main chunk dies part way, every `register_event` after the failure never runs: the addon answers no commands, writes no config, and cannot be investigated from inside the game — the worst possible failure, and one this repo has already hit. So `src/XIVHud.lua` loads in isolated steps that record why they failed, and registers the `addon command` handler **before** any of them; `//xh` then reports the failure. If loading fails, nothing else is registered and nothing is drawn.
+- **Every Windower handler is wrapped** by `lib/guard`. `prerender` runs each frame, so an error there recurs sixty times a second and buries the one useful message; guard reports the first distinct error per handler, swallows repeats, and disables a handler after five failures. The mouse and keyboard handlers fall back to `false`, because a dead handler that keeps swallowing input is indistinguishable from a frozen client.
 
 ## Settings
 
