@@ -86,10 +86,13 @@ local PRIM_SETTERS = {
   "alpha",
   "text",
   "font",
+  "italic",
+  "bold",
   "stroke_width",
   "stroke_color",
   "stroke_alpha",
   "bg_alpha",
+  "bg_color",
   "bg_visible",
   "right_justified",
 }
