@@ -2,7 +2,7 @@ local new_parambar = require("components/parambar/parambar")
 local fakes = require("tests/support/fakes")
 
 describe("parambar widget", function()
-  local prims, player, saves, assets, widget
+  local prims, player, saves, assets, widget, clock
 
   local function attach()
     widget.attach(widget.defaults, function()
@@ -34,11 +34,15 @@ describe("parambar widget", function()
     saves = 0
     assets = {}
     player = { vitals = { hp = 1000, hpp = 100, mp = 500, mpp = 100, tp = 500 } }
+    clock = 0
     widget = new_parambar({
       new_text = prims.new_text,
       new_image = prims.new_image,
       screen = function()
         return 1920, 1080
+      end,
+      now = function()
+        return clock
       end,
       get_player = function()
         return player
@@ -98,6 +102,36 @@ describe("parambar widget", function()
       settle()
       assert.are.equal("1000", number(1).last.text)
       assert.are.equal("500", number(2).last.text)
+    end)
+
+    -- The client fills vitals in field by field: HP was seen landing in a live
+    -- client while MP was still zero, and MP does not tick on its own outside
+    -- resting, so a single seed leaves the MP bar empty until the player casts.
+    it("picks up a vital that lands after the first seed", function()
+      player = { vitals = { hp = 1000, hpp = 100, mp = 0, mpp = 0, tp = 0, max_hp = 1000 } }
+      attach()
+      widget.set_pos(0, 0)
+      settle()
+      assert.are.equal("0", number(2).last.text)
+
+      player.vitals.mp = 500
+      player.vitals.mpp = 100
+      clock = 1
+      settle()
+      assert.are.equal("500", number(2).last.text)
+    end)
+
+    it("stops re-reading the player once the vitals have had time to settle", function()
+      player = { vitals = { hp = 1000, hpp = 100, mp = 0, mpp = 0, tp = 0, max_hp = 1000 } }
+      attach()
+      widget.set_pos(0, 0)
+      clock = 30
+      settle()
+
+      player.vitals.mp = 500
+      player.vitals.mpp = 100
+      settle()
+      assert.are.equal("0", number(2).last.text, "still polling the client long after login")
     end)
 
     it("survives being attached while the player is unreadable", function()

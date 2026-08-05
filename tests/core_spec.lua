@@ -193,6 +193,22 @@ describe("core", function()
       assert.are.equal("Alpha", core.character(), "gave up on Bravo at once, against the clock Alpha ran out")
     end)
 
+    -- A frame spent at character select books the slow slot; the login event
+    -- landing inside it must not be made to serve out someone else's second.
+    it("drops to login speed even when the last check was booked at character select", function()
+      core.register(bar())
+      core.on_prerender()
+
+      env.clock = 0.1
+      env.player = { name = "Azureblood", status = 0, vitals = { hp = 0, max_hp = 0 } }
+      core.on_login()
+
+      env.clock = 0.2
+      env.login("Azureblood")
+      core.on_prerender()
+      assert.are.equal("Azureblood", core.character(), "still serving out the character-select interval")
+    end)
+
     it("stops watching for a character once the login resolves", function()
       local polls = 0
       local counted_deps, counted_env = fakes.core_deps({

@@ -102,6 +102,9 @@ local function new(config)
   local preview = false
   local widths = { hp = 0, mp = 0, tp = 0 }
   local dirty = { hp = true, mp = true, tp = true }
+  -- Vitals the client has never given a real number for, as opposed to ones it
+  -- has said are zero. Only these are open to fill_missing.
+  local unknown = {}
 
   local function vitals()
     return preview and SAMPLE_VITALS or live
@@ -130,10 +133,31 @@ local function new(config)
   function self.seed(player_vitals)
     player_vitals = player_vitals or {}
     live = zeroed()
+    unknown = {}
     for key in pairs(live) do
       live[key] = tonumber(player_vitals[key]) or 0
+      unknown[key] = live[key] == 0 or nil
     end
     mark_all_dirty()
+  end
+
+  -- Fills in vitals the client has never given a number for, from a fresh read
+  -- of the player. It populates its vitals table field by field, so a bar can
+  -- still be waiting for its first real number while its neighbours are current.
+  -- Unlike seed() this cannot walk over a change event: a vital an event drove
+  -- to zero is a vital the client has spoken for, and stays where it was put.
+  function self.fill_missing(player_vitals)
+    player_vitals = player_vitals or {}
+    for key, bar in pairs(VITALS) do
+      if unknown[key] then
+        local value = tonumber(player_vitals[key]) or 0
+        if value ~= 0 then
+          live[key] = value
+          unknown[key] = nil
+          dirty[bar] = true
+        end
+      end
+    end
   end
 
   -- One value from an `hp change` / `hpp change` / … event.
@@ -143,6 +167,8 @@ local function new(config)
       return
     end
     live[kind] = tonumber(value) or 0
+    -- The client has now spoken for this vital, zero or not.
+    unknown[kind] = nil
     dirty[bar] = true
   end
 

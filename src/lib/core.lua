@@ -401,6 +401,9 @@ local function new(deps)
 
   local function login_event()
     awaiting_login = true
+    -- Whatever slot the retry booked while nobody was logged in is a second the
+    -- player would now spend watching a blank HUD.
+    next_character_check = nil
     catch_up()
   end
 
