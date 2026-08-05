@@ -1,5 +1,5 @@
-local new_settings = require("lib.settings")
-local fakes = require("tests.support.fakes")
+local new_settings = require("lib/settings")
+local fakes = require("tests/support/fakes")
 
 describe("settings", function()
   local fs, notices, service

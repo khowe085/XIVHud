@@ -1,5 +1,5 @@
-local new_parambar = require("components.parambar.parambar")
-local fakes = require("tests.support.fakes")
+local new_parambar = require("components/parambar/parambar")
+local fakes = require("tests/support/fakes")
 
 describe("parambar widget", function()
   local prims, player, saves, assets, widget

@@ -1,4 +1,4 @@
-local new_guard = require("lib.guard")
+local new_guard = require("lib/guard")
 
 describe("guard", function()
   local said, guard

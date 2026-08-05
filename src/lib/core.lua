@@ -43,13 +43,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      - Character scoping. Configs do not exist until login, so components are
        attached on login and detached on logout. ]]
 
-local new_commands = require("lib.commands")
-local new_layout = require("lib.layout")
-local new_layout_mode = require("lib.layout_mode")
-local new_overlay = require("lib.overlay")
-local new_registry = require("lib.registry")
-local new_settings = require("lib.settings")
-local new_visibility = require("lib.visibility")
+local new_commands = require("lib/commands")
+local new_layout = require("lib/layout")
+local new_layout_mode = require("lib/layout_mode")
+local new_overlay = require("lib/overlay")
+local new_registry = require("lib/registry")
+local new_settings = require("lib/settings")
+local new_visibility = require("lib/visibility")
 
 local CORE_NAMESPACE = "core"
 local CORE_DEFAULTS = {

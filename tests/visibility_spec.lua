@@ -1,4 +1,4 @@
-local new_visibility = require("lib.visibility")
+local new_visibility = require("lib/visibility")
 
 describe("visibility", function()
   local clock, vis

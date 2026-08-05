@@ -39,7 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      character name is unknown until login, which this service models directly
      (no character -> no config -> components stay hidden). ]]
 
-local serialize = require("lib.serialize")
+local serialize = require("lib/serialize")
 
 local load_chunk = loadstring or load
 

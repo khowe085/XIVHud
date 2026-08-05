@@ -1,4 +1,4 @@
-local new_layout = require("lib.layout")
+local new_layout = require("lib/layout")
 
 describe("layout", function()
   local snap_size, layout

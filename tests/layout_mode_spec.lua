@@ -1,5 +1,5 @@
-local new_layout = require("lib.layout")
-local new_layout_mode = require("lib.layout_mode")
+local new_layout = require("lib/layout")
+local new_layout_mode = require("lib/layout_mode")
 
 -- Windower mouse event types (see the Events wiki).
 local MOVE, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, RIGHT_UP, WHEEL = 0, 1, 2, 4, 5, 10

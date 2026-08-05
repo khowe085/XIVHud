@@ -1,5 +1,5 @@
-local new_core = require("lib.core")
-local fakes = require("tests.support.fakes")
+local new_core = require("lib/core")
+local fakes = require("tests/support/fakes")
 
 local MOVE, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, WHEEL = 0, 1, 2, 4, 10
 local EVENT_STATUS = 4

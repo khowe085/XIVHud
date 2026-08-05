@@ -44,14 +44,6 @@ _addon.version = "0.1.0"
 _addon.command = "xh"
 _addon.commands = { "xivhud" }
 
-texts = require("texts")
-images = require("images")
-files = require("files")
-
-local new_core = require("lib.core")
-local new_guard = require("lib.guard")
-local new_parambar = require("components.parambar.parambar")
-
 local CHAT_COLOR = 207
 -- Plain white square, tinted and stretched for the layout-mode highlight.
 local OVERLAY_TEXTURE = "assets/overlay.png"
@@ -62,9 +54,45 @@ local function chat(message)
   windower.add_to_chat(CHAT_COLOR, "[XIVHud] " .. message)
 end
 
--- Every Windower handler goes through this, so a bug here degrades to a
--- message and a dead handler rather than an unexplained freeze.
-local guard = new_guard({ notify = chat })
+-- Loading is done in isolated steps. An addon whose main chunk dies part way
+-- registers none of its events, so it answers no commands and cannot be
+-- diagnosed from inside the game -- the worst possible failure. Instead each
+-- step records why it failed, and the command handler below reports it.
+local load_error = nil
+
+local function step(description, fn)
+  if load_error then
+    return nil
+  end
+  local ok, result = pcall(fn)
+  if ok then
+    return result
+  end
+  load_error = description .. ": " .. tostring(result)
+  return nil
+end
+
+-- Windower's own libraries, stored in the globals they are conventionally
+-- assigned to.
+step("loading the Windower libraries", function()
+  texts = require("texts")
+  images = require("images")
+  files = require("files")
+end)
+
+local new_guard = step("loading lib/guard", function()
+  return require("lib/guard")
+end)
+local new_core = step("loading lib/core", function()
+  return require("lib/core")
+end)
+local new_parambar = step("loading the parambar component", function()
+  return require("components/parambar/parambar")
+end)
+
+-- Every Windower handler goes through this, so a bug degrades to a message and
+-- a dead handler rather than an unexplained freeze.
+local guard = new_guard and new_guard({ notify = chat }) or nil
 
 -- Registered only while layout mode is on, so normal play carries no
 -- input-handling cost at all.
@@ -240,37 +268,45 @@ local function get_player()
   return windower.ffxi.get_player()
 end
 
-core = new_core({
-  read_file = read_file,
-  write_file = write_file,
-  list_dir = list_dir,
-  is_dir = is_dir,
-  get_player = get_player,
-  logged_in = function()
-    return windower.ffxi.get_info().logged_in
-  end,
-  screen = screen,
-  now = os.clock,
-  chat = chat,
-  set_input_capture = set_input_capture,
-  new_image = wrap_image,
-  new_text = wrap_text,
-  overlay_texture = function()
-    return windower.addon_path .. OVERLAY_TEXTURE
-  end,
-})
+-- Everything from here on can fail on a broken install, so each part is a step
+-- and the command handler is registered regardless of how they go.
+local command_handler = nil
+
+step("building the framework", function()
+  core = new_core({
+    read_file = read_file,
+    write_file = write_file,
+    list_dir = list_dir,
+    is_dir = is_dir,
+    get_player = get_player,
+    logged_in = function()
+      return windower.ffxi.get_info().logged_in
+    end,
+    screen = screen,
+    now = os.clock,
+    chat = chat,
+    set_input_capture = set_input_capture,
+    new_image = wrap_image,
+    new_text = wrap_text,
+    overlay_texture = function()
+      return windower.addon_path .. OVERLAY_TEXTURE
+    end,
+  })
+end)
 
 -- Components are wired explicitly — no directory scanning — so the set of
 -- registered components is always readable from here.
-core.register(new_parambar({
-  new_text = wrap_text,
-  new_image = wrap_image,
-  screen = screen,
-  get_player = get_player,
-  asset = function(relative_path)
-    return windower.addon_path .. relative_path
-  end,
-}))
+step("building the parambar component", function()
+  core.register(new_parambar({
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    get_player = get_player,
+    asset = function(relative_path)
+      return windower.addon_path .. relative_path
+    end,
+  }))
+end)
 
 -- Textures fail silently: a prim with a bad path simply draws nothing, so an
 -- incomplete install looks like a broken addon. Say so at load instead.
@@ -292,9 +328,32 @@ local function check_assets()
     for _, relative_path in ipairs(missing) do
       chat("  " .. relative_path)
     end
-    chat("  the addon folder is incomplete — re-copy every file and folder under src/")
+    chat("  the addon folder is incomplete — re-copy every file and folder from src/")
   end
 end
+
+-- Registered before anything else could have gone wrong. An addon that answers
+-- no commands cannot be diagnosed from inside the game, so //xh always replies:
+-- with the failure if there was one, and normally otherwise.
+windower.register_event("addon command", function(...)
+  if load_error then
+    chat("did not load — " .. load_error)
+    return
+  end
+  return command_handler(...)
+end)
+
+if load_error then
+  windower.register_event("load", function()
+    chat("did not load — " .. load_error)
+    chat("  nothing will be drawn. Type //xh to see this again.")
+  end)
+  return
+end
+
+command_handler = guard.wrap("command", function(...)
+  core.on_command({ ... })
+end)
 
 windower.register_event(
   "load",
@@ -322,13 +381,6 @@ windower.register_event(
   "logout",
   guard.wrap("logout", function()
     core.on_logout()
-  end)
-)
-
-windower.register_event(
-  "addon command",
-  guard.wrap("command", function(...)
-    core.on_command({ ... })
   end)
 )
 

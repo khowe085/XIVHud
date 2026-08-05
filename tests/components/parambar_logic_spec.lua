@@ -1,5 +1,5 @@
-local new_logic = require("components.parambar.logic")
-local parambar_defaults = require("components.parambar.defaults")
+local new_logic = require("components/parambar/logic")
+local parambar_defaults = require("components/parambar/defaults")
 
 describe("parambar logic", function()
   local config, logic

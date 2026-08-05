@@ -1,4 +1,4 @@
-local serialize = require("lib.serialize")
+local serialize = require("lib/serialize")
 
 describe("serialize", function()
   -- Reads the emitted chunk back the way lib/settings does: sandboxed, no globals.

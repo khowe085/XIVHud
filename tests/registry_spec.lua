@@ -1,4 +1,4 @@
-local new_registry = require("lib.registry")
+local new_registry = require("lib/registry")
 
 describe("registry", function()
   local warnings, registry

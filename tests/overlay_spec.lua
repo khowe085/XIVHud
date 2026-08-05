@@ -1,5 +1,5 @@
-local new_overlay = require("lib.overlay")
-local fakes = require("tests.support.fakes")
+local new_overlay = require("lib/overlay")
+local fakes = require("tests/support/fakes")
 
 describe("overlay", function()
   local prims, overlay

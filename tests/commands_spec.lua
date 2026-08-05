@@ -1,4 +1,4 @@
-local new_commands = require("lib.commands")
+local new_commands = require("lib/commands")
 
 describe("commands", function()
   local commands
