@@ -82,7 +82,7 @@ local function new(deps)
         disabled = true
         any_failed = true
         notify(
-          ("the %s handler has been disabled after %d failures — '//lua reload xivhud' to try again"):format(
+          ("the %s handler has been disabled after %d failures - '//lua reload xivhud' to try again"):format(
             name,
             errors
           )

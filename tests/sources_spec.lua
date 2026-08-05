@@ -36,6 +36,24 @@ describe("sources", function()
     end
   end)
 
+  -- FFXI's chat is not UTF-8, so a multi-byte character reaches the player as
+  -- mojibake: an em dash arrives as "â€”". Comments are exempt -- they are never
+  -- displayed, and the licence headers must keep their "Copyright ©".
+  it("keeps source outside comments to plain ASCII, because chat is not UTF-8", function()
+    for _, path in ipairs(paths) do
+      local file = assert(io.open(path, "r"))
+      local body = file:read("*a")
+      file:close()
+
+      local without_comments = body:gsub("%-%-%[%[.-%]%]", ""):gsub("%-%-[^\n]*", "")
+      local offset = without_comments:find("[\128-\255]")
+      if offset then
+        local line = select(2, without_comments:sub(1, offset):gsub("\n", "")) + 1
+        error(("%s has a non-ASCII byte outside a comment, around line %d of the stripped source"):format(path, line))
+      end
+    end
+  end)
+
   it("requires internal modules with slashes, the form Windower resolves", function()
     for _, path in ipairs(paths) do
       local file = assert(io.open(path, "r"))

@@ -336,7 +336,7 @@ local function new(config)
 
     local set = compact_mode() and config.compact_bar or config.bar
     if type(set) ~= "table" then
-      return "parambar's bar metrics are not a table — try '//xh reset parambar'", false
+      return "parambar's bar metrics are not a table - try '//xh reset parambar'", false
     end
     set[rule.key] = value
     mark_all_dirty()

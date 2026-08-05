@@ -428,7 +428,7 @@ local function check_assets()
     for _, relative_path in ipairs(missing) do
       chat("  " .. relative_path)
     end
-    chat("  the addon folder is incomplete — re-copy every file and folder from src/")
+    chat("  the addon folder is incomplete - re-copy every file and folder from src/")
   end
 end
 
@@ -437,7 +437,7 @@ end
 -- with the failure if there was one, and normally otherwise.
 windower.register_event("addon command", function(...)
   if load_error then
-    chat("did not load — " .. load_error)
+    chat("did not load - " .. load_error)
     return
   end
   return command_handler(...)
@@ -447,7 +447,7 @@ trace("command handler registered")
 if load_error then
   windower.register_event("load", function()
     trace("load event: reporting the failure")
-    chat("did not load — " .. load_error)
+    chat("did not load - " .. load_error)
     chat("  nothing will be drawn. Type //xh to see this again.")
   end)
   trace("---- stopped: " .. load_error)
@@ -524,4 +524,4 @@ for _, vital in ipairs({ "hp", "hpp", "mp", "mpp", "tp" }) do
 end
 
 trace("---- chunk finished, every handler registered")
-chat("loaded — type //xh for commands")
+chat("loaded - type //xh for commands")

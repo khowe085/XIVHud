@@ -440,17 +440,17 @@ local function new(deps)
     if settings.character() then
       return true
     end
-    say("log in first — XIVHud configuration is per character")
+    say("log in first - XIVHud configuration is per character")
     return false
   end
 
   local function describe(component)
     local state = state_of(component)
     if not state then
-      return "  " .. component.name .. " — not loaded"
+      return "  " .. component.name .. " - not loaded"
     end
     return string.format(
-      "  %s — %s, pos %d,%d, scale %.2f",
+      "  %s - %s, pos %d,%d, scale %.2f",
       component.name,
       state.visible == true and "shown" or "hidden",
       state.pos.x,
@@ -564,7 +564,7 @@ local function new(deps)
       layout.create_slot(handles[component.name].get(), name, source, default_state_of(component))
       persist(component)
     end
-    say(("layout slot '%s' created from '%s' — '//xh slot %s' to switch to it"):format(name, source, name))
+    say(("layout slot '%s' created from '%s' - '//xh slot %s' to switch to it"):format(name, source, name))
   end
 
   local function slot_delete(name)
@@ -578,7 +578,7 @@ local function new(deps)
       return
     end
     if slot == active_slot() then
-      say("'" .. slot .. "' is the active layout slot — switch to another one first")
+      say("'" .. slot .. "' is the active layout slot - switch to another one first")
       return
     end
 
@@ -685,11 +685,11 @@ local function new(deps)
       -- Half a copy is a config that is half each character's, so say so rather
       -- than reporting a number that looks like success.
       say(("%d file(s) could not be copied from %s; %d were"):format(failed, source, copied))
-      say(("  %s's configuration is now a mix of both — '//xh reset all' starts over"):format(character))
+      say(("  %s's configuration is now a mix of both - '//xh reset all' starts over"):format(character))
       return
     end
 
-    say(("copied %d file(s) from %s — configuration reloaded"):format(copied, source))
+    say(("copied %d file(s) from %s - configuration reloaded"):format(copied, source))
     say(("  anything %s has that %s does not was left as it was"):format(character, source))
   end
 
@@ -703,7 +703,7 @@ local function new(deps)
     elseif action.action == "layout" then
       if require_character() then
         set_layout_mode(not layout_mode.active())
-        say(layout_mode.active() and "layout mode on — //xh layout again when you are done" or "layout mode off")
+        say(layout_mode.active() and "layout mode on - //xh layout again when you are done" or "layout mode off")
       end
     elseif action.action == "list" then
       local components = registry.all()
