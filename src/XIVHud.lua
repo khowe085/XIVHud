@@ -80,6 +80,10 @@ local function trace(message, mode)
 end
 
 trace("---- chunk started, version " .. _addon.version, "w")
+-- Where the addon thinks it lives decides where data/ is written, and the
+-- folder here may be a junction to a checkout elsewhere.
+trace("addon_path    = " .. tostring(windower.addon_path))
+trace("windower_path = " .. tostring(windower.windower_path))
 
 -- Safe mode: drop an empty file named `safe_mode` beside this one and the addon
 -- loads the framework and its commands but registers no component and no render
@@ -201,8 +205,15 @@ local function ensure_dir(relative_dir)
     built = built .. segment .. "/"
     if not windower.dir_exists(built) then
       local created, err = windower.create_dir(built)
+      trace(("create_dir %s -> %s%s"):format(built, tostring(created), err and (" (" .. tostring(err) .. ")") or ""))
       if not created then
         return false, "could not create " .. built .. (err and (": " .. err) or "")
+      end
+      -- create_dir can report success without the directory being usable, which
+      -- is the sort of thing a junction or a permission quirk produces.
+      if not windower.dir_exists(built) then
+        trace("create_dir claimed success but " .. built .. " still does not exist")
+        return false, built .. " could not be created (reported success, but is not there)"
       end
     end
   end
