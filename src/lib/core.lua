@@ -97,6 +97,7 @@ local function new(deps)
   local core_handle
   local next_character_check = nil
   local named_since = nil
+  local awaiting_login = false
 
   local function say(message)
     deps.chat(message)
@@ -348,8 +349,9 @@ local function new(deps)
     -- The name is briefly an empty string around zone-in; scoping configs to
     -- `data//<component>.lua` on the strength of that would be worse than
     -- waiting a frame. Note what this does *not* do: reset the vitals wait
-    -- below. Only logging out does that - a timer any flicker rewinds is not a
-    -- bound, and never timing out is the failure the bound exists to prevent.
+    -- below. Only a logged-out client does that - a timer any flicker of
+    -- get_player() rewinds is not a bound, and never timing out is the failure
+    -- the bound exists to prevent.
     if type(name) ~= "string" or name == "" then
       return nil
     end
@@ -380,27 +382,34 @@ local function new(deps)
     if deps.now() - named_since < VITALS_WAIT_SECONDS then
       return nil
     end
-    -- Said once per login: giving up scopes the character, so nothing asks again
-    -- until the next logout, which clears the wait.
     say("the client never reported this character's vitals - HP/MP may read 0 until they change")
+    named_since = nil
     return name
   end
 
   -- A login the client cannot resolve yet leaves the character already scoped
-  -- alone - dropping one is on_logout's job - and on_prerender keeps trying.
+  -- alone - dropping one is on_logout's job - and leaves `awaiting_login` set,
+  -- because the login event is a one-shot and on_prerender otherwise only looks
+  -- when there is no character at all.
   local function catch_up()
     local name = character_to_scope()
     if name then
+      awaiting_login = false
       set_character(name)
     end
   end
 
-  function self.on_load()
+  local function login_event()
+    awaiting_login = true
     catch_up()
   end
 
+  function self.on_load()
+    login_event()
+  end
+
   function self.on_login()
-    catch_up()
+    login_event()
   end
 
   function self.on_logout()
@@ -442,7 +451,7 @@ local function new(deps)
     -- so keep looking until it does. Throttled, at two speeds: a login already
     -- under way is the player watching a blank HUD, while an empty character
     -- select is worth no more than a poll a second.
-    if not settings.character() then
+    if awaiting_login or not settings.character() then
       local now = deps.now()
       if not next_character_check or now >= next_character_check then
         local live = deps.logged_in and deps.logged_in() or false

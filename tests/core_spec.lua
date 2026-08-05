@@ -179,6 +179,58 @@ describe("core", function()
       assert.is_nil(widget.config, "spent Bravo's wait sitting at character select")
     end)
 
+    it("re-arms the wait for the next character after giving up on the last one's vitals", function()
+      core.register(bar())
+      env.player = { name = "Alpha", status = 0, vitals = { hp = 0, max_hp = 0 } }
+      core.on_login()
+      env.clock = 30
+      core.on_prerender()
+      assert.are.equal("Alpha", core.character())
+
+      env.clock = 60
+      env.player = { name = "Bravo", status = 0, vitals = { hp = 0, max_hp = 0 } }
+      core.on_login()
+      assert.are.equal("Alpha", core.character(), "gave up on Bravo at once, against the clock Alpha ran out")
+    end)
+
+    it("stops watching for a character once the login resolves", function()
+      local polls = 0
+      local counted_deps, counted_env = fakes.core_deps({
+        logged_in = function()
+          polls = polls + 1
+          return true
+        end,
+      })
+      local counted_core = new_core(counted_deps)
+      counted_core.register(bar())
+      counted_env.login("Azureblood")
+      counted_core.on_login()
+
+      polls = 0
+      for frame = 1, 100 do
+        counted_env.clock = frame
+        counted_core.on_prerender()
+      end
+      assert.are.equal(0, polls, "still asking the client for a character it already has")
+    end)
+
+    -- The login event is a one-shot: if the client cannot say who logged in yet,
+    -- something has to keep asking. on_prerender only watches for a character
+    -- when there is none, so a login arriving over the top of one already
+    -- scoped has to keep it looking.
+    it("switches to a character whose login it could not resolve at the time", function()
+      core.register(bar())
+      login("Alpha")
+
+      env.player = { name = "Bravo", status = 0, vitals = { hp = 0, max_hp = 0 } }
+      core.on_login()
+      assert.are.equal("Alpha", core.character(), "dropped the scoped character on an unresolvable login")
+
+      env.login("Bravo")
+      core.on_prerender()
+      assert.are.equal("Bravo", core.character(), "never picked Bravo up")
+    end)
+
     it("re-arms the wait for a character who arrives without a logout in between", function()
       core.register(bar())
       env.player = { name = "Alpha", status = 0, vitals = { hp = 0, max_hp = 0 } }
