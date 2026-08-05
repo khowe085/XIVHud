@@ -130,10 +130,12 @@ commands, configured only via settings.xml.
   cap (999,999,999 → 11 characters with separators) at the current font size × scale.
   Chosen over calling `windower.text.get_extents` so the hit-target doesn't jitter as
   digits change and doesn't collapse at `0` — and because the fixed box is what makes
-  the origin contract satisfiable at all. `reserved_width ≈ 11 × font_size × 0.6`
-  as a tunable constant. At the cap that budget is exact rather than generous, so a
-  glyph wider than `0.6em` would push a capped value under the icon — it needs one
-  in-client eyeball at the preview value (~70% it lands close enough).
+  the origin contract satisfiable at all. `reserved_width ≈ 11 × font_size × ratio`
+  as a tunable constant. **The ratio is measured, not derived** (2026-08-05): the
+  first estimate of `0.6` was too narrow — a capped value ran two characters under
+  the icon in `//xh layout` — which puts the real width near `0.75`. Now `0.8`,
+  that plus slack. Changing the default font or size wants the same check, since
+  nothing here can measure a font.
 - **The icon must set `fit(false)` and an explicit `size`.** The reference sets
   `texture.fit = true` *and* a 23×23 size; per CLAUDE.md `image:fit(true)` sizes the
   prim to its texture and defeats `size()`, so scale would silently do nothing. Also
