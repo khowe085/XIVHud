@@ -41,8 +41,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 _addon.name = "XIVHud"
 _addon.author = "Azureblood2"
 _addon.version = "0.1.0"
-_addon.command = "xh"
-_addon.commands = { "xivhud" }
+-- Every alias goes in `_addon.commands`, including the primary one. Almost no
+-- addon in the Windower repository sets `_addon.command` as well, and setting
+-- both risks the single-command field being ignored in favour of the list --
+-- which would leave the primary `//xh` unregistered.
+_addon.commands = { "xh", "xivhud" }
 
 local CHAT_COLOR = 207
 -- Plain white square, tinted and stretched for the layout-mode highlight.
