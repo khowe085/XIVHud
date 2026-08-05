@@ -94,114 +94,28 @@ describe("core", function()
       assert.is_not_nil(widget.config)
     end)
 
-    it("waits for the client to fill the vitals in before attaching", function()
+    -- A login event is a one-shot, and the client may not be able to name the
+    -- player yet when it fires. What a component needs beyond the name - the
+    -- vitals, the inventory - it waits for itself: the client fills those in
+    -- field by field, and there is no one signal that says they are all there.
+    it("attaches a character the client has named but not filled in yet", function()
       local widget = core.register(bar())
-      env.player = { name = "Azureblood", status = 0, vitals = { hp = 0, max_hp = 0 } }
+      env.player = { name = "Azureblood", status = 0 }
       core.on_login()
-      core.on_prerender()
-      assert.is_nil(widget.config, "attached before the vitals were real - a component reads 0 HP")
-
-      -- Waiting for a login already in progress is not the same as watching an
-      -- empty character select: a fifth of a second later the HUD must be up,
-      -- not a full retry interval later.
-      env.login("Azureblood")
-      env.clock = 0.2
-      core.on_prerender()
-      assert.is_not_nil(widget.config)
+      assert.is_not_nil(widget.config, "held the whole HUD back for data core does not own")
     end)
 
-    it("stops waiting for vitals that never arrive rather than never attaching", function()
-      local widget = core.register(bar())
-      env.player = { name = "Azureblood", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      core.on_login()
-      core.on_prerender()
-      assert.is_nil(widget.config)
-
-      env.clock = 30
-      core.on_prerender()
-      assert.is_not_nil(widget.config, "an addon that never draws is worse than one drawing a stale zero")
-      assert.is_not_nil(env.said():lower():find("vitals"), "gave up silently: " .. env.said())
-    end)
-
-    -- get_player() can come and go while the client still reports us logged in.
-    -- The wait has to survive that: a timer any flicker rewinds is not a bound
-    -- at all, and never timing out is the failure it exists to insure against.
-    it("keeps the vitals wait running when the client drops the player mid-login", function()
-      local flickering_deps, flickering_env = fakes.core_deps({
-        logged_in = function()
-          return true
-        end,
-      })
-      local flickering_core = new_core(flickering_deps)
-      local widget = flickering_core.register(bar())
-
-      flickering_env.player = { name = "Azureblood", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      flickering_core.on_login()
-
-      flickering_env.player = nil
-      flickering_env.clock = 1
-      flickering_core.on_prerender()
-
-      flickering_env.player = { name = "Azureblood", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      flickering_env.clock = 4
-      flickering_core.on_prerender()
-      assert.is_not_nil(widget.config, "the wait was rewound by a player the client briefly lost")
-    end)
-
-    it("re-arms the wait for the next character instead of reusing the last one's", function()
-      local widget = core.register(bar())
-      env.player = { name = "Alpha", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      core.on_login()
-
-      -- Alpha's vitals never came; logging out while still waiting must not
-      -- leave Bravo to be judged against Alpha's clock.
-      core.on_logout()
-      env.clock = 60
-      env.player = { name = "Bravo", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      core.on_login()
-      assert.is_nil(widget.config, "gave up on Bravo's vitals against Alpha's clock")
-    end)
-
-    it("re-arms the wait for a character who logs in after a spell at character select", function()
-      local widget = core.register(bar())
-      env.player = { name = "Alpha", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      core.on_login()
-
-      -- Back at character select, with no logout event to hang the reset on:
-      -- the frames spent there are not part of anyone's wait.
-      env.player = nil
-      env.clock = 60
-      core.on_prerender()
-
-      env.player = { name = "Bravo", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      env.clock = 62
-      core.on_prerender()
-      assert.is_nil(widget.config, "spent Bravo's wait sitting at character select")
-    end)
-
-    it("re-arms the wait for the next character after giving up on the last one's vitals", function()
-      core.register(bar())
-      env.player = { name = "Alpha", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      core.on_login()
-      env.clock = 30
-      core.on_prerender()
-      assert.are.equal("Alpha", core.character())
-
-      env.clock = 60
-      env.player = { name = "Bravo", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      core.on_login()
-      assert.are.equal("Alpha", core.character(), "gave up on Bravo at once, against the clock Alpha ran out")
-    end)
-
-    -- A frame spent at character select books the slow slot; the login event
-    -- landing inside it must not be made to serve out someone else's second.
-    it("drops to login speed even when the last check was booked at character select", function()
+    -- A frame spent at character select books the slow slot; a login landing
+    -- inside it must not be made to serve out someone else's second.
+    it("looks for the character at login speed, not character-select speed", function()
       core.register(bar())
       core.on_prerender()
 
       env.clock = 0.1
-      env.player = { name = "Azureblood", status = 0, vitals = { hp = 0, max_hp = 0 } }
+      env.player = { name = "", status = 0 }
       core.on_login()
+      core.on_prerender()
+      assert.is_nil(core.character())
 
       env.clock = 0.2
       env.login("Azureblood")
@@ -230,54 +144,19 @@ describe("core", function()
       assert.are.equal(0, polls, "still asking the client for a character it already has")
     end)
 
-    -- The login event is a one-shot: if the client cannot say who logged in yet,
-    -- something has to keep asking. on_prerender only watches for a character
-    -- when there is none, so a login arriving over the top of one already
-    -- scoped has to keep it looking.
+    -- on_prerender only watches for a character when there is none, so a login
+    -- arriving over the top of one already scoped has to keep it looking.
     it("switches to a character whose login it could not resolve at the time", function()
       core.register(bar())
       login("Alpha")
 
-      env.player = { name = "Bravo", status = 0, vitals = { hp = 0, max_hp = 0 } }
+      env.player = { name = "", status = 0 }
       core.on_login()
       assert.are.equal("Alpha", core.character(), "dropped the scoped character on an unresolvable login")
 
       env.login("Bravo")
       core.on_prerender()
       assert.are.equal("Bravo", core.character(), "never picked Bravo up")
-    end)
-
-    it("re-arms the wait for a character who arrives without a logout in between", function()
-      core.register(bar())
-      env.player = { name = "Alpha", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      core.on_login()
-      env.login("Alpha")
-      env.clock = 0.1
-      core.on_prerender()
-      assert.are.equal("Alpha", core.character())
-
-      env.clock = 60
-      env.player = { name = "Bravo", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      core.on_login()
-      assert.are.equal("Alpha", core.character(), "gave up on Bravo's vitals against Alpha's clock")
-    end)
-
-    -- Safe mode loads the framework and its commands but no components and no
-    -- render loop, so the login event is the only shot at a character: waiting
-    -- there for vitals nothing is going to read would strand every //xh verb.
-    it("does not wait for vitals when no component is registered to read them", function()
-      local bare_deps, bare_env = fakes.core_deps()
-      local bare_core = new_core(bare_deps)
-      bare_env.player = { name = "Azureblood", status = 0, vitals = { hp = 0, max_hp = 0 } }
-      bare_core.on_login()
-      assert.are.equal("Azureblood", bare_core.character())
-    end)
-
-    it("survives a player the client has named but given no vitals at all", function()
-      local widget = core.register(bar())
-      env.player = { name = "Azureblood", status = 0 }
-      assert.has_no.errors(core.on_login)
-      assert.is_nil(widget.config)
     end)
 
     it("swaps configs when a different character logs in", function()

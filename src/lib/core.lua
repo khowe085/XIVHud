@@ -58,10 +58,6 @@ local CHARACTER_RETRY_SECONDS = 1
 -- player data, which arrives within a moment: this is the visible delay before
 -- the HUD comes up, so it is checked far more often than character select is.
 local LOADING_RETRY_SECONDS = 0.05
--- How long that wait may last before core attaches on the name alone. The race
--- it covers is sub-second; the margin is for a slow client, not for a max_hp
--- that is never coming, and it is the blank-HUD cost if the field name is wrong.
-local VITALS_WAIT_SECONDS = 3
 
 local CORE_NAMESPACE = "core"
 local CORE_DEFAULTS = {
@@ -96,7 +92,6 @@ local function new(deps)
   local registry
   local core_handle
   local next_character_check = nil
-  local named_since = nil
   local awaiting_login = false
 
   local function say(message)
@@ -338,8 +333,10 @@ local function new(deps)
   end
 
   -- The character to scope configuration to, or nil while the client cannot say
-  -- yet. Not a pure query: it times the vitals wait below, and reports giving up
-  -- on it.
+  -- yet. Deliberately asks for nothing but the name: a component that needs the
+  -- player's data waits for it itself, because the client fills that in field by
+  -- field and there is no one signal that says it is all there. parambar does
+  -- exactly that.
   local function character_to_scope()
     if deps.logged_in and not deps.logged_in() then
       return nil
@@ -348,42 +345,10 @@ local function new(deps)
     local name = player and player.name
     -- The name is briefly an empty string around zone-in; scoping configs to
     -- `data//<component>.lua` on the strength of that would be worse than
-    -- waiting a frame. Note what this does *not* do: reset the vitals wait
-    -- below. Only a logged-out client does that - a timer any flicker of
-    -- get_player() rewinds is not a bound, and never timing out is the failure
-    -- the bound exists to prevent.
+    -- waiting a frame.
     if type(name) ~= "string" or name == "" then
       return nil
     end
-    -- Nothing registered means nothing that could latch a stale zero, and no
-    -- render loop to retry from either (safe mode) - so the wait below has only
-    -- a cost, and the cost is every character-scoped `//xh` verb.
-    if #registry.all() == 0 then
-      return name
-    end
-
-    -- The client reports the name before it has filled the vitals in, and the
-    -- `hp change` events only fire on an actual change - so a component that
-    -- reads the player in that window shows zeros until something moves. max_hp
-    -- is nonzero for any loaded character, a dead one included, so it is the
-    -- signal that the player data behind the name is real.
-    local vitals = player.vitals
-    if vitals and (tonumber(vitals.max_hp) or 0) > 0 then
-      named_since = nil
-      return name
-    end
-
-    -- max_hp is taken from the wiki and has never been read out of a live
-    -- client, so waiting on it forever would risk the worst failure this addon
-    -- has: nothing on screen, no configuration, all session, with no way to
-    -- tell why. Time the wait out and attach anyway - a stale zero is visible
-    -- and self-corrects on the first change event.
-    named_since = named_since or deps.now()
-    if deps.now() - named_since < VITALS_WAIT_SECONDS then
-      return nil
-    end
-    say("the client never reported this character's vitals - HP/MP may read 0 until they change")
-    named_since = nil
     return name
   end
 
@@ -416,7 +381,6 @@ local function new(deps)
   end
 
   function self.on_logout()
-    named_since = nil
     if layout_mode.active() then
       set_layout_mode(false)
     end
@@ -461,8 +425,6 @@ local function new(deps)
         next_character_check = now + (live and LOADING_RETRY_SECONDS or CHARACTER_RETRY_SECONDS)
         if live then
           catch_up()
-        else
-          named_since = nil
         end
       end
     end

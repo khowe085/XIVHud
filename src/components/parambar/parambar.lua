@@ -44,12 +44,13 @@ local ASSET_DIR = "components/parambar/assets/"
 local BARS = { "hp", "mp", "tp" }
 local FILL_TEXTURES = { "hp_fg.png", "mp_fg.png", "tp_fg.png" }
 
--- How long after attaching the player is re-read every frame. The client fills
--- vitals in field by field - HP was seen landing in a live client with MP still
--- zero - and MP does not tick on its own outside resting, so one seed can leave
--- a bar empty until the player happens to cast. Waiting for a whole vitals table
--- instead is not on: max_mp is legitimately 0 on a job without MP.
-local SEED_SETTLE_SECONDS = 3
+-- How long after attaching the player may be re-read, if any vital is still
+-- missing by then. The client fills vitals in field by field - in a live client
+-- HP landed with MP still zero - and MP does not tick on its own outside
+-- resting, so a single seed can leave a bar reading 0 until the player happens
+-- to cast. The reading stops the moment every vital has a number, so the ceiling
+-- only matters for a vital that is legitimately zero (no TP, a dead character).
+local SEED_SETTLE_SECONDS = 10
 
 local function new(ctx)
   local self = { name = "parambar" }
@@ -216,7 +217,7 @@ local function new(ctx)
     if not settling_until then
       return
     end
-    if ctx.now() >= settling_until then
+    if not logic.awaiting_vitals() or ctx.now() >= settling_until then
       settling_until = nil
       return
     end

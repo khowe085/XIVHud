@@ -2,7 +2,7 @@ local new_parambar = require("components/parambar/parambar")
 local fakes = require("tests/support/fakes")
 
 describe("parambar widget", function()
-  local prims, player, saves, assets, widget, clock
+  local prims, player, saves, assets, widget, clock, reads
 
   local function attach()
     widget.attach(widget.defaults, function()
@@ -35,6 +35,7 @@ describe("parambar widget", function()
     assets = {}
     player = { vitals = { hp = 1000, hpp = 100, mp = 500, mpp = 100, tp = 500 } }
     clock = 0
+    reads = 0
     widget = new_parambar({
       new_text = prims.new_text,
       new_image = prims.new_image,
@@ -45,6 +46,7 @@ describe("parambar widget", function()
         return clock
       end,
       get_player = function()
+        reads = reads + 1
         return player
       end,
       asset = function(file)
@@ -119,6 +121,33 @@ describe("parambar widget", function()
       clock = 1
       settle()
       assert.are.equal("500", number(2).last.text)
+    end)
+
+    -- get_player() is unreadable around zone-in, and the framework attaches the
+    -- widget whether or not it answered: the seed finds nothing, so the fill is
+    -- the only thing that will ever put a number on the bars.
+    it("fills the bars in when the player was unreadable at attach", function()
+      player = nil
+      attach()
+      widget.set_pos(0, 0)
+      settle()
+      assert.are.equal("0", number(1).last.text)
+
+      player = { vitals = { hp = 1000, hpp = 100, mp = 500, mpp = 100, tp = 250 } }
+      clock = 1
+      settle()
+      assert.are.equal("1000", number(1).last.text)
+      assert.are.equal("500", number(2).last.text)
+    end)
+
+    it("stops re-reading the player as soon as every vital is known", function()
+      attach()
+      widget.set_pos(0, 0)
+      settle()
+
+      local before = reads
+      settle()
+      assert.are.equal(before, reads, "still polling the client with every vital already known")
     end)
 
     it("stops re-reading the player once the vitals have had time to settle", function()

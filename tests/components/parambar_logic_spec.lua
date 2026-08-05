@@ -30,6 +30,26 @@ describe("parambar logic", function()
       assert.are.equal("0", plan.hp.text)
     end)
 
+    -- The seed can find nothing at all: get_player() is unreadable around
+    -- zone-in, and the widget is attached whether or not it answered.
+    it("fills in vitals from a player it was never seeded with", function()
+      assert.is_true(logic.awaiting_vitals())
+      logic.fill_missing({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 250 })
+      local plan = settle()
+      assert.are.equal("1200", plan.hp.text)
+      assert.are.equal("300", plan.mp.text)
+      assert.is_false(logic.awaiting_vitals(), "still waiting on a vital the client has reported")
+    end)
+
+    it("treats a vital an event reported as no longer missing, zero or not", function()
+      logic.seed({ hp = 1200, hpp = 100, mp = 0, mpp = 0, tp = 0 })
+      logic.set_vital("mp", 0)
+      logic.set_vital("mpp", 0)
+      logic.fill_missing({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+      local plan = settle()
+      assert.are.equal("0", plan.mp.text)
+    end)
+
     -- The client fills its vitals table in field by field, so one bar can still
     -- be waiting for its first real number while its neighbours are current.
     it("fills in only the vitals still reading zero", function()
