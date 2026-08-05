@@ -131,6 +131,7 @@ end
 step("loading the Windower libraries", function()
   texts = require("texts")
   images = require("images")
+  packets = require("packets")
 end)
 
 local new_guard = step("loading lib/guard", function()
@@ -141,6 +142,9 @@ local new_core = step("loading lib/core", function()
 end)
 local new_parambar = step("loading the parambar component", function()
   return require("components/parambar/parambar")
+end)
+local new_giltracker = step("loading the giltracker component", function()
+  return require("components/giltracker/giltracker")
 end)
 
 -- Every Windower handler goes through this, so a bug degrades to a message and
@@ -341,12 +345,21 @@ local function wrap_text()
     bg_visible = function(on)
       text:bg_visible(on)
     end,
+    bg_color = function(red, green, blue)
+      text:bg_color(red, green, blue)
+    end,
     bg_alpha = function(alpha)
       text:bg_alpha(alpha)
     end,
     -- The argument is required: texts.right_justified() with none is a getter.
     right_justified = function(on)
       text:right_justified(on)
+    end,
+    italic = function(on)
+      text:italic(on)
+    end,
+    bold = function(on)
+      text:bold(on)
     end,
     draggable = function(on)
       text:draggable(on)
@@ -370,6 +383,34 @@ end
 
 local function get_player()
   return windower.ffxi.get_player()
+end
+
+local function asset(relative_path)
+  return windower.addon_path .. relative_path
+end
+
+-- get_items() pushes every item the character owns, so this is called only when
+-- a packet says gil may have moved -- never on a timer. It comes back empty
+-- before the inventory has loaded.
+--
+-- The documented signature takes an integer bag id; the reference addon passes
+-- the string 'gil' instead, which evidently works but is undocumented, and
+-- whether it skips materialising the whole table is not something this
+-- container can answer. The documented form is used until a live client says
+-- the other is worth it.
+local function get_gil()
+  local items = windower.ffxi.get_items()
+  return items and items.gil
+end
+
+-- Behind a pcall because this runs on inbound packets: a throw here would
+-- propagate into the shared `incoming chunk` handler, and guard disables that
+-- after five failures for the rest of the session -- after which gil would
+-- silently stop updating. A component already has to treat a nil packet as a
+-- real case, so failing to nil costs nothing.
+local function parse_packet(data)
+  local ok, packet = pcall(packets.parse, "incoming", data)
+  return ok and packet or nil
 end
 
 -- Everything from here on can fail on a broken install, so each part is a step
@@ -410,9 +451,21 @@ step("building the parambar component", function()
     new_image = wrap_image,
     screen = screen,
     get_player = get_player,
-    asset = function(relative_path)
-      return windower.addon_path .. relative_path
-    end,
+    asset = asset,
+  }))
+end)
+
+step("building the giltracker component", function()
+  if safe_mode then
+    return
+  end
+  core.register(new_giltracker({
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    get_gil = get_gil,
+    parse_packet = parse_packet,
+    asset = asset,
   }))
 end)
 
@@ -424,6 +477,7 @@ local function check_assets()
   for _, texture in ipairs({ "bar_bg.png", "bar_compact.png", "hp_fg.png", "mp_fg.png", "tp_fg.png" }) do
     expected[#expected + 1] = "components/parambar/assets/" .. texture
   end
+  expected[#expected + 1] = "components/giltracker/assets/gil.png"
 
   for _, relative_path in ipairs(expected) do
     if not read_file(relative_path) then
@@ -519,6 +573,35 @@ windower.register_event(
     core.on_zone_change()
   end)
 )
+
+-- Skipped in safe mode along with the render loop: with no components
+-- registered there is nothing to feed, and a hook on every inbound packet is
+-- the first thing to take out of the picture when bisecting a misbehaving
+-- client.
+if not safe_mode then
+  -- Every packet the client receives passes through here, so this handler must
+  -- stay cheap: it forwards the raw bytes and the component decides, from the
+  -- id alone, whether they are worth parsing. It must also return nothing -- a
+  -- returned value would be read as a modified or blocked packet. guard.wrap
+  -- falls back to nil with no fallback argument, so the error path is safe too.
+  windower.register_event(
+    "incoming chunk",
+    guard.wrap("incoming chunk", function(id, original)
+      core.dispatch("chunk", id, original)
+    end)
+  )
+
+  -- Gil entering or leaving a bag is the cheap signal that something moved; the
+  -- expensive read waits for the inventory to settle.
+  for _, movement in ipairs({ "add item", "remove item" }) do
+    windower.register_event(
+      movement,
+      guard.wrap(movement, function(_bag, _index, id)
+        core.dispatch(movement, id)
+      end)
+    )
+  end
+end
 
 -- FFXI reports vitals as two independent streams, absolute and percent; both
 -- are forwarded, and the component reconciles them.

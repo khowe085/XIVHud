@@ -113,6 +113,7 @@ In layout mode: left-drag moves a widget (snapped to the grid; hold CTRL for fre
 ## Components
 
 - **`parambar`** (`src/components/parambar/`) — the FFXIV parameter bar: HP/MP/TP fills with numbers, re-implemented from XIVBar. `logic.lua` is the pure state machine (easing, colour bands, layout maths, its command parser); `parambar.lua` owns the prims. `assets/` holds XIVBar's `ffxiv` theme art, redistributed under the BSD 3-clause notice in `assets/LICENSE.txt` (© 2017 SirEdeonX) — that file ships with the addon. Commands: `//xh parambar [width|spacing|offset <px> | compact on|off]`.
+- **`giltracker`** (`src/components/giltracker/`) — the FFXIV gil widget: the current gil total beside the gil icon, re-implemented from the `giltracker` addon. `logic.lua` is the pure state machine (when a re-read is warranted, formatting, layout maths); `giltracker.lua` owns the prims. `assets/gil.png` is redistributed under the BSD 3-clause notice in `assets/LICENSE.txt` (© 2017 sylandro) — that file ships with the addon. No commands. **Gil is never polled**: `windower.ffxi.get_items()` pushes every item the character owns and nothing cheaper carries gil, so the entry point forwards `incoming chunk` plus `add item`/`remove item` and the component reads only when a packet says gil may have moved. The number is left-justified inside a width reserved for the 999,999,999 cap, which keeps the icon still as digits change and lets `get_bounds` return the same origin `set_pos` was given.
 
 ## Packaging & releases
 
