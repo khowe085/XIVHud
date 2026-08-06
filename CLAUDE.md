@@ -120,8 +120,8 @@ every `buff` verb are `partylist` only):
 //xh partylist buff filter add|remove|clear|list [<id|name>] | filter mode blacklist|whitelist
 ```
 
-Every verb that *shows* buffs deliberately reaches past the ten-icon cap: only the first
-ten are ever drawn, so a buff you cannot see is a buff you cannot promote.
+Every verb that *shows* buffs deliberately reaches past the icon cap: only the first
+twelve are ever drawn, so a buff you cannot see is a buff you cannot promote.
 
 In layout mode: left-drag moves a widget (snapped to the grid; hold CTRL for free movement), the wheel scales it (floor 0.25), right-click toggles it on or off. Every change persists immediately. Auto-hide outranks layout mode: the HUD stays hidden during a cutscene (player status 4, disable with `hideCutscene`), while zoning (plus a ~3s settle), and while logged out.
 

@@ -335,7 +335,7 @@ Shared by all three (alliance variants default `enabled`-off in their slot):
 
 ```lua
   buffs = {
-    max_icons = 10,          -- the tweak; 2 rows x 5, both left-aligned, from layout.lua
+    max_icons = 12,          -- the tweak; 2 rows x 6 at 16px, left-aligned, from layout.lua
     filter_mode = 'blacklist',
     filters = {},            -- buff ids
     priority = {},           -- sparse user overrides on top of buff_order.lua
@@ -367,7 +367,7 @@ Same set on `alliancelist1` / `alliancelist2`, minus `hidesolo`.
 Buff priority (design proposal, 2026-08-05 — the tweak Kevin asked for):
 
 ```
-//xh partylist buff                     -- the 10 slots currently shown, in order
+//xh partylist buff                     -- the icon slots currently shown, in order
 //xh partylist buff list [page]         -- the WHOLE priority order, 20 per page
 //xh partylist buff find <text>         -- search all buffs by name -> rank + id
 //xh partylist buff active [<member>]   -- buffs live on a party member right now
@@ -391,10 +391,10 @@ invisible and unpromotable.
   over `res.buffs` names, printing `rank · id · name` per hit so the follow-up is a single
   `buff top <name>`. Capped at 20 hits with a "refine the search" line.
 - `buff active [<member>]` is XIVParty's `//xp buffs <name>` — what is on this player *now*,
-  with ids, including the ones past the 10-icon cut. This is how you identify a buff you
+  with ids, including the ones past the icon cut. This is how you identify a buff you
   just saw rather than one you can name. Defaults to yourself; `?` for members whose buffs
   we have no packet for (alliance members, per `0x076`'s main-party-only scope).
-- The first 10 entries of the order are marked in `buff list`/`buff find` output so the cut
+- The first twelve entries of the order are marked in `buff list`/`buff find` output so the cut
   line is visible without counting.
 
 Names resolve case-insensitively against `res.buffs`; unknown or ambiguous → an error line
@@ -521,6 +521,14 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
   largest id in Windower's buff resource today is 635, so nothing is missing now; a
   future game update that adds one would consume an icon slot and draw nothing, since a
   bad texture path fails silently. Inherited from XIVParty.
+
+- **Buff icons are 16px in two rows of six, not 20px in two rows of five** (Kevin,
+  2026-08-06, after seeing it in a client). Measured against the art, the bar frame's
+  opaque band starts at row y=43 and two rows of 20px icons need 41 of the 46, so the
+  second row sat 2px above the frame -- 1.5px at the default 0.75 scale, with
+  full-bleed icons. XIVParty never hit this because its second row starts at x=413,
+  entirely off the row body; the theme has one row's worth of vertical space here, not
+  two. At 16px the grid is 96x33 from x=293, ending at x=389 with 10px of clearance.
 
 ### Still unverified (needs a live Windower client)
 

@@ -179,13 +179,20 @@ return {
         far = image("assets/xiv/RangeFar.png", { 0, 0 }, { 14, 12 }),
         distance = text({ 0, 1.5 }, 6, 1),
       },
-      -- The tweak. XIVParty ships 19,13 icons from x=293, which reaches x=673
-      -- on a 410-wide row; five per row ends at 393, inside the row.
+      --[[ The tweak, in two rows of six 16px icons from x=293: 96px wide,
+           ending at x=389 inside the 410-wide row, and 33px tall.
+
+           XIVParty ships 19+13 icons of 20px from the same x, which reaches
+           x=673 -- far off the row body, which is also the only reason its
+           second row clears the bars. There is one row's worth of vertical
+           space here, not two: measured against the art, the bar frame's
+           opaque band starts at row y=43, and two rows of 20px icons need 41
+           of the 46. At 16px they need 33 and leave 10px of clearance. ]]
       buff_icons = {
         pos = { 293, 0 },
-        size = { 20, 20 },
+        size = { 16, 16 },
         spacing = { 0, 1 },
-        icons_by_row = { 5, 5 },
+        icons_by_row = { 6, 6 },
         -- Both rows left-aligned, unlike XIVParty's indented second row.
         offset_by_row = { 0, 0 },
         path = "assets/buffIcons/",

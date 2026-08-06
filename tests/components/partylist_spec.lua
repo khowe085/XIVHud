@@ -185,7 +185,7 @@ describe("partylist widget", function()
           shown = shown + 1
         end
       end
-      assert.are.equal(10, shown)
+      assert.are.equal(12, shown)
     end)
   end)
 
