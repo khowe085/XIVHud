@@ -774,8 +774,14 @@ local function new(deps)
         say(component.name .. " takes no commands")
         return
       end
+      -- A list, because a component whose answer is an ordering or a search
+      -- result has nowhere to put it in one line, and FFXI's chat ignores \n.
       local reply = component.handle_command(action.args)
-      if reply then
+      if type(reply) == "table" then
+        for _, line in ipairs(reply) do
+          say(line)
+        end
+      elseif reply then
         say(reply)
       end
     end

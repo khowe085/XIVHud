@@ -133,6 +133,23 @@ step("loading the Windower libraries", function()
   images = require("images")
 end)
 
+--[[ The resource and packet libraries are the party list's alone, and this is
+     deliberately not a `step`: a step failure sets load_error, which skips the
+     framework, parambar and every handler after it. A broken resources install
+     should cost the user the party list, not the whole addon -- so this records
+     its own failure and the party list is simply not registered. ]]
+local libraries_error = nil
+do
+  local ok, err = pcall(function()
+    res = require("resources")
+    packets = require("packets")
+  end)
+  if not ok then
+    libraries_error = tostring(err)
+    trace("resources/packets unavailable: " .. libraries_error)
+  end
+end
+
 local new_guard = step("loading lib/guard", function()
   return require("lib/guard")
 end)
@@ -141,6 +158,15 @@ local new_core = step("loading lib/core", function()
 end)
 local new_parambar = step("loading the parambar component", function()
   return require("components/parambar/parambar")
+end)
+local new_partylist = step("loading the partylist component", function()
+  return require("components/partylist/partylist")
+end)
+-- The ids the party list listens for, so `incoming chunk` can drop everything
+-- else before it reaches the components. Loaded as its own step because a
+-- missing file here would otherwise take the whole chunk down.
+local partylist_packets = step("loading the partylist packet parsers", function()
+  return require("components/partylist/packets")
 end)
 
 -- Every Windower handler goes through this, so a bug degrades to a message and
@@ -399,6 +425,10 @@ step("building the framework", function()
   })
 end)
 
+local function asset(relative_path)
+  return windower.addon_path .. relative_path
+end
+
 -- Components are wired explicitly — no directory scanning — so the set of
 -- registered components is always readable from here.
 step("building the parambar component", function()
@@ -410,10 +440,42 @@ step("building the parambar component", function()
     new_image = wrap_image,
     screen = screen,
     get_player = get_player,
-    asset = function(relative_path)
-      return windower.addon_path .. relative_path
-    end,
+    asset = asset,
   }))
+end)
+
+-- One factory, three components: the main party and the two alliance parties
+-- each get their own config file, layout slot and drag box.
+step("building the party list components", function()
+  if safe_mode or libraries_error then
+    return
+  end
+  for _, list in ipairs({
+    { name = "partylist", variant = "main" },
+    { name = "alliancelist1", variant = "alliance1" },
+    { name = "alliancelist2", variant = "alliance2" },
+  }) do
+    core.register(new_partylist({
+      name = list.name,
+      variant = list.variant,
+      new_text = wrap_text,
+      new_image = wrap_image,
+      screen = screen,
+      asset = asset,
+      resources = res,
+      now = os.clock,
+      get_player = get_player,
+      get_party = function()
+        return windower.ffxi.get_party()
+      end,
+      get_mob_by_target = function(kind)
+        return windower.ffxi.get_mob_by_target(kind)
+      end,
+      get_info = function()
+        return windower.ffxi.get_info()
+      end,
+    }))
+  end
 end)
 
 -- Textures fail silently: a prim with a bad path simply draws nothing, so an
@@ -423,6 +485,19 @@ local function check_assets()
   local expected = { OVERLAY_TEXTURE }
   for _, texture in ipairs({ "bar_bg.png", "bar_compact.png", "hp_fg.png", "mp_fg.png", "tp_fg.png" }) do
     expected[#expected + 1] = "components/parambar/assets/" .. texture
+  end
+  -- The party list ships some 680 textures; checking every one at load would
+  -- cost 680 file opens to learn what a handful already tells us.
+  for _, texture in ipairs({
+    "assets/xiv/BgTop.png",
+    "assets/xiv/BarBG.png",
+    "assets/xiv/Cursor.png",
+    "assets/xiv/AllyBarBG.png",
+    "assets/jobIcons/frame.png",
+    "assets/jobIcons/whm.png",
+    "assets/buffIcons/33.png",
+  }) do
+    expected[#expected + 1] = "components/partylist/" .. texture
   end
 
   for _, relative_path in ipairs(expected) do
@@ -437,6 +512,11 @@ local function check_assets()
       chat("  " .. relative_path)
     end
     chat("  the addon folder is incomplete - re-copy every file and folder from src/")
+  end
+
+  if libraries_error then
+    chat("the party list is off: Windower's resource or packet library did not load")
+    chat("  " .. libraries_error)
   end
 end
 
@@ -519,6 +599,38 @@ windower.register_event(
     core.on_zone_change()
   end)
 )
+
+--[[ Packets. Only the four the party list reads get past this filter: the
+     client sends a great many chunks a second and walking every component for
+     each of them would be work done purely to be thrown away.
+
+     This is the framework's first packet push. Components receive it as
+     `update('chunk', id, original, parsed)` and are free to ignore it --
+     parambar does. ]]
+if not safe_mode and not libraries_error and partylist_packets then
+  local wanted = {
+    [partylist_packets.ALLIANCE] = true,
+    [partylist_packets.PARTY_MEMBER] = true,
+    [partylist_packets.CHAR] = true,
+    [partylist_packets.PARTY_BUFFS] = true,
+  }
+  -- Parsed once here rather than once per component: all three party lists see
+  -- every chunk, and packets.parse is not free.
+  local structured = {
+    [partylist_packets.ALLIANCE] = true,
+    [partylist_packets.PARTY_MEMBER] = true,
+    [partylist_packets.CHAR] = true,
+  }
+  windower.register_event(
+    "incoming chunk",
+    guard.wrap("incoming chunk", function(id, original)
+      if not wanted[id] then
+        return
+      end
+      core.dispatch("chunk", id, original, structured[id] and packets.parse("incoming", original) or nil)
+    end)
+  )
+end
 
 -- FFXI reports vitals as two independent streams, absolute and percent; both
 -- are forwarded, and the component reconciles them.
