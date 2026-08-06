@@ -522,13 +522,25 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
   future game update that adds one would consume an icon slot and draw nothing, since a
   bad texture path fails silently. Inherited from XIVParty.
 
-- **Buff icons are 16px in two rows of six, not 20px in two rows of five** (Kevin,
-  2026-08-06, after seeing it in a client). Measured against the art, the bar frame's
-  opaque band starts at row y=43 and two rows of 20px icons need 41 of the 46, so the
-  second row sat 2px above the frame -- 1.5px at the default 0.75 scale, with
-  full-bleed icons. XIVParty never hit this because its second row starts at x=413,
-  entirely off the row body; the theme has one row's worth of vertical space here, not
-  two. At 16px the grid is 96x33 from x=293, ending at x=389 with 10px of clearance.
+- **The main row is 66px tall, not XIVParty's 46, and the bars sit 20px lower**
+  (Kevin, 2026-08-06, after two rounds of this being wrong in a client).
+
+  Measured against the textures rather than the XML: `BarFG`'s opaque band is box
+  y 25..39, so at the shipped bar offset of -7 the frame lands at row y 18..32 and the
+  only clear band in a 46px row is y 0..17. Seventeen pixels holds one row of icons,
+  not two. XIVParty gets its second row by starting it at x=413, entirely off the row
+  body -- which is the overflow this component exists to avoid, and the reason its
+  second row never touches the bars.
+
+  So the row is given the space instead. The bars, their value texts and the range
+  indicator move down 20px, the row grows to 66, and the two icon rows occupy the band
+  that opens above them: 6 x 16px per row, x 293..389, row y 0..16 and 17..33, with the
+  bar frame starting at 38. Five pixels of clearance, verified against the art.
+
+  **The art is 16-bit-per-channel PNG.** Two wrong fixes came from a measuring script
+  that assumed 8-bit and read the alpha byte at the wrong offset, which put the bar
+  band at the bottom of the texture instead of the middle. Anything that measures these
+  files must read `IHDR` bit depth first.
 
 ### Still unverified (needs a live Windower client)
 

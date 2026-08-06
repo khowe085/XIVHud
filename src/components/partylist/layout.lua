@@ -149,7 +149,15 @@ return {
   main = {
     column_width = 410,
     columns = 1,
-    row_height = 46,
+    --[[ 66, not XIVParty's 46. Measured against the art rather than the XML:
+         the bar frame's opaque band is box y 25..39, so at the shipped bar
+         offset of -7 it lands at row y 18..32 and the only clear band in the
+         row is y 0..17 -- seventeen pixels, which holds one row of icons and
+         not two. XIVParty gets its second row by starting it at x=413, off the
+         row body entirely; that is the overflow this component exists to avoid.
+         So the row is given the space instead: the bars move down 20px and the
+         two icon rows sit above them with 5px to spare. ]]
+    row_height = 66,
     rows = 6,
     --[[ How far the row art reaches outside its column rectangle: the leader
          stack sits 24px to its left and the background's top and bottom caps
@@ -167,27 +175,21 @@ return {
     },
     row = {
       bars = {
-        main_bar("hp", { 19, -7 }, 2),
-        main_bar("mp", { 150, -7 }, 3),
-        main_bar("tp", { 281, -7 }, 4),
+        main_bar("hp", { 19, 13 }, 2),
+        main_bar("mp", { 150, 13 }, 3),
+        main_bar("tp", { 281, 13 }, 4),
       },
       job_icon = job_icon({ -11, -2 }, { 1, 1 }),
       leader = leader({ -24, -8 }, { 1, 1 }),
       range = {
-        pos = { 30, 28.5 },
+        pos = { 30, 48.5 },
         near = image("assets/xiv/Range.png", { 0, 0 }, { 14, 12 }),
         far = image("assets/xiv/RangeFar.png", { 0, 0 }, { 14, 12 }),
         distance = text({ 0, 1.5 }, 6, 1),
       },
-      --[[ The tweak, in two rows of six 16px icons from x=293: 96px wide,
-           ending at x=389 inside the 410-wide row, and 33px tall.
-
-           XIVParty ships 19+13 icons of 20px from the same x, which reaches
-           x=673 -- far off the row body, which is also the only reason its
-           second row clears the bars. There is one row's worth of vertical
-           space here, not two: measured against the art, the bar frame's
-           opaque band starts at row y=43, and two rows of 20px icons need 41
-           of the 46. At 16px they need 33 and leave 10px of clearance. ]]
+      -- Two rows of six 16px icons from x=293: 96px wide, ending at x=389
+      -- inside the row, and 33px tall in the band the taller row opened up
+      -- above the bars, whose frame now starts at row y=38.
       buff_icons = {
         pos = { 293, 0 },
         size = { 16, 16 },
@@ -197,7 +199,7 @@ return {
         offset_by_row = { 0, 0 },
         path = "assets/buffIcons/",
       },
-      cursor = image("assets/xiv/Cursor.png", { 20, -8 }, { 390, 60 }),
+      cursor = image("assets/xiv/Cursor.png", { 20, -8 }, { 390, 80 }),
       name = text({ 95, 1 }, 15, 2, { max_chars = 17 }),
       zone = text({ 292, 1 }, 13, 2, { short = false }),
       job = text({ 30, 0 }, 8, 1),
