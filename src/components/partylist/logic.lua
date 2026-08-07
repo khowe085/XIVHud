@@ -771,6 +771,22 @@ local function new(deps)
     return ids
   end
 
+  --[[ How many icon rows a buff list occupies. The widget anchors the grid to
+       its bottom row -- the one nearest the bars -- so six buffs or fewer sit
+       against the bar rather than leaving a row of empty space between the
+       two, and the seventh opens a row above rather than below.
+
+       Assumes the layout's rows hold the same number each, which the xiv one
+       does; an uneven layout would need the counts walked. ]]
+  local function buff_rows_used(buffs)
+    local grid = layout.row.buff_icons
+    if not grid or not buffs then
+      return nil
+    end
+    local per_row = grid.icons_by_row[1] or #buffs
+    return math.max(1, math.ceil(#buffs / per_row))
+  end
+
   local function range_plan(member, outside_zone, distance)
     if not layout.row.range then
       return nil
@@ -865,6 +881,7 @@ local function new(deps)
     plan.cursor = cursor_for(id, outside_zone)
     plan.range = range_plan(member, outside_zone, distance)
     plan.buffs = buff_plan(member, outside_zone)
+    plan.buff_rows = buff_rows_used(plan.buffs)
     plan.bars = bar_plans(slot, vitals_of(member), outside_zone, distance)
 
     local job = outside_zone and {} or job_of(member)

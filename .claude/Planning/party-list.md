@@ -542,17 +542,24 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
   band at the bottom of the texture instead of the middle. Anything that measures these
   files must read `IHDR` bit depth first.
 
-- **The frame is drawn as two overlapping strips** (Kevin, 2026-08-06). `BgTop`/
-  `BgMid`/`BgBottom` are a horizontal gradient, not a panel: across their 377px they
-  fade in over the first 14, hold solid to x=240, are down to half by 317 and gone by
-  376. The TP bar runs x 290..400, so a single strip left most of it over open screen --
-  about a sixteenth of the bar covered. Drawing the strip twice with the second offset
-  200px holds the frame above 87% opacity from x=14 to past the row's right edge, and
-  keeps the gradient's own falloff instead of stretching it: a single strip widened to
-  reach x=410 would trail a 230px bleed to the right rather than 135. Where the two
-  solid bands overlap, x 214..240, the composite is nearer 98% than 87% -- two partly
-  transparent layers always darken, and the offset is picked to keep that band narrow.
-  XIVParty leaves its bars over the faded part; this does not.
+- **The frame is drawn 644 wide, not the source's 377** (Kevin, 2026-08-06).
+  `BgTop`/`BgMid`/`BgBottom` are a horizontal gradient, not a panel: across their 377px
+  they fade in over the first 14, hold solid to x=240 -- 64% of the way -- are down to
+  half by 317 and gone by 376. At native width that put the TP bar, x 290..400, almost
+  entirely in the falloff: about a sixteenth of it covered. Stretching scales the
+  falloff too, so the solid band always ends at 64% of the drawn width; 644 puts that at
+  x=410, the row's right edge, with the fade running to ~625. There is no width that is
+  both solid at the bar's end and finished soon after. An earlier attempt drew the strip
+  twice, offset, to keep the fade short -- it worked, but two partly transparent layers
+  composite darker where they overlap, and that seam was a worse artifact than 67px of
+  extra fade. XIVParty leaves its bars over the faded part; this does not. The alliance
+  frame needs none of this: `AllyBgMid` is flat at a uniform alpha.
+- **The name is bottom-aligned with the job icon** (Kevin, 2026-08-07), at row y 19 so
+  its box bottom meets the icon's at 34. In a 66px row a top-aligned name floated away
+  from the block it belongs to.
+- **The buff grid hangs from its bottom row** (Kevin, 2026-08-07). Six buffs or fewer
+  sit in the lower row, against the bars; the seventh opens a row above rather than
+  below, so the block never leaves a row of empty space between itself and the bar.
 
 ### Still unverified (needs a live Windower client)
 

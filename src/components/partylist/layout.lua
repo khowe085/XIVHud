@@ -172,27 +172,22 @@ return {
     background = {
       pos = { 0, -21 },
       color = { r = 255, g = 255, b = 255, a = 221 },
-      --[[ The frame is a horizontal gradient, not a panel: measured across its
-           377px, it fades in over the first 14, is solid to x=240, is down to
-           half by 317 and is gone by 376. The TP bar runs x 290..400, so a
-           single strip leaves most of it drawn over open screen.
+      --[[ Drawn 644 wide, not the source's 377.
 
-           Drawn twice instead, the second copy offset 200px right, so its
-           solid band (214..440) takes over before the first has faded. The
-           union holds above 87% opacity from x=14 to past the end of the row,
-           and keeps the gradient's own falloff shape rather than stretching
-           it -- a single strip widened to reach x=410 would trail a 230px
-           bleed to the right instead of this one's 135.
+           The frame is a horizontal gradient rather than a panel: measured
+           across its 377px it fades in over the first 14, holds solid to
+           x=240 -- 64% of the way -- is down to half by 317 and is gone by
+           376. At its native width that puts the TP bar, which runs x 290..400,
+           almost entirely in the falloff: about a sixteenth of it was covered.
 
-           Where the two solid bands overlap, x 214..240, the composite is
-           nearer 98% opacity than 87%. Two partly transparent layers always
-           darken, and the offset is chosen to keep that band narrow; the only
-           way to avoid it entirely is the single stretched strip. Costs three
-           prims per list. ]]
-      slices = { 0, 200 },
-      top = image("assets/xiv/BgTop.png", { 0, 0 }, { 377, 21 }),
-      mid = image("assets/xiv/BgMid.png", { 0, 21 }, { 377, 12 }),
-      bottom = image("assets/xiv/BgBottom.png", { 0, 0 }, { 377, 21 }),
+           Stretching scales the falloff along with everything else, so the
+           solid band ends at 64% of whatever width it is drawn at. 644 puts
+           that at x=410, the row's right edge, and the fade then runs to ~625.
+           There is no width that is both solid at the bar's end and finished
+           soon after -- the fade is 36% of the strip whatever you do. ]]
+      top = image("assets/xiv/BgTop.png", { 0, 0 }, { 644, 21 }),
+      mid = image("assets/xiv/BgMid.png", { 0, 21 }, { 644, 12 }),
+      bottom = image("assets/xiv/BgBottom.png", { 0, 0 }, { 644, 21 }),
     },
     row = {
       bars = {
@@ -221,7 +216,10 @@ return {
         path = "assets/buffIcons/",
       },
       cursor = image("assets/xiv/Cursor.png", { 20, -8 }, { 390, 80 }),
-      name = text({ 95, 1 }, 15, 2, { max_chars = 17 }),
+      -- y=19 puts the text's box bottom at 34, the same row pixel as the job
+      -- icon's, so the two read as one block instead of the name floating at
+      -- the top of a 66px row.
+      name = text({ 95, 19 }, 15, 2, { max_chars = 17 }),
       zone = text({ 292, 1 }, 13, 2, { short = false }),
       job = text({ 30, 0 }, 8, 1),
       sub_job = text({ 39, 9 }, 8, 1),
@@ -237,8 +235,9 @@ return {
     margin = { left = 6, top = 6, right = 6, bottom = 6 },
     background = {
       pos = { -6, -6 },
+      -- Flat, not a gradient: AllyBgMid holds a uniform alpha across its whole
+      -- width, so it needs none of the main frame's stretching.
       color = { r = 255, g = 255, b = 255, a = 221 },
-      slices = { 0 },
       top = image("assets/xiv/AllyBgTop.png", { 0, 0 }, { 327, 5 }),
       mid = image("assets/xiv/AllyBgMid.png", { 0, 5 }, { 327, 42 }),
       bottom = image("assets/xiv/AllyBgBottom.png", { 0, 0 }, { 327, 5 }),

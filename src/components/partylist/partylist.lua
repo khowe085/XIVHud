@@ -254,7 +254,7 @@ local function new(ctx)
     local origin_x, origin_y = content_origin()
     local x = origin_x + plan.offset_x * scale
     local y = origin_y + plan.offset_y * scale
-    row.placed.x, row.placed.y = x, y
+    row.placed.x, row.placed.y, row.placed.buff_rows = x, y, plan.buff_rows
 
     for _, spec in ipairs(layout.row.bars) do
       local bar = row.bars[spec.key]
@@ -315,6 +315,9 @@ local function new(ctx)
 
     local buffs = layout.row.buff_icons
     if buffs then
+      -- The grid hangs from its bottom row, the one nearest the bars, so a
+      -- short buff list sits against the bar instead of leaving a row of gap.
+      local hang = #buffs.icons_by_row - (plan.buff_rows or #buffs.icons_by_row)
       local slot = 0
       for line, count in ipairs(buffs.icons_by_row) do
         for column = 1, count do
@@ -323,7 +326,7 @@ local function new(ctx)
           if prim then
             local offset = (buffs.offset_by_row[line] or 0) * (buffs.size[1] + buffs.spacing[1])
             local icon_left = offset + (column - 1) * (buffs.size[1] + buffs.spacing[1])
-            local icon_top = (line - 1) * (buffs.size[2] + buffs.spacing[2])
+            local icon_top = (line - 1 + hang) * (buffs.size[2] + buffs.spacing[2])
             prim.pos(x + (buffs.pos[1] + icon_left) * scale, y + (buffs.pos[2] + icon_top) * scale)
             prim.size(buffs.size[1] * scale, buffs.size[2] * scale)
           end
@@ -332,22 +335,15 @@ local function new(ctx)
     end
   end
 
-  --[[ The background is three tiles -- a fixed cap top and bottom with the
-       middle stretched over the rows, so the frame keeps its caps at any
-       height -- drawn once per entry in the layout's `slices`.
-
-       More than one slice because the strip is a gradient rather than a panel:
-       the main list draws it twice, offset, so the solid part reaches the end
-       of the row instead of fading out over the TP bar. See layout.lua. ]]
-  local background = {}
-  for index, offset in ipairs(layout.background.slices) do
-    background[index] = {
-      offset = offset,
-      top = image(layout.background.top.texture, layout.background.color),
-      mid = image(layout.background.mid.texture, layout.background.color),
-      bottom = image(layout.background.bottom.texture, layout.background.color),
-    }
-  end
+  -- The background is three tiles: a fixed cap top and bottom with the middle
+  -- stretched over the rows, so the frame keeps its caps at any height. Its
+  -- width comes from the layout, which draws the main list's wider than the
+  -- source art -- see the note there.
+  local background = {
+    top = image(layout.background.top.texture, layout.background.color),
+    mid = image(layout.background.mid.texture, layout.background.color),
+    bottom = image(layout.background.bottom.texture, layout.background.color),
+  }
 
   -- Guarded because it runs every frame and the height only changes when the
   -- party does; six prim writes a frame for a list that has not moved is
@@ -365,21 +361,19 @@ local function new(ctx)
     end
     placed_background = signature
     local spec = layout.background
+    local x = origin_x + spec.pos[1] * scale
     -- The frame wraps the rows, so it starts wherever they do.
     local y = origin_y + (spec.pos[2] + content_offset_y) * scale
-    for _, slice in ipairs(background) do
-      local x = origin_x + (spec.pos[1] + slice.offset) * scale
-      place(slice.top, x, y, spec.top.pos, spec.top.size)
-      slice.mid.pos(x + spec.mid.pos[1] * scale, y + spec.mid.pos[2] * scale)
-      slice.mid.size(spec.mid.size[1] * scale, content_height * scale)
-      -- size stretches, repeat_xy tiles. Windower's Lua side just forwards
-      -- both to the closed core, so this pairing is copied from XIVParty's
-      -- uiBackground rather than read from a source that explains it -- and
-      -- it is what the art was drawn for.
-      slice.mid.repeat_xy(1, math.max(1, math.floor(content_height / spec.mid.size[2])))
-      slice.bottom.pos(x + spec.bottom.pos[1] * scale, y + (spec.mid.pos[2] + content_height) * scale)
-      slice.bottom.size(spec.bottom.size[1] * scale, spec.bottom.size[2] * scale)
-    end
+    place(background.top, x, y, spec.top.pos, spec.top.size)
+    background.mid.pos(x + spec.mid.pos[1] * scale, y + spec.mid.pos[2] * scale)
+    background.mid.size(spec.mid.size[1] * scale, content_height * scale)
+    -- size stretches, repeat_xy tiles. Windower's Lua side just forwards both
+    -- to the closed core, so this pairing is copied from XIVParty's
+    -- uiBackground rather than read from a source that explains it -- and it
+    -- is what the art was drawn for.
+    background.mid.repeat_xy(1, math.max(1, math.floor(content_height / spec.mid.size[2])))
+    background.bottom.pos(x + spec.bottom.pos[1] * scale, y + (spec.mid.pos[2] + content_height) * scale)
+    background.bottom.size(spec.bottom.size[1] * scale, spec.bottom.size[2] * scale)
   end
 
   --[[ Drawing ------------------------------------------------------------ ]]
@@ -521,13 +515,11 @@ local function new(ctx)
       return
     end
     background_shown = wanted
-    for _, slice in ipairs(background) do
-      for _, prim in ipairs({ slice.top, slice.mid, slice.bottom }) do
-        if wanted then
-          prim.show()
-        else
-          prim.hide()
-        end
+    for _, prim in pairs(background) do
+      if wanted then
+        prim.show()
+      else
+        prim.hide()
       end
     end
   end
@@ -583,7 +575,9 @@ local function new(ctx)
           local origin_x, origin_y = content_origin()
           local x = origin_x + row_plan.offset_x * scale
           local y = origin_y + row_plan.offset_y * scale
-          if row.placed.x ~= x or row.placed.y ~= y then
+          -- The icon grid hangs from its bottom row, so its offsets move when
+          -- the buff count crosses a row boundary.
+          if row.placed.x ~= x or row.placed.y ~= y or row.placed.buff_rows ~= row_plan.buff_rows then
             place_row(row, row_plan)
           end
           draw_row(row, row_plan)
@@ -749,11 +743,9 @@ local function new(ctx)
   end
 
   function self.destroy()
-    for _, slice in ipairs(background) do
-      slice.top.destroy()
-      slice.mid.destroy()
-      slice.bottom.destroy()
-    end
+    background.top.destroy()
+    background.mid.destroy()
+    background.bottom.destroy()
     for slot in pairs(rows) do
       dispose_row(slot)
     end

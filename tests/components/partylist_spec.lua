@@ -122,8 +122,7 @@ describe("partylist widget", function()
   end)
 
   describe("prims", function()
-    -- The frame is a gradient drawn in overlapping strips, three prims each.
-    local FRAME_PRIMS = 6
+    local FRAME_PRIMS = 3
 
     it("draws only the background until somebody is in the party", function()
       widget.update()
@@ -371,39 +370,87 @@ describe("partylist widget", function()
       assert.is_true(previewing > one_row)
     end)
 
-    -- The frame is a gradient that fades out well before its nominal width:
-    -- solid to x=240 of 377, gone by 376. The TP bar runs to x=400, so a
-    -- single strip leaves it drawn over open screen.
-    it("covers the full width of a row with solid frame", function()
+    --[[ The frame is a gradient, not a panel: solid to 64% of whatever width
+         it is drawn at, then falling away. At the source's 377px that put the
+         TP bar, which ends at x=400, almost entirely in the falloff. ]]
+    it("keeps the frame solid to the right-hand end of the row", function()
       env.party = { p0 = member("Ayame", 1) }
       settle(2)
 
       local x = select(1, widget.get_bounds())
-      local strips = {}
+      local strip = nil
       for _, prim in ipairs(prims.images) do
         if type(prim.last.path) == "string" and prim.last.path:find("BgMid.png", 1, true) then
-          strips[#strips + 1] = { left = prim.x - x, right = prim.x - x + prim.width }
+          strip = prim
         end
       end
-      assert.is_true(#strips >= 2, "one gradient strip cannot cover the row")
+      assert.is_not_nil(strip)
 
-      -- Each strip is solid from 4% to 64% of its own width. The union of
-      -- those bands, merged left to right, has to reach the row's right edge.
-      table.sort(strips, function(a, b)
-        return a.left < b.left
-      end)
-      local solid_to = nil
-      for _, strip in ipairs(strips) do
-        local width = strip.right - strip.left
-        local from, to = strip.left + width * 0.04, strip.left + width * 0.64
-        if solid_to == nil then
-          solid_to = to
-        elseif from <= solid_to + 1 then
-          solid_to = math.max(solid_to, to)
+      -- 24 is the left margin; the row's right edge is 24 + 410.
+      local solid_to = strip.x - x + strip.width * 0.64
+      assert.is_true(solid_to >= 24 + 410, ("solid frame stops at %.0f, the row ends at 434"):format(solid_to))
+    end)
+
+    -- The name reads as part of the job icon block, so the two have to share a
+    -- baseline rather than the name floating at the top of a 66px row.
+    it("sits the name on the same bottom edge as the job icon", function()
+      env.party = { p0 = member("Ayame", 1) }
+      settle(3)
+
+      local icon_bottom, name_bottom = nil, nil
+      for _, prim in ipairs(prims.all) do
+        if type(prim.last.path) == "string" and prim.last.path:find("jobIcons/frame.png", 1, true) then
+          icon_bottom = prim.y + prim.height
+        elseif prim.last.text == "Ayame" then
+          -- A text prim's size is its font size, so this is its box bottom.
+          name_bottom = prim.y + prim.font_size
         end
       end
-      -- 24 is the left margin; the row's right edge is 24 + 410.
-      assert.is_true(solid_to >= 24 + 410, ("solid frame stops at %.0f, the row ends at 434"):format(solid_to or 0))
+      assert.is_not_nil(icon_bottom)
+      assert.is_not_nil(name_bottom)
+      assert.are.equal(icon_bottom, name_bottom)
+    end)
+
+    --[[ The icon grid is anchored to its bottom row, which is the one nearest
+         the bars. A short buff list otherwise sat at the top of the block with
+         a row of empty space between it and the bar. ]]
+    it("fills the bottom icon row first and only spills upward on the seventh", function()
+      env.party = { p0 = member("Volker", 2) }
+      settle(3)
+
+      local function icon_rows(count)
+        local ids = {}
+        for index = 1, count do
+          ids[index] = index
+        end
+        widget.update("chunk", 0x076, party_buff_packet(2, ids))
+        frames()
+        local ys = {}
+        for _, prim in ipairs(prims.images) do
+          if type(prim.last.path) == "string" and prim.last.path:find("buffIcons", 1, true) and prim.visible then
+            ys[prim.y] = (ys[prim.y] or 0) + 1
+          end
+        end
+        local sorted = {}
+        for y, n in pairs(ys) do
+          sorted[#sorted + 1] = { y = y, n = n }
+        end
+        table.sort(sorted, function(a, b)
+          return a.y < b.y
+        end)
+        return sorted
+      end
+
+      local six = icon_rows(6)
+      assert.are.equal(1, #six, "six buffs should occupy one row")
+      local bottom_y = six[1].y
+
+      local seven = icon_rows(7)
+      assert.are.equal(2, #seven, "seven buffs should occupy two rows")
+      assert.are.equal(bottom_y, seven[2].y, "the lower row must not move when the block grows")
+      assert.is_true(seven[1].y < bottom_y, "the seventh buff opens a row above, not below")
+      assert.are.equal(6, seven[1].n)
+      assert.are.equal(1, seven[2].n)
     end)
 
     it("moves every prim when the group moves", function()
