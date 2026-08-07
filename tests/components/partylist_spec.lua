@@ -1,5 +1,6 @@
 local fakes = require("tests/support/fakes")
 local new_partylist = require("components/partylist/partylist")
+local layouts = require("components/partylist/layout")
 
 local RESOURCES = {
   jobs = { [4] = { ens = "WHM" } },
@@ -402,8 +403,8 @@ describe("partylist widget", function()
         if type(prim.last.path) == "string" and prim.last.path:find("jobIcons/frame.png", 1, true) then
           icon_bottom = prim.y + prim.height
         elseif prim.last.text == "Ayame" then
-          -- A text prim's size is its font size, so this is its box bottom.
-          name_bottom = prim.y + prim.font_size
+          -- `size` is in points and draws at 96dpi, so the box is 4/3 of it.
+          name_bottom = prim.y + prim.font_size * layouts.points_to_pixels
         end
       end
       assert.is_not_nil(icon_bottom)

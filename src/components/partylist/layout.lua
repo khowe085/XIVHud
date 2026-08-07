@@ -146,6 +146,11 @@ end
 return {
   bands = BANDS,
 
+  --[[ Text sizes are in points and render at 96dpi, so a prim's drawn height
+       is 4/3 of the number in `size` -- a 15pt name occupies 20 pixels, not
+       15. Anything lining text up against art has to go through this. ]]
+  points_to_pixels = 4 / 3,
+
   main = {
     column_width = 410,
     columns = 1,
@@ -216,10 +221,11 @@ return {
         path = "assets/buffIcons/",
       },
       cursor = image("assets/xiv/Cursor.png", { 20, -8 }, { 390, 80 }),
-      -- y=19 puts the text's box bottom at 34, the same row pixel as the job
-      -- icon's, so the two read as one block instead of the name floating at
-      -- the top of a 66px row.
-      name = text({ 95, 19 }, 15, 2, { max_chars = 17 }),
+      -- The job icon's bottom edge is row y 34, and 15pt of Arial draws 20
+      -- pixels tall, so y=14 lands the name's bottom on the same pixel and
+      -- the two read as one block rather than the name floating at the top of
+      -- a 66px row.
+      name = text({ 95, 14 }, 15, 2, { max_chars = 17 }),
       zone = text({ 292, 1 }, 13, 2, { short = false }),
       job = text({ 30, 0 }, 8, 1),
       sub_job = text({ 39, 9 }, 8, 1),
