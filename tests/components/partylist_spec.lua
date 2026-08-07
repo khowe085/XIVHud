@@ -3,7 +3,7 @@ local new_partylist = require("components/partylist/partylist")
 local layouts = require("components/partylist/layout")
 
 local RESOURCES = {
-  jobs = { [4] = { ens = "WHM" } },
+  jobs = { [4] = { ens = "WHM" }, [5] = { ens = "BLM" } },
   zones = { [230] = { name = "Southern San d'Oria", search = "San d'Oria" } },
   buffs = { [0] = { en = "KO" }, [15] = { en = "doom" } },
 }
@@ -76,7 +76,14 @@ describe("partylist widget", function()
         return env.clock
       end,
       get_player = function()
-        return { name = "Ayame", buffs = {}, main_job_id = 4, main_job_level = 99 }
+        return {
+          name = "Ayame",
+          buffs = {},
+          main_job_id = 4,
+          main_job_level = 99,
+          sub_job_id = 5,
+          sub_job_level = 49,
+        }
       end,
       get_party = function()
         env.polls = env.polls + 1
@@ -395,24 +402,31 @@ describe("partylist widget", function()
       assert.is_true(right <= 24 + 410 + 60, ("frame runs %.0f past the row"):format(right - 434))
     end)
 
-    -- The name reads as part of the job icon block, so the two have to share a
-    -- baseline rather than the name floating at the top of a 66px row.
-    it("sits the name on the same bottom edge as the job icon", function()
+    -- The name and the job labels are one block and have to share a bottom
+    -- edge, rather than each sitting wherever its own size happens to put it.
+    it("sits the name and the job labels on the same bottom edge", function()
       env.party = { p0 = member("Ayame", 1) }
       settle(3)
 
-      local icon_bottom, name_bottom = nil, nil
-      for _, prim in ipairs(prims.all) do
-        if type(prim.last.path) == "string" and prim.last.path:find("jobIcons/frame.png", 1, true) then
-          icon_bottom = prim.y + prim.height
-        elseif prim.last.text == "Ayame" then
+      local bottoms = {}
+      for _, prim in ipairs(prims.texts) do
+        local said = prim.last.text
+        if said == "Ayame" or said == "WHM 99" or said == "BLM 49" then
           -- `size` is in points and draws at 96dpi, so the box is 4/3 of it.
-          name_bottom = prim.y + prim.font_size * layouts.points_to_pixels
+          bottoms[said] = prim.y + prim.font_size * layouts.points_to_pixels
         end
       end
-      assert.is_not_nil(icon_bottom)
-      assert.is_not_nil(name_bottom)
-      assert.are.equal(icon_bottom, name_bottom)
+      assert.is_not_nil(bottoms["Ayame"], "no name was drawn")
+      assert.is_not_nil(bottoms["BLM 49"], "no subjob was drawn")
+      -- The job line sits above the subjob, so the subjob is the block's foot.
+      -- Within half a pixel: 8pt draws 10 and two thirds tall, and a prim
+      -- lands on whole pixels anyway, so exact equality would only be testing
+      -- how the layout's decimals were written down.
+      assert.is_true(
+        math.abs(bottoms["Ayame"] - bottoms["BLM 49"]) < 0.5,
+        ("name bottom %.2f, subjob bottom %.2f"):format(bottoms["Ayame"], bottoms["BLM 49"])
+      )
+      assert.is_true(bottoms["WHM 99"] < bottoms["BLM 49"])
     end)
 
     --[[ The icon grid is anchored to its bottom row, which is the one nearest

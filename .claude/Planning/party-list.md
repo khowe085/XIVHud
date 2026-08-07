@@ -559,12 +559,12 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
   across the whole row, gone by 447. The transform is written up in
   `assets/LICENSE.txt`, and the unmodified originals are kept beside it as its basis.
   The alliance frame needs none of this: `AllyBgMid` is flat at a uniform alpha.
-- **The name is bottom-aligned with the job icon** (Kevin, 2026-08-07), at row y 14 so
-  its box bottom meets the icon's at 34. In a 66px row a top-aligned name floated away
-  from the block it belongs to. **Text sizes are points, drawn at 96dpi**, so a prim's
-  height is 4/3 of its `size` -- 15pt of Arial is 20 pixels, not 15. `layout.lua`
-  exports `points_to_pixels` for anything lining text up against art; the first attempt
-  at this alignment assumed 1:1 and sat five pixels low.
+- **The name and the job labels share a bottom edge at row y 29** (Kevin, 2026-08-07).
+  The name runs y 9..29, the subjob 18.33..29, and the job line keeps XIVParty's 9px
+  stack above the subjob. **Text sizes are points, drawn at 96dpi**, so a prim's height
+  is 4/3 of its `size` -- 15pt of Arial is 20 pixels, not 15. `layout.lua` exports
+  `points_to_pixels` for anything lining text up against art; the first attempt at this
+  alignment assumed 1:1 and sat five pixels low.
 - **The buff grid hangs from its bottom row** (Kevin, 2026-08-07). Six buffs or fewer
   sit in the lower row, against the bars; the seventh opens a row above rather than
   below, so the block never leaves a row of empty space between itself and the bar.
