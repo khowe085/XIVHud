@@ -222,6 +222,29 @@ describe("partylist logic", function()
     end)
   end)
 
+  describe("an empty list", function()
+    -- XIVParty hides its background whenever nobody occupies that party's
+    -- slots at all, independent of hide_solo (which only covers the solo-with-
+    -- one-member case). Without this an alliance list you have enabled but are
+    -- not currently in draws an empty frame with nothing in it.
+    it("draws nothing when nobody is in it, even with hide_solo off", function()
+      logic.set_roster({})
+      assert.is_true(settle().hidden)
+    end)
+
+    it("has nothing to draw on an alliance list you are not currently in", function()
+      build("alliance1")
+      logic.set_roster({})
+      assert.is_true(settle().hidden)
+    end)
+
+    it("draws as soon as the alliance gets a member", function()
+      build("alliance1")
+      logic.set_roster({ a10 = member({ name = "Zeid", id = 1 }) })
+      assert.is_false(settle().hidden)
+    end)
+  end)
+
   describe("the poll gate", function()
     it("is due on the very first frame", function()
       assert.is_true(logic.due_for_poll(0))

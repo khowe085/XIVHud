@@ -944,10 +944,15 @@ local function new(deps)
       -- How far down the box the rows start. The frame has to follow them
       -- there, or an aligned-to-the-bottom list draws in two pieces.
       content_offset_y = shift,
-      -- XIVParty's hideSolo. The framework decides whether a component is on
-      -- screen, and it knows about cutscenes and zoning, not party size, so
-      -- this asks the widget to draw nothing rather than to be hidden.
-      hidden = config.hide_solo == true and occupied <= 1,
+      --[[ Nothing to draw. Two cases: nobody occupies this list's slots at
+           all -- XIVParty's own rule, `count > 0`, and true for every variant
+           regardless of settings, since it's what keeps an alliance list you
+           have enabled but are not currently in from drawing an empty frame --
+           and hide_solo, which additionally covers the solo-with-one-member
+           case for the main list. The framework decides whether a component
+           is on screen at all; this is the widget asking to draw nothing
+           within that. ]]
+      hidden = occupied == 0 or (config.hide_solo == true and occupied == 1),
     }
   end
 

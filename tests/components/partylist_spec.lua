@@ -585,6 +585,32 @@ describe("partylist widget", function()
     end)
   end)
 
+  describe("an empty list", function()
+    -- Turning a list on with nobody in its slots must not leave an empty
+    -- frame on screen -- an alliance list you have enabled but are not
+    -- currently in is exactly this case, and hide_solo is not involved.
+    it("draws nothing at all, frame included", function()
+      env.party = {}
+      settle(3)
+      for _, prim in ipairs(prims.all) do
+        assert.is_false(prim.visible)
+      end
+    end)
+
+    it("draws the frame again as soon as somebody occupies it", function()
+      build("alliance1")
+      env.party = {}
+      settle(3)
+      env.party = { a10 = member("Zeid", 1) }
+      settle(3)
+      local shown = 0
+      for _, prim in ipairs(prims.all) do
+        shown = shown + (prim.visible and 1 or 0)
+      end
+      assert.is_true(shown > 0)
+    end)
+  end)
+
   describe("the poll", function()
     it("reads the party once per interval rather than once per frame", function()
       env.party = { p0 = member("Ayame", 1) }

@@ -568,6 +568,15 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
 - **The buff grid hangs from its bottom row** (Kevin, 2026-08-07). Six buffs or fewer
   sit in the lower row, against the bars; the seventh opens a row above rather than
   below, so the block never leaves a row of empty space between itself and the bar.
+- **A list with nobody in it draws nothing at all, frame included** (found live,
+  2026-08-07): an enabled alliance list you are not currently in showed an empty
+  bordered box. `hidden` was only ever true from `hide_solo`, which alliance lists
+  don't set, so an occupant count of zero was never checked on its own. XIVParty's
+  own rule -- `background:visible(count > 0)` -- now applies to every variant
+  regardless of settings; `hide_solo` still additionally covers the solo-with-one-
+  member case for the main list. Enabling a list is unaffected: joining an alliance
+  still does not auto-enable `alliancelist1`/`alliancelist2`, only whether an already-
+  enabled one draws anything.
 
 ### Still unverified (needs a live Windower client)
 
