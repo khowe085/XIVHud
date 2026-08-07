@@ -237,9 +237,9 @@ return {
         offset_by_row = { 0, 0 },
         path = "assets/buffIcons/",
       },
-      -- Width reaches the buff icon grid's own right edge (x=460): a targeted
-      -- member's buffs have to sit inside their own highlight, not past it.
-      cursor = image("assets/xiv/Cursor.png", { 20, -8 }, { 440, 80 }),
+      -- Width reaches past the buff icon grid's own right edge (x=460): a
+      -- targeted member's buffs have to sit inside their own highlight.
+      cursor = image("assets/xiv/Cursor.png", { 20, -8 }, { 450, 80 }),
       --[[ The name and the job labels share a bottom edge at row y 29.
 
            Sizes are points and draw 4/3 as tall (see points_to_pixels), so the
