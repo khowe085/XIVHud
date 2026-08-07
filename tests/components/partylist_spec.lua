@@ -122,9 +122,12 @@ describe("partylist widget", function()
   end)
 
   describe("prims", function()
+    -- The frame is a gradient drawn in overlapping strips, three prims each.
+    local FRAME_PRIMS = 6
+
     it("draws only the background until somebody is in the party", function()
       widget.update()
-      assert.are.equal(3, #prims.all)
+      assert.are.equal(FRAME_PRIMS, #prims.all)
     end)
 
     it("builds a row's prims when a member appears", function()
@@ -139,7 +142,7 @@ describe("partylist widget", function()
       local one_row = #prims.all
       env.party = { p0 = member("Ayame", 1), p1 = member("Volker", 2) }
       settle(2)
-      assert.are.equal(2 * (one_row - 3) + 3, #prims.all)
+      assert.are.equal(2 * (one_row - FRAME_PRIMS) + FRAME_PRIMS, #prims.all)
     end)
 
     -- The list is the component's whole prim budget; a party that churns all
@@ -366,6 +369,41 @@ describe("partylist widget", function()
       widget.set_preview(true)
       local _, _, _, previewing = widget.get_bounds()
       assert.is_true(previewing > one_row)
+    end)
+
+    -- The frame is a gradient that fades out well before its nominal width:
+    -- solid to x=240 of 377, gone by 376. The TP bar runs to x=400, so a
+    -- single strip leaves it drawn over open screen.
+    it("covers the full width of a row with solid frame", function()
+      env.party = { p0 = member("Ayame", 1) }
+      settle(2)
+
+      local x = select(1, widget.get_bounds())
+      local strips = {}
+      for _, prim in ipairs(prims.images) do
+        if type(prim.last.path) == "string" and prim.last.path:find("BgMid.png", 1, true) then
+          strips[#strips + 1] = { left = prim.x - x, right = prim.x - x + prim.width }
+        end
+      end
+      assert.is_true(#strips >= 2, "one gradient strip cannot cover the row")
+
+      -- Each strip is solid from 4% to 64% of its own width. The union of
+      -- those bands, merged left to right, has to reach the row's right edge.
+      table.sort(strips, function(a, b)
+        return a.left < b.left
+      end)
+      local solid_to = nil
+      for _, strip in ipairs(strips) do
+        local width = strip.right - strip.left
+        local from, to = strip.left + width * 0.04, strip.left + width * 0.64
+        if solid_to == nil then
+          solid_to = to
+        elseif from <= solid_to + 1 then
+          solid_to = math.max(solid_to, to)
+        end
+      end
+      -- 24 is the left margin; the row's right edge is 24 + 410.
+      assert.is_true(solid_to >= 24 + 410, ("solid frame stops at %.0f, the row ends at 434"):format(solid_to or 0))
     end)
 
     it("moves every prim when the group moves", function()

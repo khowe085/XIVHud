@@ -332,13 +332,22 @@ local function new(ctx)
     end
   end
 
-  -- The background is three tiles: a fixed cap top and bottom with the middle
-  -- one stretched over the rows, so the frame keeps its corners at any height.
-  local background = {
-    top = image(layout.background.top.texture, layout.background.color),
-    mid = image(layout.background.mid.texture, layout.background.color),
-    bottom = image(layout.background.bottom.texture, layout.background.color),
-  }
+  --[[ The background is three tiles -- a fixed cap top and bottom with the
+       middle stretched over the rows, so the frame keeps its caps at any
+       height -- drawn once per entry in the layout's `slices`.
+
+       More than one slice because the strip is a gradient rather than a panel:
+       the main list draws it twice, offset, so the solid part reaches the end
+       of the row instead of fading out over the TP bar. See layout.lua. ]]
+  local background = {}
+  for index, offset in ipairs(layout.background.slices) do
+    background[index] = {
+      offset = offset,
+      top = image(layout.background.top.texture, layout.background.color),
+      mid = image(layout.background.mid.texture, layout.background.color),
+      bottom = image(layout.background.bottom.texture, layout.background.color),
+    }
+  end
 
   -- Guarded because it runs every frame and the height only changes when the
   -- party does; six prim writes a frame for a list that has not moved is
@@ -356,19 +365,21 @@ local function new(ctx)
     end
     placed_background = signature
     local spec = layout.background
-    local x = origin_x + spec.pos[1] * scale
     -- The frame wraps the rows, so it starts wherever they do.
     local y = origin_y + (spec.pos[2] + content_offset_y) * scale
-    place(background.top, x, y, spec.top.pos, spec.top.size)
-    background.mid.pos(x + spec.mid.pos[1] * scale, y + spec.mid.pos[2] * scale)
-    background.mid.size(spec.mid.size[1] * scale, content_height * scale)
-    -- size stretches, repeat_xy tiles. Windower's Lua side just forwards both
-    -- to the closed core, so this pairing is copied from XIVParty's
-    -- uiBackground rather than read from a source that explains it -- and it
-    -- is what the art was drawn for.
-    background.mid.repeat_xy(1, math.max(1, math.floor(content_height / spec.mid.size[2])))
-    background.bottom.pos(x + spec.bottom.pos[1] * scale, y + (spec.mid.pos[2] + content_height) * scale)
-    background.bottom.size(spec.bottom.size[1] * scale, spec.bottom.size[2] * scale)
+    for _, slice in ipairs(background) do
+      local x = origin_x + (spec.pos[1] + slice.offset) * scale
+      place(slice.top, x, y, spec.top.pos, spec.top.size)
+      slice.mid.pos(x + spec.mid.pos[1] * scale, y + spec.mid.pos[2] * scale)
+      slice.mid.size(spec.mid.size[1] * scale, content_height * scale)
+      -- size stretches, repeat_xy tiles. Windower's Lua side just forwards
+      -- both to the closed core, so this pairing is copied from XIVParty's
+      -- uiBackground rather than read from a source that explains it -- and
+      -- it is what the art was drawn for.
+      slice.mid.repeat_xy(1, math.max(1, math.floor(content_height / spec.mid.size[2])))
+      slice.bottom.pos(x + spec.bottom.pos[1] * scale, y + (spec.mid.pos[2] + content_height) * scale)
+      slice.bottom.size(spec.bottom.size[1] * scale, spec.bottom.size[2] * scale)
+    end
   end
 
   --[[ Drawing ------------------------------------------------------------ ]]
@@ -510,11 +521,13 @@ local function new(ctx)
       return
     end
     background_shown = wanted
-    for _, prim in pairs(background) do
-      if wanted then
-        prim.show()
-      else
-        prim.hide()
+    for _, slice in ipairs(background) do
+      for _, prim in ipairs({ slice.top, slice.mid, slice.bottom }) do
+        if wanted then
+          prim.show()
+        else
+          prim.hide()
+        end
       end
     end
   end
@@ -736,9 +749,11 @@ local function new(ctx)
   end
 
   function self.destroy()
-    background.top.destroy()
-    background.mid.destroy()
-    background.bottom.destroy()
+    for _, slice in ipairs(background) do
+      slice.top.destroy()
+      slice.mid.destroy()
+      slice.bottom.destroy()
+    end
     for slot in pairs(rows) do
       dispose_row(slot)
     end

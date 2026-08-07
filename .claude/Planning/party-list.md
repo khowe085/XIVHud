@@ -542,6 +542,18 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
   band at the bottom of the texture instead of the middle. Anything that measures these
   files must read `IHDR` bit depth first.
 
+- **The frame is drawn as two overlapping strips** (Kevin, 2026-08-06). `BgTop`/
+  `BgMid`/`BgBottom` are a horizontal gradient, not a panel: across their 377px they
+  fade in over the first 14, hold solid to x=240, are down to half by 317 and gone by
+  376. The TP bar runs x 290..400, so a single strip left most of it over open screen --
+  about a sixteenth of the bar covered. Drawing the strip twice with the second offset
+  200px holds the frame above 87% opacity from x=14 to past the row's right edge, and
+  keeps the gradient's own falloff instead of stretching it: a single strip widened to
+  reach x=410 would trail a 230px bleed to the right rather than 135. Where the two
+  solid bands overlap, x 214..240, the composite is nearer 98% than 87% -- two partly
+  transparent layers always darken, and the offset is picked to keep that band narrow.
+  XIVParty leaves its bars over the faded part; this does not.
+
 ### Still unverified (needs a live Windower client)
 
 Nothing here has run inside FFXI. The acceptance criteria for PL1-PL5 are all

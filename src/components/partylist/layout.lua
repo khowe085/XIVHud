@@ -165,10 +165,31 @@ return {
          the origin it is given is the true top-left corner -- otherwise the
          framework clamps the list against a box the art overhangs, and at the
          screen edge the marker and the cap are drawn off it. ]]
-    margin = { left = 24, top = 21, right = 0, bottom = 21 },
+    -- `right` covers the visible part of the frame's trailing fade. The tail
+    -- runs to x=547 but is under a third opacity past 470, and a drag box
+    -- 137px wider than the list would be worse than a faint edge outside it.
+    margin = { left = 24, top = 21, right = 60, bottom = 21 },
     background = {
       pos = { 0, -21 },
       color = { r = 255, g = 255, b = 255, a = 221 },
+      --[[ The frame is a horizontal gradient, not a panel: measured across its
+           377px, it fades in over the first 14, is solid to x=240, is down to
+           half by 317 and is gone by 376. The TP bar runs x 290..400, so a
+           single strip leaves most of it drawn over open screen.
+
+           Drawn twice instead, the second copy offset 200px right, so its
+           solid band (214..440) takes over before the first has faded. The
+           union holds above 87% opacity from x=14 to past the end of the row,
+           and keeps the gradient's own falloff shape rather than stretching
+           it -- a single strip widened to reach x=410 would trail a 230px
+           bleed to the right instead of this one's 135.
+
+           Where the two solid bands overlap, x 214..240, the composite is
+           nearer 98% opacity than 87%. Two partly transparent layers always
+           darken, and the offset is chosen to keep that band narrow; the only
+           way to avoid it entirely is the single stretched strip. Costs three
+           prims per list. ]]
+      slices = { 0, 200 },
       top = image("assets/xiv/BgTop.png", { 0, 0 }, { 377, 21 }),
       mid = image("assets/xiv/BgMid.png", { 0, 21 }, { 377, 12 }),
       bottom = image("assets/xiv/BgBottom.png", { 0, 0 }, { 377, 21 }),
@@ -217,6 +238,7 @@ return {
     background = {
       pos = { -6, -6 },
       color = { r = 255, g = 255, b = 255, a = 221 },
+      slices = { 0 },
       top = image("assets/xiv/AllyBgTop.png", { 0, 0 }, { 327, 5 }),
       mid = image("assets/xiv/AllyBgMid.png", { 0, 5 }, { 327, 42 }),
       bottom = image("assets/xiv/AllyBgBottom.png", { 0, 0 }, { 327, 5 }),
