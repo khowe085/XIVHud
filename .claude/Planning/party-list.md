@@ -542,18 +542,23 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
   band at the bottom of the texture instead of the middle. Anything that measures these
   files must read `IHDR` bit depth first.
 
-- **The frame is drawn 644 wide, not the source's 377** (Kevin, 2026-08-06).
+- **The frame art is remapped, not stretched** (Kevin, 2026-08-06/07).
   `BgTop`/`BgMid`/`BgBottom` are a horizontal gradient, not a panel: across their 377px
-  they fade in over the first 14, hold solid to x=240 -- 64% of the way -- are down to
-  half by 317 and gone by 376. At native width that put the TP bar, x 290..400, almost
-  entirely in the falloff: about a sixteenth of it covered. Stretching scales the
-  falloff too, so the solid band always ends at 64% of the drawn width; 644 puts that at
-  x=410, the row's right edge, with the fade running to ~625. There is no width that is
-  both solid at the bar's end and finished soon after. An earlier attempt drew the strip
-  twice, offset, to keep the fade short -- it worked, but two partly transparent layers
-  composite darker where they overlap, and that seam was a worse artifact than 67px of
-  extra fade. XIVParty leaves its bars over the faded part; this does not. The alliance
-  frame needs none of this: `AllyBgMid` is flat at a uniform alpha.
+  they fade in over the first 14, hold solid to x=240 -- 64% of the way -- and then take
+  137 to fade away. At native width that put the TP bar, x 290..400, almost entirely in
+  the falloff: about a sixteenth of it covered.
+
+  Neither obvious fix works. Stretching scales the falloff with everything else, so the
+  solid band always ends at 64% of the drawn width: reaching x=410 needs a 644px strip,
+  which is still at 86% opacity 50px past the bar and 75% at 90px past -- solid black
+  where the list should have ended. Drawing the strip twice, offset, keeps the fade
+  short but composites two partly transparent layers, and the overlap reads as a seam.
+
+  So the art is remapped instead, to `xiv/*Wide.png` at 450px: fade-in kept as it is,
+  the flat solid section stretched to reach x=410, the tail compressed into 40px. Solid
+  across the whole row, gone by 447. The transform is written up in
+  `assets/LICENSE.txt`, and the unmodified originals are kept beside it as its basis.
+  The alliance frame needs none of this: `AllyBgMid` is flat at a uniform alpha.
 - **The name is bottom-aligned with the job icon** (Kevin, 2026-08-07), at row y 14 so
   its box bottom meets the icon's at 34. In a 66px row a top-aligned name floated away
   from the block it belongs to. **Text sizes are points, drawn at 96dpi**, so a prim's

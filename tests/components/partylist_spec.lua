@@ -344,9 +344,9 @@ describe("partylist widget", function()
       local top, bottom = nil, nil
       for _, prim in ipairs(prims.images) do
         if type(prim.last.path) == "string" then
-          if prim.last.path:find("BgTop.png", 1, true) then
+          if prim.last.path:find("BgTop", 1, true) then
             top = prim.y
-          elseif prim.last.path:find("BgBottom.png", 1, true) then
+          elseif prim.last.path:find("BgBottom", 1, true) then
             bottom = prim.y + prim.height
           end
         end
@@ -371,25 +371,28 @@ describe("partylist widget", function()
       assert.is_true(previewing > one_row)
     end)
 
-    --[[ The frame is a gradient, not a panel: solid to 64% of whatever width
-         it is drawn at, then falling away. At the source's 377px that put the
-         TP bar, which ends at x=400, almost entirely in the falloff. ]]
-    it("keeps the frame solid to the right-hand end of the row", function()
+    --[[ The frame has to reach across the whole row -- the TP bar ends at
+         x=400 -- without trailing far past it. The `Wide` art is solid to
+         x=410 of its 450 and gone by 447; a regression to the source strips,
+         or to stretching them until their 64% solid band reached the row,
+         would break one bound or the other. ]]
+    it("draws the frame across the row without overshooting it", function()
       env.party = { p0 = member("Ayame", 1) }
       settle(2)
 
       local x = select(1, widget.get_bounds())
       local strip = nil
       for _, prim in ipairs(prims.images) do
-        if type(prim.last.path) == "string" and prim.last.path:find("BgMid.png", 1, true) then
+        if type(prim.last.path) == "string" and prim.last.path:find("BgMid", 1, true) then
           strip = prim
         end
       end
       assert.is_not_nil(strip)
 
       -- 24 is the left margin; the row's right edge is 24 + 410.
-      local solid_to = strip.x - x + strip.width * 0.64
-      assert.is_true(solid_to >= 24 + 410, ("solid frame stops at %.0f, the row ends at 434"):format(solid_to))
+      local right = strip.x - x + strip.width
+      assert.is_true(right >= 24 + 410, ("frame ends at %.0f, the row ends at 434"):format(right))
+      assert.is_true(right <= 24 + 410 + 60, ("frame runs %.0f past the row"):format(right - 434))
     end)
 
     -- The name reads as part of the job icon block, so the two have to share a

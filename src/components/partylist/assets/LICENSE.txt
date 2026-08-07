@@ -10,6 +10,25 @@ The same licence covers the material ported from XivParty's source into this
 component: the buff priority in buff_order.lua, the trust job table and role
 map in jobs.lua, and the geometry in layout.lua.
 
+xiv/BgTopWide.png, xiv/BgMidWide.png and xiv/BgBottomWide.png are modified
+versions of XivParty's BgTop.png, BgMid.png and BgBottom.png, which are kept
+here unmodified beside them as the basis for the derivation.
+
+The originals are a horizontal gradient 377px wide: they fade in over the first
+14 pixels, hold solid to x=240, then take 137 to fade away. This component's
+row is wider than XivParty's, so at that width the TP bar fell almost entirely
+in the falloff -- and stretching the strip scales the falloff with it, so
+covering the bar cost a 644px strip trailing 234px of fade. The Wide versions
+remap the horizontal axis instead, at 450px:
+
+    source x   0..14    ->  out x    0..14    fade-in, unchanged
+    source x  14..240   ->  out x   14..410   solid section, stretched
+    source x 240..377   ->  out x  410..450   falloff, compressed
+
+Each output column is a linear interpolation between the two source columns it
+falls between. Nothing else is touched: the vertical structure, the colour and
+the shape of both transitions are the originals'.
+
 buff_order.lua is additionally derived from Windower's generated
 resources/buffs.lua, whose notice is reproduced second.
 

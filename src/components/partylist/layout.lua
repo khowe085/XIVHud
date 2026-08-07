@@ -170,29 +170,28 @@ return {
          the origin it is given is the true top-left corner -- otherwise the
          framework clamps the list against a box the art overhangs, and at the
          screen edge the marker and the cap are drawn off it. ]]
-    -- `right` covers the visible part of the frame's trailing fade. The tail
-    -- runs to x=547 but is under a third opacity past 470, and a drag box
-    -- 137px wider than the list would be worse than a faint edge outside it.
-    margin = { left = 24, top = 21, right = 60, bottom = 21 },
+    -- `right` is the frame's trailing fade, which ends at x=450 against a row
+    -- that ends at 410.
+    margin = { left = 24, top = 21, right = 40, bottom = 21 },
     background = {
       pos = { 0, -21 },
       color = { r = 255, g = 255, b = 255, a = 221 },
-      --[[ Drawn 644 wide, not the source's 377.
+      --[[ The `Wide` art, drawn 1:1 at 450.
 
-           The frame is a horizontal gradient rather than a panel: measured
-           across its 377px it fades in over the first 14, holds solid to
-           x=240 -- 64% of the way -- is down to half by 317 and is gone by
-           376. At its native width that puts the TP bar, which runs x 290..400,
-           almost entirely in the falloff: about a sixteenth of it was covered.
+           The frame is a horizontal gradient rather than a panel. XIVParty's
+           own strips fade in over their first 14 pixels, hold solid to x=240
+           of 377 -- 64% of the way -- and then take 137 to fade away, which
+           leaves the TP bar at x 290..400 almost entirely in the falloff.
 
-           Stretching scales the falloff along with everything else, so the
-           solid band ends at 64% of whatever width it is drawn at. 644 puts
-           that at x=410, the row's right edge, and the fade then runs to ~625.
-           There is no width that is both solid at the bar's end and finished
-           soon after -- the fade is 36% of the strip whatever you do. ]]
-      top = image("assets/xiv/BgTop.png", { 0, 0 }, { 644, 21 }),
-      mid = image("assets/xiv/BgMid.png", { 0, 21 }, { 644, 12 }),
-      bottom = image("assets/xiv/BgBottom.png", { 0, 0 }, { 644, 21 }),
+           Stretching cannot fix that on its own: it scales the falloff too, so
+           the solid band always ends at 64% of the drawn width and reaching
+           x=410 costs a 644-wide strip trailing 234 pixels of fade. The art is
+           remapped instead -- fade-in kept, the flat solid section stretched,
+           the tail compressed -- so it is solid from 14 to 410 and gone by 447.
+           See assets/LICENSE.txt for the transform. ]]
+      top = image("assets/xiv/BgTopWide.png", { 0, 0 }, { 450, 21 }),
+      mid = image("assets/xiv/BgMidWide.png", { 0, 21 }, { 450, 12 }),
+      bottom = image("assets/xiv/BgBottomWide.png", { 0, 0 }, { 450, 21 }),
     },
     row = {
       bars = {

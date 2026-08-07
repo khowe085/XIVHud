@@ -489,7 +489,7 @@ local function check_assets()
   -- The party list ships some 680 textures; checking every one at load would
   -- cost 680 file opens to learn what a handful already tells us.
   for _, texture in ipairs({
-    "assets/xiv/BgTop.png",
+    "assets/xiv/BgTopWide.png",
     "assets/xiv/BarBG.png",
     "assets/xiv/Cursor.png",
     "assets/xiv/AllyBarBG.png",
