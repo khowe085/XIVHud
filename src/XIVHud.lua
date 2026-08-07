@@ -171,6 +171,9 @@ end)
 local new_giltracker = step("loading the giltracker component", function()
   return require("components/giltracker/giltracker")
 end)
+local new_targetbar = step("loading the targetbar component", function()
+  return require("components/targetbar/targetbar")
+end)
 
 -- Every Windower handler goes through this, so a bug degrades to a message and
 -- a dead handler rather than an unexplained freeze.
@@ -410,6 +413,17 @@ local function get_player()
   return windower.ffxi.get_player()
 end
 
+-- Module level because two components read them now: the party list, which
+-- builds a row per member, and the target bar, which needs the same roster to
+-- decide whether a claim is the player's own.
+local function get_mob_by_target(kind)
+  return windower.ffxi.get_mob_by_target(kind)
+end
+
+local function get_party()
+  return windower.ffxi.get_party()
+end
+
 local function asset(relative_path)
   return windower.addon_path .. relative_path
 end
@@ -497,6 +511,29 @@ step("building the giltracker component", function()
   }))
 end)
 
+--[[ Gated on safe_mode alone, like parambar and unlike the two components
+     that also take libraries_error.
+
+     The party list and the gil tracker are useless without the resource and
+     packet libraries, so a failure there skips them wholesale. The target bar
+     is not: its health bar, name and distance read the mob table directly and
+     need no library at all. ]]
+step("building the targetbar component", function()
+  if safe_mode then
+    return
+  end
+  core.register(new_targetbar({
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
+    now = os.clock,
+    get_player = get_player,
+    get_mob_by_target = get_mob_by_target,
+    get_party = get_party,
+  }))
+end)
+
 -- One factory, three components: the main party and the two alliance parties
 -- each get their own config file, layout slot and drag box.
 step("building the party list components", function()
@@ -518,12 +555,8 @@ step("building the party list components", function()
       resources = res,
       now = os.clock,
       get_player = get_player,
-      get_party = function()
-        return windower.ffxi.get_party()
-      end,
-      get_mob_by_target = function(kind)
-        return windower.ffxi.get_mob_by_target(kind)
-      end,
+      get_party = get_party,
+      get_mob_by_target = get_mob_by_target,
       get_info = function()
         return windower.ffxi.get_info()
       end,
@@ -553,6 +586,9 @@ local function check_assets()
     expected[#expected + 1] = "components/partylist/" .. texture
   end
   expected[#expected + 1] = "components/giltracker/assets/gil.png"
+  for _, texture in ipairs({ "BarBG.png", "Bar.png", "BarFG.png" }) do
+    expected[#expected + 1] = "components/targetbar/assets/xiv/" .. texture
+  end
 
   for _, relative_path in ipairs(expected) do
     if not read_file(relative_path) then
