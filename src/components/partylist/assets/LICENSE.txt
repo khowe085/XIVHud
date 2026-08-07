@@ -35,7 +35,8 @@ Regenerated as the row's content has grown, by rerunning the same transform at
 a new SOLID_TO (never by hand-editing pixels):
 
     2026-08-06  SOLID_TO 410 (the row's own right edge)     WIDTH 450
-    2026-08-07  SOLID_TO 502 (the buff icon grid's edge)    WIDTH 542
+    2026-08-07  SOLID_TO 502 (10 x 20px icons per row)      WIDTH 542
+    2026-08-07  SOLID_TO 460 (8 x 20px icons per row)       WIDTH 500
 
 buff_order.lua is additionally derived from Windower's generated
 resources/buffs.lua, whose notice is reproduced second.

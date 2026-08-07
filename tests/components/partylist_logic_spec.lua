@@ -926,7 +926,7 @@ describe("partylist logic", function()
       for index = 1, 32 do
         many[index] = index
       end
-      assert.are.equal(20, #shown(many))
+      assert.are.equal(16, #shown(many))
       config.buffs.max_icons = 4
       assert.are.equal(4, #shown(many))
     end)
@@ -936,7 +936,7 @@ describe("partylist logic", function()
       assert.are.same({ KO, WEAKNESS }, shown({ DOOM, WEAKNESS, KO }))
     end)
 
-    -- The layout builds twenty icon prims. A hand-edited max_icons above that
+    -- The layout builds sixteen icon prims. A hand-edited max_icons above that
     -- would silently drop the surplus while the commands claimed to draw them.
     it("never promises more icons than the layout has slots for", function()
       config.buffs.max_icons = 25
@@ -944,8 +944,8 @@ describe("partylist logic", function()
       for index = 1, 32 do
         many[index] = index
       end
-      assert.are.equal(20, #shown(many))
-      assert.is_not_nil(table.concat(select(1, logic.command({ "buff" })), "\n"):find("first 20", 1, true))
+      assert.are.equal(16, #shown(many))
+      assert.is_not_nil(table.concat(select(1, logic.command({ "buff" })), "\n"):find("first 16", 1, true))
     end)
 
     it("agrees with itself about the cap when max_icons is nonsense", function()

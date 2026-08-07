@@ -175,13 +175,13 @@ return {
          to every position so that the origin it is given is the true top-left
          corner -- otherwise the framework clamps the list against a box the
          art overhangs, and at the screen edge the overhanging piece vanishes. ]]
-    -- `right` covers the icon block (ends x=502) and the frame's fade past it
-    -- (ends x=542), both measured from the row's own left edge.
-    margin = { left = 24, top = 21, right = 132, bottom = 21 },
+    -- `right` covers the icon block (ends x=460) and the frame's fade past it
+    -- (ends x=500), both measured from the row's own left edge.
+    margin = { left = 24, top = 21, right = 90, bottom = 21 },
     background = {
       pos = { 0, -21 },
       color = { r = 255, g = 255, b = 255, a = 221 },
-      --[[ The `Wide` art, drawn 1:1 at 542.
+      --[[ The `Wide` art, drawn 1:1 at 500.
 
            The frame is a horizontal gradient rather than a panel. XIVParty's
            own strips fade in over their first 14 pixels, hold solid to x=240
@@ -191,17 +191,18 @@ return {
            instead -- fade-in kept, the flat solid section stretched, the tail
            compressed -- so it holds solid out to wherever the row's content
            actually ends and only then fades, over a fixed ~40px tail. See
-           assets/LICENSE.txt for the transform.
+           assets/LICENSE.txt for the transform (and its regeneration log --
+           this is the second time solid-to has moved with the icon grid).
 
            Solid-to was x=410 (the row's own right edge) until the buff icon
            grid grew past it: XIVParty pins its buffs to the row body and lives
            with the overflow, and once the frame could be stretched to cover
            whatever was drawn on it, matching that overflow was the simpler
            choice than re-shrinking the icons to fit inside 410 again. Solid-to
-           is now x=502, the icon grid's own right edge -- see buff_icons. ]]
-      top = image("assets/xiv/BgTopWide.png", { 0, 0 }, { 542, 21 }),
-      mid = image("assets/xiv/BgMidWide.png", { 0, 21 }, { 542, 12 }),
-      bottom = image("assets/xiv/BgBottomWide.png", { 0, 0 }, { 542, 21 }),
+           is now x=460, the icon grid's own right edge -- see buff_icons. ]]
+      top = image("assets/xiv/BgTopWide.png", { 0, 0 }, { 500, 21 }),
+      mid = image("assets/xiv/BgMidWide.png", { 0, 21 }, { 500, 12 }),
+      bottom = image("assets/xiv/BgBottomWide.png", { 0, 0 }, { 500, 21 }),
     },
     row = {
       bars = {
@@ -217,25 +218,28 @@ return {
         far = image("assets/xiv/RangeFar.png", { 0, 0 }, { 14, 12 }),
         distance = text({ 0, 1.5 }, 6, 1),
       },
-      --[[ Two rows of ten 20px icons from x=293, 1px apart both ways: 209px
-           wide, ending at x=502 -- past the row's own 410 and the TP bar's
+      --[[ Two rows of eight 20px icons from x=293, 1px apart both ways: 167px
+           wide, ending at x=460 -- past the row's own 410 and the TP bar's
            400, onto the frame's extended solid band above. 41px tall, with
            5px of clearance above the bar frame at row y=46.
 
-           This overflows the row body the same way XIVParty's does, and is
-           deliberately allowed to now that the frame is stretched to cover it
-           rather than being fixed at 410: a grid this size never fit inside
-           the row on its own, at any icon size worth drawing. ]]
+           Ten per row (2026-08-07) read as too wide -- eight is the actual
+           limit, not a size the icons had to be shrunk to reach. This still
+           overflows the row body the same way XIVParty's does, and is
+           deliberately allowed to now that the frame is stretched to cover
+           it rather than being fixed at 410. ]]
       buff_icons = {
         pos = { 293, 0 },
         size = { 20, 20 },
         spacing = { 1, 1 },
-        icons_by_row = { 10, 10 },
+        icons_by_row = { 8, 8 },
         -- Both rows left-aligned, unlike XIVParty's indented second row.
         offset_by_row = { 0, 0 },
         path = "assets/buffIcons/",
       },
-      cursor = image("assets/xiv/Cursor.png", { 20, -8 }, { 390, 80 }),
+      -- Width reaches the buff icon grid's own right edge (x=460): a targeted
+      -- member's buffs have to sit inside their own highlight, not past it.
+      cursor = image("assets/xiv/Cursor.png", { 20, -8 }, { 440, 80 }),
       --[[ The name and the job labels share a bottom edge at row y 29.
 
            Sizes are points and draw 4/3 as tall (see points_to_pixels), so the

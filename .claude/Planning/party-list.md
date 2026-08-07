@@ -592,6 +592,18 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
   first (6 x 16px) grid had. Verified against the real prim positions the same way as
   every geometry change above: the drawn block measured x 293..502 / y 0..41 in a dump
   of the actual widget.
+- **Eight per row, not ten** (Kevin, 2026-08-07 — "8 is definitely the max per row",
+  after looking at the 10-per-row grid live). Icon size, spacing and row count (2)
+  are untouched, so the vertical geometry from the bullet above is unaffected -- only
+  the horizontal numbers move. Eight 20px icons with 1px gaps is 167px wide, x 293..460.
+  Frame solid-to moves 502 -> 460 (regenerated again, same recipe -- see
+  `assets/LICENSE.txt`'s log), `margin.right` drops 132 -> 90. Cap 20 -> 16. Verified
+  the same way: the drawn block measured x 293..460 / y 0..41.
+- **The target cursor widened to match** (found live, 2026-08-07): highlighting a party
+  member drew the blue cursor box only out to x=410, the row's old edge, leaving a
+  targeted member's own buff icons (now out to x=460) outside their own highlight.
+  `cursor` grows 390 -> 440, ending at the icon grid's right edge. The alliance cursor,
+  which has no buff icons to reach, is untouched.
 - **A list with nobody in it draws nothing at all, frame included** (found live,
   2026-08-07): an enabled alliance list you are not currently in showed an empty
   bordered box. `hidden` was only ever true from `hide_solo`, which alliance lists

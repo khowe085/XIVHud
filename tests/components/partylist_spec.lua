@@ -198,7 +198,7 @@ describe("partylist widget", function()
           shown = shown + 1
         end
       end
-      assert.are.equal(20, shown)
+      assert.are.equal(16, shown)
     end)
   end)
 
@@ -382,7 +382,7 @@ describe("partylist widget", function()
     end)
 
     --[[ The frame has to reach across the buff icon grid -- which now runs
-         past the row's own edge, all the way to x=502, so the bars can be
+         past the row's own edge, all the way to x=460, so the bars can be
          covered along with it -- without trailing unboundedly far past that. ]]
     it("draws the frame across the icon grid without overshooting it", function()
       env.party = { p0 = member("Ayame", 1) }
@@ -397,10 +397,10 @@ describe("partylist widget", function()
       end
       assert.is_not_nil(strip)
 
-      -- 24 is the left margin; the icon grid's own right edge is 24 + 502.
+      -- 24 is the left margin; the icon grid's own right edge is 24 + 460.
       local right = strip.x - x + strip.width
-      assert.is_true(right >= 24 + 502, ("frame ends at %.0f, the icon grid ends at 526"):format(right))
-      assert.is_true(right <= 24 + 502 + 60, ("frame runs %.0f past the icon grid"):format(right - 526))
+      assert.is_true(right >= 24 + 460, ("frame ends at %.0f, the icon grid ends at 484"):format(right))
+      assert.is_true(right <= 24 + 460 + 60, ("frame runs %.0f past the icon grid"):format(right - 484))
     end)
 
     -- The name and the job labels are one block and have to share a bottom
@@ -456,7 +456,7 @@ describe("partylist widget", function()
     --[[ The icon grid is anchored to its bottom row, which is the one nearest
          the bars. A short buff list otherwise sat at the top of the block with
          a row of empty space between it and the bar. ]]
-    it("fills the bottom icon row first and only spills upward on the eleventh", function()
+    it("fills the bottom icon row first and only spills upward on the ninth", function()
       env.party = { p0 = member("Volker", 2) }
       settle(3)
 
@@ -483,19 +483,19 @@ describe("partylist widget", function()
         return sorted
       end
 
-      local ten = icon_rows(10)
-      assert.are.equal(1, #ten, "ten buffs should occupy one row")
-      local bottom_y = ten[1].y
+      local eight = icon_rows(8)
+      assert.are.equal(1, #eight, "eight buffs should occupy one row")
+      local bottom_y = eight[1].y
 
-      local eleven = icon_rows(11)
-      assert.are.equal(2, #eleven, "eleven buffs should occupy two rows")
-      assert.are.equal(bottom_y, eleven[2].y, "the lower geometric row must not move when the block grows")
-      assert.is_true(eleven[1].y < bottom_y, "the eleventh buff opens a row above, not below")
-      -- The first ten buffs are placed by index, not recency, so crossing
+      local nine = icon_rows(9)
+      assert.are.equal(2, #nine, "nine buffs should occupy two rows")
+      assert.are.equal(bottom_y, nine[2].y, "the lower geometric row must not move when the block grows")
+      assert.is_true(nine[1].y < bottom_y, "the ninth buff opens a row above, not below")
+      -- The first eight buffs are placed by index, not recency, so crossing
       -- the row boundary relocates them from the bottom position to the newly
-      -- opened top one; only the eleventh (newest) buff lands in the bottom slot.
-      assert.are.equal(10, eleven[1].n)
-      assert.are.equal(1, eleven[2].n)
+      -- opened top one; only the ninth (newest) buff lands in the bottom slot.
+      assert.are.equal(8, nine[1].n)
+      assert.are.equal(1, nine[2].n)
     end)
 
     it("moves every prim when the group moves", function()
@@ -668,6 +668,25 @@ describe("partylist widget", function()
   end)
 
   describe("the target cursor", function()
+    -- The buff icon grid runs past the row's own edge; the highlight has to
+    -- reach it, or a targeted member's buffs sit outside their own cursor.
+    it("extends the target cursor across the buff icon grid", function()
+      env.targets.t = { id = 1 }
+      env.party = { p0 = member("Ayame", 1) }
+      settle(3)
+      local cursor = nil
+      for _, prim in ipairs(prims.images) do
+        if type(prim.last.path) == "string" and prim.last.path:find("Cursor.png", 1, true) then
+          cursor = prim
+        end
+      end
+      assert.is_not_nil(cursor)
+      local x = select(1, widget.get_bounds())
+      local right = cursor.x - x + cursor.width
+      -- 24 is the left margin; the icon grid's own right edge is 24 + 460.
+      assert.is_true(right >= 24 + 460, ("cursor ends at %.0f, the icon grid ends at 484"):format(right))
+    end)
+
     it("marks the targeted row", function()
       env.targets.t = { id = 2 }
       env.party = { p0 = member("Ayame", 1), p1 = member("Volker", 2) }
