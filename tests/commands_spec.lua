@@ -18,7 +18,7 @@ describe("commands", function()
   local function assert_error(action, needle)
     assert.are.equal("error", action.action)
     assert.is_not_nil(action.message:lower():find(needle, 1, true), "message was: " .. action.message)
-    assert.is_not_nil(action.message:find("//xh help", 1, true), "every error points at help")
+    assert.is_not_nil(action.message:find("//hud help", 1, true), "every error points at help")
   end
 
   describe("help", function()

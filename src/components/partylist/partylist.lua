@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
      One factory, registered three times: the main party and the two alliance
      parties are separate components, so each gets its own config file, layout
-     slot, drag box and `//xh show|hide`. `ctx.variant` picks which party the
+     slot, drag box and `//hud show|hide`. `ctx.variant` picks which party the
      instance reads and which of the two row layouts it draws.
 
      This file owns prims and nothing else. What to draw comes from logic.lua,
@@ -40,7 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      of them.
 
      Every prim is created non-draggable: a widget is a group, and the
-     framework drags the group from `//xh layout`. ]]
+     framework drags the group from `//hud layout`. ]]
 
 local new_logic = require("components/partylist/logic")
 local build_defaults = require("components/partylist/defaults")

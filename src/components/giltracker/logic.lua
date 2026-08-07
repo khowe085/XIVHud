@@ -59,7 +59,7 @@ local HANDLED_CHUNKS = {
 -- beside it never moves as digits come and go.
 local RESERVED_CHARACTERS = 11
 -- Fraction of the font size one character occupies. The real width is nearer
--- 0.75 -- verified in `//xh layout`, where a capped value runs about two
+-- 0.75 -- verified in `//hud layout`, where a capped value runs about two
 -- characters under the icon -- but 0.6 is deliberate: reserving the true width
 -- parks the icon 75px from a single-digit value, and a gap that wide at every
 -- ordinary balance is worse than an overlap nobody will see below 100,000,000

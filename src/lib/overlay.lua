@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
 --[[ Layout-mode overlays: the highlight box and name label drawn over each
-     widget while `//xh layout` is on.
+     widget while `//hud layout` is on.
 
      Adopted from XIVParty's setup mode, which puts an image over each widget as
      both the drag hit-surface and the visible highlight. Here the hit-testing

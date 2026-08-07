@@ -73,18 +73,18 @@ local CORE_DEFAULTS = {
 
 local HELP = {
   "XIVHud commands:",
-  "  //xh help                 this list",
-  "  //xh layout               toggle layout mode: drag to move, wheel to scale,",
+  "  //hud help                 this list",
+  "  //hud layout               toggle layout mode: drag to move, wheel to scale,",
   "                            right-click to toggle, CTRL to ignore the grid",
-  "  //xh list                 components with their state",
-  "  //xh show|hide <name>     turn a component on or off",
-  "  //xh reset <name|all>     restore configuration defaults",
-  "  //xh slot <name>          switch layout slot",
-  "  //xh slot list            layout slots, active one marked",
-  "  //xh slot create <name>   new slot, copied from the active one",
-  "  //xh slot delete <name>   remove a slot",
-  "  //xh copy <from> <to>     replace one character's config with another's",
-  "  //xh <name> ...           pass a command to a component",
+  "  //hud list                 components with their state",
+  "  //hud show|hide <name>     turn a component on or off",
+  "  //hud reset <name|all>     restore configuration defaults",
+  "  //hud slot <name>          switch layout slot",
+  "  //hud slot list            layout slots, active one marked",
+  "  //hud slot create <name>   new slot, copied from the active one",
+  "  //hud slot delete <name>   remove a slot",
+  "  //hud copy <from> <to>     replace one character's config with another's",
+  "  //hud <name> ...           pass a command to a component",
 }
 
 local function new(deps)
@@ -159,7 +159,7 @@ local function new(deps)
       return nil
     end
     local state = layout.slot(config, active_slot(), default_state_of(component))
-    -- Repair in place rather than only on the way to the prims, so `//xh list`
+    -- Repair in place rather than only on the way to the prims, so `//hud list`
     -- and the next wheel step work from the same number that is on screen.
     state.scale = layout.clamp_scale(state.scale)
     return state
@@ -173,7 +173,7 @@ local function new(deps)
   end
 
   -- Handed to a component on attach so it can write its *own* config after a
-  -- change of its own (a `//xh <name> ...` command). Layout state is still
+  -- change of its own (a `//hud <name> ...` command). Layout state is still
   -- saved by core; a component never reaches another component's handle.
   local function saver_for(component)
     return function()
@@ -211,7 +211,7 @@ local function new(deps)
     component.set_pos(state.pos.x, state.pos.y)
 
     -- A position can arrive off screen from a hand-edited file, a resolution
-    -- change or `//xh copy`. Left alone, layout mode's hit test could never
+    -- change or `//hud copy`. Left alone, layout mode's hit test could never
     -- reach the widget again. Bounds are only known once the position and
     -- scale are on the component, hence the second set_pos.
     local bounds_x, bounds_y, width, height = component.get_bounds()
@@ -289,7 +289,7 @@ local function new(deps)
   end
 
   -- Pushes freshly loaded configuration into the framework and the components.
-  -- Shared by login and by `//xh copy`, which replaces the files underneath us.
+  -- Shared by login and by `//hud copy`, which replaces the files underneath us.
   local function apply_settings(name)
     local config = core_config()
     visibility.set_logged_in(name ~= nil)
@@ -595,7 +595,7 @@ local function new(deps)
       layout.create_slot(handles[component.name].get(), name, source, default_state_of(component))
       persist(component)
     end
-    say(("layout slot '%s' created from '%s' - '//xh slot %s' to switch to it"):format(name, source, name))
+    say(("layout slot '%s' created from '%s' - '//hud slot %s' to switch to it"):format(name, source, name))
   end
 
   local function slot_delete(name)
@@ -703,7 +703,7 @@ local function new(deps)
     return copied, failed
   end
 
-  -- `//xh copy <source> <destination>` replaces the destination outright: its
+  -- `//hud copy <source> <destination>` replaces the destination outright: its
   -- tree is emptied before the copy, so what remains is the source's
   -- configuration and nothing else. There is no undo.
   local function run_copy(action)
@@ -745,7 +745,7 @@ local function new(deps)
 
     if failed > 0 then
       say(("%d file(s) could not be copied from %s to %s; %d were"):format(failed, source, destination, copied))
-      say(("  %s's configuration is now incomplete - '//xh reset all' starts over"):format(destination))
+      say(("  %s's configuration is now incomplete - '//hud reset all' starts over"):format(destination))
       return
     end
 
@@ -762,7 +762,7 @@ local function new(deps)
     elseif action.action == "layout" then
       if require_character() then
         set_layout_mode(not layout_mode.active())
-        say(layout_mode.active() and "layout mode on - //xh layout again when you are done" or "layout mode off")
+        say(layout_mode.active() and "layout mode on - //hud layout again when you are done" or "layout mode off")
       end
     elseif action.action == "list" then
       local components = registry.all()

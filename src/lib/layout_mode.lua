@@ -26,7 +26,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ `//xh layout` — the FFXIV HUD-Layout equivalent, as a pure state machine.
+--[[ `//hud layout` — the FFXIV HUD-Layout equivalent, as a pure state machine.
 
      A widget is a *group* of prims, so the texts library's own per-object drag
      is useless here: it would move one prim and leave the rest behind. Instead

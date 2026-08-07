@@ -83,7 +83,7 @@ commands, configured only via settings.xml.
 ## Deviations from the reference (decided 2026-08-05)
 
 - **Position/scale/visibility belong to the framework.** Drop the fixed anchor and
-  the `pos` settings: the widget is dragged in `//xh layout`, state lives in layout
+  the `pos` settings: the widget is dragged in `//hud layout`, state lives in layout
   slots. Default slot position ≈ the reference anchor (bottom-right, computed from
   screen size in `defaults.lua`, as parambar does).
 - **Origin is the top-left of a reserved box, not the text anchor.** The contract is
@@ -116,7 +116,7 @@ commands, configured only via settings.xml.
   status-4 hide; `zoning` and `logged_out` are an upgrade (the reference only
   invalidated its cache on `0x00A`). The component implements no hide logic.
 - **Scroll Lock hide key dropped entirely** (decided 2026-08-05) — no component key
-  handler, and no framework backlog item. `//xh show|hide giltracker` covers it.
+  handler, and no framework backlog item. `//hud show|hide giltracker` covers it.
 - **No component commands.** Nothing here is worth a tuning verb (font/colors are
   config keys); the framework's `show`/`hide`/`reset` and layout mode suffice.
   `handle_command` is left unimplemented — it's optional in the contract.
@@ -132,7 +132,7 @@ commands, configured only via settings.xml.
   digits change and doesn't collapse at `0` — and because the fixed box is what makes
   the origin contract satisfiable at all. `reserved_width ≈ 11 × font_size × ratio`
   as a tunable constant, `0.6`. **The true width is nearer `0.75`** — verified in
-  `//xh layout` on 2026-08-05, where a capped value runs about two characters under
+  `//hud layout` on 2026-08-05, where a capped value runs about two characters under
   the icon. `0.6` is kept anyway (decided 2026-08-05): reserving the true width
   parks the icon ~75px from a single-digit value, and that gap at every ordinary
   balance is worse than an overlap that cannot appear below 100,000,000 gil. The
@@ -278,7 +278,7 @@ All against `logic.lua` with plain tables; prim fakes only for the widget layer:
 
 In-client smoke (Windows/Windower): value updates on NPC sale, AH sale/purchase,
 treasure-pool gil, and player trade; survives a zone change; hidden during an NPC
-cutscene; drag/scale in `//xh layout` persists; `//lua reload xivhud` leaves no
+cutscene; drag/scale in `//hud layout` persists; `//lua reload xivhud` leaves no
 prims.
 
 ## Milestones
@@ -289,7 +289,7 @@ The framework (M0–M3) is merged, so nothing here is blocked on it.
 - **GT1 — widget + asset + wiring**: `giltracker.lua`, `gil.png` + `LICENSE.txt`
   copied in, the four entry-point changes above, registered with `core.register`;
   in-client smoke.
-- **GT2 — layout integration**: drag/scale/preview/bounds verified in `//xh layout`
+- **GT2 — layout integration**: drag/scale/preview/bounds verified in `//hud layout`
   and persisted to the active slot — in particular that `get_bounds()` returns the
   origin `set_pos` was handed, since the reserved-box design exists to satisfy that.
 - **Backlog** (2026-08-05, order TBD): session delta / gil-per-hour readout;

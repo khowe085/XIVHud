@@ -163,7 +163,7 @@ Windower BSD 3-clause notice (© 2013-2020 Windower) in addition.
 
 - **Position, scale, visibility and enable are framework-owned.** No `//xp setup`, no
   per-party `pos`/`scale`/out-of-bounds fixups, no `hideCutscene` and no keyboard hide-key in
-  the component: `//xh layout` drags/scales/toggles, state lives in layout slots, and
+  the component: `//hud layout` drags/scales/toggles, state lives in layout slots, and
   `lib/visibility` already covers cutscene (`event`), `zoning` and `logged_out`.
   `hideSolo` has no framework equivalent and stays a component setting.
 - **Config is our per-component `.lua` handle**, not XML settings plus XML layout files.
@@ -225,7 +225,7 @@ Windower BSD 3-clause notice (© 2013-2020 Windower) in addition.
 - **Three registered components out of one directory.** `partylist.lua` exports
   `new(ctx)` and the entry point registers it three times under `partylist`,
   `alliancelist1`, `alliancelist2`, each getting its own config file, layout slots, drag box and
-  `//xh show|hide|reset` for free. *Convention wrinkle*: the framework plan says a
+  `//hud show|hide|reset` for free. *Convention wrinkle*: the framework plan says a
   component's code lives in `components/<component>/` matching its name. Three directories
   would instead force a cross-component `require`, which the convention forbids outright —
   so one directory backing three names is the smaller deviation. Worth a line in CLAUDE.md
@@ -353,13 +353,13 @@ Via the framework's `handle_command(args)` passthrough; parsing is pure in `logi
 Framework conventions apply: case-insensitive verbs, unknown input → one-line hint.
 
 ```
-//xh partylist                          -- current settings summary
-//xh partylist spacing <px>
-//xh partylist align top|bottom
-//xh partylist emptyrows on|off
-//xh partylist hidesolo on|off
-//xh partylist range num|icons          -- numeric vs indicator mode
-//xh partylist range <near> <far>       -- indicator distances, 0/off to disable
+//hud partylist                          -- current settings summary
+//hud partylist spacing <px>
+//hud partylist align top|bottom
+//hud partylist emptyrows on|off
+//hud partylist hidesolo on|off
+//hud partylist range num|icons          -- numeric vs indicator mode
+//hud partylist range <near> <far>       -- indicator distances, 0/off to disable
 ```
 
 Same set on `alliancelist1` / `alliancelist2`, minus `hidesolo`.
@@ -367,16 +367,16 @@ Same set on `alliancelist1` / `alliancelist2`, minus `hidesolo`.
 Buff priority (design proposal, 2026-08-05 — the tweak Kevin asked for):
 
 ```
-//xh partylist buff                     -- the icon slots currently shown, in order
-//xh partylist buff list [page]         -- the WHOLE priority order, 20 per page
-//xh partylist buff find <text>         -- search all buffs by name -> rank + id
-//xh partylist buff active [<member>]   -- buffs live on a party member right now
-//xh partylist buff top <id|name>       -- move to rank 1
-//xh partylist buff up|down <id|name>   -- move one rank
-//xh partylist buff rank <id|name> <n>  -- move to rank n
-//xh partylist buff reset               -- back to the shipped order
-//xh partylist buff filter add|remove|clear|list [<id|name>]
-//xh partylist buff filter mode blacklist|whitelist
+//hud partylist buff                     -- the icon slots currently shown, in order
+//hud partylist buff list [page]         -- the WHOLE priority order, 20 per page
+//hud partylist buff find <text>         -- search all buffs by name -> rank + id
+//hud partylist buff active [<member>]   -- buffs live on a party member right now
+//hud partylist buff top <id|name>       -- move to rank 1
+//hud partylist buff up|down <id|name>   -- move one rank
+//hud partylist buff rank <id|name> <n>  -- move to rank n
+//hud partylist buff reset               -- back to the shipped order
+//hud partylist buff filter add|remove|clear|list [<id|name>]
+//hud partylist buff filter mode blacklist|whitelist
 ```
 
 **Discovery is the point** (Kevin, 2026-08-05): only 10 icons render, so every command that
@@ -437,7 +437,7 @@ All against the pure modules, no client:
 
 In-client smoke (Windows/Windower, per milestone): rows track a real party; zone a member
 out and back; a full 18-person alliance across three lists; drag/scale each list in
-`//xh layout` and confirm persistence; cutscene hide; `//lua reload xivhud` leaves nothing
+`//hud layout` and confirm persistence; cutscene hide; `//lua reload xivhud` leaves nothing
 on screen.
 
 ## Milestones
@@ -448,7 +448,7 @@ on screen.
   reproduces a handcrafted packet; buff ordering is stable and deterministic.
 - **PL1 — framework touchpoints.** `incoming chunk` forwarding, the new `ctx` deps,
   three-instance registration. *Acceptance*: in-client, a stub component logs parsed packets
-  for all four ids, and `//xh list` shows `partylist`, `alliancelist1`, `alliancelist2`.
+  for all four ids, and `//hud list` shows `partylist`, `alliancelist1`, `alliancelist2`.
 - **PL2 — the main list renders.** Assets copied in with `LICENSE.txt`, `layout.lua`
   geometry, rows built/destroyed with membership; bars + numbers + name + job/subjob text +
   job icon + leader markers + zone text + target cursor.
@@ -509,7 +509,7 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
 - **`res`/`packets` are the party list's dependency, not the addon's.** They are
   required outside the `step` chain, because a step failure skips everything after it
   -- a broken resources install would otherwise cost the framework, parambar and every
-  handler. If they fail, the three party lists are not registered and `//xh` says why.
+  handler. If they fail, the three party lists are not registered and `//hud` says why.
 - `special` is not an unused role after all: the trust table gives it to Darrcuiln,
   Monberaux, Selh'teus and Excenmille (S). The plan's reference note was wrong.
 - Prims are built in the layout's `z_order` because Windower's libraries expose no
@@ -617,7 +617,7 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
 ### Still unverified (needs a live Windower client)
 
 Nothing here has run inside FFXI. The acceptance criteria for PL1-PL5 are all
-in-client and none of them have been met yet: `//xh list` showing the three
+in-client and none of them have been met yet: `//hud list` showing the three
 components, rows tracking a real party, buff icons appearing with the packet stream,
 18 members across three lists, drag/scale persistence, and `//lua reload` leaving
 nothing on screen. Green locally does not mean it loads.

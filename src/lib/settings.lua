@@ -198,7 +198,7 @@ local function new(deps)
   end
 
   -- Re-reads every handle from disk, discarding whatever was held in memory.
-  -- Used after the config files are replaced underneath us (`//xh copy`).
+  -- Used after the config files are replaced underneath us (`//hud copy`).
   function self.reload()
     for _, key in ipairs(order) do
       load_handle(handles[key])

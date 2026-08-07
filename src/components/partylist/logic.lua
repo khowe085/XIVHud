@@ -638,7 +638,7 @@ local function new(deps)
     local settings = config.buffs
     if type(settings) ~= "table" then
       -- A throwaway, deliberately not written back: whatever the user put
-      -- there is theirs to fix, and `//xh reset` is how.
+      -- there is theirs to fix, and `//hud reset` is how.
       return { priority = {}, filters = {}, filter_mode = "blacklist" }
     end
     if type(settings.priority) ~= "table" then
@@ -958,7 +958,7 @@ local function new(deps)
 
   --[[ Commands ------------------------------------------------------------
 
-       `//xh <name> ...`, parsed here so the widget only has to save and
+       `//hud <name> ...`, parsed here so the widget only has to save and
        re-lay out. Answers are a list of lines, because the buff verbs exist to
        show you an order 621 entries long and one chat line cannot.
 
@@ -1030,7 +1030,7 @@ local function new(deps)
   local function set_spacing(word)
     local value = whole_number(word)
     if not value or value < 0 then
-      return { ("//xh %s spacing needs a whole number of at least 0"):format(NAME) }, false
+      return { ("//hud %s spacing needs a whole number of at least 0"):format(NAME) }, false
     end
     config.item_spacing = value
     return { ("%s row spacing set to %d"):format(NAME, value) }, true
@@ -1039,7 +1039,7 @@ local function new(deps)
   local function set_align(word)
     local wanted = word and word:lower()
     if wanted ~= "top" and wanted ~= "bottom" then
-      return { ("//xh %s align needs top or bottom"):format(NAME) }, false
+      return { ("//hud %s align needs top or bottom"):format(NAME) }, false
     end
     config.align_bottom = wanted == "bottom"
     return { ("%s grows %s"):format(NAME, wanted == "bottom" and "upward from the bottom" or "downward") }, true
@@ -1048,7 +1048,7 @@ local function new(deps)
   local function set_toggle(key, word, label)
     local wanted = word and word:lower()
     if wanted ~= "on" and wanted ~= "off" then
-      return { ("//xh %s %s needs on or off"):format(NAME, label) }, false
+      return { ("//hud %s %s needs on or off"):format(NAME, label) }, false
     end
     config[key] = wanted == "on"
     return { ("%s %s %s"):format(NAME, label, wanted) }, true
@@ -1076,12 +1076,12 @@ local function new(deps)
 
     local near, far = whole_number(args[2]), whole_number(args[3])
     if not near or not far or near < 0 or far < 0 then
-      return { ("//xh %s range needs num, icons, or two distances (near far)"):format(NAME) }, false
+      return { ("//hud %s range needs num, icons, or two distances (near far)"):format(NAME) }, false
     end
     if far > 0 and near > 0 and far < near then
       -- The far icon marks the wider ring, so a far distance inside the near
       -- one could never be reached.
-      return { ("//xh %s range needs the far distance to be further than the near one"):format(NAME) }, false
+      return { ("//hud %s range needs the far distance to be further than the near one"):format(NAME) }, false
     end
     settings.near, settings.far = near, far
     keep()
@@ -1095,7 +1095,7 @@ local function new(deps)
   -- so an ambiguous name asks which rather than guessing.
   local function resolve_buff(text)
     if text == nil or text == "" then
-      return nil, { ("//xh %s buff needs a buff id or name"):format(NAME) }
+      return nil, { ("//hud %s buff needs a buff id or name"):format(NAME) }
     end
 
     local id = whole_number(text)
@@ -1114,7 +1114,7 @@ local function new(deps)
       return hits[1]
     end
     if #hits == 0 then
-      return nil, { ("no buff called '%s' - try '//xh %s buff find %s'"):format(text, NAME, text) }
+      return nil, { ("no buff called '%s' - try '//hud %s buff find %s'"):format(text, NAME, text) }
     end
 
     table.sort(hits)
@@ -1179,13 +1179,13 @@ local function new(deps)
         lines[#lines + 1] = ("  --- cut: only the %d above are ever drawn ---"):format(cap())
       end
     end
-    lines[#lines + 1] = ("  '//xh %s buff list <page>' for another page"):format(NAME)
+    lines[#lines + 1] = ("  '//hud %s buff list <page>' for another page"):format(NAME)
     return lines, false
   end
 
   local function find_buffs(text)
     if text == "" then
-      return { ("//xh %s buff find needs something to search for"):format(NAME) }, false
+      return { ("//hud %s buff find needs something to search for"):format(NAME) }, false
     end
 
     local ranks = buff_order()
@@ -1328,7 +1328,7 @@ local function new(deps)
   local function rank_buff(args)
     local rank = whole_number(args[#args])
     if not rank or rank < 1 then
-      return { ("//xh %s buff rank needs a buff and a rank of at least 1"):format(NAME) }, false
+      return { ("//hud %s buff rank needs a buff and a rank of at least 1"):format(NAME) }, false
     end
     local words = table.concat(args, " ", 3, #args - 1)
     local id, complaint = resolve_buff(words)
@@ -1361,7 +1361,7 @@ local function new(deps)
     if action == "mode" then
       local mode = args[4] and args[4]:lower()
       if mode ~= "blacklist" and mode ~= "whitelist" then
-        return { ("//xh %s buff filter mode needs blacklist or whitelist"):format(NAME) }, false
+        return { ("//hud %s buff filter mode needs blacklist or whitelist"):format(NAME) }, false
       end
       settings.filter_mode = mode
       return { ("%s buff filter is now a %s"):format(NAME, mode) }, true
@@ -1388,7 +1388,7 @@ local function new(deps)
       return { ("%s is now filtered"):format(buff_name(id)) }, true
     end
 
-    return { ("//xh %s buff filter takes add, remove, clear, list or mode"):format(NAME) }, false
+    return { ("//hud %s buff filter takes add, remove, clear, list or mode"):format(NAME) }, false
   end
 
   local function buff_command(args)
@@ -1396,7 +1396,7 @@ local function new(deps)
       return { ("%s has no buff icons - buffs are a %s setting"):format(NAME, NAMES.main) }, false
     end
     if not buffs_usable() then
-      return { ("%s buff settings are not a table - try '//xh reset %s'"):format(NAME, NAME) }, false
+      return { ("%s buff settings are not a table - try '//hud reset %s'"):format(NAME, NAME) }, false
     end
 
     local verb = args[2] and args[2]:lower() or nil
@@ -1427,7 +1427,7 @@ local function new(deps)
       return filter_command(args)
     end
     return {
-      ("//xh %s buff takes list, find, active, top, up, down, rank, reset or filter"):format(NAME),
+      ("//hud %s buff takes list, find, active, top, up, down, rank, reset or filter"):format(NAME),
     },
       false
   end

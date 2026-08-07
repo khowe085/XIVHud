@@ -157,7 +157,7 @@ local function new(deps)
   end
 
   -- `default` first (it is the one slot that always exists), then the rest
-  -- alphabetically, so `//xh slot list` reads the same way every time.
+  -- alphabetically, so `//hud slot list` reads the same way every time.
   function self.slot_names(config)
     local slots = type(config.slots) == "table" and config.slots or {}
     local names = {}

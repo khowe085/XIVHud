@@ -46,9 +46,9 @@ _addon.version = "0.1.0"
 -- Windower honours here was never established. The convention is
 -- `_addon.commands` alone (all but one addon in the repository picks one field
 -- or the other), and dropping `_addon.command` needs a live client to confirm
--- `//xh` still routes -- which is the only reason it is still here.
-_addon.command = "xh"
-_addon.commands = { "xh", "xivhud" }
+-- `//hud` still routes -- which is the only reason it is still here.
+_addon.command = "hud"
+_addon.commands = { "hud", "xivhud" }
 
 local CHAT_COLOR = 207
 -- Plain white square, tinted and stretched for the layout-mode highlight.
@@ -268,7 +268,7 @@ local function write_file(path, contents)
   return true
 end
 
--- Directory enumeration for `//xh copy`, which walks another character's
+-- Directory enumeration for `//hud copy`, which walks another character's
 -- data/ tree. get_dir returns files and directories alike, so entries are
 -- classified with dir_exists. lib/core expects bare entry names; the trailing
 -- match strips a leading path in case get_dir hands back full ones.
@@ -289,7 +289,7 @@ local function is_dir(path)
   return windower.dir_exists(windower.addon_path .. path)
 end
 
--- Used by `//xh copy` to empty the destination first. os.remove deletes files;
+-- Used by `//hud copy` to empty the destination first. os.remove deletes files;
 -- on a directory it simply fails, which is fine -- an empty directory left
 -- behind changes nothing.
 local function delete_file(path)
@@ -575,7 +575,7 @@ local function check_assets()
 end
 
 -- Registered before anything else could have gone wrong. An addon that answers
--- no commands cannot be diagnosed from inside the game, so //xh always replies:
+-- no commands cannot be diagnosed from inside the game, so //hud always replies:
 -- with the failure if there was one, and normally otherwise.
 windower.register_event("addon command", function(...)
   if load_error then
@@ -590,7 +590,7 @@ if load_error then
   windower.register_event("load", function()
     trace("load event: reporting the failure")
     chat("did not load - " .. load_error)
-    chat("  nothing will be drawn. Type //xh to see this again.")
+    chat("  nothing will be drawn. Type //hud to see this again.")
   end)
   trace("---- stopped: " .. load_error)
   return
@@ -713,4 +713,4 @@ for _, vital in ipairs({ "hp", "hpp", "mp", "mpp", "tp" }) do
 end
 
 trace("---- chunk finished, every handler registered")
-chat("loaded - type //xh for commands")
+chat("loaded - type //hud for commands")

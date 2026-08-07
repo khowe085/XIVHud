@@ -39,7 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        reproduced in assets/LICENSE.txt are met.
 
      The names in the trailing comments are for the reader only -- nothing
-     resolves a buff by the name in this file, and `//xh partylist buff` reads
+     resolves a buff by the name in this file, and `//hud partylist buff` reads
      names from res.buffs. A buff id absent from this list is not an error: it
      simply sorts after everything ranked here. ]]
 

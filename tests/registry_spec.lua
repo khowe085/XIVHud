@@ -54,7 +54,7 @@ describe("registry", function()
       end)
     end)
 
-    it("refuses 'all', which //xh reset already means", function()
+    it("refuses 'all', which //hud reset already means", function()
       assert.has_error(function()
         registry.register(component("all"))
       end)

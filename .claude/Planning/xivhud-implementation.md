@@ -7,7 +7,7 @@ Status: draft, 2026-08-04. Scope: the widget **framework** only. Individual widg
 
 An internal framework for composable HUD widgets in the style of FFXIV's HUD system:
 a widget contract + registry, a layout system with an FFXIV-style **drag layout mode**
-(`//xh layout`), settings persistence, and event plumbing — all structured per the
+(`//hud layout`), settings persistence, and event plumbing — all structured per the
 repo's DI conventions so everything except the entry point is unit-testable.
 
 Non-goals (decided 2026-08-04):
@@ -86,7 +86,7 @@ src/
     layout.lua          -- pure layout state: pos/visible per widget, snap math, clamp
     layout_mode.lua     -- pure drag state machine (enter/exit, hit test, drag, save)
     visibility.lua      -- pure suppression-set resolver (cutscene/zoning/logout x enabled)
-    commands.lua        -- pure //xh subcommand parser -> action tables
+    commands.lua        -- pure //hud subcommand parser -> action tables
     settings.lua        -- per-component config service: data/<Character>/<component> handles
   components/
     <component>/        -- ALL of a component's code, isolated per component
@@ -122,7 +122,7 @@ Factory style per CLAUDE.md: `new(ctx) -> widget` where `ctx` bundles injected d
 | `set_preview(on)` | render sample data for layout mode (FFXIV-style full preview) |
 | `get_bounds() -> x, y, w, h` | bounding box for layout-mode hit testing |
 | `update(...)` | data refresh (event-driven and/or prerender-throttled) |
-| `handle_command(args)` | *optional*: receives `//xh <name> ...` passthrough args |
+| `handle_command(args)` | *optional*: receives `//hud <name> ...` passthrough args |
 | `destroy()` | dispose prims (unload/reload safety) |
 
 ### Entry point & data flow
@@ -136,7 +136,7 @@ the visibility suppression set. Widget data in FFXI is
 mostly *polled* (`get_player()` etc. on a prerender throttle) with packet/event pushes
 added later per-widget.
 
-### Layout mode (`//xh layout`)
+### Layout mode (`//hud layout`)
 
 FFXIV HUD-Layout equivalent, per the XIVParty patterns above. On enter: force-show
 **all** widgets (including disabled ones) in preview mode with overlay highlights,
@@ -154,7 +154,7 @@ return `true`):
   be positioned and re-enabled.
 
 Persist through the widget's own config handle on every drag-release, scale change,
-and enable-toggle. On exit (`//xh layout` again): unregister handlers, restore live
+and enable-toggle. On exit (`//hud layout` again): unregister handlers, restore live
 data, show enabled widgets only.
 
 ### Auto-hide (decided 2026-08-04)
@@ -177,23 +177,23 @@ XIVParty's equivalent) can disable the event reason for users who want the HUD
 during dialogue. Component-specific policies (e.g.
 XIVParty's hide-while-solo) stay per-component features, layered on top.
 
-### Commands (`//xh`, decided 2026-08-04)
+### Commands (`//hud`, decided 2026-08-04)
 
-Aliases: `_addon.command = "xh"` plus `xivhud` via `_addon.commands` (both free).
+Aliases: `_addon.command = "hud"` plus `xivhud` via `_addon.commands` (both free).
 
 ```
-//xh                       -- help (safe, discoverable; layout stays explicit)
-//xh help
-//xh layout | setup        -- toggle layout mode ("setup" = community-convention alias)
-//xh list                  -- components with enabled state, pos, scale
-//xh show|hide <component> -- explicit pair (idempotent, macro-safe; no bare toggle verb)
-//xh reset <component|all> -- restore config defaults
-//xh slot <name>           -- switch layout slot (unknown name -> error + slot list)
-//xh slot create <name>    -- new slot, seeded from the active one
-//xh slot list             -- slots with the active one marked
-//xh slot delete <name>    -- refuse for "default" and for the active slot
-//xh copy <character> confirm -- copy another character's config dir (post-M3)
-//xh <component> [...]     -- passthrough to the component's optional handle_command
+//hud                       -- help (safe, discoverable; layout stays explicit)
+//hud help
+//hud layout | setup        -- toggle layout mode ("setup" = community-convention alias)
+//hud list                  -- components with enabled state, pos, scale
+//hud show|hide <component> -- explicit pair (idempotent, macro-safe; no bare toggle verb)
+//hud reset <component|all> -- restore config defaults
+//hud slot <name>           -- switch layout slot (unknown name -> error + slot list)
+//hud slot create <name>    -- new slot, seeded from the active one
+//hud slot list             -- slots with the active one marked
+//hud slot delete <name>    -- refuse for "default" and for the active slot
+//hud copy <character> confirm -- copy another character's config dir (post-M3)
+//hud <component> [...]     -- passthrough to the component's optional handle_command
 ```
 
 - **Reserved verbs** (`help`, `layout`, `setup`, `list`, `show`, `hide`, `reset`,
@@ -202,7 +202,7 @@ Aliases: `_addon.command = "xh"` plus `xivhud` via `_addon.commands` (both free)
   isolation.
 - **Parser** (`lib/commands`) is pure: verb and component name match
   case-insensitively; remaining args pass through raw (character names keep case).
-  Unknown input → one-line hint plus `//xh help` pointer, never silence (Windower
+  Unknown input → one-line hint plus `//hud help` pointer, never silence (Windower
   fails silently enough on its own).
 - Chat feedback uses one consistent prefix/color everywhere.
 
@@ -269,12 +269,12 @@ Fake prim recorder in `tests/support/fakes.lua`: a `texts_new`-shaped stub recor
 `pos/show/hide/text` calls so widget group-move logic is assertable.
 
 In-client smoke checklist (manual, Windows/Windower — per milestone): load clean,
-`//xh layout` drag + snap, positions survive `//lua reload xivhud`, unload leaves no prims.
+`//hud layout` drag + snap, positions survive `//lua reload xivhud`, unload leaves no prims.
 
 ## Milestones
 
 - **M0 — core skeleton**: `commands`, `registry`, `settings` (config service:
-  sandboxed `.lua` load, serializer, defaults merge) + specs; `//xh help` working
+  sandboxed `.lua` load, serializer, defaults merge) + specs; `//hud help` working
   in-client. BSD headers on new source files — holder: **Azureblood2** (decided
   2026-08-04).
 - **M1 — render loop**: prim deps wrappers, login-gated init (no character → no
@@ -286,16 +286,16 @@ In-client smoke checklist (manual, Windows/Windower — per milestone): load cle
 - **M2 — layout mode**: `layout` + `layout_mode` + persistence; drag/CTRL-snap/
   wheel-scale/right-click-toggle/clamp verified in client, incl. the per-state
   overlay visuals.
-- **M3 — polish**: per-widget `//xh show|hide|reset`, the `hideCutscene` core toggle,
+- **M3 — polish**: per-widget `//hud show|hide|reset`, the `hideCutscene` core toggle,
   update CLAUDE.md architecture section —
   including the per-component settings convention, which supersedes the template's
   single-`settings.xml` bullet — and remove the template `status` module + spec
   (CLAUDE.md says it stays only until real modules exist).
 - **Post-M3 backlog** (decided 2026-08-04, order TBD):
-  - `//xh slot` command set — switch / `create` (seeded from active) / `list` /
+  - `//hud slot` command set — switch / `create` (seeded from active) / `list` /
     `delete` (refused for `default` and the active slot). Schema is already
     slot-shaped from M2, so this is command + apply logic only.
-  - `//xh copy <character> confirm` — copies `data/<Other>/*` over the current
+  - `//hud copy <character> confirm` — copies `data/<Other>/*` over the current
     character's dir, then rebuilds configs (hook exists for login). Destructive →
     `confirm` required; unknown source → list available character dirs. Directory
     enumeration probably `windower.get_dir` (~70% — verify then).
@@ -307,7 +307,7 @@ Each milestone lands green (`busted` + `luacheck` + `stylua --check`) before the
 
 None as of 2026-08-04 — all decisions are recorded inline with their dates (slots:
 named, `default` first, schema at M2, commands post-M3; snap: on by default, CTRL
-frees; cross-character: `//xh copy` post-M3).
+frees; cross-character: `//hud copy` post-M3).
 
 ## References
 

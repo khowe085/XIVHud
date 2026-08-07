@@ -35,7 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      always dispose them — XIVBar had no unload path and left its bars on screen.
 
      All seven prims are created non-draggable: a widget is a group, and the
-     framework drags the group from `//xh layout`. ]]
+     framework drags the group from `//hud layout`. ]]
 
 local new_logic = require("components/parambar/logic")
 local build_defaults = require("components/parambar/defaults")

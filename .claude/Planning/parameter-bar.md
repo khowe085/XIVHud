@@ -55,7 +55,7 @@ left→right) + three right-justified numeric texts, anchored bottom-center
 ## Deviations from XIVBar (decided 2026-08-04)
 
 - **Position/scale/visibility belong to the framework.** Drop `OffsetX`/`OffsetY`
-  and the fixed anchor: the widget is dragged in `//xh layout`, state lives in
+  and the fixed anchor: the widget is dragged in `//hud layout`, state lives in
   layout slots. Default slot position ≈ XIVBar's anchor (bottom-center: computed
   from screen size at first init). Scale is new (contract requirement): multiplies
   image sizes, font size, and the padding offsets.
@@ -137,18 +137,18 @@ Our config service + snake_case keys; XIVBar names in parentheses for the mappin
 }
 ```
 
-## Commands (`//xh parambar`, added 2026-08-04)
+## Commands (`//hud parambar`, added 2026-08-04)
 
 Via the framework's `handle_command(args)` passthrough; parsing is a pure function
 in `logic.lua`. Framework conventions apply: case-insensitive verbs, unknown input
 → one-line hint (never silence), consistent chat prefix.
 
 ```
-//xh parambar                    -- show current metrics + compact state
-//xh parambar width <px>         -- fill width at 100%
-//xh parambar spacing <px>       -- gap between bars
-//xh parambar offset <px>        -- fill x offset vs background
-//xh parambar compact on|off     -- toggle compact mode
+//hud parambar                    -- show current metrics + compact state
+//hud parambar width <px>         -- fill width at 100%
+//hud parambar spacing <px>       -- gap between bars
+//hud parambar offset <px>        -- fill x offset vs background
+//hud parambar compact on|off     -- toggle compact mode
 ```
 
 - `width`/`spacing`/`offset` write to the **active** metric set (`bar` or
@@ -183,7 +183,7 @@ All against `logic.lua` with plain tables — no prim fakes needed until group-m
   destroy disposes every prim, render plan → prim calls.
 
 In-client smoke (Windows/Windower): bars track damage/rest ticks with the XIVBar
-feel, TP highlight at 1000, drag/scale in `//xh layout` persists, cutscene hide,
+feel, TP highlight at 1000, drag/scale in `//hud layout` persists, cutscene hide,
 `//lua reload xivhud` clean.
 
 ## Milestones
@@ -194,12 +194,12 @@ feel, TP highlight at 1000, drag/scale in `//xh layout` persists, cutscene hide,
   entry-point event wiring, registered in the framework; in-client smoke. Needs
   framework M1; replaces the M1 placeholder widget as the registry's occupant.
 - **PB2 — layout integration + commands**: drag/scale/preview verified in
-  `//xh layout` (needs framework M2); the `//xh parambar` metrics command set
+  `//hud layout` (needs framework M2); the `//hud parambar` metrics command set
   wired through `handle_command`; compact + dim toggles exercised in-client.
 - **Backlog** (2026-08-04, order TBD): theme folder system (multi-theme resolution,
   custom user themes); optional bar-fill tinting at the low-vitals bands
   (XIVParty-style opt-in — needs in-client eyeballing of tint over the textures);
-  hide/blank MP bar for MP-less jobs; further `//xh parambar` subcommands beyond
+  hide/blank MP bar for MP-less jobs; further `//hud parambar` subcommands beyond
   the metrics set (e.g. font/color tweaking) if ever wanted.
 
 ## License & attribution

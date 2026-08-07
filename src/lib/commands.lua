@@ -26,7 +26,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ Pure `//xh` parser: argument list in, action table out.
+--[[ Pure `//hud` parser: argument list in, action table out.
 
      Nothing here executes anything — the entry point maps actions onto the
      framework. Verbs and component names match case-insensitively; everything
@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      keep their case. Unknown input always produces an `error` action with a
      one-line hint: Windower fails silently often enough on its own. ]]
 
-local HELP_HINT = "see //xh help"
+local HELP_HINT = "see //hud help"
 
 local RESERVED = {
   help = true,
@@ -55,7 +55,7 @@ local function fail(message)
 end
 
 -- Windower hands over whatever the user typed; drop the empty strings a stray
--- double space produces so `//xh  ` still reads as a bare command.
+-- double space produces so `//hud  ` still reads as a bare command.
 local function clean(args)
   local words = {}
   for _, word in ipairs(args or {}) do
@@ -86,7 +86,7 @@ local function new(deps)
       verb_words = verb_words + 1
     end
     if #words > verb_words then
-      return fail("'//xh " .. verb .. "' takes no arguments")
+      return fail("'//hud " .. verb .. "' takes no arguments")
     end
     return nil
   end
@@ -94,10 +94,10 @@ local function new(deps)
   local function parse_target(words, verb, allow_all)
     local target = words[2]
     if not target then
-      return fail("'//xh " .. verb .. "' needs a component name")
+      return fail("'//hud " .. verb .. "' needs a component name")
     end
     if #words > 2 then
-      return fail("'//xh " .. verb .. "' takes a single component name")
+      return fail("'//hud " .. verb .. "' takes a single component name")
     end
     if allow_all and target:lower() == "all" then
       return { action = verb, component = "all" }
@@ -112,7 +112,7 @@ local function new(deps)
   local function parse_slot(words)
     local first = words[2]
     if not first then
-      return fail("'//xh slot' needs a slot name, or list/create/delete")
+      return fail("'//hud slot' needs a slot name, or list/create/delete")
     end
 
     local op = first:lower()
@@ -122,9 +122,9 @@ local function new(deps)
     if SLOT_OPS[op] then
       local name = words[3]
       if not name or #words > 3 or not name:match("^[%w_]+$") then
-        return fail("'//xh slot " .. op .. "' needs a one-word slot name")
+        return fail("'//hud slot " .. op .. "' needs a one-word slot name")
       end
-      -- Otherwise `//xh slot create list` makes a slot no command can reach.
+      -- Otherwise `//hud slot create list` makes a slot no command can reach.
       if SLOT_OPS[name:lower()] then
         return fail("'" .. name .. "' cannot be used as a slot name")
       end
@@ -132,26 +132,26 @@ local function new(deps)
     end
 
     if #words > 2 or not first:match("^[%w_]+$") then
-      return fail("'//xh slot' needs a one-word slot name, or list/create/delete")
+      return fail("'//hud slot' needs a one-word slot name, or list/create/delete")
     end
     return { action = "slot", op = "switch", name = op }
   end
 
-  -- `//xh copy <source> <destination>`. Both ends are named explicitly, so the
+  -- `//hud copy <source> <destination>`. Both ends are named explicitly, so the
   -- command reads the same whichever character is logged in, and neither end is
   -- implied. Character names keep the case they were typed with.
   local function parse_copy(words)
     local source = words[2]
     if not source then
-      return fail("'//xh copy' needs a source character")
+      return fail("'//hud copy' needs a source character")
     end
 
     local destination = words[3]
     if not destination then
-      return fail("'//xh copy " .. source .. " <destination>' needs a destination character")
+      return fail("'//hud copy " .. source .. " <destination>' needs a destination character")
     end
     if #words > 3 then
-      return fail("'//xh copy' takes a source and a destination character, nothing more")
+      return fail("'//hud copy' takes a source and a destination character, nothing more")
     end
 
     -- Both names become path segments, and the destination is deleted before it
@@ -166,7 +166,7 @@ local function new(deps)
     return { action = "copy", source = source, destination = destination }
   end
 
-  -- Parses one `//xh ...` invocation into an action table. Never returns nil.
+  -- Parses one `//hud ...` invocation into an action table. Never returns nil.
   function self.parse(args)
     local words = clean(args)
     local verb = words[1] and words[1]:lower() or "help"

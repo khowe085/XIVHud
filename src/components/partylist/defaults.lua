@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      slot just reproduces its first-run anchor.
 
      XIVParty's hideAlliance has no equivalent here either: the alliance lists
-     are separate components, so `//xh hide alliancelist1` already says it. ]]
+     are separate components, so `//hud hide alliancelist1` already says it. ]]
 
 -- XIVParty's relative first-run anchors, resolution independent.
 local ANCHORS = {

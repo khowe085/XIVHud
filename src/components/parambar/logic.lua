@@ -371,12 +371,12 @@ local function new(config)
     local rule = METRIC_VERBS[verb]
     local value = whole_number(word)
     if not value or value < rule.min then
-      return string.format("//xh parambar %s needs a whole number of at least %d", verb, rule.min), false
+      return string.format("//hud parambar %s needs a whole number of at least %d", verb, rule.min), false
     end
 
     local set = compact_mode() and config.compact_bar or config.bar
     if type(set) ~= "table" then
-      return "parambar's bar metrics are not a table - try '//xh reset parambar'", false
+      return "parambar's bar metrics are not a table - try '//hud reset parambar'", false
     end
     set[rule.key] = value
     mark_all_dirty()
@@ -387,7 +387,7 @@ local function new(config)
   local function set_compact(word)
     local wanted = word and word:lower()
     if wanted ~= "on" and wanted ~= "off" then
-      return "//xh parambar compact needs on or off", false
+      return "//hud parambar compact needs on or off", false
     end
     config.compact = wanted == "on"
     mark_all_dirty()
@@ -405,7 +405,7 @@ local function new(config)
     )
   end
 
-  -- `//xh parambar ...`. Returns the line to print and whether anything
+  -- `//hud parambar ...`. Returns the line to print and whether anything
   -- changed, so the widget knows when to re-lay out and save.
   function self.command(args)
     args = args or {}

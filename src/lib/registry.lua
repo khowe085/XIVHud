@@ -36,7 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local NAME_PATTERN = "^[%a][%w_]*$"
 
--- Not a verb, but `//xh reset all` already means something else.
+-- Not a verb, but `//hud reset all` already means something else.
 local RESERVED_TARGETS = { all = true }
 
 local function new(deps)
