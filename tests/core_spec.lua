@@ -94,6 +94,71 @@ describe("core", function()
       assert.is_not_nil(widget.config)
     end)
 
+    -- A login event is a one-shot, and the client may not be able to name the
+    -- player yet when it fires. What a component needs beyond the name - the
+    -- vitals, the inventory - it waits for itself: the client fills those in
+    -- field by field, and there is no one signal that says they are all there.
+    it("attaches a character the client has named but not filled in yet", function()
+      local widget = core.register(bar())
+      env.player = { name = "Azureblood", status = 0 }
+      core.on_login()
+      assert.is_not_nil(widget.config, "held the whole HUD back for data core does not own")
+    end)
+
+    -- A frame spent at character select books the slow slot; a login landing
+    -- inside it must not be made to serve out someone else's second.
+    it("looks for the character at login speed, not character-select speed", function()
+      core.register(bar())
+      core.on_prerender()
+
+      env.clock = 0.1
+      env.player = { name = "", status = 0 }
+      core.on_login()
+      core.on_prerender()
+      assert.is_nil(core.character())
+
+      env.clock = 0.2
+      env.login("Azureblood")
+      core.on_prerender()
+      assert.are.equal("Azureblood", core.character(), "still serving out the character-select interval")
+    end)
+
+    it("stops watching for a character once the login resolves", function()
+      local polls = 0
+      local counted_deps, counted_env = fakes.core_deps({
+        logged_in = function()
+          polls = polls + 1
+          return true
+        end,
+      })
+      local counted_core = new_core(counted_deps)
+      counted_core.register(bar())
+      counted_env.login("Azureblood")
+      counted_core.on_login()
+
+      polls = 0
+      for frame = 1, 100 do
+        counted_env.clock = frame
+        counted_core.on_prerender()
+      end
+      assert.are.equal(0, polls, "still asking the client for a character it already has")
+    end)
+
+    -- on_prerender only watches for a character when there is none, so a login
+    -- arriving over the top of one already scoped has to keep it looking.
+    it("switches to a character whose login it could not resolve at the time", function()
+      core.register(bar())
+      login("Alpha")
+
+      env.player = { name = "", status = 0 }
+      core.on_login()
+      assert.are.equal("Alpha", core.character(), "dropped the scoped character on an unresolvable login")
+
+      env.login("Bravo")
+      core.on_prerender()
+      assert.are.equal("Bravo", core.character(), "never picked Bravo up")
+    end)
+
     it("swaps configs when a different character logs in", function()
       env.fs.put("data/Alpha/bar.lua", "return { slots = { default = { pos = { x = 10, y = 10 } } } }")
       env.fs.put("data/Bravo/bar.lua", "return { slots = { default = { pos = { x = 20, y = 20 } } } }")

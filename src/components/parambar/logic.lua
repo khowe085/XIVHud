@@ -74,6 +74,10 @@ local function zeroed()
   return { hp = 0, hpp = 0, mp = 0, mpp = 0, tp = 0 }
 end
 
+local function all_unknown()
+  return { hp = true, hpp = true, mp = true, mpp = true, tp = true }
+end
+
 local function band_for(percent)
   for _, band in ipairs(BANDS) do
     if percent < band[1] then
@@ -102,6 +106,11 @@ local function new(config)
   local preview = false
   local widths = { hp = 0, mp = 0, tp = 0 }
   local dirty = { hp = true, mp = true, tp = true }
+  -- Vitals the client has never given a real number for, as opposed to ones it
+  -- has said are zero. Only these are open to fill_missing. Every vital starts
+  -- here: the widget can be attached with get_player() unreadable, in which case
+  -- the seed never runs and the fill is the only thing that will fill the bars.
+  local unknown = all_unknown()
 
   local function vitals()
     return preview and SAMPLE_VITALS or live
@@ -130,10 +139,39 @@ local function new(config)
   function self.seed(player_vitals)
     player_vitals = player_vitals or {}
     live = zeroed()
+    unknown = all_unknown()
     for key in pairs(live) do
       live[key] = tonumber(player_vitals[key]) or 0
+      if live[key] ~= 0 then
+        unknown[key] = nil
+      end
     end
     mark_all_dirty()
+  end
+
+  -- Whether any vital is still waiting for its first real number. The widget
+  -- stops re-reading the player as soon as this goes false.
+  function self.awaiting_vitals()
+    return next(unknown) ~= nil
+  end
+
+  -- Fills in vitals the client has never given a number for, from a fresh read
+  -- of the player. It populates its vitals table field by field, so a bar can
+  -- still be waiting for its first real number while its neighbours are current.
+  -- Unlike seed() this cannot walk over a change event: a vital an event drove
+  -- to zero is a vital the client has spoken for, and stays where it was put.
+  function self.fill_missing(player_vitals)
+    player_vitals = player_vitals or {}
+    for key, bar in pairs(VITALS) do
+      if unknown[key] then
+        local value = tonumber(player_vitals[key]) or 0
+        if value ~= 0 then
+          live[key] = value
+          unknown[key] = nil
+          dirty[bar] = true
+        end
+      end
+    end
   end
 
   -- One value from an `hp change` / `hpp change` / … event.
@@ -143,6 +181,8 @@ local function new(config)
       return
     end
     live[kind] = tonumber(value) or 0
+    -- The client has now spoken for this vital, zero or not.
+    unknown[kind] = nil
     dirty[bar] = true
   end
 

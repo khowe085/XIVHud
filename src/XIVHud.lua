@@ -162,11 +162,14 @@ end)
 local new_partylist = step("loading the partylist component", function()
   return require("components/partylist/partylist")
 end)
--- The ids the party list listens for, so `incoming chunk` can drop everything
--- else before it reaches the components. Loaded as its own step because a
--- missing file here would otherwise take the whole chunk down.
+-- The ids `incoming chunk` below pre-parses once for the party list. Loaded as
+-- its own step because a missing file here would otherwise take the whole
+-- chunk down.
 local partylist_packets = step("loading the partylist packet parsers", function()
   return require("components/partylist/packets")
+end)
+local new_giltracker = step("loading the giltracker component", function()
+  return require("components/giltracker/giltracker")
 end)
 
 -- Every Windower handler goes through this, so a bug degrades to a message and
@@ -367,12 +370,21 @@ local function wrap_text()
     bg_visible = function(on)
       text:bg_visible(on)
     end,
+    bg_color = function(red, green, blue)
+      text:bg_color(red, green, blue)
+    end,
     bg_alpha = function(alpha)
       text:bg_alpha(alpha)
     end,
     -- The argument is required: texts.right_justified() with none is a getter.
     right_justified = function(on)
       text:right_justified(on)
+    end,
+    italic = function(on)
+      text:italic(on)
+    end,
+    bold = function(on)
+      text:bold(on)
     end,
     draggable = function(on)
       text:draggable(on)
@@ -396,6 +408,34 @@ end
 
 local function get_player()
   return windower.ffxi.get_player()
+end
+
+local function asset(relative_path)
+  return windower.addon_path .. relative_path
+end
+
+-- get_items() pushes every item the character owns, so this is called only when
+-- a packet says gil may have moved -- never on a timer. It comes back empty
+-- before the inventory has loaded.
+--
+-- The documented signature takes an integer bag id; the reference addon passes
+-- the string 'gil' instead, which evidently works but is undocumented, and
+-- whether it skips materialising the whole table is not something this
+-- container can answer. The documented form is used until a live client says
+-- the other is worth it.
+local function get_gil()
+  local items = windower.ffxi.get_items()
+  return items and items.gil
+end
+
+-- Behind a pcall because this runs on inbound packets: a throw here would
+-- propagate into the shared `incoming chunk` handler, and guard disables that
+-- after five failures for the rest of the session -- after which gil would
+-- silently stop updating. A component already has to treat a nil packet as a
+-- real case, so failing to nil costs nothing.
+local function parse_packet(data)
+  local ok, packet = pcall(packets.parse, "incoming", data)
+  return ok and packet or nil
 end
 
 -- Everything from here on can fail on a broken install, so each part is a step
@@ -425,10 +465,6 @@ step("building the framework", function()
   })
 end)
 
-local function asset(relative_path)
-  return windower.addon_path .. relative_path
-end
-
 -- Components are wired explicitly — no directory scanning — so the set of
 -- registered components is always readable from here.
 step("building the parambar component", function()
@@ -440,6 +476,23 @@ step("building the parambar component", function()
     new_image = wrap_image,
     screen = screen,
     get_player = get_player,
+    now = os.clock,
+    asset = asset,
+  }))
+end)
+
+step("building the giltracker component", function()
+  -- parse_packet calls packets.parse; without the library loaded there is
+  -- nothing useful this component could do with a chunk anyway.
+  if safe_mode or libraries_error then
+    return
+  end
+  core.register(new_giltracker({
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    get_gil = get_gil,
+    parse_packet = parse_packet,
     asset = asset,
   }))
 end)
@@ -499,6 +552,7 @@ local function check_assets()
   }) do
     expected[#expected + 1] = "components/partylist/" .. texture
   end
+  expected[#expected + 1] = "components/giltracker/assets/gil.png"
 
   for _, relative_path in ipairs(expected) do
     if not read_file(relative_path) then
@@ -600,36 +654,51 @@ windower.register_event(
   end)
 )
 
---[[ Packets. Only the four the party list reads get past this filter: the
-     client sends a great many chunks a second and walking every component for
-     each of them would be work done purely to be thrown away.
+--[[ Packets. Every chunk the client receives passes through here, so this
+     handler must stay cheap: it forwards the raw bytes and each component
+     decides, from the id alone, whether it is worth reading -- giltracker's
+     own `logic.wants_chunk` does exactly that for item packets. It must also
+     return nothing -- a returned value would be read as a modified or
+     blocked packet. guard.wrap falls back to nil with no fallback argument,
+     so the error path is safe too.
 
-     This is the framework's first packet push. Components receive it as
+     The three party-list ids Windower has a field definition for are the one
+     exception: they are parsed once here rather than once per sibling --
+     three party lists (`partylist`, `alliancelist1`, `alliancelist2`) would
+     otherwise each redo the same `packets.parse` call on every packet.
+     `PARTY_BUFFS` has no such definition (see packets.lua) and is decoded by
+     the component itself from the raw bytes.
+
+     Guarded on `libraries_error`, not just `safe_mode`: both the pre-parse
+     below and giltracker's `parse_packet` call into the `packets` library,
+     which failed to load in that case. Components receive the event as
      `update('chunk', id, original, parsed)` and are free to ignore it --
      parambar does. ]]
-if not safe_mode and not libraries_error and partylist_packets then
-  local wanted = {
-    [partylist_packets.ALLIANCE] = true,
-    [partylist_packets.PARTY_MEMBER] = true,
-    [partylist_packets.CHAR] = true,
-    [partylist_packets.PARTY_BUFFS] = true,
-  }
-  -- Parsed once here rather than once per component: all three party lists see
-  -- every chunk, and packets.parse is not free.
-  local structured = {
-    [partylist_packets.ALLIANCE] = true,
-    [partylist_packets.PARTY_MEMBER] = true,
-    [partylist_packets.CHAR] = true,
-  }
+if not safe_mode and not libraries_error then
+  local structured = partylist_packets
+      and {
+        [partylist_packets.ALLIANCE] = true,
+        [partylist_packets.PARTY_MEMBER] = true,
+        [partylist_packets.CHAR] = true,
+      }
+    or {}
   windower.register_event(
     "incoming chunk",
     guard.wrap("incoming chunk", function(id, original)
-      if not wanted[id] then
-        return
-      end
       core.dispatch("chunk", id, original, structured[id] and packets.parse("incoming", original) or nil)
     end)
   )
+
+  -- Gil entering or leaving a bag is the cheap signal that something moved; the
+  -- expensive read waits for the inventory to settle.
+  for _, movement in ipairs({ "add item", "remove item" }) do
+    windower.register_event(
+      movement,
+      guard.wrap(movement, function(_bag, _index, id)
+        core.dispatch(movement, id)
+      end)
+    )
+  end
 end
 
 -- FFXI reports vitals as two independent streams, absolute and percent; both
