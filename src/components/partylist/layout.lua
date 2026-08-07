@@ -154,69 +154,83 @@ return {
   main = {
     column_width = 410,
     columns = 1,
-    --[[ 66, not XIVParty's 46. Measured against the art rather than the XML:
-         the bar frame's opaque band is box y 25..39, so at the shipped bar
-         offset of -7 it lands at row y 18..32 and the only clear band in the
-         row is y 0..17 -- seventeen pixels, which holds one row of icons and
-         not two. XIVParty gets its second row by starting it at x=413, off the
-         row body entirely; that is the overflow this component exists to avoid.
-         So the row is given the space instead: the bars move down 20px and the
-         two icon rows sit above them with 5px to spare. ]]
-    row_height = 66,
+    --[[ 74, not XIVParty's 46. Measured against the art rather than the XML:
+         the bar frame's opaque band is box y 25..39, so it needs a clear band
+         at least 14 tall above it, plus room for the buff icon grid.
+
+         The row grew twice. First to 66, moving the bars down 20 to make room
+         for two rows of small icons above them (XIVParty avoids this by
+         parking its second row at x=413, off the row body -- the overflow
+         this component exists to avoid). Then to 74, when the icons grew to
+         20px: two rows of 20 plus a 1px gap is 41 tall, and 66 only had 38
+         clear above the bar frame at that point. Bars move down another 8, to
+         y=21, landing the frame at row y=46 -- 5px below the icon block,
+         matching the clearance the smaller grids left. ]]
+    row_height = 74,
     rows = 6,
     --[[ How far the row art reaches outside its column rectangle: the leader
-         stack sits 24px to its left and the background's top and bottom caps
-         21px above and below. The widget adds this to every position so that
-         the origin it is given is the true top-left corner -- otherwise the
-         framework clamps the list against a box the art overhangs, and at the
-         screen edge the marker and the cap are drawn off it. ]]
-    -- `right` is the frame's trailing fade, which ends at x=450 against a row
-    -- that ends at 410.
-    margin = { left = 24, top = 21, right = 40, bottom = 21 },
+         stack sits 24px to its left, the background's top and bottom caps 21px
+         above and below, and the frame (now carrying the buff icon grid with
+         it) extends well past the row's own right edge. The widget adds this
+         to every position so that the origin it is given is the true top-left
+         corner -- otherwise the framework clamps the list against a box the
+         art overhangs, and at the screen edge the overhanging piece vanishes. ]]
+    -- `right` covers the icon block (ends x=502) and the frame's fade past it
+    -- (ends x=542), both measured from the row's own left edge.
+    margin = { left = 24, top = 21, right = 132, bottom = 21 },
     background = {
       pos = { 0, -21 },
       color = { r = 255, g = 255, b = 255, a = 221 },
-      --[[ The `Wide` art, drawn 1:1 at 450.
+      --[[ The `Wide` art, drawn 1:1 at 542.
 
            The frame is a horizontal gradient rather than a panel. XIVParty's
            own strips fade in over their first 14 pixels, hold solid to x=240
-           of 377 -- 64% of the way -- and then take 137 to fade away, which
-           leaves the TP bar at x 290..400 almost entirely in the falloff.
+           of 377 -- 64% of the way -- and then take 137 to fade away.
+           Stretching cannot fix that: it scales the falloff too, so the solid
+           band always ends at 64% of the drawn width. The art is remapped
+           instead -- fade-in kept, the flat solid section stretched, the tail
+           compressed -- so it holds solid out to wherever the row's content
+           actually ends and only then fades, over a fixed ~40px tail. See
+           assets/LICENSE.txt for the transform.
 
-           Stretching cannot fix that on its own: it scales the falloff too, so
-           the solid band always ends at 64% of the drawn width and reaching
-           x=410 costs a 644-wide strip trailing 234 pixels of fade. The art is
-           remapped instead -- fade-in kept, the flat solid section stretched,
-           the tail compressed -- so it is solid from 14 to 410 and gone by 447.
-           See assets/LICENSE.txt for the transform. ]]
-      top = image("assets/xiv/BgTopWide.png", { 0, 0 }, { 450, 21 }),
-      mid = image("assets/xiv/BgMidWide.png", { 0, 21 }, { 450, 12 }),
-      bottom = image("assets/xiv/BgBottomWide.png", { 0, 0 }, { 450, 21 }),
+           Solid-to was x=410 (the row's own right edge) until the buff icon
+           grid grew past it: XIVParty pins its buffs to the row body and lives
+           with the overflow, and once the frame could be stretched to cover
+           whatever was drawn on it, matching that overflow was the simpler
+           choice than re-shrinking the icons to fit inside 410 again. Solid-to
+           is now x=502, the icon grid's own right edge -- see buff_icons. ]]
+      top = image("assets/xiv/BgTopWide.png", { 0, 0 }, { 542, 21 }),
+      mid = image("assets/xiv/BgMidWide.png", { 0, 21 }, { 542, 12 }),
+      bottom = image("assets/xiv/BgBottomWide.png", { 0, 0 }, { 542, 21 }),
     },
     row = {
       bars = {
-        main_bar("hp", { 19, 13 }, 2),
-        main_bar("mp", { 150, 13 }, 3),
-        main_bar("tp", { 281, 13 }, 4),
+        main_bar("hp", { 19, 21 }, 2),
+        main_bar("mp", { 150, 21 }, 3),
+        main_bar("tp", { 281, 21 }, 4),
       },
       job_icon = job_icon({ -11, -2 }, { 1, 1 }),
       leader = leader({ -24, -8 }, { 1, 1 }),
       range = {
-        pos = { 30, 48.5 },
+        pos = { 30, 56.5 },
         near = image("assets/xiv/Range.png", { 0, 0 }, { 14, 12 }),
         far = image("assets/xiv/RangeFar.png", { 0, 0 }, { 14, 12 }),
         distance = text({ 0, 1.5 }, 6, 1),
       },
-      -- Two rows of eight 14px icons from x=293: 112px wide, ending at x=405,
-      -- inside both the 410-wide row and the frame's solid band. 29px tall,
-      -- with 9px of clearance above the bar frame at row y=38 -- more than the
-      -- 5px the 16px/six-per-row grid left, since the row's available width
-      -- (117px to the row edge) is what actually bounds the icon size here.
+      --[[ Two rows of ten 20px icons from x=293, 1px apart both ways: 209px
+           wide, ending at x=502 -- past the row's own 410 and the TP bar's
+           400, onto the frame's extended solid band above. 41px tall, with
+           5px of clearance above the bar frame at row y=46.
+
+           This overflows the row body the same way XIVParty's does, and is
+           deliberately allowed to now that the frame is stretched to cover it
+           rather than being fixed at 410: a grid this size never fit inside
+           the row on its own, at any icon size worth drawing. ]]
       buff_icons = {
         pos = { 293, 0 },
-        size = { 14, 14 },
-        spacing = { 0, 1 },
-        icons_by_row = { 8, 8 },
+        size = { 20, 20 },
+        spacing = { 1, 1 },
+        icons_by_row = { 10, 10 },
         -- Both rows left-aligned, unlike XIVParty's indented second row.
         offset_by_row = { 0, 0 },
         path = "assets/buffIcons/",

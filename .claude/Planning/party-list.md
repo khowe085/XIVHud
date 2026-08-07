@@ -553,11 +553,13 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
   where the list should have ended. Drawing the strip twice, offset, keeps the fade
   short but composites two partly transparent layers, and the overlap reads as a seam.
 
-  So the art is remapped instead, to `xiv/*Wide.png` at 450px: fade-in kept as it is,
-  the flat solid section stretched to reach x=410, the tail compressed into 40px. Solid
-  across the whole row, gone by 447. The transform is written up in
-  `assets/LICENSE.txt`, and the unmodified originals are kept beside it as its basis.
-  The alliance frame needs none of this: `AllyBgMid` is flat at a uniform alpha.
+  So the art is remapped instead, to `xiv/*Wide.png`: fade-in kept as it is, the flat
+  solid section stretched to reach the row's content, the tail compressed into a fixed
+  ~40px. The transform is written up in `assets/LICENSE.txt`, and the unmodified
+  originals are kept beside it as its basis. It has been regenerated twice as "the
+  row's content" moved -- see the buff grid width bullet below -- by rerunning the
+  same recipe at a new solid-to width, not by hand-editing pixels. The alliance frame
+  needs none of this: `AllyBgMid` is flat at a uniform alpha.
 - **The row's text shares a bottom edge at row y 29** (Kevin, 2026-08-07). The name
   runs y 9..29, the subjob 18.33..29, the zone name 11.67..29, and the job line keeps
   XIVParty's 9px stack above the subjob. **Text sizes are points, drawn at 96dpi**, so a prim's height
@@ -568,13 +570,28 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
   sits in the lower row, against the bars, rather than at the top with a gap below it.
   The grid was 6 x 16px per row at the time, x 293..389, row y 0..16 and 17..33, five
   pixels clear of the bar frame at 38.
-- **The grid is 8 x 14px per row, cap 16** (Kevin, 2026-08-07 — "let's see what this
-  looks like"). Available width to the row edge is 117px (x 293..410); eight 14px icons
-  at 0 spacing is 112, ending at x=405, five pixels inside both the row and the frame's
-  solid band. Block height drops to 29 (row y 0..29), nine pixels clear of the bar frame
-  at 38 rather than the six-per-row grid's five. Verified against the real prim
-  positions the same way as every geometry change above: 12 icons at 14px landed at
-  y 0..29 / x 293..405 in a dump of the actual widget, not computed by hand.
+- **The grid tried 8 x 14px per row, cap 16** (Kevin, 2026-08-07 — "let's see what this
+  looks like"). Available width to the row edge was 117px (x 293..410); eight 14px
+  icons at 0 spacing is 112, ending at x=405. Superseded the same day -- see below.
+- **The grid is 10 x 20px per row, 1px apart both ways, cap 20 -- and allowed to overflow
+  the row body** (Kevin, 2026-08-07). Kevin's actual complaint about the original 20px
+  grid was never the icon size, it was that shrinking them left icons "floating in free
+  space": once the frame can be stretched to cover whatever is drawn on it, there is no
+  reason to shrink the icons to fit inside x=410 at all -- XIVParty pins its buffs to the
+  row body and lives with the overflow; this now does the same, deliberately, with the
+  frame stretched to match rather than left behind.
+
+  Ten 20px icons with 1px gaps is 209px wide, x 293..502 -- past the row's own edge and
+  the TP bar's 400. The frame's solid-to width moves from 410 (the row's edge) to 502
+  (the icon grid's edge), regenerated with the same recipe as the first frame fix, and
+  `margin.right` grows from 40 to 132 so the framework's drag box and clamp cover the
+  wider art. Vertically, two rows of 20 plus a 1px gap is 41px -- more than the 66px
+  row's 38px of clearance above the bar frame, so the row grows again, 66 -> 74, and the
+  bars move down another 8px (offset 13 -> 21, frame now starting at row y=46) to open
+  the extra 8px the taller grid needs, landing back at the same 5px of clearance the
+  first (6 x 16px) grid had. Verified against the real prim positions the same way as
+  every geometry change above: the drawn block measured x 293..502 / y 0..41 in a dump
+  of the actual widget.
 - **A list with nobody in it draws nothing at all, frame included** (found live,
   2026-08-07): an enabled alliance list you are not currently in showed an empty
   bordered box. `hidden` was only ever true from `hide_solo`, which alliance lists
