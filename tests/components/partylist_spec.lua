@@ -4,7 +4,10 @@ local layouts = require("components/partylist/layout")
 
 local RESOURCES = {
   jobs = { [4] = { ens = "WHM" }, [5] = { ens = "BLM" } },
-  zones = { [230] = { name = "Southern San d'Oria", search = "San d'Oria" } },
+  zones = {
+    [230] = { name = "Southern San d'Oria", search = "San d'Oria" },
+    [50] = { name = "Port Bastok", search = "Bastok" },
+  },
   buffs = { [0] = { en = "KO" }, [15] = { en = "doom" } },
 }
 
@@ -427,6 +430,29 @@ describe("partylist widget", function()
         ("name bottom %.2f, subjob bottom %.2f"):format(bottoms["Ayame"], bottoms["BLM 49"])
       )
       assert.is_true(bottoms["WHM 99"] < bottoms["BLM 49"])
+    end)
+
+    -- The zone name stands in for the buff icons on a member who is elsewhere,
+    -- so it belongs on the same line as the rest of the row's text.
+    it("sits the zone name on that bottom edge too", function()
+      env.party = { p0 = member("Ayame", 1), p1 = member("Volker", 2, { zone = 50, elsewhere = true }) }
+      settle(3)
+
+      local name_bottom, zone_bottom = nil, nil
+      for _, prim in ipairs(prims.texts) do
+        local said = prim.last.text
+        if said == "Volker" then
+          name_bottom = prim.y + prim.font_size * layouts.points_to_pixels
+        elseif type(said) == "string" and said:find("Bastok", 1, true) then
+          zone_bottom = prim.y + prim.font_size * layouts.points_to_pixels
+        end
+      end
+      assert.is_not_nil(name_bottom, "no name was drawn")
+      assert.is_not_nil(zone_bottom, "no zone name was drawn")
+      assert.is_true(
+        math.abs(name_bottom - zone_bottom) < 0.5,
+        ("name bottom %.2f, zone bottom %.2f"):format(name_bottom, zone_bottom)
+      )
     end)
 
     --[[ The icon grid is anchored to its bottom row, which is the one nearest

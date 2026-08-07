@@ -228,7 +228,10 @@ return {
            subjob, which is slightly tighter than the text is tall -- its
            leading, not a mistake. ]]
       name = text({ 95, 9 }, 15, 2, { max_chars = 17 }),
-      zone = text({ 292, 1 }, 13, 2, { short = false }),
+      -- Same bottom edge as the name: 13pt draws 17.33 tall, so y=11.67 lands
+      -- it on 29. It takes the buff icons' place, never sharing a row with
+      -- them -- a member outside the zone has no buffs to show.
+      zone = text({ 292, 11.67 }, 13, 2, { short = false }),
       job = text({ 30, 9.33 }, 8, 1),
       sub_job = text({ 39, 18.33 }, 8, 1),
     },
