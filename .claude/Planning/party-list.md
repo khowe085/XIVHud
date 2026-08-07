@@ -230,10 +230,10 @@ Windower BSD 3-clause notice (© 2013-2020 Windower) in addition.
   would instead force a cross-component `require`, which the convention forbids outright —
   so one directory backing three names is the smaller deviation. Worth a line in CLAUDE.md
   when this lands.
-- **Buff icons capped at 10, in 2 rows of 5** (Kevin). At 20 px + 0 spacing that is 100 px
-  wide from x = 293 → ends at 393, inside the 410 row. Row height grows by one icon row
-  (20 + 1 spacing); the second row keeps `offsetByRow`-style indenting if it looks better
-  in-client. XIVParty's `numIconsByRow`/`offsetByRow` machinery is kept as the mechanism —
+- **Buff icons capped, in 2 rows** (Kevin). Design-time decision, superseded by the dated
+  live-client notes under "Implementation notes" below for the actual grid, row height
+  and cap that shipped — the numbers here (10, 20px, 5 per row) never made it to a client.
+  XIVParty's `numIconsByRow`/`offsetByRow` machinery is kept as the mechanism —
   only the numbers change — so the cap is one config value, not a rewrite.
 - **Buff priority is user-editable via commands** rather than by editing `bufforder.lua`.
   The shipped order is ported as the default; the user's changes persist as a sparse
@@ -335,7 +335,7 @@ Shared by all three (alliance variants default `enabled`-off in their slot):
 
 ```lua
   buffs = {
-    max_icons = 12,          -- the tweak; 2 rows x 6 at 16px, left-aligned, from layout.lua
+    max_icons = 16,          -- the tweak; 2 rows x 8 at 14px, left-aligned, from layout.lua
     filter_mode = 'blacklist',
     filters = {},            -- buff ids
     priority = {},           -- sparse user overrides on top of buff_order.lua
@@ -534,8 +534,7 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
 
   So the row is given the space instead. The bars, their value texts and the range
   indicator move down 20px, the row grows to 66, and the two icon rows occupy the band
-  that opens above them: 6 x 16px per row, x 293..389, row y 0..16 and 17..33, with the
-  bar frame starting at 38. Five pixels of clearance, verified against the art.
+  that opens above them, verified against the art in every case below.
 
   **The art is 16-bit-per-channel PNG.** Two wrong fixes came from a measuring script
   that assumed 8-bit and read the alpha byte at the wrong offset, which put the bar
@@ -565,9 +564,17 @@ Everything below shipped except the backlog. 594 specs green, `luacheck` and
   is 4/3 of its `size` -- 15pt of Arial is 20 pixels, not 15. `layout.lua` exports
   `points_to_pixels` for anything lining text up against art; the first attempt at this
   alignment assumed 1:1 and sat five pixels low.
-- **The buff grid hangs from its bottom row** (Kevin, 2026-08-07). Six buffs or fewer
-  sit in the lower row, against the bars; the seventh opens a row above rather than
-  below, so the block never leaves a row of empty space between itself and the bar.
+- **The buff grid hangs from its bottom row** (Kevin, 2026-08-07). A short buff list
+  sits in the lower row, against the bars, rather than at the top with a gap below it.
+  The grid was 6 x 16px per row at the time, x 293..389, row y 0..16 and 17..33, five
+  pixels clear of the bar frame at 38.
+- **The grid is 8 x 14px per row, cap 16** (Kevin, 2026-08-07 — "let's see what this
+  looks like"). Available width to the row edge is 117px (x 293..410); eight 14px icons
+  at 0 spacing is 112, ending at x=405, five pixels inside both the row and the frame's
+  solid band. Block height drops to 29 (row y 0..29), nine pixels clear of the bar frame
+  at 38 rather than the six-per-row grid's five. Verified against the real prim
+  positions the same way as every geometry change above: 12 icons at 14px landed at
+  y 0..29 / x 293..405 in a dump of the actual widget, not computed by hand.
 - **A list with nobody in it draws nothing at all, frame included** (found live,
   2026-08-07): an enabled alliance list you are not currently in showed an empty
   bordered box. `hidden` was only ever true from `hide_solo`, which alliance lists

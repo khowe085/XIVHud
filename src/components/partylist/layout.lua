@@ -207,14 +207,16 @@ return {
         far = image("assets/xiv/RangeFar.png", { 0, 0 }, { 14, 12 }),
         distance = text({ 0, 1.5 }, 6, 1),
       },
-      -- Two rows of six 16px icons from x=293: 96px wide, ending at x=389
-      -- inside the row, and 33px tall in the band the taller row opened up
-      -- above the bars, whose frame now starts at row y=38.
+      -- Two rows of eight 14px icons from x=293: 112px wide, ending at x=405,
+      -- inside both the 410-wide row and the frame's solid band. 29px tall,
+      -- with 9px of clearance above the bar frame at row y=38 -- more than the
+      -- 5px the 16px/six-per-row grid left, since the row's available width
+      -- (117px to the row edge) is what actually bounds the icon size here.
       buff_icons = {
         pos = { 293, 0 },
-        size = { 16, 16 },
+        size = { 14, 14 },
         spacing = { 0, 1 },
-        icons_by_row = { 6, 6 },
+        icons_by_row = { 8, 8 },
         -- Both rows left-aligned, unlike XIVParty's indented second row.
         offset_by_row = { 0, 0 },
         path = "assets/buffIcons/",

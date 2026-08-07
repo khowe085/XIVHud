@@ -198,7 +198,7 @@ describe("partylist widget", function()
           shown = shown + 1
         end
       end
-      assert.are.equal(12, shown)
+      assert.are.equal(16, shown)
     end)
   end)
 
@@ -458,7 +458,7 @@ describe("partylist widget", function()
     --[[ The icon grid is anchored to its bottom row, which is the one nearest
          the bars. A short buff list otherwise sat at the top of the block with
          a row of empty space between it and the bar. ]]
-    it("fills the bottom icon row first and only spills upward on the seventh", function()
+    it("fills the bottom icon row first and only spills upward on the ninth", function()
       env.party = { p0 = member("Volker", 2) }
       settle(3)
 
@@ -485,16 +485,19 @@ describe("partylist widget", function()
         return sorted
       end
 
-      local six = icon_rows(6)
-      assert.are.equal(1, #six, "six buffs should occupy one row")
-      local bottom_y = six[1].y
+      local eight = icon_rows(8)
+      assert.are.equal(1, #eight, "eight buffs should occupy one row")
+      local bottom_y = eight[1].y
 
-      local seven = icon_rows(7)
-      assert.are.equal(2, #seven, "seven buffs should occupy two rows")
-      assert.are.equal(bottom_y, seven[2].y, "the lower row must not move when the block grows")
-      assert.is_true(seven[1].y < bottom_y, "the seventh buff opens a row above, not below")
-      assert.are.equal(6, seven[1].n)
-      assert.are.equal(1, seven[2].n)
+      local nine = icon_rows(9)
+      assert.are.equal(2, #nine, "nine buffs should occupy two rows")
+      assert.are.equal(bottom_y, nine[2].y, "the lower geometric row must not move when the block grows")
+      assert.is_true(nine[1].y < bottom_y, "the ninth buff opens a row above, not below")
+      -- The first eight buffs are placed by index, not recency, so crossing
+      -- the row boundary relocates them from the bottom position to the newly
+      -- opened top one; only the ninth (newest) buff lands in the bottom slot.
+      assert.are.equal(8, nine[1].n)
+      assert.are.equal(1, nine[2].n)
     end)
 
     it("moves every prim when the group moves", function()

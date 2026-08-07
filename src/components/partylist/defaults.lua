@@ -88,9 +88,9 @@ return function(screen_width, screen_height, variant)
     -- icons, so there is nothing for the alliance variants to configure.
     defaults.buffs = {
       -- The tweak: XIVParty's 19+13 icons run 263px past the end of a 410px
-      -- row. Twelve 16px icons fit in two rows of six inside the row's own
+      -- row. Sixteen 14px icons fit in two rows of eight inside the row's own
       -- width, and clear the bar frame below them -- see layout.lua.
-      max_icons = 12,
+      max_icons = 16,
       filter_mode = "blacklist", -- buffs.filterMode
       filters = {}, -- buffs.filters, as ids rather than a semicolon string
       -- Sparse `id -> rank` overrides on top of buff_order.lua, so a later
