@@ -639,6 +639,30 @@ describe("core", function()
       assert.is_not_nil(env.said():find("got width 150", 1, true))
     end)
 
+    -- A component whose answer is a list -- an ordering, a search result -- has
+    -- nowhere to put it in one chat line, and FFXI's chat does not wrap on \n.
+    it("says every line of a component's answer when it replies with a list", function()
+      local widget = core.register(bar())
+      widget.handle_command = function()
+        return { "first line", "second line" }
+      end
+      login()
+      core.on_command({ "bar", "list" })
+      assert.is_not_nil(env.said():find("first line", 1, true))
+      assert.is_not_nil(env.said():find("second line", 1, true))
+    end)
+
+    it("says nothing for a component that answers with an empty list", function()
+      local widget = core.register(bar())
+      widget.handle_command = function()
+        return {}
+      end
+      login()
+      local before = #env.chat
+      core.on_command({ "bar", "quiet" })
+      assert.are.equal(before, #env.chat)
+    end)
+
     it("refuses a component command while logged out, rather than losing the change", function()
       local widget = core.register(bar())
       widget.handle_command = function()

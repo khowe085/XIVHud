@@ -131,8 +131,24 @@ end
 step("loading the Windower libraries", function()
   texts = require("texts")
   images = require("images")
-  packets = require("packets")
 end)
+
+--[[ The resource and packet libraries are the party list's alone, and this is
+     deliberately not a `step`: a step failure sets load_error, which skips the
+     framework, parambar and every handler after it. A broken resources install
+     should cost the user the party list, not the whole addon -- so this records
+     its own failure and the party list is simply not registered. ]]
+local libraries_error = nil
+do
+  local ok, err = pcall(function()
+    res = require("resources")
+    packets = require("packets")
+  end)
+  if not ok then
+    libraries_error = tostring(err)
+    trace("resources/packets unavailable: " .. libraries_error)
+  end
+end
 
 local new_guard = step("loading lib/guard", function()
   return require("lib/guard")
@@ -142,6 +158,15 @@ local new_core = step("loading lib/core", function()
 end)
 local new_parambar = step("loading the parambar component", function()
   return require("components/parambar/parambar")
+end)
+local new_partylist = step("loading the partylist component", function()
+  return require("components/partylist/partylist")
+end)
+-- The ids `incoming chunk` below pre-parses once for the party list. Loaded as
+-- its own step because a missing file here would otherwise take the whole
+-- chunk down.
+local partylist_packets = step("loading the partylist packet parsers", function()
+  return require("components/partylist/packets")
 end)
 local new_giltracker = step("loading the giltracker component", function()
   return require("components/giltracker/giltracker")
@@ -457,7 +482,9 @@ step("building the parambar component", function()
 end)
 
 step("building the giltracker component", function()
-  if safe_mode then
+  -- parse_packet calls packets.parse; without the library loaded there is
+  -- nothing useful this component could do with a chunk anyway.
+  if safe_mode or libraries_error then
     return
   end
   core.register(new_giltracker({
@@ -470,6 +497,40 @@ step("building the giltracker component", function()
   }))
 end)
 
+-- One factory, three components: the main party and the two alliance parties
+-- each get their own config file, layout slot and drag box.
+step("building the party list components", function()
+  if safe_mode or libraries_error then
+    return
+  end
+  for _, list in ipairs({
+    { name = "partylist", variant = "main" },
+    { name = "alliancelist1", variant = "alliance1" },
+    { name = "alliancelist2", variant = "alliance2" },
+  }) do
+    core.register(new_partylist({
+      name = list.name,
+      variant = list.variant,
+      new_text = wrap_text,
+      new_image = wrap_image,
+      screen = screen,
+      asset = asset,
+      resources = res,
+      now = os.clock,
+      get_player = get_player,
+      get_party = function()
+        return windower.ffxi.get_party()
+      end,
+      get_mob_by_target = function(kind)
+        return windower.ffxi.get_mob_by_target(kind)
+      end,
+      get_info = function()
+        return windower.ffxi.get_info()
+      end,
+    }))
+  end
+end)
+
 -- Textures fail silently: a prim with a bad path simply draws nothing, so an
 -- incomplete install looks like a broken addon. Say so at load instead.
 local function check_assets()
@@ -477,6 +538,19 @@ local function check_assets()
   local expected = { OVERLAY_TEXTURE }
   for _, texture in ipairs({ "bar_bg.png", "bar_compact.png", "hp_fg.png", "mp_fg.png", "tp_fg.png" }) do
     expected[#expected + 1] = "components/parambar/assets/" .. texture
+  end
+  -- The party list ships some 680 textures; checking every one at load would
+  -- cost 680 file opens to learn what a handful already tells us.
+  for _, texture in ipairs({
+    "assets/xiv/BgTopWide.png",
+    "assets/xiv/BarBG.png",
+    "assets/xiv/Cursor.png",
+    "assets/xiv/AllyBarBG.png",
+    "assets/jobIcons/frame.png",
+    "assets/jobIcons/whm.png",
+    "assets/buffIcons/33.png",
+  }) do
+    expected[#expected + 1] = "components/partylist/" .. texture
   end
   expected[#expected + 1] = "components/giltracker/assets/gil.png"
 
@@ -492,6 +566,11 @@ local function check_assets()
       chat("  " .. relative_path)
     end
     chat("  the addon folder is incomplete - re-copy every file and folder from src/")
+  end
+
+  if libraries_error then
+    chat("the party list is off: Windower's resource or packet library did not load")
+    chat("  " .. libraries_error)
   end
 end
 
@@ -575,20 +654,38 @@ windower.register_event(
   end)
 )
 
--- Skipped in safe mode along with the render loop: with no components
--- registered there is nothing to feed, and a hook on every inbound packet is
--- the first thing to take out of the picture when bisecting a misbehaving
--- client.
-if not safe_mode then
-  -- Every packet the client receives passes through here, so this handler must
-  -- stay cheap: it forwards the raw bytes and the component decides, from the
-  -- id alone, whether they are worth parsing. It must also return nothing -- a
-  -- returned value would be read as a modified or blocked packet. guard.wrap
-  -- falls back to nil with no fallback argument, so the error path is safe too.
+--[[ Packets. Every chunk the client receives passes through here, so this
+     handler must stay cheap: it forwards the raw bytes and each component
+     decides, from the id alone, whether it is worth reading -- giltracker's
+     own `logic.wants_chunk` does exactly that for item packets. It must also
+     return nothing -- a returned value would be read as a modified or
+     blocked packet. guard.wrap falls back to nil with no fallback argument,
+     so the error path is safe too.
+
+     The three party-list ids Windower has a field definition for are the one
+     exception: they are parsed once here rather than once per sibling --
+     three party lists (`partylist`, `alliancelist1`, `alliancelist2`) would
+     otherwise each redo the same `packets.parse` call on every packet.
+     `PARTY_BUFFS` has no such definition (see packets.lua) and is decoded by
+     the component itself from the raw bytes.
+
+     Guarded on `libraries_error`, not just `safe_mode`: both the pre-parse
+     below and giltracker's `parse_packet` call into the `packets` library,
+     which failed to load in that case. Components receive the event as
+     `update('chunk', id, original, parsed)` and are free to ignore it --
+     parambar does. ]]
+if not safe_mode and not libraries_error then
+  local structured = partylist_packets
+      and {
+        [partylist_packets.ALLIANCE] = true,
+        [partylist_packets.PARTY_MEMBER] = true,
+        [partylist_packets.CHAR] = true,
+      }
+    or {}
   windower.register_event(
     "incoming chunk",
     guard.wrap("incoming chunk", function(id, original)
-      core.dispatch("chunk", id, original)
+      core.dispatch("chunk", id, original, structured[id] and packets.parse("incoming", original) or nil)
     end)
   )
 

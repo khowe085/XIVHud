@@ -1,0 +1,98 @@
+The image files in this directory (xiv/, jobIcons/, buffIcons/) are the "xiv"
+theme assets from the XivParty addon:
+
+    https://github.com/Tylas11/XivParty
+
+XivParty ships no separate asset licence, so its source licence is the basis on
+which they are redistributed here. That notice is reproduced in full below.
+
+The same licence covers the material ported from XivParty's source into this
+component: the buff priority in buff_order.lua, the trust job table and role
+map in jobs.lua, and the geometry in layout.lua.
+
+xiv/BgTopWide.png, xiv/BgMidWide.png and xiv/BgBottomWide.png are modified
+versions of XivParty's BgTop.png, BgMid.png and BgBottom.png, which are kept
+here unmodified beside them as the basis for the derivation.
+
+The originals are a horizontal gradient 377px wide: they fade in over the first
+14 pixels, hold solid to x=240, then take 137 to fade away. This component's
+row is wider than XivParty's, so at that width the buff icon grid and the TP
+bar fell almost entirely in the falloff -- and stretching the strip scales the
+falloff with it, so covering them cost a strip trailing hundreds of pixels of
+fade well past the content it was supposed to end at. The Wide versions remap
+the horizontal axis instead, at whatever width covers the row's content plus a
+fixed ~40px falloff:
+
+    source x   0..14    ->  out x   0..14           fade-in, unchanged
+    source x  14..240   ->  out x  14..SOLID_TO      solid section, stretched
+    source x 240..377   ->  out x  SOLID_TO..WIDTH   falloff, compressed
+
+Each output column is a linear interpolation between the two source columns it
+falls between. Nothing else is touched: the vertical structure, the colour and
+the shape of both transitions are the originals'.
+
+Regenerated as the row's content has grown, by rerunning the same transform at
+a new SOLID_TO (never by hand-editing pixels):
+
+    2026-08-06  SOLID_TO 410 (the row's own right edge)     WIDTH 450
+    2026-08-07  SOLID_TO 502 (10 x 20px icons per row)      WIDTH 542
+    2026-08-07  SOLID_TO 460 (8 x 20px icons per row)       WIDTH 500
+
+buff_order.lua is additionally derived from Windower's generated
+resources/buffs.lua, whose notice is reproduced second.
+
+--------------------------------------------------------------------------------
+
+Copyright © 2024, Tylas
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of XivParty nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL Tylas BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
+
+Copyright © 2013-2020, Windower
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of Windower nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL Windower BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
