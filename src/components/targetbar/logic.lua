@@ -662,7 +662,7 @@ local function new(initial_config, resources)
          pixel, the gaps to zero and up (a negative would hoist a row above
          the origin, which no frame-position floor reaches). ]]
     local cast_config = section(config.cast)
-    local cast_scale = math.min(math.max(tonumber(cast_config.scale) or 0.5, 0.01), 1) * scale
+    local cast_scale = math.min(math.max(tonumber(cast_config.scale) or 0.67, 0.01), 1) * scale
     local cast_gap = math.max(tonumber(cast_config.gap) or 0, 0) * scale
     local cast_frame_y = math.max(y, band_bottom + cast_gap - BAND_TOP * cast_scale)
     local cast_frame_x = math.max(x, x + row_width - FRAME_WIDTH * cast_scale)

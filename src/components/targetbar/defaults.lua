@@ -94,7 +94,7 @@ return function(screen_width, _screen_height)
       fill_color = { a = 255, r = 230, g = 230, b = 138 },
       -- One factor for both axes, so the key cannot leave the height
       -- undetermined.
-      scale = 0.5,
+      scale = 0.67,
       font_size = 10,
       -- HP band bottom to the cast band's top, and cast band bottom to the
       -- name row.

@@ -1056,10 +1056,12 @@ describe("targetbar logic", function()
 
     it("reports the box's absolute height, not just its origin", function()
       -- Text row 21, gap 8, band offset 25: the hp frame starts at +4 and
-      -- runs 64 deep to +68. The cast rows reach past it: cast frame at
-      -- +34.5 runs 32 deep, and the name row below it ends at +71.
+      -- runs 64 deep to +68. The cast rows reach past it: the cast band
+      -- lands at +47, its frame runs 64 * 0.67 deep from the band offset
+      -- above it, and the name row (10pt, 15px tall) hangs 2 below the
+      -- band's bottom.
       local _, _, _, height = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
-      assert.are.equal(71, height)
+      assert.are.equal(47 - 25 * 0.67 + 39 * 0.67 + 2 + 15, height)
     end)
 
     --[[ The cast rows are in the box whether or not anything is casting: a
@@ -1079,21 +1081,21 @@ describe("targetbar logic", function()
       assert.are.equal(idle_height, casting_height)
     end)
 
-    it("right-aligns the cast bar against the box's edge, at half size", function()
+    it("right-aligns the cast bar against the box's edge, at 0.67 size", function()
       local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1, SCREEN_WIDTH)
-      assert.are.equal(256, geometry.cast.frame.width)
-      assert.are.equal(32, geometry.cast.frame.height)
+      assert.are.equal(512 * 0.67, geometry.cast.frame.width)
+      assert.are.equal(64 * 0.67, geometry.cast.frame.height)
       assert.are.equal(ORIGIN_X + 512, geometry.cast.frame.x + geometry.cast.frame.width)
       -- Its band lands cast.gap below the hp band's bottom: hp band ends at
-      -- +43, plus 4, less the half-scale band offset of 12.5.
-      assert.are.equal(ORIGIN_Y + 34.5, geometry.cast.frame.y)
+      -- +43, plus 4, less the cast-scale band offset.
+      assert.are.equal(ORIGIN_Y + 47 - 25 * 0.67, geometry.cast.frame.y)
     end)
 
     it("insets the cast fill like the main fill, at the cast's scale", function()
       local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1, SCREEN_WIDTH)
-      assert.are.equal(geometry.cast.frame.x + 6.5, geometry.cast.fill.x)
-      assert.are.equal(243, geometry.cast.fill.full_width)
-      assert.are.equal(32, geometry.cast.fill.height)
+      assert.are.equal(geometry.cast.frame.x + 13 * 0.67, geometry.cast.fill.x)
+      assert.are.equal(486 * 0.67, geometry.cast.fill.full_width)
+      assert.are.equal(64 * 0.67, geometry.cast.fill.height)
     end)
 
     --[[ The one right-justified text in the addon. texts.pos adds the screen

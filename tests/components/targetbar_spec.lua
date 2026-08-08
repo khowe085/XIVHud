@@ -695,8 +695,8 @@ describe("targetbar widget", function()
       local at_start = cast_fill().width
       clock = 4
       widget.update()
-      -- Half of Fire IV's 8s: half the 486px region at the cast's half scale.
-      assert.are.equal(121.5, cast_fill().width)
+      -- Half of Fire IV's 8s: half the 486px region at the cast's 0.67 scale.
+      assert.are.equal(243 * 0.67, cast_fill().width)
       assert.is_true(cast_fill().width > at_start)
     end)
 
@@ -762,11 +762,11 @@ describe("targetbar widget", function()
     it("sits right-aligned under the bar", function()
       begin_cast()
       widget.update()
-      -- Box right edge at 100 + 512; the half-scale frame is 256 wide.
-      assert.are.equal(100 + 512 - 256, cast_frame().x)
+      -- Box right edge at 100 + 512; the 0.67-scale frame hangs from it.
+      assert.are.equal(100 + 512 - 512 * 0.67, cast_frame().x)
       assert.is_true(cast_frame().y > frame().y)
-      assert.are.equal(256, cast_frame().width)
-      assert.are.equal(32, cast_frame().height)
+      assert.are.equal(512 * 0.67, cast_frame().width)
+      assert.are.equal(64 * 0.67, cast_frame().height)
     end)
 
     --[[ The riskiest mechanism in the widget: a right-justified prim's x has
@@ -783,7 +783,7 @@ describe("targetbar widget", function()
     it("places the cast fill inside its own frame, not the hp bar's", function()
       begin_cast()
       widget.update()
-      assert.are.equal(cast_frame().x + 6.5, cast_fill().x)
+      assert.are.equal(cast_frame().x + 13 * 0.67, cast_fill().x)
       assert.are.equal(cast_frame().y, cast_fill().y)
     end)
 
