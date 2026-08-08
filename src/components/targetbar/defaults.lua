@@ -40,7 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 -- built before logic sees a config.
 local FONT_SIZE = 14
 local RATIO = 0.75
-local FRAME_WIDTH = 128
+local FRAME_WIDTH = 512
 local ROW_WIDTH = math.max(
   math.ceil(5 * FONT_SIZE * RATIO) + math.ceil(5 * FONT_SIZE * RATIO) + math.ceil(17 * FONT_SIZE * RATIO),
   FRAME_WIDTH
@@ -65,7 +65,10 @@ return function(screen_width, _screen_height)
     -- enemybar's claim palette, in its own priority order.
     fill_colors = {
       dead = { a = 255, r = 155, g = 155, b = 155 },
-      mine = { a = 255, r = 255, g = 204, b = 204 },
+      -- Deepened from the reference's 255,204,204: its pale pink was drawn
+      -- as a text colour, and spread across a wide fill it read as washed
+      -- out rather than "this one is ours".
+      mine = { a = 255, r = 255, g = 20, b = 20 },
       member = { a = 255, r = 102, g = 255, b = 255 },
       pc = { a = 255, r = 255, g = 255, b = 255 },
       unclaimed = { a = 255, r = 230, g = 230, b = 138 },

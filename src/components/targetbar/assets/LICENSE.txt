@@ -10,18 +10,33 @@ notices are reproduced in full below.
     https://github.com/Tylas11/XivParty
 
 XivParty ships no separate asset licence, so its source licence is the basis on
-which these are redistributed. Three files, copied unmodified:
+which these are redistributed. Three files:
 
     xiv/BarBG.png   the bar's background plate
     xiv/Bar.png     the fill, stretched to the health percentage
     xiv/BarFG.png   the bevelled frame drawn over both
 
-They are byte-for-byte copies of the same files under
-components/partylist/assets/xiv/. The duplication is deliberate: a component
-owns everything it draws, so that removing one cannot break another. This
-notice covers only those three - partylist's own copy carries the additional
-notices for the job icons, buff icons and its regenerated background art, none
-of which are here.
+They derive from the same files under components/partylist/assets/xiv/ (the
+duplication is deliberate: a component owns everything it draws, so that
+removing one cannot break another), regenerated to four times the source
+width - this component draws one wide bar where the party list draws many
+narrow ones. The transform preserves the art rather than resampling it:
+
+    source cols   0..43     ->  out cols    0..43        left cap, byte for byte
+    source col   128        ->  out cols   44..979       middle, replicated
+    source cols 212..255    ->  out cols  980..1023      right cap, byte for byte
+
+The middle of both frame textures is a run of identical columns in the source
+(BarFG cols 44..211, BarBG wider still), so replicating the centre column
+extends it without interpolating a single pixel; the vertical structure is
+untouched. Bar.png is uniform across its whole width and is rebuilt the same
+way at the fill region's 972 file columns.
+
+    2026-08-08  256 -> 1024 (drawn 128 -> 512), caps 44 file px each
+
+This notice covers only those three files - partylist's own copy carries the
+additional notices for the job icons, buff icons and its regenerated
+background art, none of which are here.
 
 The same licence covers the material ported from XivParty's source into this
 component: the bar geometry in logic.lua (the 128x64 frame, its 102px fill
@@ -65,8 +80,10 @@ six claim states, the order they are tested in, and the exact RGB values for
 each - in logic.lua's `claim_state` and defaults.lua's `fill_colors`. The
 reference applies that palette to its text; here it tints the bar fill instead,
 and the ownership test is widened to the alliance and guarded against an
-unresolved player id. The states, their order and their colours are the
-original's.
+unresolved player id. The states, their order and five of the six colours are
+the original's; the claimed-by-us red is deepened (255,204,204 -> 255,20,20),
+because the reference's pale pink was chosen for text and reads washed out
+spread across a fill.
 
 Copyright © 2015, Mike McKee
 All rights reserved.

@@ -119,7 +119,7 @@ describe("targetbar widget", function()
 
     it("centres its default slot on the row it draws", function()
       local slot = widget.defaults.slots.default
-      assert.are.equal(817, slot.pos.x)
+      assert.are.equal(704, slot.pos.x)
       assert.are.equal(50, slot.pos.y)
     end)
 
@@ -403,16 +403,16 @@ describe("targetbar widget", function()
     it("sizes the fill from the health, inside the frame's fill region", function()
       target = mob({ hpp = 50 })
       widget.update()
-      assert.are.equal(51, fill().width)
+      assert.are.equal(243, fill().width)
       -- Full height: the fill art carries the band's vertical placement.
       assert.are.equal(64, fill().height)
     end)
 
     it("draws the plate and frame at the art's drawn size", function()
       widget.update()
-      assert.are.equal(128, background().width)
+      assert.are.equal(512, background().width)
       assert.are.equal(64, background().height)
-      assert.are.equal(128, frame().width)
+      assert.are.equal(512, frame().width)
       assert.are.equal(64, frame().height)
     end)
 
@@ -424,7 +424,7 @@ describe("targetbar widget", function()
       target = mob({ hpp = 10 })
       widget.update()
       assert.is_true(background().visible)
-      assert.are.equal(128, background().width)
+      assert.are.equal(512, background().width)
     end)
 
     it("hides the fill at once when the target is dead on arrival", function()
@@ -487,7 +487,7 @@ describe("targetbar widget", function()
     it("reports the row's full width", function()
       widget.set_pos(300, 400)
       local _, _, width = widget.get_bounds()
-      assert.are.equal(285, width)
+      assert.are.equal(512, width)
     end)
 
     it("shrinks with the scale", function()
@@ -608,7 +608,7 @@ describe("targetbar widget", function()
       party = { p0 = { name = "Ally", mob = { id = 77 } } }
       target = mob({ claim_id = 77 })
       widget.update()
-      assert.are.same({ 255, 204, 204 }, fill().last.color)
+      assert.are.same({ 255, 20, 20 }, fill().last.color)
     end)
   end)
 
@@ -715,7 +715,7 @@ describe("targetbar widget", function()
       me = { id = 4242, model_size = 1.0 }
       target = mob({ claim_id = 4242 })
       widget.update()
-      assert.are.same({ 255, 204, 204 }, fill().last.color)
+      assert.are.same({ 255, 20, 20 }, fill().last.color)
     end)
 
     it("tells the player apart from the party members around them", function()
@@ -747,7 +747,7 @@ describe("targetbar widget", function()
       party = { p0 = { name = "Ally", mob = { id = 77 } } }
       target = mob({ claim_id = 77 })
       widget.update()
-      assert.are.same({ 255, 204, 204 }, fill().last.color)
+      assert.are.same({ 255, 20, 20 }, fill().last.color)
 
       widget.detach()
       party = {}
@@ -776,7 +776,8 @@ describe("targetbar widget", function()
       widget.show()
       target = mob({ id = 42, hpp = 10 })
       widget.update()
-      assert.are.equal(10, fill().width)
+      -- Snapped straight to 10% of the 486px fill, no eased slide.
+      assert.are.equal(48, fill().width)
     end)
 
     it("polls again on the first frame after a fresh attach", function()

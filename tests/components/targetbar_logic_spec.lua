@@ -166,9 +166,9 @@ describe("targetbar logic", function()
   end)
 
   describe("the eased fill", function()
-    -- The fill region is 102px wide inside a 128px frame, so a percentage
-    -- lands on 102, never 128.
-    local FULL = 102
+    -- The fill region is 486px wide inside the 512px frame, so a percentage
+    -- lands on 486, never 512.
+    local FULL = 486
 
     local function settle()
       local plan
@@ -186,7 +186,7 @@ describe("targetbar logic", function()
 
     it("draws a freshly acquired target at its real width at once", function()
       logic.set_target(mob({ hpp = 50 }))
-      assert.are.equal(51, logic.tick().fill.width)
+      assert.are.equal(243, logic.tick().fill.width)
     end)
 
     it("eases rather than jumping as the same target takes damage", function()
@@ -194,8 +194,8 @@ describe("targetbar logic", function()
       logic.tick()
       logic.set_target(mob({ hpp = 0 }))
       -- A tenth of the distance, rounded away from zero so it converges:
-      -- 102 - ceil(102 * 0.1) = 91.
-      assert.are.equal(91, logic.tick().fill.width)
+      -- 486 - ceil(486 * 0.1) = 437.
+      assert.are.equal(437, logic.tick().fill.width)
     end)
 
     it("converges on empty rather than approaching it forever", function()
@@ -228,14 +228,14 @@ describe("targetbar logic", function()
       logic.clear_target()
       logic.tick()
       logic.set_target(mob({ id = 1, hpp = 10 }))
-      assert.are.equal(10, logic.tick().fill.width)
+      assert.are.equal(48, logic.tick().fill.width)
     end)
 
     it("snaps when preview opens, so layout mode shows the real footprint", function()
       logic.set_target(mob({ hpp = 100 }))
       logic.tick()
       logic.set_preview(true)
-      assert.are.equal(40, logic.tick().fill.width)
+      assert.are.equal(194, logic.tick().fill.width)
     end)
 
     it("keeps the fill drawn while it still has width", function()
@@ -354,6 +354,12 @@ describe("targetbar logic", function()
     it("has no claim state with nothing targeted", function()
       logic.clear_target()
       assert.is_nil(logic.claim_state())
+    end)
+
+    it("deepens the mine tint to FF1414 rather than the reference's pink", function()
+      logic.set_self(SELF_ID, 1.0, "WAR")
+      logic.set_target(mob({ claim_id = SELF_ID }))
+      assert.are.same({ a = 255, r = 255, g = 20, b = 20 }, config.fill_colors[logic.claim_state()])
     end)
 
     it("carries enemybar's exact colours for the dead and member states", function()
@@ -928,10 +934,18 @@ describe("targetbar logic", function()
       assert.are.equal(ORIGIN_Y, by)
     end)
 
-    it("sizes the row from its three reserves", function()
-      -- 53 + 53 + 179 at the default 14pt font.
+    it("sizes the row from the frame, which outgrows the default text", function()
+      -- The reserves come to 285 at 14pt; the 512px frame wins.
       local _, _, width = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
-      assert.are.equal(285, width)
+      assert.are.equal(512, width)
+    end)
+
+    it("sizes the row from the reserves once the text outgrows the frame", function()
+      config.font_size = 28
+      logic.set_config(config)
+      -- 105 + 105 + 357 at 28pt, past the frame's 512.
+      local _, _, width = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
+      assert.are.equal(567, width)
     end)
 
     it("lays the row out left to right: hp, distance, then name", function()
@@ -951,7 +965,7 @@ describe("targetbar logic", function()
     it("insets the fill inside the frame", function()
       local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1)
       assert.are.equal(ORIGIN_X + 13, geometry.fill.x)
-      assert.are.equal(102, geometry.fill.full_width)
+      assert.are.equal(486, geometry.fill.full_width)
     end)
 
     --[[ Absolute positions at half scale. The containment assertions derive
@@ -966,7 +980,7 @@ describe("targetbar logic", function()
     it("scales every part of the vertical stack, not just the art", function()
       local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 0.5)
       assert.are.equal(ORIGIN_Y + 2, geometry.frame.y)
-      assert.are.equal(64, geometry.frame.width)
+      assert.are.equal(256, geometry.frame.width)
       assert.are.equal(32, geometry.frame.height)
     end)
 
@@ -974,7 +988,7 @@ describe("targetbar logic", function()
       local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 0.5)
       assert.are.equal(ORIGIN_X + 6.5, geometry.fill.x)
       assert.are.equal(geometry.frame.y, geometry.fill.y)
-      assert.are.equal(51, geometry.fill.full_width)
+      assert.are.equal(243, geometry.fill.full_width)
       assert.are.equal(32, geometry.fill.height)
     end)
 
@@ -993,7 +1007,7 @@ describe("targetbar logic", function()
 
     it("scales the fill's eased width with the widget", function()
       local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 0.5)
-      assert.are.equal(51, geometry.fill.width_at(102))
+      assert.are.equal(243, geometry.fill.width_at(486))
     end)
 
     --[[ Core reads the box to clamp the widget on screen and layout mode reads
@@ -1040,9 +1054,10 @@ describe("targetbar logic", function()
       end)
 
       it("measures the row from the rounded font, not the scaled box", function()
-        -- 15 + 15 + 51 at the 4px font a quarter scale rounds 14 to.
+        -- Reserves reach 81 at the 4px font a quarter scale rounds 14 to;
+        -- the frame's 128 drawn pixels win.
         local _, _, width = logic.bounds(ORIGIN_X, ORIGIN_Y, 0.25)
-        assert.are.equal(81, width)
+        assert.are.equal(128, width)
       end)
     end)
 
@@ -1056,9 +1071,9 @@ describe("targetbar logic", function()
 
       it("floors the row at the bar's own drawn width", function()
         reconfigure({ font_size = 6 })
-        -- The reserves only reach 123, but the frame still draws 128 wide.
+        -- The reserves only reach 123, but the frame still draws 512 wide.
         local _, _, width = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
-        assert.are.equal(128, width)
+        assert.are.equal(512, width)
         assert_contained(1)
       end)
 

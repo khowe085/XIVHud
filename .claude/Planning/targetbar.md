@@ -801,10 +801,12 @@ nothing here is blocked.
 - **Backlog** (2026-08-07, order TBD): a `subtargetbar` component, independently
   positioned (the reference's fixed offset is not worth preserving once layout slots
   exist); an "out of range" or distance-based treatment (the reference has none —
-  would be new scope, not a port); a stretch-safe regenerated bar frame (the
-  partylist-background treatment) if the authored 128px footprint reads too small
-  in a live client; component commands to retint the claim palette or resize the
-  bar without hand-editing the config file.
+  would be new scope, not a port); ~~a stretch-safe regenerated bar frame if the
+  authored 128px footprint reads too small in a live client~~ — **it did**
+  (TB2's first in-client look, 2026-08-08), and the frame is now regenerated at
+  4x width by cap-preserving centre-column replication, with the claimed-by-us
+  red deepened to FF1414 in the same pass; component commands to retint the
+  claim palette or resize the bar without hand-editing the config file.
 - **Rejected** (2026-08-07): target buff/debuff icons. The server never tells the
   client a monster's status effects — there is no mob equivalent of the party-only
   `0x076` — so the only route is inferring state from the `0x028` action and `0x029`

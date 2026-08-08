@@ -47,12 +47,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local EASE = 0.1
 
 --[[ The bar art, in drawn pixels (the files are 2x this and drawn at half).
-     Transcribed from XIVParty's xiv theme via partylist's layout.lua, where
-     the same frame backs the hp, mp and tp bars. ]]
-local FRAME_WIDTH = 128
+
+     The frame began as XIVParty's 128-wide bar (via partylist's layout.lua,
+     where the same art backs the hp, mp and tp bars) and was regenerated to
+     four times that width for this component: both bevelled caps are
+     preserved byte for byte and the middle - which in the source art is a run
+     of identical columns - is extended by replication, so no pixel was
+     interpolated. See assets/LICENSE.txt for the transform. The insets and
+     the vertical band survive unchanged; only the middle grew. ]]
+local FRAME_WIDTH = 512
 local FRAME_HEIGHT = 64
 local FILL_INSET_X = 13
-local FILL_WIDTH = 102
+local FILL_WIDTH = FRAME_WIDTH - 2 * FILL_INSET_X
 -- Where the visible band starts inside that 64px footprint (it runs to y 39;
 -- everything outside is transparent). Vertical placement is measured from the
 -- band so the bar lands where the eye expects rather than where the texture
