@@ -87,6 +87,9 @@ local TEXT_HEIGHT_RATIO = 1.5
 -- so four characters of reserve overruns deterministically. The fifth absorbs
 -- it.
 local HP_CHARACTERS = 5
+-- The row starts this many characters in from the bar's left edge, clear of
+-- the frame art's own bevel.
+local ROW_INSET_CHARACTERS = 1
 -- "99.99", the widest the clamp below allows.
 local DISTANCE_CHARACTERS = 5
 local MAX_DISTANCE = 99.99
@@ -636,11 +639,13 @@ local function new(initial_config, resources)
     local hp_reserve = reserve(HP_CHARACTERS, font_size)
     local distance_reserve = reserve(DISTANCE_CHARACTERS, font_size)
     local name_reserve = reserve(name_cap(), font_size)
+    local row_inset = ROW_INSET_CHARACTERS * font_size * RATIO
 
     -- Floored at the frame's own drawn width: the art is that wide whatever
     -- the reserves come to, and a box narrower than the art it contains is a
-    -- drag target that misses half the widget.
-    local row_width = math.max(hp_reserve + distance_reserve + name_reserve, FRAME_WIDTH * scale)
+    -- drag target that misses half the widget. The inset counts toward the
+    -- box: the name's reserve ends that much further right.
+    local row_width = math.max(row_inset + hp_reserve + distance_reserve + name_reserve, FRAME_WIDTH * scale)
 
     --[[ The bar art carries BAND_TOP pixels of transparency above its visible
          band, so the gap is measured to the band and the texture is placed
@@ -684,6 +689,7 @@ local function new(initial_config, resources)
       distance_reserve = distance_reserve,
       name_reserve = name_reserve,
       row_width = row_width,
+      row_inset = row_inset,
       frame_y = frame_y,
       cast_scale = cast_scale,
       cast_frame_x = cast_frame_x,
@@ -712,9 +718,9 @@ local function new(initial_config, resources)
     return {
       row_width = m.row_width,
       texts = {
-        hp = text(0, m.font_size, m.hp_reserve),
-        distance = text(m.hp_reserve, m.font_size, m.distance_reserve),
-        name = text(m.hp_reserve + m.distance_reserve, m.font_size, m.name_reserve),
+        hp = text(m.row_inset, m.font_size, m.hp_reserve),
+        distance = text(m.row_inset + m.hp_reserve, m.font_size, m.distance_reserve),
+        name = text(m.row_inset + m.hp_reserve + m.distance_reserve, m.font_size, m.name_reserve),
       },
       frame = { x = x, y = m.frame_y, width = FRAME_WIDTH * scale, height = FRAME_HEIGHT * scale },
       fill = {

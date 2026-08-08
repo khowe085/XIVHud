@@ -546,10 +546,10 @@ describe("targetbar widget", function()
 
     it("places the three segments across the row at the drawn font size", function()
       widget.set_pos(300, 400)
-      assert.are.equal(300, hp().x)
+      assert.are.equal(310.5, hp().x)
       assert.are.equal(400, hp().y)
-      assert.are.equal(353, distance().x)
-      assert.are.equal(406, name().x)
+      assert.are.equal(363.5, distance().x)
+      assert.are.equal(416.5, name().x)
       -- The three row segments share the row font; the cast name below has
       -- its own smaller one.
       for index = 1, 3 do

@@ -990,16 +990,25 @@ describe("targetbar logic", function()
     it("sizes the row from the reserves once the text outgrows the frame", function()
       config.font_size = 28
       logic.set_config(config)
-      -- 105 + 105 + 357 at 28pt, past the frame's 512.
+      -- 21 of leading inset, then 105 + 105 + 357 at 28pt: past the frame's
+      -- 512, so the inset counts toward the box too.
       local _, _, width = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
-      assert.are.equal(567, width)
+      assert.are.equal(588, width)
     end)
 
     it("lays the row out left to right: hp, distance, then name", function()
+      -- The row starts one character in from the bar's left edge (10.5px at
+      -- the 14pt font), clear of the frame art's own bevel.
       local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1)
-      assert.are.equal(ORIGIN_X, geometry.texts.hp.x)
-      assert.are.equal(ORIGIN_X + 53, geometry.texts.distance.x)
-      assert.are.equal(ORIGIN_X + 106, geometry.texts.name.x)
+      assert.are.equal(ORIGIN_X + 10.5, geometry.texts.hp.x)
+      assert.are.equal(ORIGIN_X + 63.5, geometry.texts.distance.x)
+      assert.are.equal(ORIGIN_X + 116.5, geometry.texts.name.x)
+    end)
+
+    it("scales the row's leading inset with the font", function()
+      -- At half scale the drawn font is 7, so the inset is one 7px character.
+      local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 0.5)
+      assert.are.equal(ORIGIN_X + 5.25, geometry.texts.hp.x)
     end)
 
     it("drops the bar's visible band below the text, not its texture", function()
