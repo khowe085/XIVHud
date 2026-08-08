@@ -171,6 +171,9 @@ end)
 local new_giltracker = step("loading the giltracker component", function()
   return require("components/giltracker/giltracker")
 end)
+local new_equipviewer = step("loading the equipviewer component", function()
+  return require("components/equipviewer/equipviewer")
+end)
 local new_targetbar = step("loading the targetbar component", function()
   return require("components/targetbar/targetbar")
 end)
@@ -269,6 +272,71 @@ local function write_file(path, contents)
   file:write(contents)
   file:close()
   return true
+end
+
+--[[ The same write for a file that is not text. The mode matters: "w" is a
+     text stream, and on Windows every 0x0A byte in it becomes 0x0D 0x0A - which
+     would corrupt roughly one byte in sixty of an extracted icon and leave the
+     prim layer with a bitmap it cannot parse. Nothing else differs, so the
+     directory handling above is reused. ]]
+local function write_binary(path, contents)
+  local directory = path:match("^(.*)[/\\][^/\\]*$")
+  if directory then
+    local ok, err = ensure_dir(directory)
+    if not ok then
+      trace("binary write failed: " .. tostring(err))
+      return false, err
+    end
+  end
+
+  local file, err = io.open(windower.addon_path .. path, "wb")
+  if not file then
+    trace("binary write failed: could not open " .. path .. ": " .. tostring(err))
+    return false, err
+  end
+
+  file:write(contents)
+  file:close()
+  return true
+end
+
+--[[ Whether a path is a readable file. Unlike the helpers above, the path is
+     absolute rather than addon-relative: the icon cache is composed by the
+     component through `asset`, and the DAT reads below are outside the addon
+     directory entirely.
+
+     `windower.file_exists` would say the
+     same, but nothing in this addon has ever called it, and CLAUDE.md's rule
+     is that raw io against a path is the one file operation proven to work
+     here. The cost of being wrong is not small: this is called from the
+     component's attach, and core attaches every component in one unprotected
+     loop, so a throw would leave the party lists and the target bar
+     unattached too. ]]
+local function file_exists(path)
+  local file = io.open(path, "r")
+  if not file then
+    return false
+  end
+  file:close()
+  return true
+end
+
+--[[ A slice of a file outside the addon directory: the client's own item DATs,
+     which equipviewer reads icons out of.
+
+     Behind a pcall because the path comes from a setting or from Windower's
+     idea of where the game is installed, and neither is something this addon
+     controls. A read that throws here would reach the per-frame handler that
+     drives the extraction queue. ]]
+local function read_dat(path, offset, length)
+  local ok, contents = pcall(function()
+    local file = assert(io.open(path, "rb"))
+    file:seek("set", offset)
+    local slice = file:read(length)
+    file:close()
+    return slice
+  end)
+  return ok and contents or nil
 end
 
 -- Directory enumeration for `//hud copy`, which walks another character's
@@ -442,6 +510,28 @@ local function get_gil()
   return items and items.gil
 end
 
+-- Which bag and index each equipment slot is wearing - not the items
+-- themselves, which take a read apiece. Read once per refresh; the reference
+-- addon called this once per slot.
+local function get_equipment()
+  local items = windower.ffxi.get_items()
+  return items and items.equipment
+end
+
+local function get_item(bag, index)
+  return windower.ffxi.get_items(bag, index)
+end
+
+--[[ Where the client is installed, for the DAT reads above. Undocumented, and
+     the reason the setting exists to override it: the wiki documents
+     `pol_path` ("path to playonline and ffxi install directory") but not
+     `ffxi_path`, which is what the reference addon uses and what its DAT
+     offsets were derived against. Prefer it, fall back to the documented one,
+     and let the player name a third. ]]
+local function game_path()
+  return windower.ffxi_path or windower.pol_path
+end
+
 -- Behind a pcall because this runs on inbound packets: a throw here would
 -- propagate into the shared `incoming chunk` handler, and guard disables that
 -- after five failures for the rest of the session -- after which gil would
@@ -524,6 +614,28 @@ step("building the giltracker component", function()
   }))
 end)
 
+step("building the equipviewer component", function()
+  -- Same gate as giltracker: everything this component learns arrives through
+  -- parse_packet, and without the packets library there is nothing it could
+  -- find out about what is equipped.
+  if safe_mode or libraries_error then
+    return
+  end
+  core.register(new_equipviewer({
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
+    get_equipment = get_equipment,
+    get_item = get_item,
+    parse_packet = parse_packet,
+    file_exists = file_exists,
+    read_dat = read_dat,
+    write_binary = write_binary,
+    game_path = game_path,
+  }))
+end)
+
 --[[ Gated on safe_mode alone, like parambar and unlike the two components
      that also take libraries_error.
 
@@ -603,6 +715,9 @@ local function check_assets()
     expected[#expected + 1] = "components/partylist/" .. texture
   end
   expected[#expected + 1] = "components/giltracker/assets/gil.png"
+  for _, texture in ipairs({ "encumbrance.png", "panel.png" }) do
+    expected[#expected + 1] = "components/equipviewer/assets/" .. texture
+  end
   for _, texture in ipairs({ "BarBG.png", "Bar.png", "BarFG.png", "CastBG.png", "CastBar.png", "CastFG.png" }) do
     expected[#expected + 1] = "components/targetbar/assets/xiv/" .. texture
   end

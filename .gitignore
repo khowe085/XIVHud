@@ -7,6 +7,8 @@
 
 # Windower addon user settings — created at runtime, never committed
 */data/
+# Extracted item icons, written by equipviewer at runtime beside the addon.
+/src/icons/
 
 # Packaging output (see .github/workflows/package.yml)
 /dist/
