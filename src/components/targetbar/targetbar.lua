@@ -50,6 +50,9 @@ local new_logic = require("components/targetbar/logic")
 local build_defaults = require("components/targetbar/defaults")
 
 local ASSET_DIR = "components/targetbar/assets/xiv/"
+-- The one chunk this widget reads: the action packet, parsed for it by
+-- windower.packets.parse_action via the ctx.
+local ACTION_CHUNK = 0x028
 
 local function new(ctx)
   local self = { name = "targetbar" }
@@ -58,7 +61,9 @@ local function new(ctx)
   self.defaults = build_defaults(screen_width, screen_height)
 
   local config = self.defaults
-  local logic = new_logic(config)
+  -- Without the resources library there is no spell name or cast time to
+  -- show, so logic quietly runs with the cast feature off.
+  local logic = new_logic(config, ctx.resources)
 
   local attached = false
   local save = nil
@@ -99,14 +104,22 @@ local function new(ctx)
   end
 
   -- Creation order is draw order - the Windower libraries expose no depth
-  -- control - so the frame has to be built last to sit over the fill.
+  -- control - so each frame has to be built after the fill it sits over.
   local background = image("BarBG.png")
   local fill = image("Bar.png")
   local frame = image("BarFG.png")
+  local cast_background = image("BarBG.png")
+  local cast_fill = image("Bar.png")
+  local cast_frame = image("BarFG.png")
 
   local hp_text = text()
   local distance_text = text()
   local name_text = text()
+  local cast_name = text()
+  -- The one right-justified text here: it grows leftward from the box's right
+  -- edge, and its position pre-subtracts the screen width the library adds
+  -- back for right-flagged texts.
+  cast_name.right_justified(true)
 
   local texts = { hp = hp_text, distance = distance_text, name = name_text }
 
@@ -167,6 +180,19 @@ local function new(ctx)
       prim.color(color.r or 255, color.g or 255, color.b or 255)
       prim.alpha(color.a or 255)
     end
+
+    local stroke_width = stroke.width or 0
+    cast_name.font(config.font or "Arial")
+    cast_name.stroke_width(stroke_width)
+    cast_name.stroke_color(stroke.r or 0, stroke.g or 0, stroke.b or 0)
+    cast_name.stroke_alpha(stroke.a or 255)
+    cast_name.color(color.r or 255, color.g or 255, color.b or 255)
+    cast_name.alpha(color.a or 255)
+
+    -- The cast fill's tint is fixed configuration, never claim state.
+    local cast_color = styled(styled(config.cast).fill_color)
+    cast_fill.color(cast_color.r or 255, cast_color.g or 255, cast_color.b or 255)
+    cast_fill.alpha(cast_color.a or 255)
   end
 
   --[[ Layout ---------------------------------------------------------------- ]]
@@ -177,7 +203,7 @@ local function new(ctx)
       return
     end
 
-    geometry = logic.geometry(pos.x, pos.y, scale)
+    geometry = logic.geometry(pos.x, pos.y, scale, screen_width)
 
     for key, prim in pairs(texts) do
       local segment = geometry.texts[key]
@@ -189,8 +215,17 @@ local function new(ctx)
       layer[1].pos(layer[2].x, layer[2].y)
       layer[1].size(layer[2].width, layer[2].height)
     end
-    -- The fill's width belongs to the render: only its origin is fixed here.
+    -- The fills' widths belong to the render: only their origins are fixed.
     fill.pos(geometry.fill.x, geometry.fill.y)
+
+    local cast = geometry.cast
+    for _, layer in ipairs({ { cast_background, cast.frame }, { cast_frame, cast.frame } }) do
+      layer[1].pos(layer[2].x, layer[2].y)
+      layer[1].size(layer[2].width, layer[2].height)
+    end
+    cast_fill.pos(cast.fill.x, cast.fill.y)
+    cast_name.pos(cast.name.x, cast.name.y)
+    cast_name.size(cast.name.size)
 
     --[[ Sizes are only written when the value behind them moves, so a layout
          change has to clear that memory or the bar keeps the previous scale's
@@ -204,6 +239,10 @@ local function new(ctx)
     want(background, "background", false)
     want(fill, "fill", false)
     want(frame, "frame", false)
+    want(cast_background, "cast_background", false)
+    want(cast_fill, "cast_fill", false)
+    want(cast_frame, "cast_frame", false)
+    want(cast_name, "cast_name", false)
     for key, prim in pairs(texts) do
       want(prim, key, false)
     end
@@ -230,7 +269,7 @@ local function new(ctx)
       logic.clear_target()
     end
 
-    local plan = logic.tick()
+    local plan = logic.tick(ctx.now())
     local drawn = visible and plan.occupied
 
     want(background, "background", drawn)
@@ -250,6 +289,18 @@ local function new(ctx)
         push_text(prim, key, segment.text)
         push_color(prim, key, segment.color)
       end
+    end
+
+    local casting = visible and plan.cast.active
+    want(cast_background, "cast_background", casting)
+    want(cast_frame, "cast_frame", casting)
+    want(cast_fill, "cast_fill", casting and plan.cast.width > 0)
+    want(cast_name, "cast_name", casting)
+    if casting then
+      push("cast_fill.width", plan.cast.width, function(width)
+        cast_fill.size(geometry.cast.fill.width_at(width), geometry.cast.fill.height)
+      end)
+      push_text(cast_name, "cast_name", plan.cast.name:sub(1, geometry.cast.name.max_chars))
     end
   end
 
@@ -312,16 +363,24 @@ local function new(ctx)
     return logic.bounds(pos.x, pos.y, scale)
   end
 
-  --[[ No arguments is the per-frame tick. Everything else is a game event the
-       entry point forwarded to every component - packets, item movement, vital
-       changes - and none of them mean anything here. Ignoring them quietly is
-       the contract: core.dispatch has no idea who wants what, and a handler
-       that threw would be disabled for the rest of the session. ]]
-  function self.update(event)
-    if event ~= nil then
+  --[[ No arguments is the per-frame tick. Of the events the entry point
+       forwards to every component, exactly one is wanted: the action chunk,
+       which feeds the cast tracker and nothing else - no render, no client
+       read. Everything else is ignored quietly, which is the contract:
+       core.dispatch has no idea who wants what, and a handler that threw
+       would be disabled for the rest of the session. ]]
+  function self.update(event, id, original)
+    if event == nil then
+      render()
       return
     end
-    render()
+    if event ~= "chunk" or id ~= ACTION_CHUNK or not attached then
+      return
+    end
+    local act = ctx.parse_action(original)
+    if act then
+      logic.on_action(act, ctx.now())
+    end
   end
 
   function self.handle_command(args)
@@ -339,6 +398,10 @@ local function new(ctx)
     background.destroy()
     fill.destroy()
     frame.destroy()
+    cast_background.destroy()
+    cast_fill.destroy()
+    cast_frame.destroy()
+    cast_name.destroy()
     for _, prim in pairs(texts) do
       prim.destroy()
     end

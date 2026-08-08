@@ -452,6 +452,19 @@ local function parse_packet(data)
   return ok and packet or nil
 end
 
+-- Windower's own parser for the 0x028 action packet - core API, not a
+-- library, so it is available even when resources/packets failed to load.
+-- Same pcall reasoning as parse_packet: this too runs on inbound packets.
+-- The index happens INSIDE the closure: pcall(windower.packets.parse_action,
+-- data) evaluates the index before the protected call, so a missing
+-- windower.packets would throw straight into the shared chunk handler.
+local function parse_action(data)
+  local ok, act = pcall(function()
+    return windower.packets.parse_action(data)
+  end)
+  return ok and act or nil
+end
+
 -- Everything from here on can fail on a broken install, so each part is a step
 -- and the command handler is registered regardless of how they go.
 local command_handler = nil
@@ -531,6 +544,10 @@ step("building the targetbar component", function()
     get_player = get_player,
     get_mob_by_target = get_mob_by_target,
     get_party = get_party,
+    parse_action = parse_action,
+    -- nil when the resource library failed to load: the cast bar then never
+    -- shows, and the health bar, name and distance carry on without it.
+    resources = libraries_error == nil and res or nil,
   }))
 end)
 

@@ -59,11 +59,12 @@ local FRAME_WIDTH = 512
 local FRAME_HEIGHT = 64
 local FILL_INSET_X = 13
 local FILL_WIDTH = FRAME_WIDTH - 2 * FILL_INSET_X
--- Where the visible band starts inside that 64px footprint (it runs to y 39;
--- everything outside is transparent). Vertical placement is measured from the
--- band so the bar lands where the eye expects rather than where the texture
--- does - but the *box* still covers the whole footprint, padding included.
+-- The visible band inside that 64px footprint; everything outside it is
+-- transparent. Vertical placement is measured from the band so the bar lands
+-- where the eye expects rather than where the texture does - but the *box*
+-- still covers the whole footprint, padding included.
 local BAND_TOP = 25
+local BAND_BOTTOM = 39
 
 --[[ Glyph estimates. Windower prims cannot report their rendered width, so a
      row of independently coloured segments needs a reserve per segment.
@@ -92,6 +93,31 @@ local MAX_DISTANCE = 99.99
 
 -- partylist's bands, strictly less than, on the percent value.
 local BANDS = { { 25, "red" }, { 50, "orange" }, { 75, "yellow" } }
+
+--[[ The 0x028 action packet, as windower.packets.parse_action shapes it.
+     Category sets from enemybar2's actionTracking.lua (the working example of
+     this exact feature), cross-checked against the Action Event wiki: a
+     *start* carries the acting id in targets[1].actions[1].param, a *finish*
+     in the root param. Category 8 is a spell cast beginning, 7 a weapon
+     skill or TP move readying; 4, 11 and 3 are their completions. ]]
+local CAST_START = { [7] = true, [8] = true }
+-- 4 spell finish, 11 TP move landing, 3 a weapon skill landing, 6 a job
+-- ability resolving, 5 an item finishing - any of them from the caster means
+-- whatever was winding up has resolved. Item *starts* (category 9) are
+-- deliberately not tracked: monsters do not use items.
+local CAST_FINISH = { [3] = true, [4] = true, [5] = true, [6] = true, [11] = true }
+local SPELL_START = 8
+-- A finish the packet stream never delivers - a despawn mid-cast, a packet
+-- lost - must not leave a bar on screen forever.
+local CAST_EXPIRY_GRACE = 3
+local DEFAULT_TP_SWEEP = 2
+-- How much of the row the cast name's derived cap may claim; the last tenth
+-- stays as margin, because a cap sized to the whole row would spend the glyph
+-- estimate's entire error budget on the contract edge.
+local CAST_NAME_MARGIN = 0.9
+
+local PREVIEW_CAST = { active = true, name = "Fire IV", progress = 0.4, width = 194 }
+local IDLE_CAST = { active = false, name = "", progress = 0, width = 0 }
 
 --[[ DistancePlus's range coding, ported whole (BSD 3-clause (c) 2017 Sammeh
      of Quetzalcoatl).
@@ -221,7 +247,7 @@ local function band_for(percent)
   return "normal"
 end
 
-local function new(initial_config)
+local function new(initial_config, resources)
   local self = {}
   local config = initial_config or {}
 
@@ -234,6 +260,9 @@ local function new(initial_config)
   local next_poll = nil
   -- The fill's animated width, in authored pixels (0..FILL_WIDTH).
   local eased_width = 0
+  -- The cast the target is winding up, or nil. name/started_at/duration in
+  -- seconds, expires_at the moment the belt-and-braces timeout drops it.
+  local cast = nil
   --[[ Set whenever the bar's subject changes rather than its hp: a new target,
        a reacquire, a preview toggle. The next step jumps straight to the
        answer, because easing between two different mobs' health animates
@@ -378,9 +407,14 @@ local function new(initial_config)
     end
 
     -- A different mob is a different animation. Identity, not hp, is what
-    -- decides whether the bar eases or jumps.
+    -- decides whether the bar eases or jumps - and its cast goes with it.
     if not target or target.id ~= mob.id then
       snap = true
+      cast = nil
+    end
+    -- The dead do not finish casting.
+    if hpp == 0 then
+      cast = nil
     end
 
     target = {
@@ -402,6 +436,7 @@ local function new(initial_config)
   -- the same mob starts fresh rather than resuming a slide nobody could see.
   function self.clear_target()
     target = nil
+    cast = nil
   end
 
   function self.occupied()
@@ -595,7 +630,7 @@ local function new(initial_config)
   --[[ Everything both `geometry` and `bounds` need, derived once. Splitting it
        would be how the two drift apart, and a box that disagrees with what is
        drawn is exactly the bug the containment spec exists to catch. ]]
-  local function metrics(y, scale)
+  local function metrics(x, y, scale)
     local font_size = drawn_font(config.font_size, scale)
     local text_height = font_size * TEXT_HEIGHT_RATIO
     local hp_reserve = reserve(HP_CHARACTERS, font_size)
@@ -614,6 +649,33 @@ local function new(initial_config)
          nothing may be drawn above the box, padding included. ]]
     local gap = math.max((tonumber(config.gap) or 0) * scale, BAND_TOP * scale - text_height)
     local frame_y = y + text_height + gap - BAND_TOP * scale
+    local band_bottom = frame_y + BAND_BOTTOM * scale
+
+    --[[ The cast rows. Every key is a user-editable config value, so every
+         one is clamped: the scale to (0, 1] (a cast bar wider than the box
+         would cross the origin from its right anchor), the font to a whole
+         pixel, the gaps to zero and up (a negative would hoist a row above
+         the origin, which no frame-position floor reaches). ]]
+    local cast_config = section(config.cast)
+    local cast_scale = math.min(math.max(tonumber(cast_config.scale) or 0.5, 0.01), 1) * scale
+    local cast_gap = math.max(tonumber(cast_config.gap) or 0, 0) * scale
+    local cast_frame_y = math.max(y, band_bottom + cast_gap - BAND_TOP * cast_scale)
+    local cast_frame_x = math.max(x, x + row_width - FRAME_WIDTH * cast_scale)
+    local cast_band_bottom = cast_frame_y + BAND_BOTTOM * cast_scale
+
+    local cast_font = drawn_font(math.max(math.floor(tonumber(cast_config.font_size) or 10), 1), scale)
+    local cast_name_gap = math.max(tonumber(cast_config.name_gap) or 0, 0) * scale
+    local cast_name_y = cast_band_bottom + cast_name_gap
+    local cast_name_height = cast_font * TEXT_HEIGHT_RATIO
+
+    --[[ The cast name is the one right-justified text here, so it grows
+         leftwards from the box edge and its cap is the only thing standing
+         between it and the origin. Derived from the room actually available
+         at the current font - nine tenths of the row, keeping the last tenth
+         as margin for the glyph estimate - with the config cap as a further
+         ceiling, never the guarantee. ]]
+    local room = math.floor(row_width * CAST_NAME_MARGIN / (cast_font * RATIO))
+    local cast_name_chars = math.max(math.min(room, whole(cast_config.name_max_chars, 1, 20)), 0)
 
     return {
       font_size = font_size,
@@ -623,12 +685,25 @@ local function new(initial_config)
       name_reserve = name_reserve,
       row_width = row_width,
       frame_y = frame_y,
+      cast_scale = cast_scale,
+      cast_frame_x = cast_frame_x,
+      cast_frame_y = cast_frame_y,
+      cast_font = cast_font,
+      cast_name_y = cast_name_y,
+      cast_name_height = cast_name_height,
+      cast_name_chars = cast_name_chars,
+      cast_name_width = cast_name_chars * cast_font * RATIO,
     }
   end
 
-  -- Where every prim goes for a widget anchored at (x, y) at `scale`.
-  function self.geometry(x, y, scale)
-    local m = metrics(y, scale)
+  --[[ Where every prim goes for a widget anchored at (x, y) at `scale`.
+
+       `screen_width` serves only the right-justified cast name: the texts
+       library adds the screen width to x when the right flag is set, so the
+       position handed to that prim pre-subtracts it. Logic holds no ctx; the
+       widget reads its screen and passes the width in. ]]
+  function self.geometry(x, y, scale, screen_width)
+    local m = metrics(x, y, scale)
 
     local function text(offset, size, width)
       return { x = x + offset, y = y, size = size, width = width, height = size * TEXT_HEIGHT_RATIO }
@@ -653,6 +728,32 @@ local function new(initial_config)
           return eased * scale
         end,
       },
+      cast = {
+        frame = {
+          x = m.cast_frame_x,
+          y = m.cast_frame_y,
+          width = FRAME_WIDTH * m.cast_scale,
+          height = FRAME_HEIGHT * m.cast_scale,
+        },
+        fill = {
+          x = m.cast_frame_x + FILL_INSET_X * m.cast_scale,
+          y = m.cast_frame_y,
+          height = FRAME_HEIGHT * m.cast_scale,
+          full_width = FILL_WIDTH * m.cast_scale,
+          width_at = function(width)
+            return width * m.cast_scale
+          end,
+        },
+        name = {
+          x = x + m.row_width - (tonumber(screen_width) or 0),
+          y = m.cast_name_y,
+          size = m.cast_font,
+          height = m.cast_name_height,
+          right_edge = x + m.row_width,
+          max_chars = m.cast_name_chars,
+          max_width = m.cast_name_width,
+        },
+      },
     }
   end
 
@@ -667,8 +768,13 @@ local function new(initial_config)
        the widget just short of the bottom edge. Measuring to the band instead
        would tighten both at the cost of putting a prim outside its own box. ]]
   function self.bounds(x, y, scale)
-    local m = metrics(y, scale)
-    local bottom = math.max(y + m.text_height, m.frame_y + FRAME_HEIGHT * scale)
+    local m = metrics(x, y, scale)
+    local bottom = math.max(
+      y + m.text_height,
+      m.frame_y + FRAME_HEIGHT * scale,
+      m.cast_frame_y + FRAME_HEIGHT * m.cast_scale,
+      m.cast_name_y + m.cast_name_height
+    )
     return x, y, m.row_width, bottom - y
   end
 
@@ -702,15 +808,109 @@ local function new(initial_config)
     return eased_width, false
   end
 
+  --[[ The cast tracker ---------------------------------------------------- ]]
+
+  --[[ A parsed 0x028 from the entry point's chunk stream. Only the current
+       target's actions matter, and without the resources library there is no
+       name or duration to show, so the whole feature quietly sits out. ]]
+  function self.on_action(act, now)
+    if not resources or type(act) ~= "table" or not target then
+      return
+    end
+    if act.actor_id ~= target.id then
+      return
+    end
+
+    if CAST_FINISH[act.category] then
+      cast = nil
+      return
+    end
+    if not CAST_START[act.category] then
+      return
+    end
+
+    local first_target = type(act.targets) == "table" and act.targets[1] or nil
+    local first_action = first_target and type(first_target.actions) == "table" and first_target.actions[1] or nil
+    if type(first_action) ~= "table" then
+      return
+    end
+
+    -- An interrupt arrives as a start-shaped packet whose one action has
+    -- message 0 and is aimed back at the caster - structural, no magic
+    -- parameter (enemybar2's own test).
+    if first_action.message == 0 and first_target.id == act.actor_id then
+      cast = nil
+      return
+    end
+
+    local id = tonumber(first_action.param)
+    -- The reference's own `action_id == 0` guard: start packets can carry a
+    -- zero or missing id, and a bar named for nothing helps nobody.
+    if not id or id == 0 then
+      return
+    end
+    -- Clamped away from zero: the sweep divides the progress.
+    local sweep = math.max(tonumber(section(config.cast).tp_move_sweep) or DEFAULT_TP_SWEEP, 0.1)
+    local entry, duration
+    if act.category == SPELL_START then
+      entry = section(resources.spells)[id]
+      -- cast_time is in seconds (verified: the 8s bard songs read 8).
+      duration = entry and tonumber(entry.cast_time) or sweep
+    else
+      -- A readying player is winding up a weapon skill; anything else, a
+      -- monster ability. Neither has a duration in any packet or resource,
+      -- so the bar runs the configured sweep - an animation, honestly.
+      local book = target.is_npc == false and resources.weapon_skills or resources.monster_abilities
+      entry = section(book)[id]
+      duration = sweep
+    end
+
+    -- A spell that casts in zero seconds is done before any bar could mean
+    -- anything; its finish packet is already on the wire.
+    if duration <= 0 then
+      return
+    end
+
+    cast = {
+      name = entry and entry.en or ("Unknown (id:" .. tostring(id) .. ")"),
+      started_at = now,
+      duration = duration,
+      expires_at = now + duration + CAST_EXPIRY_GRACE,
+    }
+  end
+
+  local function cast_plan(now)
+    if preview then
+      return PREVIEW_CAST
+    end
+    if not cast or not now then
+      return IDLE_CAST
+    end
+    if now >= cast.expires_at then
+      cast = nil
+      return IDLE_CAST
+    end
+
+    local progress = 0
+    if cast.duration > 0 then
+      progress = math.min(math.max((now - cast.started_at) / cast.duration, 0), 1)
+    end
+    -- Width in the fill's authored pixels, like the hp fill's; the widget
+    -- scales it into place.
+    return { active = true, name = cast.name, progress = progress, width = math.floor(progress * FILL_WIDTH) }
+  end
+
   -- Everything a frame draws, in one call: the widget pushes it to prims and
-  -- decides nothing.
-  function self.tick()
+  -- decides nothing. `now` feeds the cast bar's clock; without it the cast
+  -- simply reads idle, which is what the layout-only callers want.
+  function self.tick(now)
     local mob = current()
     if not mob then
       return {
         occupied = false,
         fill = { width = 0, hidden = true, color = nil },
         texts = self.texts(),
+        cast = cast_plan(now),
       }
     end
 
@@ -725,6 +925,7 @@ local function new(initial_config)
         color = section(config.fill_colors)[state],
       },
       texts = self.texts(),
+      cast = cast_plan(now),
     }
   end
 

@@ -423,6 +423,29 @@ room for it (bounds, prim budget, config keys).
     known spell as the interrupt, and give every bar a duration timeout so an
     unclosed cast expires on its own rather than sticking.
 
+  **Superseded, 2026-08-08 - TB4 is implemented on a different data source.**
+  The enemybar2 fork (AkadenTK/enemybar2, `actionTracking.lua`) settled every
+  open question by example, each fact then confirmed against Windower's own
+  API definitions or library users (GearSwap, Debuffed, battlemod):
+
+  - **Route:** not the deprecated `action` event at all -
+    `windower.packets.parse_action(data)` on the raw `0x028` chunk, a
+    Windower-provided parser (definitions/windower.lua:1178). This repo's
+    entry point already dispatches every incoming chunk to every component,
+    so the cast bar needs no new event registration whatsoever.
+  - **Ids:** on a *start* packet (categories 7/8; 9 is an item start, which
+    monsters never send and this component does not track) the acting id is
+    `targets[1].actions[1].param`; on a finish (3/4/5/6/11) it is the root
+    `param`. Spells resolve via `res.spells`, an NPC's category-7 readying via
+    `res.monster_abilities` **indexed directly, no offset**.
+  - **Interrupts are structural, not a magic number:**
+    `targets[1].actions[1].message == 0` with `targets[1].id == actor_id`
+    on a start-shaped packet is the interrupt. `param 28787` is not needed.
+  - Belt kept anyway: every bar carries an expiry (duration plus grace), so a
+    close the packet stream never delivers still times out.
+
+  The paragraph below records the state before this was known.
+
   **Consequence: TB4 is not implemented.** Its data source is deprecated with an
   unverified replacement, and the plan's own ordering puts it after TB2's
   live-client pass, which has not happened.

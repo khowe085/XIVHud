@@ -1,6 +1,37 @@
 local new_logic = require("components/targetbar/logic")
 local build_defaults = require("components/targetbar/defaults")
 
+-- What res.spells / res.monster_abilities / res.weapon_skills look like to the
+-- cast tracker: entries keyed by id, with an English name, and cast_time in
+-- seconds on spells.
+local FAKE_RESOURCES = {
+  spells = {
+    [144] = { en = "Fire IV", cast_time = 8 },
+    [1] = { en = "Cure", cast_time = 2 },
+  },
+  monster_abilities = {
+    [672] = { en = "Blood Drain" },
+  },
+  weapon_skills = {
+    [32] = { en = "Fast Blade" },
+  },
+}
+
+-- A parsed 0x028 the way windower.packets.parse_action shapes it: category
+-- and param at the root, the per-target ids one level down.
+local function action(fields)
+  local act = {
+    actor_id = 100,
+    category = 8,
+    param = 0,
+    targets = { { id = 1, actions = { { param = 144, message = 327 } } } },
+  }
+  for key, value in pairs(fields or {}) do
+    act[key] = value
+  end
+  return act
+end
+
 -- A plain monster: not a PC, not in the party, nobody's claim.
 local function mob(fields)
   local target = {
@@ -890,6 +921,7 @@ describe("targetbar logic", function()
 
   describe("layout", function()
     local ORIGIN_X, ORIGIN_Y = 400, 200
+    local SCREEN_WIDTH = 1920
 
     -- Every rectangle the widget will actually draw, art footprints and all.
     -- The fills are measured at their widest, since the eased width only ever
@@ -910,11 +942,26 @@ describe("targetbar logic", function()
         width = geometry.fill.full_width,
         height = geometry.fill.height,
       })
+      add("cast frame", geometry.cast.frame)
+      add("cast fill", {
+        x = geometry.cast.fill.x,
+        y = geometry.cast.fill.y,
+        width = geometry.cast.fill.full_width,
+        height = geometry.cast.fill.height,
+      })
+      -- Right-justified, so it grows leftwards from its right edge; the box
+      -- it can occupy is its capped width back from there.
+      add("cast name", {
+        x = geometry.cast.name.right_edge - geometry.cast.name.max_width,
+        y = geometry.cast.name.y,
+        width = geometry.cast.name.max_width,
+        height = geometry.cast.name.height,
+      })
       return boxes
     end
 
     local function assert_contained(scale)
-      local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, scale)
+      local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, scale, SCREEN_WIDTH)
       local bx, by, width, height = logic.bounds(ORIGIN_X, ORIGIN_Y, scale)
 
       assert.are.equal(ORIGIN_X, bx)
@@ -999,10 +1046,56 @@ describe("targetbar logic", function()
     end)
 
     it("reports the box's absolute height, not just its origin", function()
-      -- Text row 21, gap 8, band offset 25: the frame's texture starts at +4
-      -- and runs 64 deep, so the box is 68 tall.
+      -- Text row 21, gap 8, band offset 25: the hp frame starts at +4 and
+      -- runs 64 deep to +68. The cast rows reach past it: cast frame at
+      -- +34.5 runs 32 deep, and the name row below it ends at +71.
       local _, _, _, height = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
-      assert.are.equal(68, height)
+      assert.are.equal(71, height)
+    end)
+
+    --[[ The cast rows are in the box whether or not anything is casting: a
+         drag target that grew the moment a mob started casting would move
+         out from under the cursor mid-drag. ]]
+    it("reserves the cast rows in the box permanently", function()
+      local _, _, _, idle_height = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
+      logic = new_logic(config, FAKE_RESOURCES)
+      logic.set_target(mob())
+      logic.on_action({
+        actor_id = 100,
+        category = 8,
+        param = 0,
+        targets = { { id = 1, actions = { { param = 144, message = 327 } } } },
+      }, 10)
+      local _, _, _, casting_height = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
+      assert.are.equal(idle_height, casting_height)
+    end)
+
+    it("right-aligns the cast bar against the box's edge, at half size", function()
+      local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1, SCREEN_WIDTH)
+      assert.are.equal(256, geometry.cast.frame.width)
+      assert.are.equal(32, geometry.cast.frame.height)
+      assert.are.equal(ORIGIN_X + 512, geometry.cast.frame.x + geometry.cast.frame.width)
+      -- Its band lands cast.gap below the hp band's bottom: hp band ends at
+      -- +43, plus 4, less the half-scale band offset of 12.5.
+      assert.are.equal(ORIGIN_Y + 34.5, geometry.cast.frame.y)
+    end)
+
+    it("insets the cast fill like the main fill, at the cast's scale", function()
+      local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1, SCREEN_WIDTH)
+      assert.are.equal(geometry.cast.frame.x + 6.5, geometry.cast.fill.x)
+      assert.are.equal(243, geometry.cast.fill.full_width)
+      assert.are.equal(32, geometry.cast.fill.height)
+    end)
+
+    --[[ The one right-justified text in the addon. texts.pos adds the screen
+         width to x when the right flag is set, so the position handed to the
+         prim pre-subtracts it; the right edge is the box's own. ]]
+    it("offsets the right-justified cast name by the screen width", function()
+      local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1, SCREEN_WIDTH)
+      assert.are.equal(ORIGIN_X + 512, geometry.cast.name.right_edge)
+      assert.are.equal(ORIGIN_X + 512 - SCREEN_WIDTH, geometry.cast.name.x)
+      assert.are.equal(10, geometry.cast.name.size)
+      assert.are.equal(20, geometry.cast.name.max_chars)
     end)
 
     it("scales the fill's eased width with the widget", function()
@@ -1096,6 +1189,46 @@ describe("targetbar logic", function()
         assert_contained(1)
       end)
 
+      it("survives a cast bar scaled past the widget", function()
+        config.cast.scale = 8
+        logic.set_config(config)
+        assert_contained(1)
+      end)
+
+      it("survives a cast font of zero or worse", function()
+        config.cast.font_size = 0
+        logic.set_config(config)
+        assert_contained(1)
+        config.cast.font_size = -10
+        logic.set_config(config)
+        assert_contained(1)
+      end)
+
+      it("survives negative cast spacing, which would hoist the rows", function()
+        config.cast.gap = -1000
+        config.cast.name_gap = -1000
+        logic.set_config(config)
+        assert_contained(1)
+      end)
+
+      it("keeps the cast name's derived cap in charge of a huge config cap", function()
+        config.cast.name_max_chars = 1000000000
+        logic.set_config(config)
+        assert_contained(1)
+        local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1, SCREEN_WIDTH)
+        -- The room the row actually has, not the config's ambition.
+        assert.is_true(geometry.cast.name.max_chars <= 61)
+      end)
+
+      it("survives a cast section that is not a table", function()
+        config.cast = 42
+        logic.set_config(config)
+        assert.has_no.errors(function()
+          logic.geometry(ORIGIN_X, ORIGIN_Y, 1, SCREEN_WIDTH)
+        end)
+        assert_contained(1)
+      end)
+
       it("survives a tiny name cap", function()
         reconfigure({ name_max_chars = 3 })
         assert_contained(1)
@@ -1175,6 +1308,238 @@ describe("targetbar logic", function()
       assert.is_true(changed)
       assert.are.equal("bow", config.distance.mode)
       assert.is_truthy(reply:find("bow"))
+    end)
+  end)
+
+  describe("the cast bar", function()
+    local function acquire(fields)
+      logic.set_target(mob(fields))
+    end
+
+    before_each(function()
+      logic = new_logic(config, FAKE_RESOURCES)
+      acquire()
+    end)
+
+    local function cast_of(now)
+      return logic.tick(now).cast
+    end
+
+    it("shows nothing before anyone casts", function()
+      assert.is_false(cast_of(0).active)
+    end)
+
+    it("starts a bar when the target begins a spell", function()
+      logic.on_action(action(), 10)
+      local cast = cast_of(10)
+      assert.is_true(cast.active)
+      assert.are.equal("Fire IV", cast.name)
+    end)
+
+    it("measures spell progress against the spell's cast time", function()
+      logic.on_action(action(), 10)
+      -- Fire IV casts in 8 seconds; 4 in is half way.
+      assert.are.equal(0.5, cast_of(14).progress)
+      -- And half way is half the 486px fill region, in authored pixels.
+      assert.are.equal(243, cast_of(14).width)
+    end)
+
+    it("starts at zero and clamps at full until something closes it", function()
+      logic.on_action(action(), 10)
+      assert.are.equal(0, cast_of(10).progress)
+      assert.are.equal(1, cast_of(18.5).progress)
+    end)
+
+    it("runs a TP move on the fixed sweep, since no real duration exists", function()
+      logic.on_action(
+        action({ category = 7, targets = { { id = 1, actions = { { param = 672, message = 43 } } } } }),
+        10
+      )
+      local cast = cast_of(11)
+      assert.is_true(cast.active)
+      assert.are.equal("Blood Drain", cast.name)
+      -- cast.tp_move_sweep is 2 seconds; 1 in is half way.
+      assert.are.equal(0.5, cast.progress)
+    end)
+
+    it("reads a readying player as a weapon skill, not a monster ability", function()
+      acquire({ is_npc = false, id = 100 })
+      logic.on_action(
+        action({ category = 7, targets = { { id = 1, actions = { { param = 32, message = 43 } } } } }),
+        10
+      )
+      assert.are.equal("Fast Blade", cast_of(10).name)
+    end)
+
+    it("ignores an action by anything that is not the target", function()
+      logic.on_action(action({ actor_id = 999 }), 10)
+      assert.is_false(cast_of(10).active)
+    end)
+
+    it("ignores actions with nothing targeted", function()
+      logic.clear_target()
+      assert.has_no.errors(function()
+        logic.on_action(action(), 10)
+      end)
+      assert.is_false(cast_of(10).active)
+    end)
+
+    --[[ The reference guards `action_id == 0` explicitly: start packets can
+         carry a zero (or missing) id, and a bar named "Unknown (id:0)" for
+         five seconds is worse than none. ]]
+    it("ignores a start with a zero id", function()
+      logic.on_action(action({ targets = { { id = 1, actions = { { param = 0, message = 327 } } } } }), 10)
+      assert.is_false(cast_of(10).active)
+    end)
+
+    it("ignores a start with no id at all", function()
+      logic.on_action(action({ targets = { { id = 1, actions = { { message = 327 } } } } }), 10)
+      assert.is_false(cast_of(10).active)
+    end)
+
+    -- Some spells legitimately cast in zero seconds; a bar with nothing to
+    -- fill and nothing to wait for is noise, not information.
+    it("raises no bar for an instant cast", function()
+      logic = new_logic(config, { spells = { [7] = { en = "Instacast", cast_time = 0 } } })
+      acquire()
+      logic.on_action(action({ targets = { { id = 1, actions = { { param = 7, message = 327 } } } } }), 10)
+      assert.is_false(cast_of(10).active)
+    end)
+
+    it("names an id the resources do not know without crashing", function()
+      logic.on_action(action({ targets = { { id = 1, actions = { { param = 9999, message = 327 } } } } }), 10)
+      local cast = cast_of(10)
+      assert.is_true(cast.active)
+      assert.is_truthy(cast.name:find("9999"))
+    end)
+
+    it("clears when the spell completes", function()
+      logic.on_action(action(), 10)
+      -- Category 4 is the finish; on a finish the id is the root param.
+      logic.on_action(action({ category = 4, param = 144 }), 12)
+      assert.is_false(cast_of(12).active)
+    end)
+
+    it("clears when a TP move fires", function()
+      logic.on_action(
+        action({ category = 7, targets = { { id = 1, actions = { { param = 672, message = 43 } } } } }),
+        10
+      )
+      logic.on_action(action({ category = 11, param = 672 }), 12)
+      assert.is_false(cast_of(12).active)
+    end)
+
+    --[[ An interrupt arrives as a start-shaped packet whose one action has
+         message 0 and targets the caster itself - the structural signature
+         enemybar2 keys on, needing no magic parameter. ]]
+    it("clears when the cast is interrupted", function()
+      logic.on_action(action(), 10)
+      logic.on_action(action({ targets = { { id = 100, actions = { { param = 0, message = 0 } } } } }), 12)
+      assert.is_false(cast_of(12).active)
+    end)
+
+    -- The other half of the structural test: message 0 aimed at anything
+    -- *other* than the caster is not an interrupt, just a start.
+    it("does not read a message-0 start at another target as an interrupt", function()
+      logic.on_action(action({ targets = { { id = 55, actions = { { param = 144, message = 0 } } } } }), 10)
+      assert.is_true(cast_of(10).active)
+      assert.are.equal("Fire IV", cast_of(10).name)
+    end)
+
+    it("clears on the other finish categories the reference closes on", function()
+      -- 6 is a job ability resolving, 5 an item finishing: either from the
+      -- caster means whatever was winding up has resolved or been replaced.
+      logic.on_action(action(), 10)
+      logic.on_action(action({ category = 6, param = 99, targets = {} }), 11)
+      assert.is_false(cast_of(11).active)
+      logic.on_action(action(), 12)
+      logic.on_action(action({ category = 5, param = 4096, targets = {} }), 13)
+      assert.is_false(cast_of(13).active)
+    end)
+
+    it("honours a configured sweep other than the default", function()
+      config.cast.tp_move_sweep = 4
+      logic.set_config(config)
+      logic.on_action(
+        action({ category = 7, targets = { { id = 1, actions = { { param = 672, message = 43 } } } } }),
+        10
+      )
+      assert.are.equal(0.5, cast_of(12).progress)
+    end)
+
+    it("clamps a hostile sweep instead of dividing by it", function()
+      config.cast.tp_move_sweep = -5
+      logic.set_config(config)
+      assert.has_no.errors(function()
+        logic.on_action(
+          action({ category = 7, targets = { { id = 1, actions = { { param = 672, message = 43 } } } } }),
+          10
+        )
+        cast_of(10)
+      end)
+    end)
+
+    -- Belt as well as braces: a finish the packet stream never delivers must
+    -- not leave a bar on screen forever.
+    it("expires a bar nothing ever closed", function()
+      logic.on_action(action(), 10)
+      -- 8s cast + grace: gone well after, still there just past full.
+      assert.is_true(cast_of(18.5).active)
+      assert.is_false(cast_of(25).active)
+    end)
+
+    it("replaces a running cast when the target starts another", function()
+      logic.on_action(action(), 10)
+      logic.on_action(action({ targets = { { id = 1, actions = { { param = 1, message = 327 } } } } }), 14)
+      local cast = cast_of(14)
+      assert.are.equal("Cure", cast.name)
+      assert.are.equal(0, cast.progress)
+    end)
+
+    it("drops the bar when the target changes", function()
+      logic.on_action(action(), 10)
+      acquire({ id = 555 })
+      assert.is_false(cast_of(11).active)
+    end)
+
+    it("drops the bar when the target is lost", function()
+      logic.on_action(action(), 10)
+      logic.clear_target()
+      assert.is_false(cast_of(11).active)
+    end)
+
+    it("drops the bar when the target dies", function()
+      logic.on_action(action(), 10)
+      acquire({ hpp = 0 })
+      assert.is_false(cast_of(11).active)
+    end)
+
+    it("survives a malformed action table", function()
+      assert.has_no.errors(function()
+        logic.on_action({ category = 8 }, 10)
+        logic.on_action({ actor_id = 100, category = 8, targets = {} }, 10)
+        logic.on_action(nil, 10)
+      end)
+    end)
+
+    it("shows a sample cast in preview so layout mode has the full stack", function()
+      logic.set_preview(true)
+      local cast = cast_of(0)
+      assert.is_true(cast.active)
+      assert.is_true(#cast.name > 0)
+      assert.is_true(cast.progress > 0 and cast.progress < 1)
+    end)
+
+    describe("without the resources library", function()
+      before_each(function()
+        logic = new_logic(config, nil)
+        acquire()
+      end)
+
+      it("never starts a bar", function()
+        logic.on_action(action(), 10)
+        assert.is_false(cast_of(10).active)
+      end)
     end)
   end)
 

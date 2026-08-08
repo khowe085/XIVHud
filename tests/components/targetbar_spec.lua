@@ -4,8 +4,9 @@ local fakes = require("tests/support/fakes")
 describe("targetbar widget", function()
   local prims, assets, widget
   local target, party, player, me, clock, saves, target_reads
+  local parsed, next_action
 
-  -- The prims are built in draw order: background, fill, frame.
+  -- The prims are built in draw order: the hp layers, then the cast's.
   local function background()
     return prims.images[1]
   end
@@ -16,6 +17,18 @@ describe("targetbar widget", function()
 
   local function frame()
     return prims.images[3]
+  end
+
+  local function cast_fill()
+    return prims.images[5]
+  end
+
+  local function cast_frame()
+    return prims.images[6]
+  end
+
+  local function cast_name()
+    return prims.texts[4]
   end
 
   local function hp()
@@ -80,6 +93,8 @@ describe("targetbar widget", function()
     clock = 0
     saves = 0
     target_reads = 0
+    parsed = {}
+    next_action = nil
     widget = new_targetbar({
       new_text = prims.new_text,
       new_image = prims.new_image,
@@ -109,8 +124,28 @@ describe("targetbar widget", function()
         assets[#assets + 1] = file
         return "addons/XIVHud/" .. file
       end,
+      parse_action = function(data)
+        parsed[#parsed + 1] = data
+        return next_action
+      end,
+      resources = {
+        spells = { [144] = { en = "Fire IV", cast_time = 8 } },
+        monster_abilities = { [672] = { en = "Blood Drain" } },
+      },
     })
   end)
+
+  -- The target winds up Fire IV: the raw chunk arrives, the fake parser hands
+  -- back the parsed action, and the widget forwards it to the tracker.
+  local function begin_cast()
+    next_action = {
+      actor_id = 100,
+      category = 8,
+      param = 0,
+      targets = { { id = 1, actions = { { param = 144, message = 327 } } } },
+    }
+    widget.update("chunk", 0x028, "raw action bytes")
+  end
 
   describe("construction", function()
     it("is named for its config namespace and command word", function()
@@ -123,9 +158,9 @@ describe("targetbar widget", function()
       assert.are.equal(50, slot.pos.y)
     end)
 
-    it("builds three texts and three bar layers", function()
-      assert.are.equal(3, #prims.texts)
-      assert.are.equal(3, #prims.images)
+    it("builds four texts and six bar layers", function()
+      assert.are.equal(4, #prims.texts)
+      assert.are.equal(6, #prims.images)
     end)
 
     it("points every layer at its own copy of the art", function()
@@ -133,7 +168,18 @@ describe("targetbar widget", function()
         "components/targetbar/assets/xiv/BarBG.png",
         "components/targetbar/assets/xiv/Bar.png",
         "components/targetbar/assets/xiv/BarFG.png",
+        "components/targetbar/assets/xiv/BarBG.png",
+        "components/targetbar/assets/xiv/Bar.png",
+        "components/targetbar/assets/xiv/BarFG.png",
       }, assets)
+    end)
+
+    -- The one right-justified text in the addon: the cast name grows leftward
+    -- from the box's right edge, and its position pre-subtracts the screen
+    -- width the library will add back.
+    it("right-justifies only the cast name", function()
+      assert.is_true(cast_name().last.right_justified)
+      assert.is_nil(hp().last.right_justified)
     end)
 
     -- fit(true) sizes a prim to its texture, which would defeat both the
@@ -504,9 +550,12 @@ describe("targetbar widget", function()
       assert.are.equal(400, hp().y)
       assert.are.equal(353, distance().x)
       assert.are.equal(406, name().x)
-      for _, text in ipairs(prims.texts) do
-        assert.are.equal(14, text.font_size)
+      -- The three row segments share the row font; the cast name below has
+      -- its own smaller one.
+      for index = 1, 3 do
+        assert.are.equal(14, prims.texts[index].font_size)
       end
+      assert.are.equal(10, cast_name().font_size)
     end)
 
     -- A prim cannot draw a fractional font, so the size it is handed has to be
@@ -612,6 +661,157 @@ describe("targetbar widget", function()
     end)
   end)
 
+  describe("the cast bar", function()
+    before_each(function()
+      attach()
+      widget.set_pos(100, 100)
+      widget.show()
+      target = mob()
+      widget.update()
+    end)
+
+    it("draws nothing while nobody casts", function()
+      assert.is_false(cast_frame().visible)
+      assert.is_false(cast_fill().visible)
+      assert.is_false(cast_name().visible)
+    end)
+
+    it("raises the bar when the target starts casting", function()
+      begin_cast()
+      widget.update()
+      assert.is_true(cast_frame().visible)
+      assert.are.equal("Fire IV", cast_name().last.text)
+      -- The fill itself waits for the first sliver of progress: a zero-width
+      -- prim is hidden, exactly like the hp fill at zero health.
+      assert.is_false(cast_fill().visible)
+      clock = 1
+      widget.update()
+      assert.is_true(cast_fill().visible)
+    end)
+
+    it("fills with the cast's progress, not the target's health", function()
+      begin_cast()
+      widget.update()
+      local at_start = cast_fill().width
+      clock = 4
+      widget.update()
+      -- Half of Fire IV's 8s: half the 486px region at the cast's half scale.
+      assert.are.equal(121.5, cast_fill().width)
+      assert.is_true(cast_fill().width > at_start)
+    end)
+
+    it("parses only the action chunk, nothing else", function()
+      widget.update("chunk", 0x00A, "zone bytes")
+      widget.update("chunk", 0x0D2, "treasure bytes")
+      assert.are.equal(0, #parsed)
+      begin_cast()
+      assert.are.equal(1, #parsed)
+    end)
+
+    it("shrugs off a chunk the parser cannot read", function()
+      next_action = nil
+      assert.has_no.errors(function()
+        widget.update("chunk", 0x028, "garbage")
+      end)
+      widget.update()
+      assert.is_false(cast_frame().visible)
+    end)
+
+    it("lowers the bar when the cast completes", function()
+      begin_cast()
+      widget.update()
+      next_action = { actor_id = 100, category = 4, param = 144, targets = {} }
+      widget.update("chunk", 0x028, "finish bytes")
+      widget.update()
+      assert.is_false(cast_frame().visible)
+      assert.is_false(cast_name().visible)
+    end)
+
+    it("expires a cast nothing closed", function()
+      begin_cast()
+      widget.update()
+      clock = 30
+      widget.update()
+      assert.is_false(cast_frame().visible)
+    end)
+
+    it("hides with the rest of the widget, and stays hidden through a tick", function()
+      begin_cast()
+      clock = 1
+      widget.update()
+      widget.hide()
+      for _, prim in ipairs({ cast_frame(), cast_fill(), cast_name(), prims.images[4] }) do
+        assert.is_false(prim.visible)
+      end
+      -- The next frame must not raise it again over a hidden HUD - this is
+      -- the cutscene/zoning auto-hide path.
+      widget.update()
+      for _, prim in ipairs({ cast_frame(), cast_fill(), cast_name(), prims.images[4] }) do
+        assert.is_false(prim.visible)
+      end
+    end)
+
+    it("shows the sample cast in preview", function()
+      target = nil
+      widget.set_preview(true)
+      widget.update()
+      assert.is_true(cast_frame().visible)
+      assert.are.equal("Fire IV", cast_name().last.text)
+    end)
+
+    it("sits right-aligned under the bar", function()
+      begin_cast()
+      widget.update()
+      -- Box right edge at 100 + 512; the half-scale frame is 256 wide.
+      assert.are.equal(100 + 512 - 256, cast_frame().x)
+      assert.is_true(cast_frame().y > frame().y)
+      assert.are.equal(256, cast_frame().width)
+      assert.are.equal(32, cast_frame().height)
+    end)
+
+    --[[ The riskiest mechanism in the widget: a right-justified prim's x has
+         the screen width pre-subtracted, because the texts library adds it
+         back. Forgetting to forward the screen width - or to place the prim
+         at all - fails silently in a client, drawing the name off-screen. ]]
+    it("places the cast name pre-compensated for the right-justify offset", function()
+      begin_cast()
+      widget.update()
+      assert.are.equal(100 + 512 - 1920, cast_name().x)
+      assert.is_true(cast_name().y > cast_frame().y)
+    end)
+
+    it("places the cast fill inside its own frame, not the hp bar's", function()
+      begin_cast()
+      widget.update()
+      assert.are.equal(cast_frame().x + 6.5, cast_fill().x)
+      assert.are.equal(cast_frame().y, cast_fill().y)
+    end)
+
+    it("truncates the cast name at the configured cap", function()
+      local trimmed = copy(widget.defaults)
+      trimmed.cast.name_max_chars = 3
+      attach(trimmed)
+      widget.set_pos(100, 100)
+      widget.show()
+      target = mob()
+      widget.update()
+      begin_cast()
+      widget.update()
+      assert.are.equal("Fir", cast_name().last.text)
+    end)
+
+    it("wears the fixed pale yellow, never the claim tint", function()
+      target = mob({ claim_id = 77 })
+      party = { p0 = { name = "Ally", mob = { id = 77 } } }
+      -- Past the poll window, so the roster above is actually read.
+      clock = 1
+      begin_cast()
+      widget.update()
+      assert.are.same({ 255, 20, 20 }, fill().last.color)
+      assert.are.same({ 230, 230, 138 }, cast_fill().last.color)
+    end)
+  end)
+
   describe("events it is handed but does not want", function()
     before_each(function()
       attach()
@@ -654,6 +854,8 @@ describe("targetbar widget", function()
       widget.update("add item", 65535)
       widget.update("status", 4, 0)
       widget.update("hp", 100, 90)
+      -- The action chunk is wanted, but even it must not trigger a render.
+      widget.update("chunk", 0x028, "raw action bytes")
       assert.are.equal(before, target_reads)
     end)
   end)

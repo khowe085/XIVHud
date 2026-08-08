@@ -88,6 +88,23 @@ return function(screen_width, _screen_height)
         best = { a = 255, r = 0, g = 0, b = 255 },
       },
     },
+    cast = {
+      -- The claim palette's unclaimed yellow, but its own key: the cast fill
+      -- is fixed and never follows the claim state.
+      fill_color = { a = 255, r = 230, g = 230, b = 138 },
+      -- One factor for both axes, so the key cannot leave the height
+      -- undetermined.
+      scale = 0.5,
+      font_size = 10,
+      -- HP band bottom to the cast band's top, and cast band bottom to the
+      -- name row.
+      gap = 4,
+      name_gap = 2,
+      name_max_chars = 20,
+      -- A TP move's ready time is in no packet and no resource, so its bar is
+      -- an animation of this length rather than a measurement.
+      tp_move_sweep = 2,
+    },
     slots = {
       default = {
         pos = {
