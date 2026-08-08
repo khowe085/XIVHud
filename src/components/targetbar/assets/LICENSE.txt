@@ -1,0 +1,156 @@
+This component redistributes material from three BSD 3-clause addons: the bar
+art in this directory, and - equally covered, because clause 1 governs source
+as well as binaries - two pieces of logic transcribed into its Lua. All three
+notices are reproduced in full below.
+
+
+1. THE BAR ART (xiv/), from XivParty
+--------------------------------------------------------------------------------
+
+    https://github.com/Tylas11/XivParty
+
+XivParty ships no separate asset licence, so its source licence is the basis on
+which these are redistributed. Six files, two regenerated widths of the same
+three source textures:
+
+    xiv/BarBG.png    the health bar's background plate      (4x source width)
+    xiv/Bar.png      its fill, stretched to the percentage  (4x)
+    xiv/BarFG.png    the bevelled frame drawn over both     (4x)
+    xiv/CastBG.png   the cast bar's plate                   (2x)
+    xiv/CastBar.png  its fill, swept with the cast          (2x)
+    xiv/CastFG.png   its frame                              (2x)
+
+They derive from the files under components/partylist/assets/xiv/ (the
+duplication is deliberate: a component owns everything it draws, so that
+removing one cannot break another), regenerated wider - this component draws
+one wide bar where the party list draws many narrow ones. The transform
+preserves the art rather than resampling it:
+
+    source cols   0..43     ->  out cols    0..43        left cap, byte for byte
+    source col   128        ->  out cols   44..979       middle, replicated
+    source cols 212..255    ->  out cols  980..1023      right cap, byte for byte
+
+The middle of both frame textures is a run of identical columns in the source
+(BarFG cols 44..211, BarBG wider still), so replicating the centre column
+extends it without interpolating a single pixel; the vertical structure is
+untouched. Bar.png is uniform across its whole width and is rebuilt the same
+way at the fill region's 972 file columns.
+
+    2026-08-08  256 -> 1024 (drawn 128 -> 512), caps 44 file px each
+    2026-08-08  256 ->  512 (drawn 128 -> 256), caps 44 file px each - the
+                CastBG/CastBar/CastFG set, the cast bar's own narrower frame
+
+This notice covers all six files - partylist's own copy carries the
+additional notices for the job icons, buff icons and its regenerated
+background art, none of which are here.
+
+The same licence covers the material ported from XivParty's source into this
+component: the bar geometry in logic.lua (the 128x64 frame, its 102px fill
+region at a 13px inset, and the 25..39 band inside the texture) and the health
+band thresholds and colours, both by way of components/partylist/layout.lua.
+
+Copyright © 2024, Tylas
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of XivParty nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL Tylas BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+2. THE CLAIM STATE MACHINE, from enemybar
+--------------------------------------------------------------------------------
+
+    https://github.com/Windower/Lua/tree/dev/addons/enemybar
+
+No art is taken from enemybar. What is taken is its target-colouring logic: the
+six claim states, the order they are tested in, and the exact RGB values for
+each - in logic.lua's `claim_state` and defaults.lua's `fill_colors`. The
+reference applies that palette to its text; here it tints the bar fill instead,
+and the ownership test is widened to the alliance and guarded against an
+unresolved player id. The states, their order and five of the six colours are
+the original's; the claimed-by-us red is deepened (255,204,204 -> 255,20,20),
+because the reference's pale pink was chosen for text and reads washed out
+spread across a fill.
+
+Copyright © 2015, Mike McKee
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of enemybar nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL Mike McKee BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+3. THE RANGE BANDS, from DistancePlus
+--------------------------------------------------------------------------------
+
+    https://github.com/Windower/Lua/tree/dev/addons/DistancePlus
+
+No art is taken from DistancePlus either. What is taken is its range colouring:
+the per-weapon band constants, the casting distances, the model-size
+adjustments, the four colours and - load-bearing, since the bands overlap - the
+order the branches are evaluated in, all in logic.lua's `ranged_state`,
+`casting_state` and `RANGED_BANDS`. Transcribed digit for digit.
+
+Copyright © 2017, Sammeh of Quetzalcoatl
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of DistancePlus nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL Sammeh BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

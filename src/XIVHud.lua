@@ -171,6 +171,9 @@ end)
 local new_giltracker = step("loading the giltracker component", function()
   return require("components/giltracker/giltracker")
 end)
+local new_targetbar = step("loading the targetbar component", function()
+  return require("components/targetbar/targetbar")
+end)
 
 -- Every Windower handler goes through this, so a bug degrades to a message and
 -- a dead handler rather than an unexplained freeze.
@@ -410,6 +413,17 @@ local function get_player()
   return windower.ffxi.get_player()
 end
 
+-- Module level because two components read them now: the party list, which
+-- builds a row per member, and the target bar, which needs the same roster to
+-- decide whether a claim is the player's own.
+local function get_mob_by_target(kind)
+  return windower.ffxi.get_mob_by_target(kind)
+end
+
+local function get_party()
+  return windower.ffxi.get_party()
+end
+
 local function asset(relative_path)
   return windower.addon_path .. relative_path
 end
@@ -436,6 +450,19 @@ end
 local function parse_packet(data)
   local ok, packet = pcall(packets.parse, "incoming", data)
   return ok and packet or nil
+end
+
+-- Windower's own parser for the 0x028 action packet - core API, not a
+-- library, so it is available even when resources/packets failed to load.
+-- Same pcall reasoning as parse_packet: this too runs on inbound packets.
+-- The index happens INSIDE the closure: pcall(windower.packets.parse_action,
+-- data) evaluates the index before the protected call, so a missing
+-- windower.packets would throw straight into the shared chunk handler.
+local function parse_action(data)
+  local ok, act = pcall(function()
+    return windower.packets.parse_action(data)
+  end)
+  return ok and act or nil
 end
 
 -- Everything from here on can fail on a broken install, so each part is a step
@@ -497,6 +524,33 @@ step("building the giltracker component", function()
   }))
 end)
 
+--[[ Gated on safe_mode alone, like parambar and unlike the two components
+     that also take libraries_error.
+
+     The party list and the gil tracker are useless without the resource and
+     packet libraries, so a failure there skips them wholesale. The target bar
+     is not: its health bar, name and distance read the mob table directly and
+     need no library at all. ]]
+step("building the targetbar component", function()
+  if safe_mode then
+    return
+  end
+  core.register(new_targetbar({
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
+    now = os.clock,
+    get_player = get_player,
+    get_mob_by_target = get_mob_by_target,
+    get_party = get_party,
+    parse_action = parse_action,
+    -- nil when the resource library failed to load: the cast bar then never
+    -- shows, and the health bar, name and distance carry on without it.
+    resources = libraries_error == nil and res or nil,
+  }))
+end)
+
 -- One factory, three components: the main party and the two alliance parties
 -- each get their own config file, layout slot and drag box.
 step("building the party list components", function()
@@ -518,12 +572,8 @@ step("building the party list components", function()
       resources = res,
       now = os.clock,
       get_player = get_player,
-      get_party = function()
-        return windower.ffxi.get_party()
-      end,
-      get_mob_by_target = function(kind)
-        return windower.ffxi.get_mob_by_target(kind)
-      end,
+      get_party = get_party,
+      get_mob_by_target = get_mob_by_target,
       get_info = function()
         return windower.ffxi.get_info()
       end,
@@ -553,6 +603,9 @@ local function check_assets()
     expected[#expected + 1] = "components/partylist/" .. texture
   end
   expected[#expected + 1] = "components/giltracker/assets/gil.png"
+  for _, texture in ipairs({ "BarBG.png", "Bar.png", "BarFG.png", "CastBG.png", "CastBar.png", "CastFG.png" }) do
+    expected[#expected + 1] = "components/targetbar/assets/xiv/" .. texture
+  end
 
   for _, relative_path in ipairs(expected) do
     if not read_file(relative_path) then
