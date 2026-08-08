@@ -168,9 +168,9 @@ describe("targetbar widget", function()
         "components/targetbar/assets/xiv/BarBG.png",
         "components/targetbar/assets/xiv/Bar.png",
         "components/targetbar/assets/xiv/BarFG.png",
-        "components/targetbar/assets/xiv/BarBG.png",
-        "components/targetbar/assets/xiv/Bar.png",
-        "components/targetbar/assets/xiv/BarFG.png",
+        "components/targetbar/assets/xiv/CastBG.png",
+        "components/targetbar/assets/xiv/CastBar.png",
+        "components/targetbar/assets/xiv/CastFG.png",
       }, assets)
     end)
 
@@ -555,7 +555,7 @@ describe("targetbar widget", function()
       for index = 1, 3 do
         assert.are.equal(14, prims.texts[index].font_size)
       end
-      assert.are.equal(10, cast_name().font_size)
+      assert.are.equal(12, cast_name().font_size)
     end)
 
     -- A prim cannot draw a fractional font, so the size it is handed has to be
@@ -695,8 +695,8 @@ describe("targetbar widget", function()
       local at_start = cast_fill().width
       clock = 4
       widget.update()
-      -- Half of Fire IV's 8s: half the 486px region at the cast's 0.67 scale.
-      assert.are.equal(243 * 0.67, cast_fill().width)
+      -- Half of Fire IV's 8s: half the cast art's 230px region at 0.67.
+      assert.are.equal(115 * 0.67, cast_fill().width)
       assert.is_true(cast_fill().width > at_start)
     end)
 
@@ -762,10 +762,11 @@ describe("targetbar widget", function()
     it("sits right-aligned under the bar", function()
       begin_cast()
       widget.update()
-      -- Box right edge at 100 + 512; the 0.67-scale frame hangs from it.
-      assert.are.equal(100 + 512 - 512 * 0.67, cast_frame().x)
+      -- Box right edge at 100 + 512; the 0.67-scale half-width art hangs
+      -- from it.
+      assert.are.equal(100 + 512 - 256 * 0.67, cast_frame().x)
       assert.is_true(cast_frame().y > frame().y)
-      assert.are.equal(512 * 0.67, cast_frame().width)
+      assert.are.equal(256 * 0.67, cast_frame().width)
       assert.are.equal(64 * 0.67, cast_frame().height)
     end)
 

@@ -33,6 +33,8 @@ untouched. Bar.png is uniform across its whole width and is rebuilt the same
 way at the fill region's 972 file columns.
 
     2026-08-08  256 -> 1024 (drawn 128 -> 512), caps 44 file px each
+    2026-08-08  256 ->  512 (drawn 128 -> 256), caps 44 file px each - the
+                CastBG/CastBar/CastFG set, the cast bar's own narrower frame
 
 This notice covers only those three files - partylist's own copy carries the
 additional notices for the job icons, buff icons and its regenerated

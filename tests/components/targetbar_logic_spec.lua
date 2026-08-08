@@ -1060,8 +1060,9 @@ describe("targetbar logic", function()
       -- lands at +47, its frame runs 64 * 0.67 deep from the band offset
       -- above it, and the name row (10pt, 15px tall) hangs 2 below the
       -- band's bottom.
+      -- The name row is 12pt now, 18px tall.
       local _, _, _, height = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
-      assert.are.equal(47 - 25 * 0.67 + 39 * 0.67 + 2 + 15, height)
+      assert.are.equal(47 - 25 * 0.67 + 39 * 0.67 + 2 + 18, height)
     end)
 
     --[[ The cast rows are in the box whether or not anything is casting: a
@@ -1081,9 +1082,11 @@ describe("targetbar logic", function()
       assert.are.equal(idle_height, casting_height)
     end)
 
-    it("right-aligns the cast bar against the box's edge, at 0.67 size", function()
+    it("right-aligns the cast bar against the box's edge, on its own art", function()
+      -- The cast bar draws half-width art (256 drawn), not a squashed copy
+      -- of the wide frame - non-uniform scaling would warp the caps.
       local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1, SCREEN_WIDTH)
-      assert.are.equal(512 * 0.67, geometry.cast.frame.width)
+      assert.are.equal(256 * 0.67, geometry.cast.frame.width)
       assert.are.equal(64 * 0.67, geometry.cast.frame.height)
       assert.are.equal(ORIGIN_X + 512, geometry.cast.frame.x + geometry.cast.frame.width)
       -- Its band lands cast.gap below the hp band's bottom: hp band ends at
@@ -1094,7 +1097,7 @@ describe("targetbar logic", function()
     it("insets the cast fill like the main fill, at the cast's scale", function()
       local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1, SCREEN_WIDTH)
       assert.are.equal(geometry.cast.frame.x + 13 * 0.67, geometry.cast.fill.x)
-      assert.are.equal(486 * 0.67, geometry.cast.fill.full_width)
+      assert.are.equal(230 * 0.67, geometry.cast.fill.full_width)
       assert.are.equal(64 * 0.67, geometry.cast.fill.height)
     end)
 
@@ -1105,7 +1108,7 @@ describe("targetbar logic", function()
       local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1, SCREEN_WIDTH)
       assert.are.equal(ORIGIN_X + 512, geometry.cast.name.right_edge)
       assert.are.equal(ORIGIN_X + 512 - SCREEN_WIDTH, geometry.cast.name.x)
-      assert.are.equal(10, geometry.cast.name.size)
+      assert.are.equal(12, geometry.cast.name.size)
       assert.are.equal(20, geometry.cast.name.max_chars)
     end)
 
@@ -1351,8 +1354,8 @@ describe("targetbar logic", function()
       logic.on_action(action(), 10)
       -- Fire IV casts in 8 seconds; 4 in is half way.
       assert.are.equal(0.5, cast_of(14).progress)
-      -- And half way is half the 486px fill region, in authored pixels.
-      assert.are.equal(243, cast_of(14).width)
+      -- And half way is half the cast art's own 230px fill region.
+      assert.are.equal(115, cast_of(14).width)
     end)
 
     it("starts at zero and clamps at full until something closes it", function()

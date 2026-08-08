@@ -59,6 +59,11 @@ local FRAME_WIDTH = 512
 local FRAME_HEIGHT = 64
 local FILL_INSET_X = 13
 local FILL_WIDTH = FRAME_WIDTH - 2 * FILL_INSET_X
+-- The cast bar's own art (CastBG/CastBar/CastFG), regenerated at half the
+-- health bar's width by the same cap-preserving transform. Its own constants
+-- because drawing the wide art narrower would squash the bevelled caps.
+local CAST_FRAME_WIDTH = 256
+local CAST_FILL_WIDTH = CAST_FRAME_WIDTH - 2 * FILL_INSET_X
 -- The visible band inside that 64px footprint; everything outside it is
 -- transparent. Vertical placement is measured from the band so the bar lands
 -- where the eye expects rather than where the texture does - but the *box*
@@ -119,7 +124,7 @@ local DEFAULT_TP_SWEEP = 2
 -- estimate's entire error budget on the contract edge.
 local CAST_NAME_MARGIN = 0.9
 
-local PREVIEW_CAST = { active = true, name = "Fire IV", progress = 0.4, width = 194 }
+local PREVIEW_CAST = { active = true, name = "Fire IV", progress = 0.4, width = 92 }
 local IDLE_CAST = { active = false, name = "", progress = 0, width = 0 }
 
 --[[ DistancePlus's range coding, ported whole (BSD 3-clause (c) 2017 Sammeh
@@ -665,10 +670,10 @@ local function new(initial_config, resources)
     local cast_scale = math.min(math.max(tonumber(cast_config.scale) or 0.67, 0.01), 1) * scale
     local cast_gap = math.max(tonumber(cast_config.gap) or 0, 0) * scale
     local cast_frame_y = math.max(y, band_bottom + cast_gap - BAND_TOP * cast_scale)
-    local cast_frame_x = math.max(x, x + row_width - FRAME_WIDTH * cast_scale)
+    local cast_frame_x = math.max(x, x + row_width - CAST_FRAME_WIDTH * cast_scale)
     local cast_band_bottom = cast_frame_y + BAND_BOTTOM * cast_scale
 
-    local cast_font = drawn_font(math.max(math.floor(tonumber(cast_config.font_size) or 10), 1), scale)
+    local cast_font = drawn_font(math.max(math.floor(tonumber(cast_config.font_size) or 12), 1), scale)
     local cast_name_gap = math.max(tonumber(cast_config.name_gap) or 0, 0) * scale
     local cast_name_y = cast_band_bottom + cast_name_gap
     local cast_name_height = cast_font * TEXT_HEIGHT_RATIO
@@ -738,14 +743,14 @@ local function new(initial_config, resources)
         frame = {
           x = m.cast_frame_x,
           y = m.cast_frame_y,
-          width = FRAME_WIDTH * m.cast_scale,
+          width = CAST_FRAME_WIDTH * m.cast_scale,
           height = FRAME_HEIGHT * m.cast_scale,
         },
         fill = {
           x = m.cast_frame_x + FILL_INSET_X * m.cast_scale,
           y = m.cast_frame_y,
           height = FRAME_HEIGHT * m.cast_scale,
-          full_width = FILL_WIDTH * m.cast_scale,
+          full_width = CAST_FILL_WIDTH * m.cast_scale,
           width_at = function(width)
             return width * m.cast_scale
           end,
@@ -903,7 +908,12 @@ local function new(initial_config, resources)
     end
     -- Width in the fill's authored pixels, like the hp fill's; the widget
     -- scales it into place.
-    return { active = true, name = cast.name, progress = progress, width = math.floor(progress * FILL_WIDTH) }
+    return {
+      active = true,
+      name = cast.name,
+      progress = progress,
+      width = math.floor(progress * CAST_FILL_WIDTH),
+    }
   end
 
   -- Everything a frame draws, in one call: the widget pushes it to prims and

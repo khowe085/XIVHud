@@ -603,7 +603,7 @@ local function check_assets()
     expected[#expected + 1] = "components/partylist/" .. texture
   end
   expected[#expected + 1] = "components/giltracker/assets/gil.png"
-  for _, texture in ipairs({ "BarBG.png", "Bar.png", "BarFG.png" }) do
+  for _, texture in ipairs({ "BarBG.png", "Bar.png", "BarFG.png", "CastBG.png", "CastBar.png", "CastFG.png" }) do
     expected[#expected + 1] = "components/targetbar/assets/xiv/" .. texture
   end
 

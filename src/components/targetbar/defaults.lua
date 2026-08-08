@@ -95,7 +95,7 @@ return function(screen_width, _screen_height)
       -- One factor for both axes, so the key cannot leave the height
       -- undetermined.
       scale = 0.67,
-      font_size = 10,
+      font_size = 12,
       -- HP band bottom to the cast band's top, and cast band bottom to the
       -- name row.
       gap = 4,
