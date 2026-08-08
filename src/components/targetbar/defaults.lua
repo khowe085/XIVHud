@@ -34,15 +34,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      claim colours - moved from its text, where the reference put them, onto
      the bar fill. ]]
 
--- Mirrors logic.lua's row arithmetic so the first-run slot can centre the
--- widget before any config exists to derive it from. giltracker does the same
--- with its reserved width; the duplication is the price of defaults being
--- built before logic sees a config.
+-- Mirrors logic.lua's row arithmetic (leading inset + three reserves,
+-- floored at the frame) so the first-run slot can centre the widget before
+-- any config exists to derive it from. giltracker does the same with its
+-- reserved width; the duplication is the price of defaults being built before
+-- logic sees a config. At this font the frame's 512 wins, which makes drift
+-- here latent rather than harmless - keep the terms matched.
 local FONT_SIZE = 14
 local RATIO = 0.75
 local FRAME_WIDTH = 512
 local ROW_WIDTH = math.max(
-  math.ceil(5 * FONT_SIZE * RATIO) + math.ceil(5 * FONT_SIZE * RATIO) + math.ceil(17 * FONT_SIZE * RATIO),
+  1 * FONT_SIZE * RATIO
+    + math.ceil(5 * FONT_SIZE * RATIO)
+    + math.ceil(5 * FONT_SIZE * RATIO)
+    + math.ceil(17 * FONT_SIZE * RATIO),
   FRAME_WIDTH
 )
 

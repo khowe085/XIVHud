@@ -872,3 +872,18 @@ fails the build without it.
   https://github.com/Windower/Lua/wiki/FFXI-Functions
 - xiv theme geometry and license: `src/components/partylist/layout.lua`,
   `src/components/partylist/assets/LICENSE.txt`
+
+## Post-plan iteration (2026-08-08, in-client)
+
+The shipped widget deviates from the sizes first specified above, tuned live:
+
+- The health bar art is regenerated at **4x width** (drawn 512x64) by
+  cap-preserving centre-column replication; never stretched at runtime.
+- The cast bar draws its **own art at 2x width** (drawn 256x64, the same
+  transform) at `cast.scale = 0.67` - about a third of the health bar, not
+  the half-scale-of-512 first specified - with the name at 12pt below it.
+- The claimed-by-us fill red is `255,20,20` (#FF1414), not the reference's
+  pale pink; the cast fill keeps the unclaimed pale yellow.
+- The text row is inset one character from the bar's left edge.
+- The cast bar takes four extra prims (three art layers + the name text),
+  six images and four texts in all.

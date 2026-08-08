@@ -1057,10 +1057,8 @@ describe("targetbar logic", function()
     it("reports the box's absolute height, not just its origin", function()
       -- Text row 21, gap 8, band offset 25: the hp frame starts at +4 and
       -- runs 64 deep to +68. The cast rows reach past it: the cast band
-      -- lands at +47, its frame runs 64 * 0.67 deep from the band offset
-      -- above it, and the name row (10pt, 15px tall) hangs 2 below the
-      -- band's bottom.
-      -- The name row is 12pt now, 18px tall.
+      -- lands at +47, its frame hangs from the scaled band offset above it,
+      -- and the 12pt name row (18px tall) hangs 2 below the band's bottom.
       local _, _, _, height = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
       assert.are.equal(47 - 25 * 0.67 + 39 * 0.67 + 2 + 18, height)
     end)
@@ -1230,8 +1228,10 @@ describe("targetbar logic", function()
         logic.set_config(config)
         assert_contained(1)
         local geometry = logic.geometry(ORIGIN_X, ORIGIN_Y, 1, SCREEN_WIDTH)
-        -- The room the row actually has, not the config's ambition.
-        assert.is_true(geometry.cast.name.max_chars <= 61)
+        -- Nine tenths of the 512 row at the 12pt cast font: exactly 51
+        -- characters, not the config's ambition - and not the 56 a cap sized
+        -- to the whole row would allow, which is the margin doing its job.
+        assert.are.equal(51, geometry.cast.name.max_chars)
       end)
 
       it("survives a cast section that is not a table", function()

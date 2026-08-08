@@ -10,17 +10,21 @@ notices are reproduced in full below.
     https://github.com/Tylas11/XivParty
 
 XivParty ships no separate asset licence, so its source licence is the basis on
-which these are redistributed. Three files:
+which these are redistributed. Six files, two regenerated widths of the same
+three source textures:
 
-    xiv/BarBG.png   the bar's background plate
-    xiv/Bar.png     the fill, stretched to the health percentage
-    xiv/BarFG.png   the bevelled frame drawn over both
+    xiv/BarBG.png    the health bar's background plate      (4x source width)
+    xiv/Bar.png      its fill, stretched to the percentage  (4x)
+    xiv/BarFG.png    the bevelled frame drawn over both     (4x)
+    xiv/CastBG.png   the cast bar's plate                   (2x)
+    xiv/CastBar.png  its fill, swept with the cast          (2x)
+    xiv/CastFG.png   its frame                              (2x)
 
-They derive from the same files under components/partylist/assets/xiv/ (the
+They derive from the files under components/partylist/assets/xiv/ (the
 duplication is deliberate: a component owns everything it draws, so that
-removing one cannot break another), regenerated to four times the source
-width - this component draws one wide bar where the party list draws many
-narrow ones. The transform preserves the art rather than resampling it:
+removing one cannot break another), regenerated wider - this component draws
+one wide bar where the party list draws many narrow ones. The transform
+preserves the art rather than resampling it:
 
     source cols   0..43     ->  out cols    0..43        left cap, byte for byte
     source col   128        ->  out cols   44..979       middle, replicated
@@ -36,7 +40,7 @@ way at the fill region's 972 file columns.
     2026-08-08  256 ->  512 (drawn 128 -> 256), caps 44 file px each - the
                 CastBG/CastBar/CastFG set, the cast bar's own narrower frame
 
-This notice covers only those three files - partylist's own copy carries the
+This notice covers all six files - partylist's own copy carries the
 additional notices for the job icons, buff icons and its regenerated
 background art, none of which are here.
 

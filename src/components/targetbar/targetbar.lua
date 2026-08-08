@@ -203,6 +203,10 @@ local function new(ctx)
       return
     end
 
+    -- Re-read, not the construction-time value: the cast name's x
+    -- pre-subtracts the screen width, so a mid-session resolution change
+    -- would otherwise park it off screen by the delta.
+    screen_width = ctx.screen()
     geometry = logic.geometry(pos.x, pos.y, scale, screen_width)
 
     for key, prim in pairs(texts) do
