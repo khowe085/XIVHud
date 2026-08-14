@@ -29,9 +29,9 @@ Vocabulary, from SE's guide, used consistently from here on:
 | --- | --- |
 | **set** | 16 slots — a left side and a right side. 8 sets = 128 actions per job. |
 | **side** | 8 slots shown by one trigger: the D-pad cross (4) + the face cross (4). |
-| **XHB** | the plain hold-a-trigger bar showing the active set. FFXIV: LT → left side, RT → right; ours: Ctrl → left, Alt → right. |
-| **WXHB** | "double cross hotbar" — a second bar; FFXIV reaches it by double-tapping a trigger, ours by the Shift layer (decided 2026-08-06). |
-| **Expanded Hold** | a further bar reached by holding *both* activators (FFXIV: both triggers; ours: Ctrl+Alt); the press orders are distinct. |
+| **XHB** | the plain hold-a-trigger bar showing the active set. FFXIV: LT → left side, RT → right; ours: `[` → left, `]` → right. |
+| **WXHB** | "double cross hotbar" — a second bar; FFXIV reaches it by double-tapping a trigger, ours by the `\\` layer key (v4, 2026-08-08). |
+| **Expanded Hold** | a further bar reached by holding *both* activators (FFXIV: both triggers; ours: `[`+`]`); the press orders are distinct. |
 | **view** | where WXHB / Expanded Hold get their contents: each is *pointed at* a (set, side). Bindings live only in sets. |
 
 ### Decisions (2026-08-05, Kevin)
@@ -101,39 +101,57 @@ Vocabulary, from SE's guide, used consistently from here on:
   click a slot, pick an action, bound — to the layer you chose from that slot's
   stack. Catalog v1: spells/JA/WS known to job+level (main and sub merged),
   items, mounts, trusts, and our built-ins; `ct`/`ex` stay command-line-only.
-- **Input model (v3, decided 2026-08-06 after the spike): merged modifiers +
-  Shift as the W-layer + backtick. No double-tap anywhere.** The first design
-  (L/R modifier variants) was **ruled out by the spike**: Windower delivers left
-  and right modifiers as the *same* DIK (see the spike results).
-  - **Ctrl (29) → XHB left, Alt (56) → XHB right.**
-  - **Shift (42) is the W-layer**: Ctrl+Shift → WXHB left, Alt+Shift → WXHB
-    right. A dedicated layer *replaces* FFXIV's double-tap, which Kevin has
-    always found cumbersome and which xivcrossbar implements with a
-    confirmed-buggy window (defect ⑧). Shift alone activates nothing and is
-    never blocked — the game keeps its own Shift chords.
-  - **Ctrl+Alt held = Expanded Hold**, order-sensitive as in FFXIV (Ctrl first →
-    `expanded_lr`, Alt first → `expanded_rl`).
-  - **Slot keys = number row 1–8** (DIK 2–9). While a hold state is active these are
-    consumed; FFXI's native Ctrl/Alt macro palette 1–8 is therefore replaced by
-    the crossbar (9 and 0 stay native). Keyboard players get the crossbar for
-    free on the same chords, and the W-layer reads naturally (Ctrl+Shift+3 =
-    WXHB-left slot 3).
-  - **Set switch = backtick/grave (DIK 41)** — Kevin's pick, a key he doesn't
-    use; ours exclusively, always blocked from the game: held + slot key jumps
-    to that set, tapped alone cycles. (Verify his Windower console isn't bound
-    to it.)
-  - **Draw gesture = Shift held + backtick tap, no Ctrl/Alt down** — same pad
-    motion as every earlier revision (bumper hold + bumper tap); with a
-    trigger held the same tap is a set cycle.
+- **Input model (v4, decided 2026-08-08 after the second spike): no modifiers
+  anywhere.** Two earlier designs died in-client, each to a platform fact no
+  amount of reading would have given us:
+  - **v1/v2** keyed the six hold states to left/right modifier variants.
+    Windower delivers left and right modifiers as the *same* DIK, so the map
+    could not tell them apart.
+  - **v3** merged them — Ctrl/Alt as the sides, Shift as the W-layer, the
+    number row as slots. It rested on `return true` blocking a key from the
+    game, which the spike then disproved **for modified keys only**: with
+    blocking on, `blocked` climbs on Ctrl+3 and FFXI's macro 3 fires anyway,
+    while a bare 3 is swallowed cleanly. The game reads its macro chords by a
+    route Windower's keyboard hook does not sit in front of. (This is also why
+    xivcrossbar never hit it: Ctrl+F1–F12 are chords FFXI ignores, so it never
+    needed to block a key the game wanted.)
+  - **v4 draws the conclusion**: an activator never had to *be* a modifier — it
+    only has to be a key the game ignores and the bridge can hold. Every slot
+    press is then unchorded, and therefore blockable.
+
+  | Role | Key | DIK |
+  | --- | --- | --- |
+  | XHB left | `[` | 26 |
+  | XHB right | `]` | 27 |
+  | W-layer | `\` | 43 |
+  | Slots 1–8 | `1`–`8` | 2–9 |
+  | Set switch | `` ` `` | 41 |
+  | Shortcut (Select) | `=` | 13 |
+
+  - **`[` → XHB left, `]` → XHB right**; **both held = Expanded Hold**,
+    order-sensitive as in FFXIV (`[` first → `expanded_lr`, `]` first →
+    `expanded_rl`).
+  - **`\` is the W-layer**: `[`+`\` → WXHB left, `]`+`\` → WXHB right. A
+    dedicated layer *replaces* FFXIV's double-tap, which Kevin has always found
+    cumbersome and which xivcrossbar implements with a confirmed-buggy window
+    (defect ⑧). `\` alone activates nothing.
+  - **Set switch `` ` ``**: held + slot key jumps to that set, tapped alone
+    cycles. **Draw gesture** = `\` held + `` ` `` tapped with no side active.
+  - All six of these keys were verified in-client (2026-08-08) to have **no
+    game function** — each merely opens the chat log, and each is blockable.
+    They are ours exclusively while the crossbar is live; the chat guard hands
+    them back the moment the chat box has focus, so they remain typeable.
+  - **FFXI's macro palette is untouched** — Ctrl/Alt+1–0 keep working, and the
+    game no longer flashes its macro bar on every crossbar hold, since we hold
+    no modifier. Both were costs of v3 that v4 simply removes.
   - The map ships as **config** (a DIK table per role) with the above as
-    defaults. The modifier and number keys produced events in the spike;
-    **still unverified** (on the spike's remaining list): selective blocking,
-    and that the dead keys (41, 13) are free and event-producing. CB0 may
-    build on the map, but those checks land before CB2 wires anything.
-  - The bridge is Steam Input's job (AHK is out): LT/RT emit Ctrl/Alt, bumper
-    chords emit Shift/backtick — each output key has exactly one source, which
-    sidesteps Steam Input's lack of modifier reference-counting (two bindings
-    sharing an output key release it when either releases).
+    defaults — which is what made this pivot a table edit rather than a
+    redesign: the state machine, guards, blocking latch and press-order logic
+    carried over from v3 untouched.
+  - The bridge is Steam Input's job (AHK is out): LT/RT emit `[`/`]`, bumper
+    chords emit `\`, RB emits `` ` ``, Select emits `=`. With no modifiers in
+    play, Steam Input's lack of modifier reference-counting stops mattering —
+    the shared-Shift release race recorded against v3 is gone.
   - Motivating pain points (Kevin, 2026-08-06, from living with xivcrossbar):
     losing F1–F12 to the proxy map while other addons want them; the Steam Input
     ref-counting trap; and double-tap misfires (tap-tap, release, tap → WXHB
@@ -201,8 +219,8 @@ candidates by hand works any time; wired verification lands with CB5):
 `/attack off` is the expected spelling (~80%; `/attack` bare may also toggle —
 whichever proves reliable wins). Three frontends, identical behaviour: a slot, the
 `//hud crossbar draw` command (for Windower binds and macros), and the
-**Shift-hold + backtick-tap gesture** (see the hold-state model; hold-LB +
-tap-RB on the pad) — so the gesture dismounts when mounted for free. Icons from the built-in action table:
+**layer-hold + switch-tap gesture** (`\\` then `` ` ``; see the hold-state
+model — hold-LB + tap-RB on the pad) — so the gesture dismounts when mounted for free. Icons from the built-in action table:
 `dismount` / `disengage` / `attack` by state, all in the default pack's singles.
 Note the interplay: firing `draw` flips the weapon state, which flips which cycle
 rotation the switch key walks — same as FFXIV.
@@ -407,21 +425,17 @@ residue is **key-name spellings** — the docs' own text says "most key names
 can be easily guessed" and links no official mapping — so `ctrl`/`e`/the
 number row get a ten-second `//setkey e down` check in-client before CB2.
 
-**Chord timing (decided 2026-08-06, rule tightened by blind review; applies to
-key-event entries only): arm, then fire when the held modifiers are a subset of
-the entry's chord.** Those shortcuts are themselves Ctrl/Alt chords, and under
-the input model activator-role modifiers are physically held at the moment a
-slot fires — where **"activator-role modifier" means the activator keys plus the
-W-layer key** (Shift counts here even though it activates nothing alone):
-firing Ctrl+E from a **WXHB-left** side (Ctrl **+ Shift** held) would inject
-into Ctrl+Shift+E. The rule: the action **arms on press and fires at the first
-instant no non-chord activator-role modifier is physically down**, injecting
-only the chord keys not already held (just `E` if Ctrl is still down; the full
-Ctrl+E if everything was released). XHB-left → instant; WXHB-left → fires the
-moment Shift lifts; any side → at worst, the moment you stop crossbar-ing —
-natural for opening UI. No synthetic modifier up/down juggling, no
-Steam/Windows/game state desync risk. The armed action is dropped, not fired,
-if suppression or focus loss intervenes first.
+**Chord timing: the problem disappeared with v4** (2026-08-08). Under v3 the
+crossbar held real modifiers, so firing a Ctrl+E opener from a WXHB side —
+where Ctrl *and* Shift were down — would have injected into Ctrl+Shift+E, and
+the plan carried an arm-and-fire-on-release queue to dodge it. **v4 holds no
+modifiers at all**: the activators are punctuation, which do not participate
+in chords, so an injected `ctrl`+`e` reaches the game exactly as typed no
+matter what the crossbar is holding. Openers **fire immediately**, always.
+
+That deletes the whole armed-queue mechanism — the single-arm rule, the
+release-edge firing, the drop-on-suppression case, and the modifier-delta
+computation with it. `actions.lua` simply emits the full `setkey` sequence.
 
 Two recorded caveats: Kevin has only gotten *some* game UI to open via key
 events, so each new key-event entry needs in-client verification, and the
@@ -436,13 +450,13 @@ on counts and practical detail.
 - **Shape.** 8 sets × 16 slots = 128 actions. One side = 4 D-pad + 4 face buttons;
   both crosses draw together. LT shows the active set's left side, RT its right.
 - **WXHB** in FFXIV is reached by **double-tapping** a trigger (Hold mode only),
-  with a user-adjustable **WXHB input timer**. **We deviate**: WXHB is the Shift
-  layer over the XHB chords, so the double-tap, its timer, and its failure modes
+  with a user-adjustable **WXHB input timer**. **We deviate**: WXHB is the `\\`
+  layer over the XHB keys, so the double-tap, its timer, and its failure modes
   don't exist here. Each WXHB half is still configured to display a chosen
   set/side.
 - **Expanded Hold** in FFXIV is reached by pressing **both triggers**; **press
   order matters**: LT→RT and RT→LT are configured separately and may point at
-  different set/sides. Ours is Ctrl+Alt with the same order sensitivity. SE's
+  different set/sides. Ours is `[`+`]` with the same order sensitivity. SE's
   advice for order-insensitivity is to point both at the same place, which the
   views config allows.
 - **Set switching**, both core. FFXIV's switch button is RB/R1; ours is
@@ -485,74 +499,69 @@ on counts and practical detail.
 
 ### The hold-state model
 
-v3, decided 2026-08-06 — merged modifiers, Shift W-layer, backtick, no
-double-tap. `input.lua` owns it. Rows resolve by **most-specific held-set wins** (Ctrl+Shift beats Ctrl;
-Ctrl+Alt beats either), with one ordering rule: the draw-gesture row outranks
-the bare-cycle row. The prose rules below are normative where they elaborate:
+v4, decided 2026-08-08 — no modifiers; punctuation activators, `\` as the
+W-layer, backtick as the switch. `input.lua` owns it. Rows resolve by
+**most-specific held-set wins** (`[`+`\` beats `[`; `[`+`]` beats either),
+with one ordering rule: the draw-gesture row outranks the bare-cycle row. The
+prose rules below are normative where they elaborate:
 
 | Input (default DIKs) | Result |
 | --- | --- |
-| Ctrl (29) held | left side, active set |
-| Alt (56) held | right side, active set |
-| Ctrl+Shift (42) held | the `wxhb_left` view |
-| Alt+Shift held | the `wxhb_right` view |
-| Ctrl+Alt held, Ctrl first | the `expanded_lr` view |
-| Ctrl+Alt held, Alt first | the `expanded_rl` view |
-| Shift held + backtick (41) tapped, **no Ctrl/Alt held**, no slot key chorded | fire the `draw` toggle |
-| backtick held + slot key *n* | jump to set *n* (any set) — **backtick-held takes precedence over slot fire**, activators held or not (the FFXIV motion is trigger + switch + button) |
-| backtick tapped alone (incl. with activators/Shift held — a WXHB-left tap cycles, it does not draw) | cycle to the next non-empty set in the current weapon state's rotation |
-| slot keys `1`–`8` (DIK 2–9) with a hold state active, backtick up | fire that slot |
-| shortcut key (e.g. `=` 13) tapped | its `tap` verb bare / its `chorded` verb with an activator held (blocked as ours, subject to the guards — in edit mode only the `edit`-verb key is live) |
-| nothing held | no hold state active — every key falls through to the game (backtick and the shortcut keys excepted: always ours, always blocked) |
+| `[` (26) held | left side, active set |
+| `]` (27) held | right side, active set |
+| `[` + `\` (43) held | the `wxhb_left` view |
+| `]` + `\` held | the `wxhb_right` view |
+| `[`+`]` held, `[` first | the `expanded_lr` view |
+| `[`+`]` held, `]` first | the `expanded_rl` view |
+| `\` held + `` ` `` (41) tapped, **no side active**, no slot key chorded | fire the `draw` toggle |
+| `` ` `` held + slot key *n* | jump to set *n* (any set) — **switch-held takes precedence over slot fire**, sides held or not (the FFXIV motion is trigger + switch + button) |
+| `` ` `` tapped alone (incl. inside a WXHB view, where `\` is necessarily held — that taps `cycle`, it does not draw) | cycle to the next non-empty set in the current weapon state's rotation |
+| slot keys `1`–`8` (DIK 2–9) with a hold state active, switch up | fire that slot |
+| shortcut key (`=` 13) tapped | its `tap` verb bare / its `chorded` verb with a side held (blocked as ours, subject to the guards — in edit mode only the `edit`-verb key is live) |
+| nothing held | no hold state active — every key falls through to the game (the switch and shortcut keys excepted: always ours, always blocked) |
 
-Resolution rules (rewritten after review round 2 — the earlier
-"most-recently-pressed-wins" phrasing was a vestige of the dead L/R model; with
-merged modifiers the state space is small enough to enumerate):
+Resolution rules:
 
-- **The active hold state is a pure function of what is held**: nothing → none; Ctrl
-  → XHB left; Alt → XHB right; Ctrl+Alt → the Expanded view chosen by press
-  order (release one → the survivor's XHB side). There is no
-  most-recent-wins arbitration left in the model.
-- **Shift is a layer, not an activator**: with Ctrl → WXHB left, with Alt →
-  WXHB right, in either press order; releasing Shift drops back to the XHB
-  side. Shift alone activates nothing and is never blocked — the game keeps
-  its own Shift chords. **Ctrl+Alt+Shift = Expanded unchanged** (normative:
-  Shift layered on an Expanded pair is a no-op; Expanded has no W variant).
-- **All six hold states are always available in v1** — there is no per-state disable
-  (an earlier draft said "a disabled view falls through" without ever defining
-  disablement; cut in round 2, backlog if ever wanted). **Canonical hold-state
-  ids** (round 6 — CB0's intent payload): `xhb_left`, `xhb_right`,
-  `wxhb_left`, `wxhb_right`, `expanded_lr`, `expanded_rl`. The last four
-  deliberately share their spelling with the views they display; the XHB pair
-  displays the active set directly. Terminology, re-pinned
-  in round 4: the six activator states are **hold states** (round 3 called
-  them "sides", colliding with *side* = a set's left/right half — the meaning
-  `views`, the CLI and `bindings.resolve(set, side, slot)` all use);
-  **views** are only the four
-  configurable (set, side) pointers — `views` config keys `wxhb_left`,
-  `wxhb_right`, `expanded_lr`, `expanded_rl`, with `wxhb-l`/`wxhb-r`/`exp-lr`/
-  `exp-rl` as their CLI spellings (that mapping is normative).
-- **Backtick is ours exclusively**: always blocked from the game. Tap alone =
-  `cycle`; held + slot key = `jump n`; tapped while Shift is held **with no
-  Ctrl/Alt down** (no slot key chorded) = the `draw` toggle instead of cycle
-  (round 3: the no-activator condition keeps a backtick tap inside a WXHB view
-  — where Shift is necessarily held — meaning `cycle`, not a surprise
-  dismount; the draw gesture never involved a trigger). On the pad the draw
-  gesture is hold-LB + tap-RB, the same motion as every earlier revision.
-- **Shortcut keys** (decided 2026-08-06): dedicated dead keys, always blocked,
-  that fire `//hud crossbar` verbs — one verb on a bare tap, another while any
-  activator is held. The first entry is the pad's **Select** button: bare tap →
-  `open map` (opens the map), tap with a trigger held → `edit` (toggle the
-  binder); while edit mode is on, any press of this key exits it (see the edit
-  mode guard). Default key `=` (DIK 13) —
-  Kevin to confirm it's as unused as backtick; it's config either way.
+- **The active hold state is a pure function of what is held**: nothing → none;
+  `[` → XHB left; `]` → XHB right; both → the Expanded view chosen by press
+  order (release one → the survivor's XHB side). **"First" means first of the
+  currently-held pair** — re-pressing a released side into a still-held one
+  makes the *held* one first (caught in-client 2026-08-08: `[`→`]`, release
+  `[`, hold `[` again must give `expanded_rl`).
+- **`\` is a layer, not a side**: with `[` → WXHB left, with `]` → WXHB right,
+  in either press order; releasing it drops back to the XHB side. Alone it
+  activates nothing. **`[`+`]`+`\` = Expanded unchanged** (normative: the
+  layer over an Expanded pair is a no-op; Expanded has no W variant).
+- **All six hold states are always available in v1** — there is no per-state
+  disable (backlog if ever wanted). **Canonical hold-state ids** (CB0's intent
+  payload): `xhb_left`, `xhb_right`, `wxhb_left`, `wxhb_right`, `expanded_lr`,
+  `expanded_rl`. The last four deliberately share their spelling with the
+  views they display; the XHB pair displays the active set directly.
+  Terminology: the six activator states are **hold states** (an earlier draft
+  called them "sides", colliding with *side* = a set's left/right half, the
+  meaning `views`, the CLI and `bindings.resolve(set, side, slot)` all use);
+  **views** are only the four configurable (set, side) pointers — config keys
+  `wxhb_left`, `wxhb_right`, `expanded_lr`, `expanded_rl`, with
+  `wxhb-l`/`wxhb-r`/`exp-lr`/`exp-rl` as their CLI spellings (normative).
+- **The switch key is ours exclusively**: always blocked. Tap alone = `cycle`;
+  held + slot key = `jump n`; tapped while `\` is held **with no side active**
+  (no slot key chorded) = the `draw` toggle instead of cycle — the
+  no-side condition keeps a tap inside a WXHB view meaning `cycle`, not a
+  surprise dismount. On the pad the draw gesture is hold-LB + tap-RB.
+- **Shortcut keys**: dedicated keys, always blocked, that fire
+  `//hud crossbar` verbs — one verb on a bare tap, another while a side is
+  held. The first entry is the pad's **Select** button: bare tap → `open map`,
+  tap with a side held → `edit` (toggle the binder); while edit mode is on,
+  any press of this key exits it (see the edit mode guard). Default `=` (13).
 - **Blocking**: per-key, **latched at press** — whether a key's press was
   blocked decides its release too (a `3` pressed unblocked whose release
-  arrives after Ctrl went down must still reach the game, or FFXI sees a key
-  held forever; likewise across guard transitions). Blocked at press: slot
-  keys while a hold state is active **or while backtick is held** (the no-trigger set jump must not leak bare numbers to the
-  game — fixed in round 2), for backtick always, and for shortcut keys always;
-  nothing else is ever blocked.
+  arrives after a side went down must still reach the game, or FFXI sees a key
+  held forever; likewise across guard transitions). Blocked at press: slot keys
+  while a hold state is active **or while the switch is held** (the
+  no-side set jump must not leak bare numbers to the game), the switch always,
+  and shortcut keys always; nothing else is ever blocked. **Verified
+  in-client**: an unchorded key returns cleanly to us and never reaches the
+  game — the property v3 assumed and did not have.
 
 Guards, all mandatory (tightened after blind review, 2026-08-06):
 
@@ -582,8 +591,8 @@ Guards, all mandatory (tightened after blind review, 2026-08-06):
   **all state still tracks** (activators, slot-key down/latch bookkeeping) and
   **`activate` passes** (round 9/11: the display must mirror the physical
   keyboard even when another addon ate the key, or a blocked Ctrl-down leaves
-  the model reading `none` while Ctrl is held and every later key routes
-  wrong) (round 7; `core.on_mouse` already does this on
+  the model reading `none` while a side key is held and every later key
+  routes wrong) (round 7; `core.on_mouse` already does this on
   its path, `core.lua:459`).
 - **Edit mode** (sixth guard — the state flag ships at CB0, exercised at CB8;
   until CB8 lands, the `edit` verb and Select-chord reply "binder not yet
@@ -615,40 +624,37 @@ Two throwaway addons, both under [spikes/](spikes/):
   re-press, no state tracking under inbound-`blocked`, slot down-state lost
   across the chat guard — all fixed in the spike and folded into CB0's
   acceptance.)
-Results so far, now platform facts:
+Results, now platform facts:
 
-- **Left/right modifiers arrived MERGED in Kevin's test** — no distinction
-  between L and R variants of Ctrl/Alt/Shift. This killed the v1/v2 L/R
-  activator maps and forced the v3 merged-modifier model. Recorded as Kevin's
-  authoritative observation of his setup rather than a universal platform fact:
-  his fork's code branches on RCtrl 157, but Kevin has directed that the fork
-  be disregarded on input matters (2026-08-06 — it was shared only for its
-  context layering). v3 is indifferent either way; the input config's DIK lists
-  could split L/R later if an observation ever changes. (Bare-modifier events
-  per se do fire — the v0.1 spike's silence was a spike bug, an unguarded
-  `get_info()` in the handler.)
+- **Left/right modifiers arrive MERGED** — no distinction between L and R
+  variants of Ctrl/Alt/Shift. This killed the v1/v2 activator maps. (Bare
+  modifier events per se do fire; v0.1's silence was a spike bug, an
+  unguarded `get_info()` in the handler.)
+- **Blocking works for unchorded keys and NOT for modified ones** (2026-08-08,
+  the finding that killed v3). With blocking on, the handler returns `true`
+  for Ctrl+3 — the `blocked` counter climbs — and FFXI's macro 3 fires
+  regardless; a bare `3` under the same code is swallowed cleanly. The game
+  reads its macro chords by a route Windower's keyboard hook does not sit in
+  front of. **Consequence**: no key the crossbar wants may be a game-bound
+  chord, which is what v4's modifier-free map delivers.
+- **`[` `]` `\` `` ` `` `=` are all free** — each opens the chat log and does
+  nothing else in game, and each blocks cleanly. They are v4's activators,
+  layer, switch and shortcut.
+- **`setkey` is the injection mechanism** and its key names parse as guessed:
+  `//setkey e down` answers `Setting key code "e" to state: down`.
 - **The `flags` parameter is populated**: Ctrl+3 arrives with `flags=4` on the
-  slot key's event (a modifier bitmask, by appearance). Not yet relied on.
-- **Focus events fire** (`lose focus` observed on alt-tab).
+  slot key's event (a modifier bitmask, by appearance). Unused by v4.
+- **Focus events fire** (`lose focus` observed on alt-tab), and **auto-repeat,
+  chat and focus guards all behave** as specified.
+- **The macro-palette flash is moot** — v4 holds no modifier, so FFXI never
+  draws its macro bar during crossbar use. (It was judged acceptable anyway.)
 
-Still to record before CB0 hardens:
+Still to record before CB2 wires anything:
 
-1. **Flags on the modifier's own events** — LCtrl vs RCtrl down, LAlt vs RAlt
-   down: if `flags` distinguishes them, record it as a platform fact (the v3
-   model doesn't need it, but it documents whether L/R is recoverable at all).
-2. **Selective blocking** — `//dik block`: Ctrl+3 must not fire native macro 3
-   while Ctrl+9/0 and normal keys pass.
-3. **The native macro palette flash** — FFXI draws its macro bar overlay on
-   Ctrl/Alt holds (~90%), i.e. on every trigger hold. Unsuppressable without
-   blocking the modifier itself. Eyeball how intrusive; mitigation is an empty
-   active palette page.
-4. **Steam chord arrival** — LT+LB arrives as 29-down then 42-down.
-5. **Injected-key echo** — whether `setkey`-injected events re-enter the
-   `keyboard` handler (informs CB2's self-ignore logic). Easy now the
-   mechanism is named: with a spike loaded, type `//setkey 3 down` then
-   `//setkey 3 up` in the console and watch whether the spike reports them.
-6. **The dead keys are free** — pressing `` ` `` (41) and `=` (13) does nothing
-   in Kevin's setup (in particular, backtick isn't his Windower console toggle).
+1. **Injected-key echo** — whether `setkey`-injected events re-enter the
+   `keyboard` handler, which decides whether the component must ignore its
+   own injections. Run `//setkey 3 down` / `up` with a spike loaded and watch
+   whether `events` moves.
 
 Also ruled out: the F13–F15 dead-key namespace — **Steam Input cannot emit
 extended F-keys** (Kevin, 2026-08-06).
@@ -662,15 +668,15 @@ is what sidesteps Steam Input's lack of modifier reference-counting.
 
 | Physical control | Condition (Steam Input layer) | Emits (DIK) | Crossbar meaning |
 | --- | --- | --- | --- |
-| LT | held | Ctrl (29) | XHB Left |
-| RT | held | Alt (56) | XHB Right |
-| LT + RT | both held | Ctrl+Alt | Expanded Hold — press order picks LR vs RL |
-| LB | chord while LT held | Shift (42) | Ctrl+Shift = WXHB Left (release LB → XHB Left) |
-| LB | long press, no LT | Shift (42) | draw-gesture hold (with an RB tap) |
+| LT | held | `[` (26) | XHB Left |
+| RT | held | `]` (27) | XHB Right |
+| LT + RT | both held | `[`+`]` | Expanded Hold — press order picks LR vs RL |
+| LB | chord while LT held | `\` (43) | `[`+`\` = WXHB Left (release LB → XHB Left) |
+| LB | long press, no LT | `\` (43) | draw-gesture hold (with an RB tap) |
 | LB | regular press | `R` (19) | not mapped — falls through as autorun |
-| RB | chord while RT held | Shift (42) | Alt+Shift = WXHB Right (release RB → XHB Right) |
-| RB | press, no RT | backtick (41) | tap = cycle (incl. inside WXHB *Left* — with RT held RB is Shift instead, see caveats); held + slot button = set jump; tap with LB long-press Shift and no trigger = draw |
-| Select | press | `=` (13) | bare = open map; with a trigger held = toggle the binder |
+| RB | chord while RT held | `\` (43) | `]`+`\` = WXHB Right (release RB → XHB Right) |
+| RB | press, no RT | backtick (41) | tap = cycle (incl. inside WXHB *Left* — with RT held RB is `\` instead, see caveats); held + slot button = set jump; tap with LB long-press `\` and no side = draw |
+| Select | press | `=` (13) | bare = open map; with a side held = toggle the binder |
 | Y / B / A / X | while LT, RT, or RB held (mode shift) | `1` `2` `3` `4` (2–5) | face cluster, slots 1–4 |
 | D-pad ↑ / → / ↓ / ← | while LT, RT, or RB held (mode shift) | `5` `6` `7` `8` (6–9) | D-pad cluster, slots 5–8 |
 | Y/B/A/X, D-pad | no activator held | (base config) | normal game functions — crossbar ignores them |
@@ -678,18 +684,18 @@ is what sidesteps Steam Input's lack of modifier reference-counting.
 Three caveats on the Steam side (the third accepted by Kevin in discussion,
 recorded here in round 3):
 
-- **Accepted risk (Kevin, 2026-08-06): the Shift release race.** Both bumpers
-  emit Shift in their chord/long-press roles. If both Shift-emitting states are
-  ever held simultaneously (e.g. rolling from LT+LB to RT+RB before fully
-  releasing the left pair), Steam's lack of output reference-counting means
-  releasing either kills Shift outright and the surviving side silently drops
-  from WXHB to XHB. Kevin accepts this over the alternatives (single-emitter
-  LB-chords-both-triggers, or a second dead key folded into `w_layer` — the
-  config's DIK lists support that if the race ever bites in practice).
+- **The shared-emitter release race** (accepted against v3, now much smaller):
+  both bumpers emit `\` in their chord/long-press roles, so holding both
+  W-layer states at once and releasing one drops the layer for the other.
+  Steam's lack of reference-counting applies to any shared output, not just
+  modifiers — but with no real modifiers left in the map, this is the only
+  place it can bite, and the escape hatches stand (single-emitter
+  LB-chords-both-triggers, or a second key folded into `w_layer`, which the
+  config's DIK lists support).
 - The slot-button mode shift must be active during **RB-held** too (not just the
   triggers), or set jumps have no numbers to chord with.
 - **Accepted limitation (Kevin, 2026-08-06 — "that is fine"): no backtick at
-  all while RT is held.** RB means Shift in the RT chord (WXHB Right), so with
+  all while RT is held.** RB means `\\` in the RT chord (WXHB Right), so with
   RT down neither `jump n` **nor `cycle`** is reachable from the pad; the
   trigger+switch+button motion works from LT only. Release RT, then RB.
 
@@ -702,10 +708,9 @@ accordingly.
 to nothing emits `activate none`, the widget's cue to hide — `fire slot`,
 `jump n`, `cycle`, `draw`, `shortcut <verb>`). Per keyboard event it returns
 **(intents, block)** — the intent list, possibly empty, plus the latched block
-decision for that key. It **also exposes a query surface** (round 3): the
-currently-held activator-modifier set and its release edges, which
-`crossbar.lua`'s opener arm/fire queue consumes — intents alone cannot express
-"fire when no non-chord modifier remains down". Which set
+decision for that key. (An earlier revision also demanded a held-modifier
+query surface for the opener queue; v4 removed the queue, and that
+requirement with it.) Which set
 is actually next in a cycle is `bindings.lua`'s answer, since only it knows which
 sets are empty, which are in the current weapon state's rotation, and which store
 (shared vs job) each reads from.
@@ -907,10 +912,12 @@ Beyond the wholesale rejection of its input model and slot order:
   set replaces the addon's own `status change` handling. Interaction to verify
   in-client: a trigger held across a cutscene boundary must not strand a side on
   screen or a trigger "down".
-- **No stolen keybinds** (defect ①): the component consumes only the DIKs it cares
-  about, through the framework's keyboard dispatch — slot keys only while a
-  hold state is active or backtick is held; the two dead keys (backtick, `=`)
-  are ours outright. Nothing is `unbind`ed.
+- **No stolen keybinds** (defect ①): the component consumes only the DIKs it
+  cares about, through the framework's keyboard dispatch — slot keys only
+  while a hold state is active or the switch is held; the punctuation keys
+  (`[` `]` `\` `` ` `` `=`) are ours outright while it runs. **FFXI's own
+  macro palette is untouched**, unlike v3 which would have shadowed
+  Ctrl/Alt+1–8. Nothing is `unbind`ed.
 - **Unload is clean** — every prim disposed, nothing left bound.
 - **Config is ours**: `.lua` through the framework's config service, snake_case keys,
   no XML, no `data/hotbar/<Server>/<Character>/` tree.
@@ -1150,9 +1157,9 @@ Bindings live in the per-job files (below), not here.
   -- shipped components' — the three anchor defaults are computed from screen
   -- size. `false` disables an entry (merge_defaults refills nil, never false).
   input = {                        -- DIK codes per role; the bridge emits these
-    xhb_left  = { 29 },            -- Ctrl (L/R merged by the platform)
-    xhb_right = { 56 },            -- Alt
-    w_layer   = { 42 },            -- Shift; + xhb_left/right = the WXHB views
+    xhb_left  = { 26 },            -- [
+    xhb_right = { 27 },            -- ]
+    w_layer   = { 43 },            -- backslash; + a side = the WXHB views
     set_switch = { 41 },           -- backtick; tap cycle, chord jump, ours always
     slot_keys = { 2, 3, 4, 5, 6, 7, 8, 9 },  -- positional: index = slot number;
                                              -- false = "slot n has no key";
@@ -1486,13 +1493,13 @@ covers the widget level.
   every row of the hold-state table (asserting the canonical ids); the
   held-set → hold-state function for
   every enumerable state, Expanded in each press order with release of either
-  falling back to the survivor's XHB side; the Shift layer in both press orders
-  (Shift-then-Ctrl and Ctrl-then-Shift both = WXHB left), Shift release
-  dropping back to the XHB side, Shift alone → no intent and never blocked,
-  Ctrl+Alt+Shift → Expanded unchanged (the normative no-op);
-  the draw gesture (Shift held: backtick tap → `draw` intent and no `cycle`;
-  backtick chorded with a slot key → `jump n` regardless of Shift; backtick tap
-  with Shift up → `cycle`); switch-chord vs switch-tap (a chord followed by
+  falling back to the survivor's XHB side; the layer key in both press orders
+  (`\`-then-`[` and `[`-then-`\` both = WXHB left), layer release dropping
+  back to the XHB side, the layer alone → no intent, both sides + layer →
+  Expanded unchanged (the normative no-op);
+  the draw gesture (layer held, no side active: switch tap → `draw` intent and
+  no `cycle`; switch chorded with a slot key → `jump n` regardless of the
+  layer; switch tap with a side active → `cycle`); switch-chord vs switch-tap (a chord followed by
   release emits no cycle); backtick always blocked, held or tapped, hold state active
   or not; shortcut keys (bare tap → its `tap` verb, tap with any activator held
   → its `chorded` verb, always blocked, any press exiting edit mode while edit
@@ -1553,16 +1560,9 @@ covers the widget level.
   (command entries → `send_command`, key entries → sequences) with unknown
   names rejected at bind time, and `draw` resolving
   mounted → dismount, engaged → disengage, idle → engage by that priority (a
-  mounted-and-somehow-engaged state dismounts) with the no-target hint covered. Opener chord
-  logic is split by purity (pinned in round 2): `actions.lua` owns the pure
-  part — given an entry's chord and the currently-held modifier set, compute
-  fire-now vs arm and the injection delta (only missing keys) — while the
-  armed-action queue itself lives in `crossbar.lua`, driven by input state and
-  framework suppression/focus events, covered at the widget level: arms then
-  fires on the release edge, drops on suppression or focus loss, never fires
-  twice, and **arming a second opener replaces the first** — the "queue" holds
-  at most one action; two synthesized chords on one release edge is exactly
-  the desync class this design avoids. Built-in
+  mounted-and-somehow-engaged state dismounts) with the no-target hint covered. Openers emit
+  their full `setkey` down/up sequence immediately and unconditionally — v4
+  holds no modifiers, so nothing can contaminate an injected chord. Built-in
   dual-frontend: the command form and the slot form of `draw`/`mr`/`open` resolve
   to the same execution, each entry resolves an icon (including `draw`'s
   state-dependent swap), and a built-in name colliding with an authoring verb is
@@ -1641,7 +1641,7 @@ covers the widget level.
 
 In-client smoke (Windows/Windower, per milestone): a side appears on activator-hold
 and vanishes on release; each of the 8 slot keys fires the right action; the
-Shift layer reaches both WXHB views and both Ctrl/Alt press orders reach the
+layer key reaches both WXHB views and both side press orders reach the
 right Expanded view;
 typing in chat fires nothing and the number keys reach the chat box; jump reaches
 any set while cycle skips empties and visits the drawn vs sheathed rotation
@@ -1667,9 +1667,9 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   (`chat_open`, suppressed/disabled, edit-mode flag). No framework dependency; can
   start immediately and is the highest-risk piece. *Accepts when* every row of
   the hold-state table, every enumerable held-set state, the Expanded
-  press-order and release-fallback cases **including re-press** (Ctrl↓ Alt↓
-  Ctrl↑ Ctrl↓ = `expanded_rl` — "first" means first of the *currently held*
-  pair, a stale-order bug round 11 caught live in the spike), every
+  press-order and release-fallback cases **including re-press** (`[`↓ `]`↓
+  `[`↑ `[`↓ = `expanded_rl` — "first" means first of the *currently held*
+  pair; caught live in the spike 2026-08-08), every
   switch-chord/tap and shortcut case, every Blocking-rule case, and **all six
   mandatory guards** are covered by passing specs — the full input list in
   Testing strategy, not a subset, plus the round-11 guard cases: state
@@ -1719,7 +1719,7 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   retires — added in round 3, execution previously had no milestone home);
   WXHB (own anchor) and Expanded Hold wired; set jump/cycle; the crossbar
   consuming the `job change`/buff events with per-job reload live (CB5's own
-  acceptance depends on them); the opener arm/fire queue; recast sweep and
+  acceptance depends on them); recast sweep and
   animation, MP/TP cost, unusable dimming, press feedback, the SCH stratagem counter;
   the prim-budget measurement (touchpoint 7); in-client verification of the opener entries and
   the `draw` disengage spelling. *Accepts when* each of the 8 slot keys fires
@@ -1766,20 +1766,19 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
 
 ## Open questions
 
-1. **Input map: v3 decided 2026-08-06** after the spike observed L/R modifier
-   variants merging — Ctrl/Alt = XHB sides, Shift = W-layer, Ctrl+Alt =
-   Expanded by order, backtick = set switch + draw-gesture tap, number row =
-   slots, all as config-with-defaults. Still open within it: **(a)** the
-   remaining spike checks (flags on modifier events for the record, selective
-   blocking, macro-palette flash intrusiveness, chord arrival, injected-key
-   echo, dead-keys-are-free); **(b)** the layout-mode interaction — layout mode
-   uses plain CTRL for free-drag, so the component keyboard dispatch
-   (touchpoint 1) **must be built inert-during-layout-mode**; corrected after
-   review — nothing suppresses component input today, since no component input
-   dispatch exists yet. Verified in-client at CB4.
-2. **Does event-level blocking suffice without `unbind`?** ~75%. If not, we need a
-   bind/restore pair around load/unload, which changes a deviation above. Verifiable
-   only in-client; do it during CB2.
+1. **Input map: v4 decided 2026-08-08 and verified in-client** — no
+   modifiers; `[`/`]` sides, `\` layer, backtick switch, `=` shortcut, number
+   row slots, all config-with-defaults. Every key confirmed free and
+   blockable. Residue: **(a)** injected-key echo (one console command, before
+   CB2); **(b)** the layout-mode interaction — layout mode uses plain CTRL for
+   free-drag, which v4 no longer touches at all, but component keyboard
+   dispatch (touchpoint 1) is still built **inert-during-layout-mode** so the
+   two can never contend. Verified in-client at CB4.
+2. **Does event-level blocking suffice without `unbind`? Answered
+   2026-08-08: yes for unchorded keys, no for modified ones.** `return true`
+   swallows a bare key completely but does not stop FFXI acting on a Ctrl/Alt
+   chord. v4 takes only unchorded keys, so blocking suffices and no
+   `bind`/`unbind` pair is needed — the deviation stands as written.
 3. **Authoring: resolved 2026-08-06** — the mouse-driven binder (CB8) is the
    primary authoring surface; the CLI (with layer prefixes) and the
    hand-editable per-job `.lua` are the fallbacks.
