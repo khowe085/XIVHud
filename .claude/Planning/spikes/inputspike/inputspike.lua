@@ -61,14 +61,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
           activator while chat is open and close it - the readout must show
           `none`, not a stranded hold state.
        6. Focus. Alt-tab away mid-hold and back: state must be clear.
-       7. Inbound blocked. If another addon consumes a key first, `blocked-in`
-          counts it and this spike does nothing with it.
+       7. Inbound blocked. Informational only - nothing to produce. If some
+          other addon consumes a key before this one sees it, `blocked-in`
+          counts it. With no other keyboard-blocking addon loaded it stays 0,
+          which is a pass.
+       9. setkey names and echo. Type `//setkey e down` then `//setkey e up`
+          in the console. The message confirms the name parsed; then check
+          whether `events` moved - if injected keys re-enter our own handler,
+          the component needs to ignore its own injections.
+      10. Chord vs bare blocking (`//is bare`). Blocks the number row with no
+          modifier held. If bare 3 is swallowed while Ctrl+3 still fires its
+          macro, the game is reading chords by a route Windower's hook does
+          not cover, and the input map has to move off game-bound chords.
        8. The macro palette. Holding Ctrl/Alt makes FFXI draw its own macro
           bar. Judge how intrusive that is - it happens on every crossbar use.
 
      COMMANDS
        //is             status + this checklist in brief
        //is block       toggle selective blocking (default off)
+       //is bare        toggle blocking the number row with no modifier
        //is panic       force blocking off
        //is show|hide   the on-screen readout
        //is reset       zero the counters
@@ -94,6 +105,10 @@ local SHORTCUT = 13 -- '='
 local SLOTS = { [2] = 1, [3] = 2, [4] = 3, [5] = 4, [6] = 5, [7] = 6, [8] = 7, [9] = 8 }
 
 local blocking = false
+-- Blocks the number row with NO hold state required, to answer whether
+-- Windower can block a key at all versus only an unchorded one. Safe: chat
+-- opens with Enter, so this cannot lock you out of `//is panic`.
+local bare_block = false
 local showing = true
 
 -- Held activators, and the order the two sides were pressed in - the only
@@ -178,17 +193,18 @@ local function refresh()
   box:pos(400, 200)
   box:size(10)
   local layout = table.concat({
-    "inputspike  blocking=%s  chat=%s",
+    "inputspike  blocking=%s  bare=%s  chat=%s",
     "hold: %s   held L=%s R=%s Shift=%s tick=%s",
     "last fire: %s",
     "note: %s",
     "events=%d fires=%d repeats=%d blocked=%d blocked-in=%d",
     "dead keys seen: backtick=%s equals=%s",
-    "//is block | //is panic | //is reset",
+    "//is block | //is bare | //is panic | //is reset",
   }, "\n")
   box:text(
     layout:format(
       tostring(blocking),
+      tostring(bare_block),
       tostring(chat_open()),
       hold_state(),
       tostring(held.left),
@@ -227,12 +243,14 @@ local function on_key(dik, pressed, flags, blocked_in)
   -- blocked, or one arriving while chat is open, still moved a physical key,
   -- and forgetting that strands the model out of sync with the hand.
   if role == "left" or role == "right" then
-    -- Press order: this side is "first" only if the other side is up right
-    -- now. (Round 11: a stale first_side survived Ctrl-up/Ctrl-down inside a
-    -- held pair and mislabelled the expanded view.)
+    -- Press order is "whichever of the currently-held pair went down first".
+    -- Pressing into a pair where the other side is ALREADY held makes that
+    -- other side the first one - not this one, and not whatever was first
+    -- last time. (Kevin, in-client: LT->RT, release LT, hold LT again gave
+    -- expanded_lr where the held Alt should have made it expanded_rl.)
     local other = role == "left" and "right" or "left"
-    if pressed and not held[role] and not held[other] then
-      first_side = role
+    if pressed and not held[role] then
+      first_side = held[other] and other or role
     end
     held[role] = pressed
     if not held.left and not held.right then
@@ -275,7 +293,7 @@ local function on_key(dik, pressed, flags, blocked_in)
   local state = hold_state()
 
   if role == "slot" then
-    local want_block = state ~= "none" or held.switch
+    local want_block = bare_block or state ~= "none" or held.switch
     if pressed then
       if was_down then
         counts.repeats = counts.repeats + 1
@@ -377,8 +395,12 @@ windower.register_event("addon command", function(command)
   if command == "block" then
     blocking = not blocking
     say("blocking " .. (blocking and "ON - hold Ctrl and press 1-8; Ctrl+9/0 must still work" or "off"))
+  elseif command == "bare" then
+    bare_block = not bare_block
+    say("bare number-row block " .. (bare_block and "ON - press 3 with NO modifier held" or "off"))
   elseif command == "panic" then
     blocking = false
+    bare_block = false
     latched = {}
     say("blocking forced OFF")
   elseif command == "show" then
