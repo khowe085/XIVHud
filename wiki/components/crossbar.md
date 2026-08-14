@@ -6,23 +6,33 @@
 
 ## What it is
 
-The Cross Hotbar from FFXIV, for FFXI. Hold a trigger and two four-slot
-crosses appear over your HUD — the D-pad cluster on the left, the face buttons
-on the right — each slot showing what is bound to it, whether it is ready, and
-what it costs. Press the button while the trigger is held and it fires.
+A hotbar you hold a key to see. Hold one of two **side keys** and two
+four-slot crosses appear over your HUD — a D-pad cluster on the left, a
+face-button cluster on the right, eight slots between them. Each slot shows
+what is bound to it, whether it is ready, and what it costs. Press the
+matching button while the key is held and the action fires; let go and the
+bar goes away.
 
-You get **eight sets of sixteen slots** per job, switched with a button rather
-than a menu, plus the double and expanded bars FFXIV calls WXHB and Expanded
-Hold. Bindings can be shared across every job or kept to one, and slots can
-change themselves when a buff is up — so a Scholar's stratagem slots follow
-Light and Dark Arts without you touching anything.
+Those sixteen slots — eight per side — are a **set**, and you have eight sets.
+Tapping the **switch key** moves to the next one; holding it and pressing a
+button jumps straight to a numbered set.
+
+Two more bars sit on top of that. Holding the **layer key** together with a
+side gives you a second pair of crosses, the **WXHB**. Holding **both** side
+keys gives you another, **Expanded Hold**, where the order you press them in
+chooses between two of them. Each of these points at whatever set and side
+you tell it to, so they are extra bars rather than extra storage.
+
+Sets can be **shared** across every job or kept to one. Individual slots can
+be overridden for a particular subjob, or change themselves while a buff is up
+— a Scholar's stratagem slots follow Light and Dark Arts on their own.
 
 Bindings are made with the mouse: `//hud crossbar edit` opens a binder, you
-click a slot, pick a layer, pick an action.
+click a slot, pick which layer you are editing, and pick an action.
 
-**A controller is not required** — everything is keys, and the pad support is
-a Steam Input layer that presses them. You can drive the whole thing from a
-keyboard if you want to.
+Everything is driven by keys, so **a controller is optional**. Pad support is
+a Steam Input layout that presses those keys for you; from a keyboard you
+press them yourself.
 
 ## Commands
 
@@ -133,8 +143,8 @@ Two things to know when building the layout:
 - **Set switching is not reachable while RT is held**, because RB means `\`
   in that chord. Release RT first. The same motion works fine from LT.
 
-**Sheathe / unsheathe** is a gesture rather than a key: hold **LB**, tap
-**RB**. Mounted, the same gesture dismounts.
+**Sheathe / unsheathe** is a gesture: hold **LB**, tap **RB**. Mounted, the
+same gesture dismounts.
 
 ---
 
@@ -156,9 +166,8 @@ slots that genuinely differ get a subjob override.
 
 ### Buff contexts
 
-Some abilities only exist while a buff is up, and FFXIV has no equivalent, so
-this is ours. A **context** is a buff the addon watches; while it is up, that
-context's overrides win.
+Some abilities only exist while a buff is up. A **context** is a buff the
+addon watches; while that buff is on you, the context's overrides win.
 
 Scholar is the case this was built for:
 
@@ -275,8 +284,8 @@ a small code change rather than configuration.
 
 ## Extras
 
-**Recasts** sweep as a radial arc over the slot, the way FFXIV does it, rather
-than a bar. **Costs** show MP or TP in the corner. Actions you cannot use dim.
+**Recasts** sweep as a radial arc around the slot. **Costs** show MP or TP in
+the corner. Actions you cannot use dim.
 
 **Skillchains** get two things: a window indicator you can position anywhere,
 and — while a skillchain window is open on your target — every bound
