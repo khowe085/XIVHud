@@ -1,0 +1,289 @@
+# Crossbar
+
+> **Not built yet.** This page describes the component as planned, so the
+> design can be read and argued with before it exists. Nothing here works in
+> a client today.
+
+## What it is
+
+The Cross Hotbar from FFXIV, for FFXI. Hold a trigger and two four-slot
+crosses appear over your HUD — the D-pad cluster on the left, the face buttons
+on the right — each slot showing what is bound to it, whether it is ready, and
+what it costs. Press the button while the trigger is held and it fires.
+
+You get **eight sets of sixteen slots** per job, switched with a button rather
+than a menu, plus the double and expanded bars FFXIV calls WXHB and Expanded
+Hold. Bindings can be shared across every job or kept to one, and slots can
+change themselves when a buff is up — so a Scholar's stratagem slots follow
+Light and Dark Arts without you touching anything.
+
+Bindings are made with the mouse: `//hud crossbar edit` opens a binder, you
+click a slot, pick a layer, pick an action.
+
+**A controller is not required** — everything is keys, and the pad support is
+a Steam Input layer that presses them. You can drive the whole thing from a
+keyboard if you want to.
+
+## Commands
+
+All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
+`<slot>` accepts `1`–`8` or button names (`y`, `b`, `a`, `x`, `up`, `right`,
+`down`, `left`). `<side>` is `l` or `r`.
+
+### Everyday
+
+| Command | What it does |
+| --- | --- |
+| `//hud crossbar` | current job, active set, and where each view points |
+| `//hud crossbar edit` | toggle the mouse binder |
+| `//hud crossbar set <1-8>` | switch the active set |
+| `//hud crossbar cycle` | advance to the next set in the rotation |
+| `//hud crossbar list [<set>]` | what is bound on this job |
+
+### Binding
+
+| Command | What it does |
+| --- | --- |
+| `//hud crossbar bind <set> <l\|r> <slot> <type> <action> [<target>]` | bind a slot |
+| `//hud crossbar unbind <set> <l\|r> <slot>` | clear a slot |
+| `//hud crossbar swap <set> <l\|r> <slot> <set> <l\|r> <slot>` | swap two slots, everything about them |
+| `//hud crossbar copy <JOB>` | seed this job's bindings from another job |
+
+`bind` and `unbind` take an optional layer prefix on the set number —
+`sub:<set>` for the current subjob, `ctx:<name>:<set>` for a buff context. With
+no prefix you are editing the job's base layer. See
+[Layers](#layers-how-a-slot-decides-what-to-show).
+
+```
+//hud crossbar bind 1 l 3 ma "Cure IV" t
+//hud crossbar bind ctx:light-arts:1 l 3 ja "Addendum: White"
+```
+
+### Sets
+
+| Command | What it does |
+| --- | --- |
+| `//hud crossbar share <set> on\|off` | shared across all jobs, or job-specific |
+| `//hud crossbar cycle <set> drawn\|sheathed\|both\|none` | which rotation the set belongs to |
+| `//hud crossbar view <wxhb-l\|wxhb-r\|exp-lr\|exp-rl> <set> <l\|r>` | point a view at a set and side |
+
+### Inspection
+
+| Command | What it does |
+| --- | --- |
+| `//hud crossbar context list` | the buff contexts, in stack order, active ones marked |
+| `//hud crossbar open` | the game screens you can bind |
+
+### Built-in actions
+
+These fire directly, and are also bindable to slots. Because they are
+commands, they work with `//bind` and in in-game macros too.
+
+| Command | What it does |
+| --- | --- |
+| `//hud crossbar draw` | sheathe / unsheathe — or dismount, if mounted |
+| `//hud crossbar mr` | mount roulette: a random mount you own |
+| `//hud crossbar warp [all]` | best available warp; `all` warps every character you have running |
+| `//hud crossbar open <name>` | open a game screen (`map`, `equipment`, …) |
+
+---
+
+## Steam Input mapping
+
+The addon reads keys. Turning a controller into those keys is Steam Input's
+job, so nothing here is enforced by the addon — any layout that emits the
+right keys works, and a keyboard player can press them directly.
+
+Six keys drive everything, chosen because FFXI does nothing with them:
+
+| Key | Role |
+| --- | --- |
+| `[` | left side — hold to show it |
+| `]` | right side |
+| `\` | the W-layer — hold with a side for its WXHB bar |
+| `` ` `` | set switch — tap to cycle, hold and press a button to jump |
+| `=` | Select — opens your map; with a side held, opens the binder |
+| `1`–`8` | the eight slots |
+
+**No modifiers are used**, deliberately. FFXI's own macros live on Ctrl and
+Alt plus the number row, and the game acts on those chords by a route addons
+cannot intercept — so a crossbar built on them would fire a macro every time
+you pressed a slot. Using keys the game ignores leaves your macro palette
+completely alone.
+
+A controller layout that produces them:
+
+| Pad input | Emits | You get |
+| --- | --- | --- |
+| **LT** held | `[` | left side of the active set |
+| **RT** held | `]` | right side |
+| **LT + RT** | both | Expanded Hold — which one depends on the order you pressed them |
+| **LT + LB** | `\` | WXHB left (let go of LB and you are back on the left side) |
+| **RT + RB** | `\` | WXHB right |
+| **LB** tapped | `R` | autorun — not the crossbar's business |
+| **LB** long-pressed | `\` | held for the draw gesture below |
+| **RB** | `` ` `` | tap cycles sets; hold and press a face button to jump to a set |
+| **Select** | `=` | your map; with a trigger held, the binder |
+| **face / D-pad** while a trigger or RB is held | `1`–`8` | the eight slots |
+
+Two things to know when building the layout:
+
+- The **slot mode-shift must also apply while RB is held**, or set jumps have
+  no numbers to chord with.
+- **Set switching is not reachable while RT is held**, because RB means `\`
+  in that chord. Release RT first. The same motion works fine from LT.
+
+**Sheathe / unsheathe** is a gesture rather than a key: hold **LB**, tap
+**RB**. Mounted, the same gesture dismounts.
+
+---
+
+## Layers: how a slot decides what to show
+
+A slot does not hold one action. It holds a small stack, and the topmost
+layer with something in it wins:
+
+```
+buff contexts    ← Light Arts, Addendum: White, …   (only while the buff is up)
+subjob overrides ← just for RDM/NIN, say
+job base         ← every subjob shares this
+shared sets      ← the same on every job
+```
+
+The point is that **you only say a thing once**. A slot that should be the
+same on RDM/NIN and RDM/WHM is set on the job base and left alone. Only the
+slots that genuinely differ get a subjob override.
+
+### Buff contexts
+
+Some abilities only exist while a buff is up, and FFXIV has no equivalent, so
+this is ours. A **context** is a buff the addon watches; while it is up, that
+context's overrides win.
+
+Scholar is the case this was built for:
+
+- Your base slot is a weaponskill. On Scholar, an override makes it **Light Arts**.
+- Use Light Arts, and the `light-arts` context activates — the same slot
+  becomes **Addendum: White**.
+- Use that, and the `addendum-white` context activates — a whole WXHB side
+  turns into the spells it unlocks.
+- Your four stratagem slots hold the light stratagems under Light Arts and
+  the dark ones under Dark Arts, automatically.
+
+Contexts ship with the addon; you fill in what goes in them.
+`//hud crossbar context list` shows them and which are live.
+
+### Editing without guessing
+
+The reason the binder is mouse-driven is that layers are easy to get lost in.
+In edit mode:
+
+- Every slot is **tagged with where its content comes from**, before you click
+  anything.
+- Clicking a slot opens its **whole stack** — every layer, what each holds,
+  and which one is currently winning.
+- **You must pick a layer before the action list unlocks.** Nothing is
+  assumed, and the layer you are editing is on screen the whole time.
+- Clicking a layer row also **previews the bar as if that buff were up**, so
+  you can build your Addendum side while looking at your Addendum side.
+- Nothing is remembered between slots. Click elsewhere and the choice resets.
+
+You can also **drag**: from the action list onto a slot to bind it, from a
+slot onto another slot to swap them entirely, or from a slot onto empty space
+to clear it — which removes it from the layer you are editing, and leaves
+every other layer alone.
+
+---
+
+## Sets, sharing, and cycling
+
+There are **eight sets in memory**, always. Cycling puts one of them on the
+bar. What differs is where each set is *stored*:
+
+- A set marked **shared** is the same on every job — one copy, edited from
+  anywhere. Good for non-combat things you want everywhere.
+- A set left **job-specific** is stored per job. Set 1 on WHM and set 1 on WAR
+  are different sets that happen to share a number.
+
+```
+//hud crossbar share 6 on      -- sets 6, 7, 8 shared: the same everywhere
+//hud crossbar share 7 on
+//hud crossbar share 8 on
+```
+
+### Rotations
+
+Cycling with `` ` `` does not walk all eight. Each set can be included in a
+**drawn** rotation, a **sheathed** one, both, or neither:
+
+```
+//hud crossbar cycle 1 drawn        -- combat sets, cycled with the weapon out
+//hud crossbar cycle 2 drawn
+//hud crossbar cycle 6 sheathed     -- utility sets, cycled with it away
+//hud crossbar cycle 3 none         -- reachable only by jumping, or as a view
+```
+
+Empty sets are skipped, so the cycle is only as long as you have made it.
+A set flagged `none` is still reachable — jump to it with `` ` ``+button, or
+point a WXHB or Expanded view at it.
+
+**"Drawn" is the addon's own idea, not the game's.** It flips when you use the
+`draw` action, and it flips when you engage a mob — but it does *not* flip
+back when the mob dies. Only sheathing yourself takes you out of combat mode,
+so a set rotation does not lurch back mid-pull.
+
+---
+
+## What you can bind
+
+### Game actions
+
+| Type | For |
+| --- | --- |
+| `ma` | spells — including trusts and blue magic |
+| `ja` | job abilities |
+| `ws` | weaponskills |
+| `item` | usable items |
+| `pet` | pet commands |
+| `mount` | a specific mount |
+| `ra` | ranged attack |
+
+### Text and scripts
+
+| Type | For |
+| --- | --- |
+| `ct` | a single chat command, e.g. `ct "sea all linkshell"` |
+| `ex` | a raw Windower command — including `exec <script>`, which runs a multi-line Windower script. This is the closest thing to a macro. |
+
+FFXI's own macro palette cannot be triggered by an addon, so `ex` with a
+script is the way to put a sequence on a slot.
+
+### Built-ins
+
+| Type | What it does |
+| --- | --- |
+| `draw` | sheathe / unsheathe, and dismount when mounted. Its icon follows the state. |
+| `mr` | mount roulette — picks at random from the mounts you actually own, and dismounts if you are already up |
+| `warp` | picks the best warp you have: Warp, Warp II, Warp Ring, Warp Cudgel, Instant Warp. Equips the ring or cudgel for you and waits out the enchantment. `warp all` sends every character you have running home. |
+| `open <name>` | opens a game screen |
+
+`open` currently knows: `map`, `equipment`, `inventory`, `wardrobe` through
+`wardrobe8`, `case`, `sack`, `satchel`, `quests`, `linkshell`. Adding more is
+a small code change rather than configuration.
+
+---
+
+## Extras
+
+**Recasts** sweep as a radial arc over the slot, the way FFXIV does it, rather
+than a bar. **Costs** show MP or TP in the corner. Actions you cannot use dim.
+
+**Skillchains** get two things: a window indicator you can position anywhere,
+and — while a skillchain window is open on your target — every bound
+weaponskill swaps its icon for the skillchain property it *would* make right
+now. Scholar stratagem counts appear on the abilities that spend them, on
+`/SCH` as well as main.
+
+**Positioning.** The XHB, the WXHB and the skillchain indicator each move and
+scale independently in `//hud layout`. The bar hides itself in cutscenes and
+while zoning, like every other XIVHud component.
