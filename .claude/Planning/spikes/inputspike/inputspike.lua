@@ -79,7 +79,10 @@ _addon.author = "Azureblood2"
 _addon.version = "0.1"
 _addon.command = "is"
 
-require("texts")
+-- Windower's require returns the library; the same-named global is a
+-- convention the caller has to establish. A bare require("texts") loads it
+-- and leaves `texts` nil, which is how v0.1 died at load.
+texts = require("texts")
 
 -- The v3 map. Left and right variants are both listed for every role: the
 -- earlier spike saw them merge, and accepting both costs nothing if they do.
@@ -110,7 +113,14 @@ local counts = { events = 0, fires = 0, repeats = 0, blocked = 0, blocked_in = 0
 local last = { fire = "-", note = "-" }
 local seen_switch, seen_shortcut = false, false
 
-local box = texts.new({ flags = { draggable = false } })
+-- Degrade to chat rather than dying: this runs in a live client, and a spike
+-- that fails to load teaches nothing.
+local box_ok, box = pcall(function()
+  return texts.new({ flags = { draggable = false } })
+end)
+if not box_ok then
+  box = nil
+end
 
 local function say(message)
   pcall(function()
@@ -158,6 +168,9 @@ local function role_of(dik)
 end
 
 local function refresh()
+  if not box then
+    return
+  end
   if not showing then
     box:hide()
     return
@@ -345,13 +358,18 @@ end)
 
 windower.register_event("load", function()
   say("loaded. //is for status. Blocking is OFF until //is block.")
+  if not box then
+    say("texts library unavailable - readout disabled, //is still reports.")
+  end
   pcall(refresh)
 end)
 
 windower.register_event("unload", function()
-  pcall(function()
-    box:destroy()
-  end)
+  if box then
+    pcall(function()
+      box:destroy()
+    end)
+  end
 end)
 
 windower.register_event("addon command", function(command)
@@ -367,7 +385,9 @@ windower.register_event("addon command", function(command)
     showing = true
   elseif command == "hide" then
     showing = false
-    box:hide()
+    if box then
+      box:hide()
+    end
   elseif command == "reset" then
     counts = { events = 0, fires = 0, repeats = 0, blocked = 0, blocked_in = 0 }
     last = { fire = "-", note = "-" }
