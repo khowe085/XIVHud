@@ -45,15 +45,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      kills blocking from the chat box, which is never blocked.
 
      WHAT TO LOOK FOR
-       1. Hold states. Hold Ctrl -> xhb_left. Alt -> xhb_right. Add Shift to
-          either -> the wxhb pair. Ctrl then Alt -> expanded_lr; Alt then
-          Ctrl -> expanded_rl. Release one of a pair -> falls back to the
-          survivor. The readout should never disagree with your fingers.
-       2. Blocking (`//is block`). With a hold state up, press 1-8: the game
-          must NOT fire its Ctrl/Alt macros, while Ctrl+9 and Ctrl+0 still do.
-          This is the assumption the whole design rests on.
-       3. Dead keys. Backtick and `=` should report "free" - if either does
-          something in your client, the map needs a different key.
+       1. Hold states, v4 keys. Hold [ -> xhb_left. ] -> xhb_right. Add
+          backslash to either -> the wxhb pair. [ then ] -> expanded_lr; ]
+          then [ -> expanded_rl. Release one of a pair -> falls back to the
+          survivor, and re-pressing the released one makes the OTHER the
+          first of the pair. The readout should never disagree with you.
+       2. Blocking (`//is block`). With a hold state up, press 1-8: nothing
+          should reach the game. Ctrl+9/Ctrl+0 must still fire their macros,
+          since we never touch modified keys now. (v3 failed here: Ctrl+N
+          chords fire regardless of blocking.)
+       3. Dead keys. [ ] backslash backtick and = must all do nothing in game
+          beyond opening chat - with blocking on they should do nothing at
+          all. Any that collides needs replacing; press unmapped keys and
+          read the note line for their DIK to find candidates.
        4. Auto-repeat. Hold a slot key down: `fires` must increment once, not
           once per repeat. `repeats` counts what the OS sent.
        5. Chat. Open the chat box and type numbers: nothing fires, nothing is
@@ -95,11 +99,22 @@ _addon.command = "is"
 -- and leaves `texts` nil, which is how v0.1 died at load.
 texts = require("texts")
 
--- The v3 map. Left and right variants are both listed for every role: the
--- earlier spike saw them merge, and accepting both costs nothing if they do.
-local XHB_LEFT = { [29] = true, [157] = true } -- Ctrl
-local XHB_RIGHT = { [56] = true, [184] = true } -- Alt
-local W_LAYER = { [42] = true, [54] = true } -- Shift
+--[[ The v4 map: no modifiers anywhere.
+
+     v3 used Ctrl/Alt/Shift as activators, which put every slot press on a
+     Ctrl+number chord - and in-client those chords fire FFXI's own macros
+     even when this handler returns true. Bare keys block fine; modified ones
+     do not, so the game must be reading chords by a route Windower's hook
+     does not cover. (xivcrossbar sat on Ctrl+F1-F12, chords FFXI ignores, so
+     it never had to find this out.)
+
+     An activator does not have to be a modifier - only a key the game
+     ignores and the bridge can hold. These are punctuation and the number
+     row; press anything unmapped and the note line reports its DIK, which is
+     how to check a replacement is free. ]]
+local XHB_LEFT = { [26] = true } -- [
+local XHB_RIGHT = { [27] = true } -- ]
+local W_LAYER = { [43] = true } -- backslash
 local SET_SWITCH = 41 -- backtick
 local SHORTCUT = 13 -- '='
 local SLOTS = { [2] = 1, [3] = 2, [4] = 3, [5] = 4, [6] = 5, [7] = 6, [8] = 7, [9] = 8 }
@@ -194,7 +209,7 @@ local function refresh()
   box:size(10)
   local layout = table.concat({
     "inputspike  blocking=%s  bare=%s  chat=%s",
-    "hold: %s   held L=%s R=%s Shift=%s tick=%s",
+    "hold: %s   held [=%s ]=%s \\=%s `=%s",
     "last fire: %s",
     "note: %s",
     "events=%d fires=%d repeats=%d blocked=%d blocked-in=%d",
