@@ -6,7 +6,7 @@
 
 ## What it is
 
-A hotbar you hold a key to see. Hold one of two **side keys** and two
+FFXIV's Cross Hotbar, for FFXI. Hold one of two **side keys** and two
 four-slot crosses appear over your HUD — a D-pad cluster on the left, a
 face-button cluster on the right, eight slots between them. Each slot shows
 what is bound to it, whether it is ready, and what it costs. Press the
@@ -18,10 +18,11 @@ Tapping the **switch key** moves to the next one; holding it and pressing a
 button jumps straight to a numbered set.
 
 Two more bars sit on top of that. Holding the **layer key** together with a
-side gives you a second pair of crosses, the **WXHB**. Holding **both** side
-keys gives you another, **Expanded Hold**, where the order you press them in
-chooses between two of them. Each of these points at whatever set and side
-you tell it to, so they are extra bars rather than extra storage.
+side gives you a second pair of crosses — FFXIV calls this the **WXHB**.
+Holding **both** side keys gives you another, **Expanded Hold**, where the
+order you press them in chooses between two of them. Each points at whatever
+set and side you tell it to, so they are extra bars rather than extra
+storage.
 
 Sets can be **shared** across every job or kept to one. Individual slots can
 be overridden for a particular subjob, or change themselves while a buff is up
@@ -130,7 +131,7 @@ A controller layout that produces them:
 | **LT + RT** | both | Expanded Hold — which one depends on the order you pressed them |
 | **LT + LB** | `\` | WXHB left (let go of LB and you are back on the left side) |
 | **RT + RB** | `\` | WXHB right |
-| **LB** tapped | `R` | autorun — not the crossbar's business |
+| **LB** tapped | `R` | autorun, native game functionality — the crossbar does not read it |
 | **LB** long-pressed | `\` | held for the draw gesture below |
 | **RB** | `` ` `` | tap cycles sets; hold and press a face button to jump to a set |
 | **Select** | `=` | your map; with a trigger held, the binder |
@@ -166,8 +167,9 @@ slots that genuinely differ get a subjob override.
 
 ### Buff contexts
 
-Some abilities only exist while a buff is up. A **context** is a buff the
-addon watches; while that buff is on you, the context's overrides win.
+Some abilities only exist while a buff is up, which FFXIV has no equivalent
+for — so this part is ours. A **context** is a buff the addon watches; while
+that buff is on you, the context's overrides win.
 
 Scholar is the case this was built for:
 
@@ -284,8 +286,8 @@ a small code change rather than configuration.
 
 ## Extras
 
-**Recasts** sweep as a radial arc around the slot. **Costs** show MP or TP in
-the corner. Actions you cannot use dim.
+**Recasts** sweep as a radial arc around the slot, the way FFXIV draws them.
+**Costs** show MP or TP in the corner. Actions you cannot use dim.
 
 **Skillchains** get two things: a window indicator you can position anywhere,
 and — while a skillchain window is open on your target — every bound
