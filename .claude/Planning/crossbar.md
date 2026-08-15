@@ -139,8 +139,10 @@ Vocabulary, from SE's guide, used consistently from here on:
     (defect ⑧). `\` alone activates nothing.
   - **Set switch `` ` ``**: held + slot key jumps to that set, tapped alone
     cycles. **Draw gesture** = `\` held + `` ` `` tapped with no side active.
-  - All six of these keys were verified in-client (2026-08-08) to have **no
-    game function** — each merely opens the chat log, and each is blockable.
+  - All six were verified in-client (2026-08-08) to have **no game
+    function** — each merely opens the chat log. Blocking is verified for the
+    switch and the shortcut; for `[`, `]` and `\` it is assumed (~90%) and
+    awaits one more spike run.
     They are ours exclusively while the crossbar is live; the chat guard hands
     them back the moment the chat box has focus, so they remain typeable.
   - **FFXI's macro palette is untouched** — Ctrl/Alt+1–0 keep working, and the
@@ -419,7 +421,11 @@ using master tools").
   only the total (with master tools) does; red otherwise.
 - **At zero**: a red X over the slot and the recast text hidden.
 - **Counts stay fresh** from the `add item` / `remove item` events the
-  framework already forwards, seeded by an inventory read — no new touchpoint.
+  framework already forwards — but those carry **only the item id** (the
+  quantity is dropped, `XIVHud.lua:862-868`), so each one triggers a
+  `get_items()` re-read for the affected tool, giltracker's pattern
+  (`giltracker.lua:210`). No new touchpoint, but no count in the payload
+  either.
 
 ### Open actions (renamed from "menu", 2026-08-06)
 
@@ -553,7 +559,7 @@ prose rules below are normative where they elaborate:
 | `` ` `` tapped, **no side held** | cycle to the next non-empty set in the current weapon state's rotation |
 | slot keys `1`–`8` (DIK 2–9) with a hold state active | fire that slot |
 | shortcut key (`=` 13) tapped | its `tap` verb bare / its `chorded` verb with a side held (blocked as ours, subject to the guards — in edit mode only the `edit`-verb key is live) |
-| nothing held | no hold state active — every key falls through to the game (the switch and shortcut keys excepted: always ours, always blocked) |
+| nothing held | no hold state active — the number row falls through to the game; **our five dedicated keys never do** (see Blocking) |
 
 Resolution rules:
 
@@ -594,8 +600,13 @@ Resolution rules:
 - **Blocking**: per-key, **latched at press** — whether a key's press was
   blocked decides its release too (a `3` pressed unblocked whose release
   arrives after a side went down must still reach the game, or FFXI sees a key
-  held forever; likewise across guard transitions). Blocked at press: **all six of our
-  keys — both sides, the layer, the switch and the shortcut — always**, plus
+  held forever). **The latch outranks every guard** (pinned 2026-08-16): if a
+  press was blocked, its release is blocked as well, even if chat has since
+  opened, suppression has started, edit mode has been entered, or the release
+  arrives with an inbound `blocked` flag. Releasing a key the game never saw
+  pressed is the one outcome none of the guards is worth. Blocked at press: **our five dedicated
+  keys — both sides, the layer, the switch and the shortcut — whenever the
+  component is enabled**, plus
   slot keys while a hold state is active or the switch is held (the set-jump
   chord must not leak bare numbers to the game). Nothing else is ever blocked.
 
@@ -634,12 +645,15 @@ Guards, all mandatory (tightened after blind review, 2026-08-06):
   key auto-repeat delivers repeated `pressed=true` events for held keys, and a
   held slot key must fire its action exactly once (upstream defends with
   `just_pressed` checks; ours is structural).
-- **Suppression / disabled**: while the framework suppresses the component
-  (cutscene, zoning) or it is disabled, nothing fires and nothing is blocked —
-  every key falls through, our own included — but **state still tracks**
-  (corrected 2026-08-15: the same hole the chat and inbound-`blocked` guards
-  were fixed for. A side released during a cutscene must clear, or the model
-  reads it as still held when the cutscene ends).
+- **Suppression**: while the framework suppresses the component (cutscene,
+  zoning) nothing fires, but **our five keys stay blocked and state still
+  tracks** (corrected 2026-08-16 — an earlier revision had them fall through,
+  which by the rationale above would open the chat log mid-cutscene and leave
+  the component inert once suppression lifted). Slot keys do fall through:
+  they are the game's the moment we are not using them.
+- **Disabled**: when the component is switched off entirely, every key falls
+  through, ours included — the keys go back to the game because nothing here
+  wants them.
 - **Inbound `blocked`**: the keyboard event's own `blocked` argument (another
   addon already consumed the key) short-circuits action intents and blocking —
   **all state still tracks** (activators, slot-key down/latch bookkeeping) and
@@ -652,11 +666,12 @@ Guards, all mandatory (tightened after blind review, 2026-08-06):
   until CB8 lands, the `edit` verb and Select-chord reply "binder not yet
   available" instead of setting the flag): the exit key is **any shortcut key
   one of whose verbs is `edit`** (zero such keys → edit mode only via the
-  verb; other shortcut keys are inert and unblocked in edit mode); while edit mode is on, sides, the layer, slot keys and the
-  switch are inert and unblocked **though their state still tracks**, for the
-  same reason as the suppression guard; the only live input is **a press of
-  the shortcut key that toggles edit** (bare or chorded), which exits — that
-  is what "any press exits it" means.
+  verb; other shortcut keys are inert and unblocked in edit mode); while edit mode is on, sides, the layer, the switch and
+  slot keys fire nothing **though their state still tracks**; our five keys
+  stay blocked (same reason as the suppression guard — an unblocked `[` would
+  open the chat log over the binder), while slot keys fall through. The only
+  live input is **a press of the shortcut key that toggles edit** (bare or
+  chorded), which exits — that is what "any press exits it" means.
 
 ### Verification spike — results (run by Kevin, 2026-08-06)
 
@@ -723,8 +738,10 @@ extended F-keys** (Kevin, 2026-08-06).
 
 The bridge side of the contract — how the pad produces the DIKs above. Not
 enforced by the addon (any layout emitting the right keys works), recorded so the
-two halves stay designed as a pair. Every output key has exactly one source, which
-is what sidesteps Steam Input's lack of modifier reference-counting.
+two halves stay designed as a pair. Most output keys have one source; the two that do not are called out in the
+caveats below (`\` from either bumper, and each slot key from three chords).
+With no modifiers left in the map, a shared output at worst drops a key the
+edge detection then re-reads — not the stuck-modifier failure v3 risked.
 
 | Physical control | Condition (Steam Input layer) | Emits (DIK) | Crossbar meaning |
 | --- | --- | --- | --- |
@@ -967,7 +984,10 @@ Beyond the wholesale rejection of its input model and slot order:
   both sides as one unit), `wxhb_left` and `wxhb_right` (**the WXHB's two
   sides move independently**, so it can sit split across the screen where the
   XHB cannot), and `indicator` (skillchain) — each independently positioned
-  (touchpoint 2).
+  (touchpoint 2). **Layout mode draws every anchor regardless of config**
+  (2026-08-16): with `always_show_wxhb` off the WXHB is invisible in play, so
+  without this its two anchors would have no bounds to hit-test and could
+  never be placed. `set_preview(true)` shows all four.
   **Expanded Hold has no anchor of its own** (decided 2026-08-15): it is the
   only bar that *replaces* rather than coexists, so it draws **centred on the
   `main` anchor's footprint** — which stays meaningful because `main` remains
@@ -1262,7 +1282,7 @@ Bindings live in the per-job files (below), not here.
 ```lua
 {
   -- defaults.lua is a factory `function(screen_width, screen_height)` like the
-  -- shipped components' — the three anchor defaults are computed from screen
+  -- shipped components' — the four anchor defaults are computed from screen
   -- size. `false` disables an entry (merge_defaults refills nil, never false).
   input = {                        -- DIK codes per role; the bridge emits these
     xhb_left  = { 26 },            -- [
@@ -1647,12 +1667,15 @@ covers the widget level.
   while any side is held** — no `cycle`, no `jump`, no `draw`, while still
   blocked, and slot keys in that state firing their slot rather than jumping; switch-chord vs switch-tap (a chord followed by
   release emits no cycle); backtick always blocked, held or tapped, hold state active
-  or not; shortcut keys (bare tap → its `tap` verb, tap with any activator held
-  → its `chorded` verb, always blocked, any press exiting edit mode while edit
-  mode is on); slot keys with no hold state active and backtick up never firing and
-  never blocked; the block decision exactly per the Blocking rule (slot keys
-  blocked while a hold state is active OR backtick held; backtick and shortcut keys
-  always; nothing else ever); chat_open suppressing action intents but passing `activate` (an activator
+  or not; shortcut keys (bare tap → its `tap` verb, tap with **a side** held → its `chorded`
+  verb (the layer and switch do not count — the pad chord is trigger+Select),
+  always blocked, any press exiting edit mode while edit mode is on); slot keys with no hold state active and backtick up never firing and
+  never blocked; the block decision exactly per the Blocking rule — **all five dedicated
+  keys blocked at press whenever the component is enabled**, slot keys only
+  while a hold state is active or the switch is held, nothing else ever; **a
+  latched release blocked even when a guard has since become active**
+  (crossing into chat, suppression, edit mode, or an inbound-`blocked`
+  release); chat_open suppressing action intents but passing `activate` (an activator
   released mid-chat emits `activate none` — the widget-visible assertion, not
   just internal state);  auto-repeat
   streams firing each action exactly once; inbound-`blocked` events producing
@@ -1743,8 +1766,10 @@ covers the widget level.
   cards resolving through Trump Card the same way.
 - **`counters.lua`** — stratagem charges: max
   charges at each level boundary (9/10, 29/30, 49/50, 69/70, 89/90), the JP
-  gift at 549/550 **for main SCH only**, available = `max - ceil(recast /
-  charge_time[max])` across a full recast sweep, zero and full states, and —
+  gift at 549/550 **for main SCH only**, available = `max(0, (max + gift) -
+  ceil(recast / charge_time[max + gift]))` across a full recast sweep — gift
+  in **both** places and the zero clamp, which is the fork's own bug (it can
+  print -1) — plus zero and full states, and —
   the named regression — **the counter drawing on `RDM/SCH` as well as `SCH`**
   (Kevin's own fix), while a non-SCH job draws nothing. Only the sixteen
   stratagem-consuming abilities carry the number.
@@ -1812,8 +1837,11 @@ any set while cycle skips empties and visits the drawn vs sheathed rotation
 sheathed);
 a shared set follows a job change while a job set does not; a bound open action
 opens the equipment screen;
-mount roulette mounts and dismounts; the draw toggle engages and disengages from
-both a slot and `//bind`; gaining Light Arts swaps the overridden slots and
+mount roulette mounts and dismounts; **`warp` picks the right rung, equips
+and fires the ring, and re-enables the GearSwap slot on every exit — success,
+the 30 s give-up, and a zone or logout mid-wait**; the stratagem and ninja
+counters read correctly on main and sub; the draw toggle engages and
+disengages from both a slot and `//bind`; gaining Light Arts swaps the overridden slots and
 losing it swaps them back; edit mode binds a clicked slot to a chosen layer and
 the stack panel shows the winner; recasts sweep; the number row reaches the
 game when no hold state is active (and the dead keys never do, blocked as
@@ -1880,7 +1908,7 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
 - **CB5 — activation + all sides + sets + live state.** **Slot presses execute
   their bound actions from this milestone on** (CB2's log-only stand-in
   retires — added in round 3, execution previously had no milestone home);
-  WXHB (own anchor) and Expanded Hold wired; set jump/cycle; the crossbar
+  WXHB (its two anchors) and Expanded Hold wired; set jump/cycle; the crossbar
   consuming the `job change`/buff events with per-job reload live (CB5's own
   acceptance depends on them); recast sweep and
   animation, MP/TP cost, unusable dimming, press feedback, the SCH stratagem counter,
@@ -1933,9 +1961,10 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
 
 1. **Input map: v4 decided 2026-08-08 and verified in-client** — no
    modifiers; `[`/`]` sides, `\` layer, backtick switch, `=` shortcut, number
-   row slots, all config-with-defaults. Every key confirmed free and
-   blockable. Residue: **(a)** injected-key echo (one console command, before
-   CB2); **(b)** the layout-mode interaction — layout mode uses plain CTRL for
+   row slots, all config-with-defaults. Every key confirmed free; blocking
+   confirmed for the switch, the shortcut and the number row. Residue:
+   **(a)** blocking `[`, `]` and `\` (the spike now does; one run needed) and
+   injected-key echo, both before CB2; **(b)** the layout-mode interaction — layout mode uses plain CTRL for
    free-drag, which v4 no longer touches at all, but component keyboard
    dispatch (touchpoint 1) is still built **inert-during-layout-mode** so the
    two can never contend. Verified in-client at CB4.

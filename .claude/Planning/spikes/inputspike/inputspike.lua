@@ -35,6 +35,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      an on-screen readout, so the model can be judged by using it rather than
      by reading a spec.
 
+     It implements four of the component's six guards - chat, focus, edge
+     detection and inbound-blocked - plus the latch. Suppression and edit
+     mode need the framework, so they are the component's to prove, not
+     this addon's.
+
      Install: copy this folder to Windower4/addons/inputspike/, then
      //lua load inputspike.
 
@@ -280,9 +285,12 @@ local function on_key(dik, pressed, flags, blocked_in)
   -- Slot-key down-state is bookkeeping, not action: releases must clear it
   -- even when a guard below swallows the rest, or the next press after chat
   -- closes reads as an auto-repeat. (Round 11.)
+  -- Slot-key down-state is bookkeeping, not action: it tracks through every
+  -- guard, in both directions. Tracking only releases meant a key held down
+  -- while typing read as a fresh press when chat closed.
   local was_down = down[dik]
-  if role == "slot" and not pressed then
-    down[dik] = nil
+  if role == "slot" then
+    down[dik] = pressed and true or nil
   end
 
   -- Guard: another addon consumed the key. No fire, no block of ours - but a
@@ -290,7 +298,12 @@ local function on_key(dik, pressed, flags, blocked_in)
   if blocked_in then
     counts.blocked_in = counts.blocked_in + 1
     last.note = "inbound blocked dik=" .. tostring(dik) .. " (state tracked)"
-    latched[dik] = nil
+    -- The latch outranks every guard: a release whose press we swallowed stays
+    -- swallowed, or the game sees a key-up it never saw a key-down for.
+    if not pressed and latched[dik] then
+      latched[dik] = nil
+      return true
+    end
     return false
   end
 
@@ -308,18 +321,24 @@ local function on_key(dik, pressed, flags, blocked_in)
   local state = hold_state()
 
   if role == "slot" then
+    -- The switch is inert while any side is held, so a slot key means "fire"
+    -- there, never "jump"; and with neither a side nor the switch, nothing
+    -- fires at all.
+    local jumping = held.switch and state == "none"
     local want_block = bare_block or state ~= "none" or held.switch
     if pressed then
       if was_down then
         counts.repeats = counts.repeats + 1
       else
-        down[dik] = true
-        counts.fires = counts.fires + 1
         local slot = SLOTS[dik]
-        if held.switch then
+        if jumping then
+          counts.fires = counts.fires + 1
           last.fire = ("jump to set %d"):format(slot)
-        else
+        elseif state ~= "none" then
+          counts.fires = counts.fires + 1
           last.fire = ("%s slot %d"):format(state, slot)
+        else
+          last.note = ("slot %d with nothing held - falls through"):format(slot)
         end
       end
       if blocking and want_block then

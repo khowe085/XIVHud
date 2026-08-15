@@ -62,7 +62,7 @@ All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar bind <set> <l\|r> <slot> <type> <action> [<target>]` | bind a slot |
+| `//hud crossbar bind <set> <l\|r> <slot> <type> [<action>] [<target>]` | bind a slot |
 | `//hud crossbar unbind <set> <l\|r> <slot>` | clear a slot |
 | `//hud crossbar alias <set> <l\|r> <slot> [<name>]` | change the label under a slot — omit `<name>` to clear it |
 | `//hud crossbar icon <set> <l\|r> <slot> [<icon>]` | change a slot's icon — omit `<icon>` to clear it |
@@ -181,8 +181,8 @@ job, so nothing here is enforced by the addon — any layout that emits the
 right keys works, and a keyboard player can press them directly.
 
 Six keys drive everything, chosen because FFXI binds none of them to a game
-function — pressed on their own they only open the chat log, and the crossbar
-keeps them to itself so even that does not happen:
+function — pressed on their own they would only open the chat log, and the
+crossbar keeps them to itself so that they do not:
 
 | Key | Role |
 | --- | --- |
@@ -192,6 +192,9 @@ keeps them to itself so even that does not happen:
 | `` ` `` | set switch — tap to cycle, hold and press a button to jump; ignored while a side is held |
 | `=` | Select — opens your map; with a side held, opens the binder |
 | `1`–`8` | the eight slots — but only while a side or the switch is held; otherwise they reach the game as usual |
+
+You can still type all of them: once the chat box has focus the crossbar
+hands every key back, so `[`, `\` and the rest reach your message normally.
 
 **No modifiers are used**, deliberately. FFXI's own macros live on Ctrl and
 Alt plus the number row, and the game acts on those chords by a route addons
@@ -210,7 +213,7 @@ A controller layout that produces them:
 | **RT + RB** | `\` | the WXHB's right side |
 | **LB** tapped | `R` | autorun, native game functionality — the crossbar does not read it |
 | **LB** long-pressed | `\` | held for the draw gesture below |
-| **RB** | `` ` `` | tap cycles sets; hold and press a face button to jump to one (no trigger held) |
+| **RB** | `` ` `` | tap cycles sets; hold and press any slot button to jump to that set, 1 to 8 (no trigger held) |
 | **Select** | `=` | your map; with a side held, the binder |
 | **face / D-pad** while LT, RT or RB is held | `1`–`8` | the eight slots |
 
@@ -295,7 +298,8 @@ the XHB on set 1, the WXHB on set 2, Expanded Hold on set 3.
 
 **Expanded Hold takes the screen over.** It is up only while both side keys
 are down, and it hides the XHB and WXHB for that time; release either key and
-you are back to whatever you had before. Being eight slots rather than
+you are back to whatever you had before. Adding the layer key changes nothing
+— there is no W version of Expanded Hold. Being eight slots rather than
 sixteen, it draws centred on the XHB's position — the bar you were looking at
 changes contents rather than moving.
 
@@ -355,6 +359,10 @@ In edit mode:
   — though a **drag** carries the layer you had chosen onto whatever slot you
   drop it on, which is what makes filling a context across several slots
   quick. With no layer chosen, dragging a slot to empty space does nothing.
+
+**Getting out.** While edit mode is on the crossbar itself does nothing — no
+side activates and no slot fires — so the only ways out are `//hud crossbar
+edit` again, or **any press of the Select key** (`=`), chorded or not.
 
 You can also **drag**: from the action list onto a slot to bind it, from a
 slot onto another slot to swap them entirely, or from a slot onto empty space
@@ -432,7 +440,7 @@ script is the way to put a sequence on a slot.
 | --- | --- |
 | `draw` | sheathe / unsheathe, and dismount when mounted. Its icon follows the state. |
 | `mr` | mount roulette — picks at random from the mounts you actually own, and dismounts if you are already up |
-| `warp` | picks the best warp you have: Warp, Warp II, Warp Ring, Warp Cudgel, Instant Warp. Equips the ring or cudgel for you and waits out the enchantment — though if it has more than 30 seconds left to charge it gives up rather than waiting, and says so. `warp all` sends your other characters running XIVHud home. |
+| `warp` | picks the best warp you have: Warp, Warp II, Warp Ring, Warp Cudgel, Instant Warp. Equips the ring or cudgel for you and waits out the enchantment — though if it has more than 30 seconds left to charge it gives up rather than waiting. `warp all` sends your other characters running XIVHud home. |
 | `open <name>` | opens a game screen |
 
 #### What `open` can open
@@ -453,9 +461,9 @@ script is the way to put a sequence on a slot.
 
 Most of these are chat commands the game already has, so they are reliable.
 **`equipment` and `inventory` are the exceptions**: FFXI has no command for
-them, so those two work by pressing Ctrl+E and Ctrl+I for you. If you have
-rebound either of those in the game's own keyboard settings, that opener will
-not work until the table is updated to match.
+them, so those two work by pressing Ctrl+E and Ctrl+I for you. That makes them
+the fragile pair — they stop working if you have rebound those keys in the
+game's own settings, and not every FFXI window can be opened this way at all.
 
 ---
 
@@ -472,7 +480,8 @@ weaponskill and job ability swaps its icon for the skillchain property it
 **Stratagem counts** show on the Scholar abilities that spend them.
 
 **Ninja tool counts** show on ninjutsu slots — how many of that tool you are
-carrying, with the slot crossed out when you have none. On main Ninja the
+carrying, green while you are well stocked, yellow as it runs down, red under
+about fifty, and the slot crossed out when you have none. On main Ninja the
 count includes your master tools; on `/NIN` it counts the plain tool only.
 Corsair cards are counted the same way, including Trump Cards.
 
