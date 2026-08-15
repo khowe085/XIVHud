@@ -1331,8 +1331,8 @@ function. Framework conventions apply: case-insensitive verbs, unknown input →
 one-line hint, consistent chat prefix.
 
 ```
-//hud crossbar                                     -- job, active set, view mapping
-//hud crossbar set <1-8>                           -- switch the active set
+//hud crossbar                                     -- job, XHB's active set, view mapping
+//hud crossbar set <1-8>                           -- switch the XHB's active set
 //hud crossbar cycle                               -- bare: advance the rotation (for //bind; the gesture's command twin)
 //hud crossbar bind <set> <l|r> <slot> <type> <action> [<target>]
 //hud crossbar unbind <set> <l|r> <slot>

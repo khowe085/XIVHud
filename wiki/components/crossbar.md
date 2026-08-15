@@ -52,10 +52,10 @@ All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar` | report the current job, the active set, and where each view points |
+| `//hud crossbar` | report the current job, the XHB's active set, and where each view points |
 | `//hud crossbar edit` | toggle the mouse binder |
-| `//hud crossbar set <1-8>` | switch the active set |
-| `//hud crossbar cycle` | advance to the next set in the rotation |
+| `//hud crossbar set <1-8>` | switch the XHB's active set |
+| `//hud crossbar cycle` | advance the XHB to the next set in the rotation |
 | `//hud crossbar list [<set>]` | list what is bound on this job |
 
 ### Binding
