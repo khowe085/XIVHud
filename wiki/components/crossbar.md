@@ -322,7 +322,7 @@ In edit mode:
   and which one is currently winning.
 - **You must pick a layer before the action list unlocks.** Nothing is
   assumed, and the layer you are editing is on screen the whole time.
-- Clicking a layer row also **previews the bar as if that buff were up**, so
+- Clicking a layer row also **previews the crossbar as if that buff were up**, so
   you can build your Addendum side while looking at your Addendum side.
 - Nothing is remembered between slots. Click elsewhere and the choice resets.
 
@@ -336,7 +336,8 @@ every other layer alone.
 ## Sets, sharing, and cycling
 
 There are **eight sets in memory**, always. Cycling puts one of them on the
-bar. What differs is where each set is *stored*:
+XHB; the WXHB and Expanded Hold keep pointing wherever you sent them. What
+differs between sets is where each one is *stored*:
 
 - A set marked **shared** is the same on every job — one copy, edited from
   anywhere. Good for non-combat things you want everywhere.
