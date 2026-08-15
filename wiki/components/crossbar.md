@@ -105,11 +105,27 @@ icon of its own:
 //hud crossbar alias 1 l 3                -- back to the action's own name
 ```
 
-`<icon>` is a name from the icons that ship with the addon, or a path to your
-own PNG under the addon folder. Both follow the same layer prefixes as `bind`,
-so aliasing `ctx:light-arts:1` relabels only what that context puts in the
-slot. Both need something in the slot to act on — on an empty one they report
-an error rather than doing nothing quietly.
+Both follow the same layer prefixes as `bind`, so aliasing
+`ctx:light-arts:1` relabels only what that context puts in the slot. Both need
+something in the slot to act on — on an empty one they report an error rather
+than doing nothing quietly.
+
+#### Using your own icons
+
+Put PNGs in **`icons/custom/`** inside the addon folder, and name them
+whatever you want to type:
+
+```
+Windower4/addons/XIVHud/icons/custom/pull.png
+    → //hud crossbar icon 4 l 1 pull
+```
+
+Any size works, though 40x40 matches the slots exactly. The folder is yours —
+it is not part of the addon download, so updating XIVHud leaves it alone.
+
+Your icons are checked **before** the ones that ship with the addon, so naming
+a file after a built-in one replaces it everywhere: an `icons/custom/attack.png`
+becomes the picture on every Attack slot without you re-pointing anything.
 
 `bind` and `unbind` take an optional layer prefix on the set number —
 `sub:<set>` for the current subjob, `ctx:<name>:<set>` for a buff context. With

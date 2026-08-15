@@ -1065,6 +1065,9 @@ src/components/crossbar/
                                              --   trusts, weaponskills, ninjutsu,
                                              --   blue-magic, ui singles
     LICENSE.txt                              -- MIT + BSD notices (see License)
+-- and, outside the package, written at runtime beside the addon:
+--   <addon>/icons/<item_id>.bmp     extracted item icons (shared, see tp 6)
+--   <addon>/icons/custom/<name>.png the player's own slot art
 tests/components/
   crossbar_input_spec.lua      crossbar_bindings_spec.lua
   crossbar_actions_spec.lua    crossbar_roulette_spec.lua
@@ -1450,9 +1453,23 @@ one-line hint, consistent chat prefix.
   action's own name or the icon the catalog would have chosen. Aliasing or
   re-iconing an empty slot is an error, not a silent no-op: there is no entry
   to carry it.
-  `<icon>` is a name from the shipped pack (`mount`, `attack`, …) or a path
-  to a PNG under the addon folder for your own art; an unresolvable one is
-  rejected at entry rather than drawing nothing later.
+  **Icon resolution** (pinned 2026-08-15 — the plan previously said only "a
+  path under the addon folder", which is not something a user can act on):
+  `<icon>` is a bare name, resolved in order —
+
+  1. `<addon>/icons/custom/<name>.png` — the player's own art;
+  2. the shipped pack, by the same `<category>/<kebab_casify(name)>.png` rule
+     the catalog uses, so `mount`, `attack`, `map` and the other singles work
+     by name.
+
+  User art wins, so dropping `attack.png` into `icons/custom/` re-skins every
+  slot using it without renaming anything. The folder sits beside the
+  extracted item cache (`<addon>/icons/`), for the same reason that cache is
+  not under `data/`: `//hud copy` enumerates `data/` directories as
+  characters. Both are outside the package, so neither is touched by an
+  update. Any size loads (prims are `fit(false)` + explicit `size`), 40x40
+  matches the slots. An unresolvable name is rejected at entry rather than
+  drawing nothing later.
 - **`swap` moves the whole stack** (decided 2026-08-06): for the two addresses,
   every layer's entry — base (whichever store the set's flag selects), each
   subjob override, each context override — is exchanged in one operation. No
@@ -1762,8 +1779,8 @@ covers the widget level.
   `always_show_wxhb`, `alias`/`icon` writing only the
   `alias`
   and `icon` on the addressed entry, honouring layer prefixes, clearing when
-  the final argument is omitted, and refusing an empty slot or an
-  unresolvable icon; the `open` and `cycle` bare-vs-args overloads, and every validation rejection with its hint line.
+  the final argument is omitted, refusing an empty slot or an unresolvable
+  icon, and resolving `icons/custom/` ahead of the shipped pack; the `open` and `cycle` bare-vs-args overloads, and every validation rejection with its hint line.
 - **`crossbar_binder_spec.lua`** (added after review): the binder's pure state
   machine against fake prims — catalog locked until a layer row is clicked,
   target cleared on slot change and panel close, preview resolving through a
