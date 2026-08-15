@@ -336,8 +336,7 @@ every other layer alone.
 ## Sets, sharing, and cycling
 
 There are **eight sets in memory**, always. Cycling puts one of them on the
-XHB; the WXHB and Expanded Hold keep pointing wherever you sent them. What
-differs between sets is where each one is *stored*:
+XHB. What differs between sets is where each one is *stored*:
 
 - A set marked **shared** is the same on every job — one copy, edited from
   anywhere. Good for non-combat things you want everywhere.
