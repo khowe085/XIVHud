@@ -11,10 +11,9 @@ arranged as four-slot crosses — D-pad clusters and face-button clusters, eight
 slots on its **left side** and eight on its **right**. Each slot shows what is
 bound to it, whether it is ready, and what it costs.
 
-The bar is **always on screen**. Holding one of two **side keys** does not
-summon it — it makes that side **active**, marked with a panel behind it, and
-the eight buttons of that side now fire what they show. Let go and the bar
-stays where it is, just with nothing lit.
+The bar is **always on screen**. Holding one of two **side keys** makes that
+side **active**: a panel is drawn behind it, and its eight buttons fire what
+they show. Release the key and the bar stays where it is, with nothing lit.
 
 Those sixteen slots are a **set**, and you have eight sets. Tapping the
 **switch key** moves to the next one; holding it and pressing a button jumps
@@ -184,8 +183,7 @@ same gesture dismounts.
 
 ## What is on screen
 
-The crossbar does not come and go as you press things. While the component is
-visible at all, this is what you see:
+While the component is visible, this is what you see:
 
 | While you hold | XHB | WXHB | Expanded Hold |
 | --- | --- | --- | --- |
@@ -202,9 +200,9 @@ while you are holding for it, which keeps the resting HUD to sixteen slots;
 turn it on and both bars sit there permanently, thirty-two slots, nothing
 appearing or disappearing as you play.
 
-**Expanded Hold always replaces** the other two rather than adding to them —
-it is on screen only while both side keys are down, and the moment you release
-one you are back to whatever you had before.
+**Expanded Hold takes the screen over.** It is up only while both side keys
+are down, and it hides the XHB and WXHB for that time; release either key and
+you are back to whatever you had before.
 
 Each of these bars is positioned separately in `//hud layout`, along with the
 skillchain indicator, so a permanently-visible WXHB can live somewhere the
@@ -212,8 +210,8 @@ XHB is not.
 
 ## Layers: how a slot decides what to show
 
-A slot does not hold one action. It holds a small stack, and the topmost
-layer with something in it wins:
+A slot holds a small stack rather than a single action, and the topmost layer
+with something in it wins:
 
 ```
 buff contexts    ← Light Arts, Addendum: White, …   (only while the buff is up)
@@ -285,8 +283,8 @@ bar. What differs is where each set is *stored*:
 
 ### Rotations
 
-Cycling with `` ` `` does not walk all eight. Each set can be included in a
-**drawn** rotation, a **sheathed** one, both, or neither:
+Cycling with `` ` `` walks a rotation you choose, not all eight. Each set can
+be included in a **drawn** rotation, a **sheathed** one, both, or neither:
 
 ```
 //hud crossbar cycle 1 drawn        -- combat sets, cycled with the weapon out
