@@ -427,8 +427,6 @@ them, so those two work by pressing Ctrl+E and Ctrl+I for you. If you have
 rebound either of those in the game's own keyboard settings, that opener will
 not work until the table is updated to match.
 
-Adding more is a small code change rather than something you can configure.
-
 ---
 
 ## Extras
