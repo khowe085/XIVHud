@@ -11,9 +11,9 @@ arranged as four-slot crosses — D-pad clusters and face-button clusters, eight
 slots on its **left side** and eight on its **right**. Each slot shows what is
 bound to it, whether it is ready, and what it costs.
 
-The bar is **always on screen**. Holding one of two **side keys** makes that
-side **active**: a panel is drawn behind it, and its eight buttons fire what
-they show. Release the key and the bar stays where it is, inactive.
+Each side has two states. Hold one of two **side keys** and that side is
+**active**: a panel is drawn behind it, and its eight buttons fire what they
+show. Let go and it is inactive again.
 
 Those sixteen slots are a **set**, and you have eight sets. Tapping the
 **switch key** moves to the next one; holding it and pressing a button jumps
