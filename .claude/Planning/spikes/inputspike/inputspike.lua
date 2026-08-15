@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      commits to it. NOT part of XIVHud; throwaway.
 
      dikecho answered "what DIKs arrive". This answers the harder half: does
-     the v3 hold-state model behave, and does selective blocking actually
+     the v4 hold-state model behave, and does selective blocking actually
      stop the game seeing a key. It is a working prototype of input.lua with
      an on-screen readout, so the model can be judged by using it rather than
      by reading a spec.
@@ -50,14 +50,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
           then [ -> expanded_rl. Release one of a pair -> falls back to the
           survivor, and re-pressing the released one makes the OTHER the
           first of the pair. The readout should never disagree with you.
-       2. Blocking (`//is block`). With a hold state up, press 1-8: nothing
-          should reach the game. Ctrl+9/Ctrl+0 must still fire their macros,
-          since we never touch modified keys now. (v3 failed here: Ctrl+N
-          chords fire regardless of blocking.)
-       3. Dead keys. [ ] backslash backtick and = must all do nothing in game
-          beyond opening chat - with blocking on they should do nothing at
-          all. Any that collides needs replacing; press unmapped keys and
-          read the note line for their DIK to find candidates.
+       2. Blocking (`//is block`), the one that matters. With a side held,
+          press 1-8: nothing should reach the game. Ctrl+9/Ctrl+0 must still
+          fire their macros, since we never touch modified keys now. (v3
+          failed here: Ctrl+N chords fire regardless of blocking.)
+       3. Blocking OUR keys. With blocking on, press [ ] backslash backtick
+          and = one at a time: none of them may open the chat log. This is
+          new - an earlier build let the sides and layer through, and an
+          unblocked side key opens chat on its way to activating a side,
+          which then makes the whole crossbar inert. With blocking off they
+          should each open chat, which is how you know they reached the game.
        4. Auto-repeat. Hold a slot key down: `fires` must increment once, not
           once per repeat. `repeats` counts what the OS sent.
        5. Chat. Open the chat box and type numbers: nothing fires, nothing is
@@ -69,16 +71,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
           other addon consumes a key before this one sees it, `blocked-in`
           counts it. With no other keyboard-blocking addon loaded it stays 0,
           which is a pass.
-       9. setkey names and echo. Type `//setkey e down` then `//setkey e up`
+       8. setkey names and echo. Type `//setkey e down` then `//setkey e up`
           in the console. The message confirms the name parsed; then check
           whether `events` moved - if injected keys re-enter our own handler,
           the component needs to ignore its own injections.
-      10. Chord vs bare blocking (`//is bare`). Blocks the number row with no
-          modifier held. If bare 3 is swallowed while Ctrl+3 still fires its
-          macro, the game is reading chords by a route Windower's hook does
-          not cover, and the input map has to move off game-bound chords.
-       8. The macro palette. Holding Ctrl/Alt makes FFXI draw its own macro
-          bar. Judge how intrusive that is - it happens on every crossbar use.
+       9. Chord vs bare blocking (`//is bare`). Blocks the number row with no
+          modifier held. Already answered once - bare 3 was swallowed while
+          Ctrl+3 fired its macro anyway, which is why v4 holds no modifiers -
+          but the toggle is kept for re-testing after any map change.
 
      COMMANDS
        //is             status + this checklist in brief
@@ -262,7 +262,7 @@ local function on_key(dik, pressed, flags, blocked_in)
     -- Pressing into a pair where the other side is ALREADY held makes that
     -- other side the first one - not this one, and not whatever was first
     -- last time. (Kevin, in-client: LT->RT, release LT, hold LT again gave
-    -- expanded_lr where the held Alt should have made it expanded_rl.)
+    -- expanded_lr where the held ] should have made it expanded_rl.)
     local other = role == "left" and "right" or "left"
     if pressed and not held[role] then
       first_side = held[other] and other or role
@@ -362,6 +362,26 @@ local function on_key(dik, pressed, flags, blocked_in)
     return false
   end
 
+  -- Sides and the layer are ours as much as the switch is: unblocked, they
+  -- reach the game and open the chat log, which then makes everything else
+  -- inert. Blocked at press, latched for the release.
+  if role == "left" or role == "right" or role == "layer" then
+    if pressed then
+      if blocking then
+        latched[dik] = true
+        counts.blocked = counts.blocked + 1
+        return true
+      end
+      latched[dik] = nil
+      return false
+    end
+    if latched[dik] then
+      latched[dik] = nil
+      return true
+    end
+    return false
+  end
+
   if role == nil then
     last.note = ("unmapped dik=%s flags=%s"):format(tostring(dik), tostring(flags))
   end
@@ -409,7 +429,7 @@ windower.register_event("addon command", function(command)
   command = command and command:lower() or ""
   if command == "block" then
     blocking = not blocking
-    say("blocking " .. (blocking and "ON - hold Ctrl and press 1-8; Ctrl+9/0 must still work" or "off"))
+    say("blocking " .. (blocking and "ON - hold [ and press 1-8; nothing should reach the game" or "off"))
   elseif command == "bare" then
     bare_block = not bare_block
     say("bare number-row block " .. (bare_block and "ON - press 3 with NO modifier held" or "off"))
@@ -432,7 +452,7 @@ windower.register_event("addon command", function(command)
     say("counters reset")
   else
     say("blocking=" .. tostring(blocking) .. " hold=" .. hold_state() .. " events=" .. counts.events)
-    say("1) hold Ctrl/Alt/+Shift and watch `hold`  2) //is block then Ctrl+3 vs Ctrl+9")
+    say("1) hold [ ] and \\ and watch `hold`  2) //is block, then press [ - chat must NOT open")
     say("3) hold a slot key: fires must not climb with repeats  4) type in chat: nothing fires")
   end
   pcall(refresh)

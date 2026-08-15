@@ -351,17 +351,22 @@ the notice already covers them, so generating our own would save nothing.
 ### Stratagem charge counter (from Kevin's fork, verified 2026-08-08)
 
 A count of **available SCH stratagems**, drawn in the slot's cost position on
-every ability that spends one. Not in upstream xivcrossbar (`strat_charge_time` appears only in the fork
-chain). Kevin's fork README lists it under Additions and its sub-SCH fix under
-Fixes, but that branch is a fork of a fork, so an intermediate fork may be the
-origin — attribution unconfirmed, mechanics below read from the code. Wanted
-here (Kevin, 2026-08-08). Mechanics, read from
+every ability that spends one. Not in upstream xivcrossbar: `strat_charge_time` appears **only** in Kevin's
+fork, not in Petit Trois either, and that fork's README reads "Forked off of
+AliekberFFXI's xivcrossbar!" and lists the counter under its own Additions.
+So it originates there, under that repository's own notices (MIT © 2020
+AliekberFFXI, and the BSD © 2017 SirEdeonX header on `ui.lua`) — **not** WG
+Incorporated's, whose code does not contain the feature (corrected 2026-08-15).
+Wanted here (Kevin, 2026-08-08). Mechanics, read from
 `kevin-xivcrossbar/ui.lua:1207-1228`:
 
 - **Charges are one shared pool** on ability recast id **231**; there is no
   per-stratagem timer to read.
 - **Max charges** = `floor((sch_level - 10) / 20) + 1` → 1 at L10, 2 at L30,
-  3 at L50, 4 at L70, 5 at L90.
+  3 at L50, 4 at L70, 5 at L90. **Below SCH 10 there are no stratagems**, so
+  the formula's zero is not a charge count: the counter draws nothing at all
+  rather than indexing `charge_time[0]` (which is nil — an arithmetic error in
+  a per-frame path).
 - **Job Point gift**: main SCH with `job_points.sch.jp_spent >= 550` has a
   sixth charge. Sub-SCH never does — job point gifts require the main job.
 - **Recharge time depends on the charge total**:
@@ -589,13 +594,25 @@ Resolution rules:
 - **Blocking**: per-key, **latched at press** — whether a key's press was
   blocked decides its release too (a `3` pressed unblocked whose release
   arrives after a side went down must still reach the game, or FFXI sees a key
-  held forever; likewise across guard transitions). Blocked at press: slot keys
-  while a hold state is active **or while the switch is held** (the set-jump
-  chord must not leak bare numbers to the game), the switch always — including
-  while a side is held, where it does nothing but is still ours — and shortcut
-  keys always; nothing else is ever blocked. **Verified
-  in-client**: an unchorded key returns cleanly to us and never reaches the
-  game — the property v3 assumed and did not have.
+  held forever; likewise across guard transitions). Blocked at press: **all six of our
+  keys — both sides, the layer, the switch and the shortcut — always**, plus
+  slot keys while a hold state is active or the switch is held (the set-jump
+  chord must not leak bare numbers to the game). Nothing else is ever blocked.
+
+  The sides and layer are blocked for the same reason as the rest, and it is
+  not optional (corrected 2026-08-15 after blind review found the rule
+  excluded them): every one of these keys **opens FFXI's chat log** if the
+  game sees it, so an unblocked `[` would open the chat box on the way to
+  activating a side, `chat_open` would go true, and the chat guard would make
+  the crossbar inert for as long as the line stayed up. The keys are ours
+  outright; the chat guard hands them back once the box already has focus, so
+  they stay typeable.
+
+  **Verified in-client**: an unchorded key returns cleanly to us and never
+  reaches the game — the property v3 assumed and did not have. **Not yet
+  verified for `[`, `]` and `\` specifically** (see the spike results): the
+  earlier run only exercised blocking on the switch, the shortcut and the
+  number row.
 
 Guards, all mandatory (tightened after blind review, 2026-08-06):
 
@@ -618,8 +635,11 @@ Guards, all mandatory (tightened after blind review, 2026-08-06):
   held slot key must fire its action exactly once (upstream defends with
   `just_pressed` checks; ours is structural).
 - **Suppression / disabled**: while the framework suppresses the component
-  (cutscene, zoning) or it is disabled, input is fully inert — nothing fires,
-  nothing is blocked, every key falls through (including backtick).
+  (cutscene, zoning) or it is disabled, nothing fires and nothing is blocked —
+  every key falls through, our own included — but **state still tracks**
+  (corrected 2026-08-15: the same hole the chat and inbound-`blocked` guards
+  were fixed for. A side released during a cutscene must clear, or the model
+  reads it as still held when the cutscene ends).
 - **Inbound `blocked`**: the keyboard event's own `blocked` argument (another
   addon already consumed the key) short-circuits action intents and blocking —
   **all state still tracks** (activators, slot-key down/latch bookkeeping) and
@@ -632,10 +652,11 @@ Guards, all mandatory (tightened after blind review, 2026-08-06):
   until CB8 lands, the `edit` verb and Select-chord reply "binder not yet
   available" instead of setting the flag): the exit key is **any shortcut key
   one of whose verbs is `edit`** (zero such keys → edit mode only via the
-  verb; other shortcut keys are inert and unblocked in edit mode); while edit mode is on, activators, slot keys and backtick
-  are inert and unblocked; the only live input is **a press of the shortcut
-  key that toggles edit** (bare or chorded), which exits — that is what "any
-  press exits it" means.
+  verb; other shortcut keys are inert and unblocked in edit mode); while edit mode is on, sides, the layer, slot keys and the
+  switch are inert and unblocked **though their state still tracks**, for the
+  same reason as the suppression guard; the only live input is **a press of
+  the shortcut key that toggles edit** (bare or chorded), which exits — that
+  is what "any press exits it" means.
 
 ### Verification spike — results (run by Kevin, 2026-08-06)
 
@@ -672,8 +693,13 @@ Results, now platform facts:
   front of. **Consequence**: no key the crossbar wants may be a game-bound
   chord, which is what v4's modifier-free map delivers.
 - **`[` `]` `\` `` ` `` `=` are all free** — each opens the chat log and does
-  nothing else in game, and each blocks cleanly. They are v4's activators,
-  layer, switch and shortcut.
+  nothing else in game. They are v4's activators, layer, switch and shortcut.
+  **Blocking is verified for the switch and the shortcut only**: the spike
+  swallows those and the number row, and lets the sides and layer through, so
+  three of the six are still assumed rather than tested. Since all five are
+  the same class of printable key and two of them block, the remaining three
+  are ~90% — but that is the shape of assumption v3 died of, so the spike now
+  blocks them too and this wants one more run before CB2.
 - **`setkey` is the injection mechanism** and its key names parse as guessed:
   `//setkey e down` answers `Setting key code "e" to state: down`.
 - **The `flags` parameter is populated**: Ctrl+3 arrives with `flags=4` on the
@@ -709,7 +735,7 @@ is what sidesteps Steam Input's lack of modifier reference-counting.
 | LB | long press, no LT | `\` (43) | draw-gesture hold (with an RB tap) |
 | LB | regular press | `R` (19) | not mapped — falls through as autorun |
 | RB | chord while RT held | `\` (43) | `]`+`\` = WXHB Right (release RB → XHB Right) |
-| RB | press, no RT | backtick (41) | tap = cycle (incl. inside WXHB *Left* — with RT held RB is `\` instead, see caveats); held + slot button = set jump; tap with LB long-press `\` and no side = draw |
+| RB | press, no RT | backtick (41) | tap = cycle, hold + slot button = set jump — **both only with no side held**; tap with LB long-press `\` and no side = draw |
 | Select | press | `=` (13) | bare = open map; with a side held = toggle the binder |
 | Y / B / A / X | chorded with LT, RT, or RB | `1` `2` `3` `4` (2–5) | face cluster, slots 1–4 |
 | D-pad ↑ / → / ↓ / ← | chorded with LT, RT, or RB | `5` `6` `7` `8` (6–9) | D-pad cluster, slots 5–8 |
@@ -732,9 +758,10 @@ recorded here in round 3):
   chord per activator, **LT, RT and RB**. Twenty-four
   chord bindings, each explicit and independent of any layer applying and
   releasing cleanly. Leave RB out and set jumps have no numbers to chord with.
-- **No switch key reaches the addon while a trigger is held**, since RB is
-  `\\` in that chord. This agrees with the model rather than limiting it: the
-  switch is inert while any side is held either way.
+- **Set switching is unavailable while a side is held** — the model makes the
+  switch inert there (see the hold-state rules). On the pad this is belt and
+  braces from RT, where RB emits `\\` rather than backtick; from **LT** the
+  backtick does still arrive and the addon is what ignores it.
 
 Known edge, accepted: a bare-key output pressed while a modifier is physically
 down reaches the game modified — e.g. LB's `R` tapped while RT is held arrives as
@@ -827,10 +854,9 @@ action, target, alias, icon, equip_slot, warmup, cooldown, usable}`.
   `job_abilities`, `spells`, monster abilities; resonation *detection* indexes
   the same tables for whatever action opened the chain, so a WS-only cut
   would miss chains opened by JAs and by SCH Immanence spells — the earlier
-  WS-only scope cut is withdrawn); worth transcribing rather than rederiving. (`skills.lua` also
-  carries SC-property tables for spells, job abilities and monster abilities —
-  **v1 transcribes weapon skills only**, a stated scope cut; bound spells show
-  no SC property until the backlog picks the rest up.)
+  WS-only scope cut is withdrawn); worth transcribing rather than rederiving.
+  (A leftover sentence restating the withdrawn WS-only cut was removed
+  2026-08-15 — the two had been sitting next to each other.)
 - 14 properties, each shipped as `.png` + `.svg` in the default pack: compression,
   darkness, detonation, distortion, fragmentation, fusion, gravitation, impaction,
   induration, light, liquefaction, reverberation, scission, transfixion.
@@ -937,11 +963,20 @@ Beyond the wholesale rejection of its input model and slot order:
 - **Position, scale and visibility belong to the framework.** Drop `Style.OffsetX/Y`
   and the `ui_y_res - 120` anchor; the widget is dragged in `//hud layout` and its
   state lives in layout slots. Scale multiplies the 40 px slot, the spacing, the font
-  and every offset. **Three** anchors — `main` (the XHB), `wxhb`,
-  `indicator` (skillchain) — each independently positioned (touchpoint 2).
+  and every offset. **Four** anchors (revised 2026-08-15) — `main` (the XHB,
+  both sides as one unit), `wxhb_left` and `wxhb_right` (**the WXHB's two
+  sides move independently**, so it can sit split across the screen where the
+  XHB cannot), and `indicator` (skillchain) — each independently positioned
+  (touchpoint 2).
   **Expanded Hold has no anchor of its own** (decided 2026-08-15): it is the
   only bar that *replaces* rather than coexists, so it draws **centred on the
-  `main` anchor's footprint** — eight slots centred across the XHB's sixteen,
+  `main` anchor's footprint** — which stays meaningful because `main` remains
+  one undivided bar; only the WXHB splits. `get_bounds('main')` reports that footprint —
+  the XHB's — **whatever is currently drawn in it**; it must not narrow to the
+  eight-slot Expanded box, or an `apply_all()` while both sides are held
+  (a cutscene starting, a zone change, `//hud copy`) would clamp against the
+  transient box and shift the anchor. CLAUDE.md's "`get_bounds()` must return
+  the same origin `set_pos` was given" makes this a contract requirement — eight slots centred across the XHB's sixteen,
   which is where the reader is already looking. Upstream does the same, its
   Expanded bars sitting at `+150` between the XHB halves at `0` and `+300`.
 - **The bar is persistent, not hold-to-show** (corrected 2026-08-15 by Kevin;
@@ -1014,6 +1049,8 @@ src/components/crossbar/
   binder.lua          -- edit-mode UI: slot picking, stack panel, catalog panel (prims + mouse)
   skillchain.lua      -- pure: WS/JA -> properties, resonation x action ->
                       --   chain result, window state -> indicator plan
+  counters.lua        -- pure: SCH stratagem charges and NIN/COR tool counts
+                      --   (lookup tables, main/sub rules, colour bands)
   render.lua          -- pure geometry + per-frame render plan (compact cross, recast)
   defaults.lua        -- config defaults
   assets/
@@ -1032,7 +1069,8 @@ tests/components/
   crossbar_input_spec.lua      crossbar_bindings_spec.lua
   crossbar_actions_spec.lua    crossbar_roulette_spec.lua
   crossbar_warp_spec.lua       crossbar_enchanted_spec.lua
-  crossbar_skillchain_spec.lua crossbar_render_spec.lua
+  crossbar_skillchain_spec.lua crossbar_counters_spec.lua
+  crossbar_render_spec.lua
   crossbar_catalog_spec.lua    crossbar_commands_spec.lua
   crossbar_binder_spec.lua     crossbar_spec.lua
   -- contexts.lua (data) and defaults.lua are exercised through
@@ -1060,7 +1098,8 @@ tap-vs-chord logic is testable at all.
    fallback stays — a dead handler must never keep swallowing the keyboard.
 2. **Multi-anchor widget contract (decided 2026-08-05: extend the contract, not a
    second widget).** A widget may expose N named anchors — here `main` (the XHB,
-   and Expanded Hold when it replaces it), `wxhb`, and `indicator`
+   both sides together, and Expanded Hold when it replaces it), `wxhb_left`
+   and `wxhb_right` (one per side, deliberately splittable), and `indicator`
    (skillchain — Q5, resolved; provisioned at CB3, populated at CB6) — each
    with its own pos, scale and layout-mode bounds. Touches: the layout-slot schema
    (per-anchor `pos`/`scale` nested under the component's slot entry),
@@ -1138,7 +1177,9 @@ tap-vs-chord logic is testable at all.
    Whether `lib/settings` implements the directory form needs checking before CB2
    Corrected after review: `lib/settings` today exposes `handle.dir()` but no
    read/write inside it (`settings.lua:147-152`, `save()` writes only the
-   single component file), and no component receives file I/O deps — so this is
+   single component file), and, when this was written, no component received file I/O deps (stale
+   since the equipviewer merge — `XIVHud.lua:632-635` hands it `file_exists`,
+   `read_dat` and `write_binary`; the conclusion stands, the premise does not) — so this is
    a **definite** small API addition (e.g. `handle.file(name)` returning a
    sub-handle with the same get/save shape), spec'd in `settings_spec` at CB2.
    Delivery route (pinned in round 2 — a sub-handle alone has no path into a
@@ -1201,7 +1242,8 @@ tap-vs-chord logic is testable at all.
 7. **Prim budget** (revised 2026-08-15, after the persistent-bar correction —
    the earlier figure assumed one bar on screen at a time and was far too
    low). A *bar* is two sides = 16 slots; at ~9 prims a slot that is ~144
-   prims per bar; Expanded Hold is a single side, so half that. Worst resting
+   prims per bar — the WXHB's two sides are separately anchored but still one
+   bar's worth of prims; Expanded Hold is a single side, so half that. Worst resting
    case is XHB + WXHB both drawn = **~290 prims**, plus the active panel and
    the skillchain indicator; Expanded replaces rather than adds, so the
    ceiling is unchanged. Sets are data — switching sets repaints existing
@@ -1274,9 +1316,10 @@ Bindings live in the per-job files (below), not here.
     open_color    = { r = 15,  g = 205, b = 5 },
   },
   -- framework-owned; per-anchor under the multi-anchor contract (touchpoint 2)
-  slots = { default = { anchors = { main = { pos = ..., scale = 1 },
-                                    wxhb = { pos = ..., scale = 1 },
-                                    indicator = { pos = ..., scale = 1 } },
+  slots = { default = { anchors = { main       = { pos = ..., scale = 1 },
+                                    wxhb_left  = { pos = ..., scale = 1 },
+                                    wxhb_right = { pos = ..., scale = 1 },
+                                    indicator  = { pos = ..., scale = 1 } },
                         visible = true } },  -- visible is per component, not per anchor
 }
 ```
@@ -1371,7 +1414,8 @@ one-line hint, consistent chat prefix.
 //hud crossbar                                     -- job, XHB's active set, view mapping
 //hud crossbar set <1-8>                           -- switch the XHB's active set
 //hud crossbar cycle                               -- bare: advance the rotation (for //bind; the gesture's command twin)
-//hud crossbar bind <set> <l|r> <slot> <type> <action> [<target>]
+//hud crossbar bind <set> <l|r> <slot> <type> [<action>] [<target>]
+                                                  -- ra/draw/mr/warp take no <action>
 //hud crossbar unbind <set> <l|r> <slot>
 //hud crossbar alias <set> <l|r> <slot> [<name>]   -- relabel a slot; omit <name> to clear
 //hud crossbar icon <set> <l|r> <slot> [<icon>]    -- re-icon a slot; omit <icon> to clear
@@ -1674,13 +1718,13 @@ covers the widget level.
   dead upstream); window
   state machine across waiting → open → expired with an injected clock; no
   target / dead target → no indicator and no chain results.
-- **Ninja tool counts** (pure): spell -> tool -> master tool resolution for
+- **`counters.lua`, ninja tools** — spell -> tool -> master tool resolution for
   each family; **master tools counted on main NIN and ignored on sub**; the
   `99+` cap at 99/100; the colour bands at 50/51 for plain and total; the
   zero state producing the crossed-out slot; a ninjutsu whose tool the player
   has none of, and a non-ninjutsu spell producing no count at all; Corsair
   cards resolving through Trump Card the same way.
-- **Stratagem counter** (in `render.lua`'s plan or its own pure helper): max
+- **`counters.lua`** — stratagem charges: max
   charges at each level boundary (9/10, 29/30, 49/50, 69/70, 89/90), the JP
   gift at 549/550 **for main SCH only**, available = `max - ceil(recast /
   charge_time[max])` across a full recast sweep, zero and full states, and —
@@ -1801,7 +1845,7 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   can block a key in-client and the handler survives `//lua reload xivhud`.
 - **CB3 — framework: multi-anchor contract** (touchpoint 2) + specs across
   `layout`/`layout_mode`/`overlay`, plus the `core.describe`/`core.apply`
-  anchor iteration. *Accepts when* a three-anchor test widget drags,
+  anchor iteration. *Accepts when* a four-anchor test widget drags,
   scales and persists each anchor independently in-client, and
   parambar/giltracker/partylist-trio pass untouched.
 - **CB4 — render.** `render.lua` + `crossbar.lua`, the deliberate asset-subset
@@ -1946,13 +1990,14 @@ Seven notices apply and all must land in `assets/LICENSE.txt` (re-verified
 - **BSD 3-clause, © 2020 Dean James (Xurion of Bismarck)** —
   `libs/mountroulette/`, carrying its own per-file header. Required by CB1's
   `roulette.lua` port. (An earlier draft wrongly claimed this lib had no header.)
-- **BSD 3-clause, © 2026 WG Incorporated** — the radial recast sweep
-  (algorithm transcribed into `render.lua`, in-file header + this file;
-  the 32 frame images too if imported rather than generated — CB4 decides
-  the art, not the notice). From XIVhotbar2 Petit Trois Edition, a fork
-  chain descending from SirEdeonX's xivhotbar; intermediate fork authors'
-  contributions arrive under that chain's licences, which is also the basis
-  for the stratagem-counter port (origin in the chain unconfirmed).
+- **BSD 3-clause, © 2026 WG Incorporated** — the radial recast sweep: the
+  algorithm transcribed into `render.lua` **and** the 32 frame images, which
+  are imported rather than generated (decided 2026-08-08 — an earlier
+  "CB4 decides the art" hedge elsewhere was removed 2026-08-15). In-file header
+  plus this file. From XIVhotbar2 Petit Trois Edition. It covers the sweep
+  and nothing else — the stratagem counter and ninja tool counts come from
+  Kevin's xivcrossbar fork and travel under that repository's notices, listed
+  above.
 - **BSD 3-clause, © 2018 from20020516** — `MyHome`, vendored as the auto-warp
   library (Icydeath/ffxi-addons). Required by CB1's `warp.lua`, and — like
   the skillchain and roulette ports — its notice goes **in the derived source

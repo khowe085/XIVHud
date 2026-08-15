@@ -108,7 +108,8 @@ icon of its own:
 `<icon>` is a name from the icons that ship with the addon, or a path to your
 own PNG under the addon folder. Both follow the same layer prefixes as `bind`,
 so aliasing `ctx:light-arts:1` relabels only what that context puts in the
-slot.
+slot. Both need something in the slot to act on — on an empty one they report
+an error rather than doing nothing quietly.
 
 `bind` and `unbind` take an optional layer prefix on the set number —
 `sub:<set>` for the current subjob, `ctx:<name>:<set>` for a buff context. With
@@ -121,10 +122,11 @@ no prefix you are editing the job's base layer. See
 //hud crossbar bind ctx:light-arts:1 l 3 ja "Addendum: White"
 ```
 
-Everything above is also bindable by mouse in `//hud crossbar edit`, which is
+Most of this is also bindable by mouse in `//hud crossbar edit`, which is
 usually easier — the binder lists what you actually know rather than asking
-you to spell it. See [What you can bind](#what-you-can-bind) for the fuller
-picture.
+you to spell it. `ct`, `ex` and `pet` are the exceptions, and stay
+command-only for now. See [What you can bind](#what-you-can-bind) for the
+fuller picture.
 
 ### Sets
 
@@ -151,7 +153,7 @@ commands, they work with `//bind` and in in-game macros too.
 | --- | --- |
 | `//hud crossbar draw` | sheathe / unsheathe — or dismount, if mounted |
 | `//hud crossbar mr` | summon a random mount you own, or dismount if you are on one |
-| `//hud crossbar warp [all]` | warp home by the best means you have; `all` warps every character you are running |
+| `//hud crossbar warp [all]` | warp home by the best means you have; `all` warps your other characters running XIVHud |
 | `//hud crossbar open <name>` | open a game screen (`map`, `equipment`, …) |
 
 ---
@@ -162,16 +164,18 @@ The addon reads keys. Turning a controller into those keys is Steam Input's
 job, so nothing here is enforced by the addon — any layout that emits the
 right keys works, and a keyboard player can press them directly.
 
-Six keys drive everything, chosen because FFXI does nothing with them:
+Six keys drive everything, chosen because FFXI binds none of them to a game
+function — pressed on their own they only open the chat log, and the crossbar
+keeps them to itself so even that does not happen:
 
 | Key | Role |
 | --- | --- |
-| `[` | left side — hold to show it |
+| `[` | left side — hold to activate it |
 | `]` | right side |
 | `\` | the W-layer — hold with a side for its WXHB bar |
 | `` ` `` | set switch — tap to cycle, hold and press a button to jump; ignored while a side is held |
 | `=` | Select — opens your map; with a side held, opens the binder |
-| `1`–`8` | the eight slots |
+| `1`–`8` | the eight slots — but only while a side or the switch is held; otherwise they reach the game as usual |
 
 **No modifiers are used**, deliberately. FFXI's own macros live on Ctrl and
 Alt plus the number row, and the game acts on those chords by a route addons
@@ -239,8 +243,9 @@ press, a long press, and a chord rather than one plain binding:
 Two more things:
 
 - **Set switching only works when no side is held.** Holding a side means you
-  are using the crossbar, so the switch key is ignored until you let go — on
-  the pad this falls out naturally, since RB is `\` while RT is held.
+  are using the crossbar, so the switch key is ignored until you let go. From
+  RT the pad enforces it as well, since RB emits `\` in that chord; from LT
+  the key still arrives and the crossbar is what ignores it.
 - **Nothing should chord Select.** It is `=` in every state, so the binder and
   the map stay reachable no matter what you are holding.
 
@@ -263,10 +268,14 @@ While the component is visible, this is what you see:
 The active side is marked with a panel drawn behind it, so it is obvious
 which eight buttons are live.
 
-Whether the WXHB rests on screen is up to you — `//hud crossbar wxhb on|off`.
-Off, it appears only while you are holding for it, which keeps the resting HUD
-to sixteen slots; on, both bars sit there permanently, thirty-two slots, with
-nothing appearing or disappearing as you play.
+Whether the WXHB rests on screen is up to you — `//hud crossbar wxhb on|off`,
+**off to begin with**. Off, it appears only while you are holding for it,
+which keeps the resting HUD to sixteen slots; on, both bars sit there
+permanently, thirty-two slots, with nothing appearing or disappearing as you
+play.
+
+Each bar starts pointed at a different set, so nothing duplicates anything:
+the XHB on set 1, the WXHB on set 2, Expanded Hold on set 3.
 
 **Expanded Hold takes the screen over.** It is up only while both side keys
 are down, and it hides the XHB and WXHB for that time; release either key and
@@ -274,9 +283,9 @@ you are back to whatever you had before. Being eight slots rather than
 sixteen, it draws centred on the XHB's position — the bar you were looking at
 changes contents rather than moving.
 
-Each of these bars is positioned separately in `//hud layout`, along with the
-skillchain indicator, so a permanently-visible WXHB can live somewhere the
-XHB is not.
+These are positioned separately in `//hud layout` — the XHB as one bar, the
+WXHB as two halves you can place apart from each other, and the skillchain
+indicator — so a permanently-visible WXHB can live wherever the XHB is not.
 
 ## Layers: how a slot decides what to show
 
@@ -326,7 +335,10 @@ In edit mode:
   assumed, and the layer you are editing is on screen the whole time.
 - Clicking a layer row also **previews the crossbar as if that buff were up**, so
   you can build your Addendum side while looking at your Addendum side.
-- Nothing is remembered between slots. Click elsewhere and the choice resets.
+- Nothing is remembered between slots. Click elsewhere and the choice resets
+  — though a **drag** carries the layer you had chosen onto whatever slot you
+  drop it on, which is what makes filling a context across several slots
+  quick. With no layer chosen, dragging a slot to empty space does nothing.
 
 You can also **drag**: from the action list onto a slot to bind it, from a
 slot onto another slot to swap them entirely, or from a slot onto empty space
@@ -404,7 +416,7 @@ script is the way to put a sequence on a slot.
 | --- | --- |
 | `draw` | sheathe / unsheathe, and dismount when mounted. Its icon follows the state. |
 | `mr` | mount roulette — picks at random from the mounts you actually own, and dismounts if you are already up |
-| `warp` | picks the best warp you have: Warp, Warp II, Warp Ring, Warp Cudgel, Instant Warp. Equips the ring or cudgel for you and waits out the enchantment. `warp all` sends every character you have running home. |
+| `warp` | picks the best warp you have: Warp, Warp II, Warp Ring, Warp Cudgel, Instant Warp. Equips the ring or cudgel for you and waits out the enchantment — though if it has more than 30 seconds left to charge it gives up rather than waiting, and says so. `warp all` sends your other characters running XIVHud home. |
 | `open <name>` | opens a game screen |
 
 #### What `open` can open
@@ -433,21 +445,23 @@ not work until the table is updated to match.
 
 ## Extras
 
-**Recasts** sweep as a radial arc around the slot, the way FFXIV draws them.
+**Recasts** sweep as a radial arc around the slot.
 **Costs** show MP or TP in the corner. Actions you cannot use dim.
 
 **Skillchains** get two things: a window indicator you can position anywhere,
 and — while a skillchain window is open on your target — every bound
-weaponskill swaps its icon for the skillchain property it *would* make right
-now.
+weaponskill and job ability swaps its icon for the skillchain property it
+*would* make right now.
 
 **Stratagem counts** show on the Scholar abilities that spend them.
 
 **Ninja tool counts** show on ninjutsu slots — how many of that tool you are
 carrying, with the slot crossed out when you have none. On main Ninja the
-count includes your master tools; on `/NIN`, which cannot use them, it does
-not. Corsair cards work the same way, counting Trump Cards.
+count includes your master tools; on `/NIN` it counts the plain tool only.
+Corsair cards are counted the same way, including Trump Cards.
 
-**Positioning.** The XHB, the WXHB and the skillchain indicator each move and
-scale independently in `//hud layout`. Expanded Hold follows the XHB, since it
-only ever appears in the XHB's place.
+**Positioning.** In `//hud layout` you place four things independently: the
+XHB, the WXHB's **left and right sides separately**, and the skillchain
+indicator. Splitting the WXHB lets it sit at the edges of the screen, or
+wherever the XHB is not. Expanded Hold follows the XHB, since it only ever
+appears in the XHB's place.
