@@ -437,8 +437,9 @@ not work until the table is updated to match.
 **Skillchains** get two things: a window indicator you can position anywhere,
 and — while a skillchain window is open on your target — every bound
 weaponskill swaps its icon for the skillchain property it *would* make right
-now. Scholar stratagem counts appear on the abilities that spend them, on
-`/SCH` as well as main.
+now.
+
+**Stratagem counts** show on the Scholar abilities that spend them.
 
 **Positioning.** The XHB, the WXHB and the skillchain indicator each move and
 scale independently in `//hud layout`. The bar hides itself in cutscenes and
