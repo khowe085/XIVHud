@@ -166,15 +166,50 @@ A controller layout that produces them:
 | **LB** tapped | `R` | autorun, native game functionality — the crossbar does not read it |
 | **LB** long-pressed | `\` | held for the draw gesture below |
 | **RB** | `` ` `` | tap cycles sets; hold and press a face button to jump to a set |
-| **Select** | `=` | your map; with a trigger held, the binder |
-| **face / D-pad** while a trigger or RB is held | `1`–`8` | the eight slots |
+| **Select** | `=` | your map; with a side held, the binder |
+| **face / D-pad** while LT, RT or RB is held | `1`–`8` | the eight slots |
 
-Two things to know when building the layout:
+### Mode shifts
 
-- The **slot mode-shift must also apply while RB is held**, or set jumps have
-  no numbers to chord with.
-- **Set switching is not reachable while RT is held**, because RB means `\`
-  in that chord. Release RT first. The same motion works fine from LT.
+Three controls mean different things depending on what else is held, and
+getting those right is most of the work of building the layout.
+
+**The face buttons and D-pad carry the eight slots — but only while you are
+reaching for the crossbar.** The rest of the time they have to be your normal
+game buttons, or you cannot play.
+
+| Control | Nothing held | LT, RT **or RB** held |
+| --- | --- | --- |
+| Y / B / A / X | your usual bindings | `1` `2` `3` `4` — face cluster |
+| D-pad ↑ → ↓ ← | your usual bindings | `5` `6` `7` `8` — D-pad cluster |
+
+The cleanest way to build this is **one action set layer** holding those eight
+bindings, applied while any of the three is held and removed when it is
+released — rather than three separate per-button mode shifts, which have to be
+kept identical by hand. (Steam Input calls the hold-to-apply behaviour a
+*mode shift* on a binding, or an *action set layer* applied on hold; either
+works, and the layer version is the one that stays maintainable.)
+
+**RB must apply that layer too, not just the triggers.** Jumping to a set is
+`` ` `` held plus a slot button — if the layer only follows LT and RT, then
+holding RB gives you a switch key and no numbers to press with it, and set
+jumping silently does nothing.
+
+**The bumpers each carry two or three meanings.** They need Steam's activator
+options — regular press, long press, and chord — rather than a plain binding:
+
+| Control | Regular press | Long press | While its trigger is held |
+| --- | --- | --- | --- |
+| LB | `R` (autorun) | `\` — the draw-gesture hold | `\` — WXHB left |
+| RB | `` ` `` — cycle / jump | — | `\` — WXHB right |
+
+Two consequences worth knowing before you wonder if something is broken:
+
+- **Set switching is unavailable while RT is held**, because RB means `\` in
+  that chord — there is no `` ` `` to be had. Release RT first; the same
+  motion works normally from LT.
+- **Nothing should shift Select.** It is `=` in every state, so the binder and
+  the map stay reachable no matter what you are holding.
 
 **Sheathe / unsheathe** is a gesture: hold **LB**, tap **RB**. Mounted, the
 same gesture dismounts.
