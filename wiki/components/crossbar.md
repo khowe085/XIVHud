@@ -13,7 +13,7 @@ bound to it, whether it is ready, and what it costs.
 
 The bar is **always on screen**. Holding one of two **side keys** makes that
 side **active**: a panel is drawn behind it, and its eight buttons fire what
-they show. Release the key and the bar stays where it is, with nothing lit.
+they show. Release the key and the bar stays where it is, inactive.
 
 Those sixteen slots are a **set**, and you have eight sets. Tapping the
 **switch key** moves to the next one; holding it and pressing a button jumps
@@ -222,13 +222,13 @@ While the component is visible, this is what you see:
 
 | While you hold | XHB | WXHB | Expanded Hold |
 | --- | --- | --- | --- |
-| nothing | on screen, nothing lit | on screen if you asked for it | hidden |
-| an XHB side | **that side lit** | as above | hidden |
-| a WXHB side | on screen, nothing lit | **on screen, that side lit** | hidden |
-| both side keys | hidden | hidden | **on screen and lit** |
+| nothing | on screen, inactive | on screen, if configured | hidden |
+| an XHB side | **that side active** | as above | hidden |
+| a WXHB side | on screen, inactive | **on screen, that side active** | hidden |
+| both side keys | hidden | hidden | **on screen, active** |
 
-The lit side is marked with a panel drawn behind it, so it is obvious which
-eight buttons are live.
+The active side is marked with a panel drawn behind it, so it is obvious
+which eight buttons are live.
 
 **Always show WXHB** is a setting. Leave it off and the WXHB only appears
 while you are holding for it, which keeps the resting HUD to sixteen slots;
