@@ -404,9 +404,29 @@ script is the way to put a sequence on a slot.
 | `warp` | picks the best warp you have: Warp, Warp II, Warp Ring, Warp Cudgel, Instant Warp. Equips the ring or cudgel for you and waits out the enchantment. `warp all` sends every character you have running home. |
 | `open <name>` | opens a game screen |
 
-`open` currently knows: `map`, `equipment`, `inventory`, `wardrobe` through
-`wardrobe8`, `case`, `sack`, `satchel`, `quests`, `linkshell`. Adding more is
-a small code change rather than configuration.
+#### What `open` can open
+
+| `<name>` | Opens |
+| --- | --- |
+| `map` | your map |
+| `equipment` | the equipment screen |
+| `inventory` | your inventory |
+| `case` | your Mog Case |
+| `sack` | your Mog Sack |
+| `satchel` | your Mog Satchel |
+| `wardrobe`, `wardrobe2` … `wardrobe8` | that wardrobe |
+| `quests` | your quest log |
+| `linkshell` | a search listing your linkshell members |
+
+`//hud crossbar open` prints this list in game.
+
+Most of these are chat commands the game already has, so they are reliable.
+**`equipment` and `inventory` are the exceptions**: FFXI has no command for
+them, so those two work by pressing Ctrl+E and Ctrl+I for you. If you have
+rebound either of those in the game's own keyboard settings, that opener will
+not work until the table is updated to match.
+
+Adding more is a small code change rather than something you can configure.
 
 ---
 
