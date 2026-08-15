@@ -52,11 +52,11 @@ All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar` | current job, active set, and where each view points |
+| `//hud crossbar` | report the current job, the active set, and where each view points |
 | `//hud crossbar edit` | toggle the mouse binder |
 | `//hud crossbar set <1-8>` | switch the active set |
 | `//hud crossbar cycle` | advance to the next set in the rotation |
-| `//hud crossbar list [<set>]` | what is bound on this job |
+| `//hud crossbar list [<set>]` | list what is bound on this job |
 
 ### Binding
 
@@ -130,16 +130,16 @@ picture.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar share <set> on\|off` | shared across all jobs, or job-specific |
-| `//hud crossbar cycle <set> drawn\|sheathed\|both\|none` | which rotation the set belongs to |
+| `//hud crossbar share <set> on\|off` | share a set across every job, or keep it to this one |
+| `//hud crossbar cycle <set> drawn\|sheathed\|both\|none` | choose which rotations a set belongs to |
 | `//hud crossbar view <wxhb-l\|wxhb-r\|exp-lr\|exp-rl> <set> <l\|r>` | point a view at a set and side |
 
 ### Inspection
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar context list` | the buff contexts, in stack order, active ones marked |
-| `//hud crossbar open` | the game screens you can bind |
+| `//hud crossbar context list` | list the buff contexts in stack order, marking the active ones |
+| `//hud crossbar open` | list the game screens you can bind |
 
 ### Built-in actions
 
@@ -149,8 +149,8 @@ commands, they work with `//bind` and in in-game macros too.
 | Command | What it does |
 | --- | --- |
 | `//hud crossbar draw` | sheathe / unsheathe — or dismount, if mounted |
-| `//hud crossbar mr` | mount roulette: a random mount you own |
-| `//hud crossbar warp [all]` | best available warp; `all` warps every character you have running |
+| `//hud crossbar mr` | summon a random mount you own, or dismount if you are on one |
+| `//hud crossbar warp [all]` | warp home by the best means you have; `all` warps every character you are running |
 | `//hud crossbar open <name>` | open a game screen (`map`, `equipment`, …) |
 
 ---
