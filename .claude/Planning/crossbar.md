@@ -1236,12 +1236,12 @@ Bindings live in the per-job files (below), not here.
   always_show_wxhb = false,        -- WXHB on screen at rest, or only while its
                                    -- own gesture is held (FFXIV's own option)
   views = {                        -- what WXHB / Expanded Hold display: set + side
-    -- note: with active_set = 1 these defaults make WXHB mirror the XHB until
-    -- repointed; harmless, but the W-layer looks inert on first run
-    wxhb_left   = { set = 1, side = 'left' },
-    wxhb_right  = { set = 1, side = 'right' },
-    expanded_lr = { set = 2, side = 'left' },
-    expanded_rl = { set = 2, side = 'right' },
+    -- one set per bar, so nothing duplicates what is already on screen: the
+    -- XHB starts on set 1, so the WXHB takes set 2 and Expanded set 3
+    wxhb_left   = { set = 2, side = 'left' },
+    wxhb_right  = { set = 2, side = 'right' },
+    expanded_lr = { set = 3, side = 'left' },
+    expanded_rl = { set = 3, side = 'right' },
   },
   -- per-set flags; character-wide by definition (a set's shared-ness cannot vary
   -- by job or two jobs would disagree about where set n lives)
