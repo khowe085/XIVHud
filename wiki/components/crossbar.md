@@ -447,5 +447,4 @@ count includes your master tools; on `/NIN`, which cannot use them, it does
 not. Corsair cards work the same way, counting Trump Cards.
 
 **Positioning.** The XHB, the WXHB and the skillchain indicator each move and
-scale independently in `//hud layout`. The bar hides itself in cutscenes and
-while zoning, like every other XIVHud component.
+scale independently in `//hud layout`.
