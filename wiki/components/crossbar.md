@@ -60,6 +60,29 @@ All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
 | `//hud crossbar swap <set> <l\|r> <slot> <set> <l\|r> <slot>` | swap two slots, everything about them |
 | `//hud crossbar copy <JOB>` | seed this job's bindings from another job |
 
+**`<type>`** says what kind of thing you are binding, and decides what the
+rest of the line means:
+
+| `<type>` | `<action>` is | Example |
+| --- | --- | --- |
+| `ma` | a spell — including trusts and blue magic | `bind 1 l 1 ma "Cure IV" t` |
+| `ja` | a job ability | `bind 1 l 2 ja "Divine Seal"` |
+| `ws` | a weaponskill | `bind 1 r 1 ws "Savage Blade" t` |
+| `item` | a usable item | `bind 2 l 1 item "Echo Drops" me` |
+| `pet` | a pet command | `bind 2 r 1 pet "Fight" t` |
+| `mount` | one specific mount | `bind 3 l 1 mount "Chocobo"` |
+| `ra` | *nothing* — ranged attack takes a target only | `bind 1 r 4 ra t` |
+| `ct` | a chat command, without its slash | `bind 4 l 1 ct "sea all linkshell"` |
+| `ex` | a Windower command, run as typed | `bind 4 l 2 ex "exec pull.txt"` |
+| `open` | the name of a game screen | `bind 5 l 1 open map` |
+| `draw` | *nothing* — sheathe / unsheathe | `bind 1 l 5 draw` |
+| `mr` | *nothing* — mount roulette | `bind 3 l 2 mr` |
+| `warp` | *nothing* — best available warp | `bind 6 l 1 warp` |
+
+**`<target>`** is optional and takes the game's own target strings — `t` for
+your target, `me`, `p1`, `stnpc` and so on. Leave it off for anything that
+does not need one. Wrap `<action>` in quotes if it contains a space.
+
 `bind` and `unbind` take an optional layer prefix on the set number —
 `sub:<set>` for the current subjob, `ctx:<name>:<set>` for a buff context. With
 no prefix you are editing the job's base layer. See
@@ -67,8 +90,14 @@ no prefix you are editing the job's base layer. See
 
 ```
 //hud crossbar bind 1 l 3 ma "Cure IV" t
+//hud crossbar bind sub:1 l 4 ja "Utsusemi: Ichi"
 //hud crossbar bind ctx:light-arts:1 l 3 ja "Addendum: White"
 ```
+
+Everything above is also bindable by mouse in `//hud crossbar edit`, which is
+usually easier — the binder lists what you actually know rather than asking
+you to spell it. See [What you can bind](#what-you-can-bind) for the fuller
+picture.
 
 ### Sets
 
