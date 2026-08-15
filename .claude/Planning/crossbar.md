@@ -699,12 +699,14 @@ recorded here in round 3):
   place it can bite, and the escape hatches stand (single-emitter
   LB-chords-both-triggers, or a second key folded into `w_layer`, which the
   config's DIK lists support).
-- The slot-button mode shift must be active during **RB-held** too (not just the
-  triggers), or set jumps have no numbers to chord with.
-- **Accepted limitation (Kevin, 2026-08-06 — "that is fine"): no backtick at
-  all while RT is held.** RB means `\\` in the RT chord (WXHB Right), so with
-  RT down neither `jump n` **nor `cycle`** is reachable from the pad; the
-  trigger+switch+button motion works from LT only. Release RT, then RB.
+- The slot buttons are built from **button chords, not action sets** (Kevin,
+  2026-08-15 — he finds action sets too buggy): each of the eight carries its
+  normal binding plus one chord per activator, **LT, RT and RB**. Twenty-four
+  chord bindings, each explicit and independent of any layer applying and
+  releasing cleanly. Leave RB out and set jumps have no numbers to chord with.
+- **No switch key reaches the addon while a trigger is held**, since RB is
+  `\\` in that chord. This agrees with the model rather than limiting it: the
+  switch is inert while any side is held either way.
 
 Known edge, accepted: a bare-key output pressed while a modifier is physically
 down reaches the game modified — e.g. LB's `R` tapped while RT is held arrives as
