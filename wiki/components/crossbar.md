@@ -186,15 +186,15 @@ crossbar keeps them to itself so that they do not:
 
 | Key | Role |
 | --- | --- |
-| `[` | left side — hold to activate it |
-| `]` | right side |
+| `;` | left side — hold to activate it |
+| `'` | right side |
 | `\` | the W-layer — hold with a side for its WXHB bar |
 | `` ` `` | set switch — tap to cycle, hold and press a button to jump; ignored while a side is held |
 | `=` | Select — opens your map; with a side held, opens the binder |
 | `1`–`8` | the eight slots — but only while a side or the switch is held; otherwise they reach the game as usual |
 
 You can still type all of them: once the chat box has focus the crossbar
-hands every key back, so `[`, `\` and the rest reach your message normally.
+hands every key back, so `;`, `\` and the rest reach your message normally.
 
 **No modifiers are used**, deliberately. FFXI's own macros live on Ctrl and
 Alt plus the number row, and the game acts on those chords by a route addons
@@ -206,8 +206,8 @@ A controller layout that produces them:
 
 | Pad input | Emits | You get |
 | --- | --- | --- |
-| **LT** held | `[` | activates the XHB's left side |
-| **RT** held | `]` | activates its right side |
+| **LT** held | `;` | activates the XHB's left side |
+| **RT** held | `'` | activates its right side |
 | **LT + RT** | both | Expanded Hold takes over the screen — which one depends on the order you pressed them |
 | **LT + LB** | `\` | activates the WXHB's left side (bringing it on screen if it was not) |
 | **RT + RB** | `\` | the WXHB's right side |

@@ -50,21 +50,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      kills blocking from the chat box, which is never blocked.
 
      WHAT TO LOOK FOR
-       1. Hold states, v4 keys. Hold [ -> xhb_left. ] -> xhb_right. Add
-          backslash to either -> the wxhb pair. [ then ] -> expanded_lr; ]
-          then [ -> expanded_rl. Release one of a pair -> falls back to the
-          survivor, and re-pressing the released one makes the OTHER the
-          first of the pair. The readout should never disagree with you.
+       1. Hold states. Hold ; -> xhb_left. ' -> xhb_right. Add backslash to
+          either -> the wxhb pair. ; then ' -> expanded_lr; ' then ; ->
+          expanded_rl. Release one of a pair -> falls back to the survivor,
+          and re-pressing the released one makes the OTHER the first of the
+          pair. The readout should never disagree with you.
        2. Blocking (`//is block`), the one that matters. With a side held,
           press 1-8: nothing should reach the game. Ctrl+9/Ctrl+0 must still
           fire their macros, since we never touch modified keys now. (v3
           failed here: Ctrl+N chords fire regardless of blocking.)
-       3. Blocking OUR keys. With blocking on, press [ ] backslash backtick
-          and = one at a time: none of them may open the chat log. This is
-          new - an earlier build let the sides and layer through, and an
-          unblocked side key opens chat on its way to activating a side,
-          which then makes the whole crossbar inert. With blocking off they
-          should each open chat, which is how you know they reached the game.
+       3. Which keys can actually be taken (`//is probe`), the one that
+          decides the map. Press \\ - , . / [ ] one at a time with probing
+          on: a key we can have does NOTHING AT ALL. Opening the chat log is
+          not a pass and never was - [ opens chat and still takes a
+          screenshot, and ] hides the UI, which is how the first choice of
+          side keys died. Report which of them are silent.
        4. Auto-repeat. Hold a slot key down: `fires` must increment once, not
           once per repeat. `repeats` counts what the OS sent.
        5. Chat. Open the chat box and type numbers: nothing fires, nothing is
@@ -88,6 +88,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      COMMANDS
        //is             status + this checklist in brief
        //is block       toggle selective blocking (default off)
+       //is probe       block the candidate keys, to find which are free
        //is bare        toggle blocking the number row with no modifier
        //is panic       force blocking off
        //is show|hide   the on-screen readout
@@ -117,9 +118,23 @@ texts = require("texts")
      ignores and the bridge can hold. These are punctuation and the number
      row; press anything unmapped and the note line reports its DIK, which is
      how to check a replacement is free. ]]
-local XHB_LEFT = { [26] = true } -- [
-local XHB_RIGHT = { [27] = true } -- ]
-local W_LAYER = { [43] = true } -- backslash
+local XHB_LEFT = { [39] = true } -- ;
+local XHB_RIGHT = { [40] = true } -- '
+local W_LAYER = { [43] = true } -- backslash (still unproven, see //is probe)
+
+-- Candidate keys to test with `//is probe`: blocked on sight, so pressing one
+-- with probing on and seeing NOTHING happen is the only proof a key is ours.
+-- Opening the chat log is not proof of anything - [ did that and still took a
+-- screenshot.
+local PROBE = {
+  [43] = "\\",
+  [12] = "-",
+  [51] = ",",
+  [52] = ".",
+  [53] = "/",
+  [26] = "[",
+  [27] = "]",
+}
 local SET_SWITCH = 41 -- backtick
 local SHORTCUT = 13 -- '='
 local SLOTS = { [2] = 1, [3] = 2, [4] = 3, [5] = 4, [6] = 5, [7] = 6, [8] = 7, [9] = 8 }
@@ -129,6 +144,7 @@ local blocking = false
 -- Windower can block a key at all versus only an unchorded one. Safe: chat
 -- opens with Enter, so this cannot lock you out of `//is panic`.
 local bare_block = false
+local probing = false
 local showing = true
 
 -- Held activators, and the order the two sides were pressed in - the only
@@ -213,18 +229,19 @@ local function refresh()
   box:pos(400, 200)
   box:size(10)
   local layout = table.concat({
-    "inputspike  blocking=%s  bare=%s  chat=%s",
-    "hold: %s   held [=%s ]=%s \\=%s `=%s",
+    "inputspike  blocking=%s  bare=%s  probe=%s  chat=%s",
+    "hold: %s   held ;=%s '=%s \\=%s `=%s",
     "last fire: %s",
     "note: %s",
     "events=%d fires=%d repeats=%d blocked=%d blocked-in=%d",
     "dead keys seen: backtick=%s equals=%s",
-    "//is block | //is bare | //is panic | //is reset",
+    "//is block | //is probe | //is panic | //is reset",
   }, "\n")
   box:text(
     layout:format(
       tostring(blocking),
       tostring(bare_block),
+      tostring(probing),
       tostring(chat_open()),
       hold_state(),
       tostring(held.left),
@@ -250,6 +267,23 @@ end
 -- more than a tidy implementation.
 local function on_key(dik, pressed, flags, blocked_in)
   counts.events = counts.events + 1
+
+  -- Probe runs ahead of everything: it exists to answer "can this key be
+  -- taken from the game at all", which nothing else here measures.
+  if probing and PROBE[dik] then
+    if pressed then
+      last.note = ("probing %s (dik %d) - anything happen?"):format(PROBE[dik], dik)
+      counts.blocked = counts.blocked + 1
+      latched[dik] = true
+      pcall(refresh)
+      return true
+    end
+    if latched[dik] then
+      latched[dik] = nil
+      return true
+    end
+    return false
+  end
 
   local role = role_of(dik)
   if dik == SET_SWITCH then
@@ -448,13 +482,17 @@ windower.register_event("addon command", function(command)
   command = command and command:lower() or ""
   if command == "block" then
     blocking = not blocking
-    say("blocking " .. (blocking and "ON - hold [ and press 1-8; nothing should reach the game" or "off"))
+    say("blocking " .. (blocking and "ON - hold ; and press 1-8; nothing should reach the game" or "off"))
+  elseif command == "probe" then
+    probing = not probing
+    say("probe " .. (probing and "ON - press \\ - , . / [ ] one at a time; each must do NOTHING" or "off"))
   elseif command == "bare" then
     bare_block = not bare_block
     say("bare number-row block " .. (bare_block and "ON - press 3 with NO modifier held" or "off"))
   elseif command == "panic" then
     blocking = false
     bare_block = false
+    probing = false
     latched = {}
     say("blocking forced OFF")
   elseif command == "show" then
@@ -471,7 +509,7 @@ windower.register_event("addon command", function(command)
     say("counters reset")
   else
     say("blocking=" .. tostring(blocking) .. " hold=" .. hold_state() .. " events=" .. counts.events)
-    say("1) hold [ ] and \\ and watch `hold`  2) //is block, then press [ - chat must NOT open")
+    say("1) hold ; ' and \\ and watch `hold`  2) //is probe, then press the candidates")
     say("3) hold a slot key: fires must not climb with repeats  4) type in chat: nothing fires")
   end
   pcall(refresh)
