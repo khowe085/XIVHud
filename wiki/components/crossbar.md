@@ -27,9 +27,13 @@ screen from the other two for as long as you hold them; the order you press
 them in chooses between two of these. Both point at whatever set and side you
 tell them to, so they are extra bars rather than extra storage.
 
-Sets can be **shared** across every job or kept to one. Individual slots can
-be overridden for a particular subjob, or change themselves while a buff is up
-— a Scholar's stratagem slots follow Light and Dark Arts on their own.
+Sets can be **shared** across every job or kept to one, and individual slots
+can be overridden for a particular subjob.
+
+Slots can also change themselves while a buff is up. A Scholar can put
+**Accession** on a slot for when Light Arts is active and **Manifestation** on
+that same slot for Dark Arts: one button, the right stratagem under each art,
+with nothing to switch by hand.
 
 Bindings are made with the mouse: `//hud crossbar edit` opens a binder, you
 click a slot, pick which layer you are editing, and pick an action.
