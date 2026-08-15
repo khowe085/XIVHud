@@ -60,8 +60,8 @@ All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
 | --- | --- |
 | `//hud crossbar bind <set> <l\|r> <slot> <type> <action> [<target>]` | bind a slot |
 | `//hud crossbar unbind <set> <l\|r> <slot>` | clear a slot |
-| `//hud crossbar rename <set> <l\|r> <slot> [<name>]` | change the label under a slot |
-| `//hud crossbar icon <set> <l\|r> <slot> [<icon>]` | change a slot's icon |
+| `//hud crossbar alias <set> <l\|r> <slot> [<name>]` | change the label under a slot — omit `<name>` to clear it |
+| `//hud crossbar icon <set> <l\|r> <slot> [<icon>]` | change a slot's icon — omit `<icon>` to clear it |
 | `//hud crossbar swap <set> <l\|r> <slot> <set> <l\|r> <slot>` | swap two slots, everything about them |
 | `//hud crossbar copy <JOB>` | seed this job's bindings from another job |
 
@@ -90,21 +90,21 @@ does not need one. Wrap `<action>` in quotes if it contains a space.
 
 ### Labels and icons
 
-A slot shows the action's own name and icon. **`rename`** and **`icon`**
+A slot shows the action's own name and icon. **`alias`** and **`icon`**
 override either for one slot, which is worth it when the real name is too long
 to read at a glance, or when the slot holds a `ct` or `ex` command that has no
 icon of its own:
 
 ```
-//hud crossbar rename 1 l 3 "AW"          -- Addendum: White, shortened
+//hud crossbar alias 1 l 3 "AW"           -- Addendum: White, shortened
 //hud crossbar icon 4 l 1 map             -- give a custom command an icon
-//hud crossbar rename 1 l 3               -- back to the action's own name
+//hud crossbar alias 1 l 3                -- back to the action's own name
 ```
 
-Leave the last argument off and the override is cleared. `<icon>` is a name
-from the icons that ship with the addon, or a path to your own PNG under the
-addon folder. Both follow the same layer prefixes as `bind`, so renaming
-`ctx:light-arts:1` relabels only what that context puts in the slot.
+`<icon>` is a name from the icons that ship with the addon, or a path to your
+own PNG under the addon folder. Both follow the same layer prefixes as `bind`,
+so aliasing `ctx:light-arts:1` relabels only what that context puts in the
+slot.
 
 `bind` and `unbind` take an optional layer prefix on the set number —
 `sub:<set>` for the current subjob, `ctx:<name>:<set>` for a buff context. With

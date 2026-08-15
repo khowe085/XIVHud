@@ -1336,8 +1336,8 @@ one-line hint, consistent chat prefix.
 //hud crossbar cycle                               -- bare: advance the rotation (for //bind; the gesture's command twin)
 //hud crossbar bind <set> <l|r> <slot> <type> <action> [<target>]
 //hud crossbar unbind <set> <l|r> <slot>
-//hud crossbar rename <set> <l|r> <slot> [<name>]   -- relabel a slot; no name restores the action's own
-//hud crossbar icon <set> <l|r> <slot> [<icon>]     -- re-icon a slot; no icon restores the default
+//hud crossbar alias <set> <l|r> <slot> [<name>]   -- relabel a slot; omit <name> to clear
+//hud crossbar icon <set> <l|r> <slot> [<icon>]    -- re-icon a slot; omit <icon> to clear
 //hud crossbar list [<set>]                        -- bindings on this job
 //hud crossbar view <wxhb-l|wxhb-r|exp-lr|exp-rl> <set> <l|r>   -- repoint a view
 //hud crossbar share <set> on|off                  -- shared (all jobs) vs job-specific
@@ -1359,14 +1359,15 @@ one-line hint, consistent chat prefix.
 
 - `<slot>` accepts `1`–`8` or the button names (`y`, `b`, `a`, `x`, `up`, `right`,
   `down`, `left`) — nobody should have to memorise the indices.
-- **`rename` and `icon` are per-entry overrides** (added 2026-08-15), not
+- **`alias` and `icon` are per-entry overrides** (added 2026-08-15), not
   separate state: the action record already carries `alias` and `icon`
   (upstream's own fields, see Activation), so these write those two and
   nothing else. They therefore follow the same layer prefixes as `bind` — a
-  rename on `ctx:light-arts:1` relabels only the entry that context supplies.
-  Omitting the final argument clears the override, restoring the action's own
-  name or the icon the catalog would have chosen. Renaming or re-iconing an
-  empty slot is an error, not a silent no-op: there is no entry to carry it.
+  an `alias` on `ctx:light-arts:1` relabels only the entry that context
+  supplies. **Omitting the final argument clears the override**, restoring the
+  action's own name or the icon the catalog would have chosen. Aliasing or
+  re-iconing an empty slot is an error, not a silent no-op: there is no entry
+  to carry it.
   `<icon>` is a name from the shipped pack (`mount`, `attack`, …) or a path
   to a PNG under the addon folder for your own art; an unresolvable one is
   rejected at entry rather than drawing nothing later.
@@ -1436,7 +1437,7 @@ part worth mining; its navigation is not.
      — FFXI chat renders multi-byte glyphs as mojibake).
 - **Rename and re-icon in the binder** (added 2026-08-15): the stack panel's
   row for the layer being edited carries that entry's label and icon, both
-  changeable in place — the mouse equivalent of the `rename` and `icon`
+  changeable in place — the mouse equivalent of the `alias` and `icon`
   commands, writing the same `alias` and `icon` fields on the same entry.
 - **Hover tooltips, edit mode only** (decided 2026-08-08). XIVHotbar2 shows a
   description panel when the cursor rests on a slot; the played crossbar is
@@ -1669,7 +1670,8 @@ covers the widget level.
   released on unload.
 - **`crossbar_commands_spec.lua`** (added after review — the CLI previously had
   no spec): every verb happy-path, the layer prefixes (`sub:`, `ctx:<name>:`),
-  slot-name aliases, `swap` addressing, `rename`/`icon` writing only `alias`
+  slot-name aliases, `swap` addressing, `alias`/`icon` writing only the
+  `alias`
   and `icon` on the addressed entry, honouring layer prefixes, clearing when
   the final argument is omitted, and refusing an empty slot or an
   unresolvable icon; the `open` and `cycle` bare-vs-args overloads, and every validation rejection with its hint line.
