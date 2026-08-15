@@ -193,10 +193,12 @@ A controller layout that produces them:
 | **Select** | `=` | your map; with a side held, the binder |
 | **face / D-pad** while LT, RT or RB is held | `1`–`8` | the eight slots |
 
-### Mode shifts
+### Button chords
 
-Three controls mean different things depending on what else is held, and
-getting those right is most of the work of building the layout.
+Several controls mean different things depending on what else is held, and
+setting those up is most of the work of building the layout. All of it is done
+with **button chords** — a binding that only fires while another button is
+held. Nothing here uses action sets or mode shifts.
 
 **The face buttons and D-pad carry the eight slots — but only while you are
 reaching for the crossbar.** The rest of the time they have to be your normal
@@ -207,9 +209,8 @@ game buttons, or you cannot play.
 | Y / B / A / X | your usual bindings | `1` `2` `3` `4` — face cluster |
 | D-pad ↑ → ↓ ← | your usual bindings | `5` `6` `7` `8` — D-pad cluster |
 
-Build this with **button chords**, not action sets. Each of the eight buttons
-gets its normal binding plus **three chord bindings** — one for LT held, one
-for RT, one for RB — each emitting the same number:
+Each of the eight buttons gets its normal binding plus **three chords** — one
+for LT held, one for RT, one for RB — each emitting the same number:
 
 ```
 Y     → normal binding
@@ -219,16 +220,15 @@ Y     → normal binding
 B, A, X, D-pad ↑ → ↓ ←   ... the same, for 2 through 8
 ```
 
-Twenty-four chord bindings in total. It is repetitive to enter, but each one
-is explicit and independent, and nothing depends on a layer being applied and
-removed cleanly.
+Twenty-four chords in total. It is repetitive to enter, but each one is
+explicit and independent of the others.
 
 **RB needs its chords too, not just the triggers.** Jumping to a set is
 `` ` `` held plus a slot button — leave RB out and you have a switch key with
 no numbers to press against it, and set jumping does nothing at all.
 
-**The bumpers each carry two or three meanings.** They need Steam's activator
-options — regular press, long press, and chord — rather than a plain binding:
+**The bumpers each carry two or three meanings**, so they need a regular
+press, a long press, and a chord rather than one plain binding:
 
 | Control | Regular press | Long press | While its trigger is held |
 | --- | --- | --- | --- |

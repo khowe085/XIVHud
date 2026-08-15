@@ -684,8 +684,8 @@ is what sidesteps Steam Input's lack of modifier reference-counting.
 | RB | chord while RT held | `\` (43) | `]`+`\` = WXHB Right (release RB → XHB Right) |
 | RB | press, no RT | backtick (41) | tap = cycle (incl. inside WXHB *Left* — with RT held RB is `\` instead, see caveats); held + slot button = set jump; tap with LB long-press `\` and no side = draw |
 | Select | press | `=` (13) | bare = open map; with a side held = toggle the binder |
-| Y / B / A / X | while LT, RT, or RB held (mode shift) | `1` `2` `3` `4` (2–5) | face cluster, slots 1–4 |
-| D-pad ↑ / → / ↓ / ← | while LT, RT, or RB held (mode shift) | `5` `6` `7` `8` (6–9) | D-pad cluster, slots 5–8 |
+| Y / B / A / X | chorded with LT, RT, or RB | `1` `2` `3` `4` (2–5) | face cluster, slots 1–4 |
+| D-pad ↑ / → / ↓ / ← | chorded with LT, RT, or RB | `5` `6` `7` `8` (6–9) | D-pad cluster, slots 5–8 |
 | Y/B/A/X, D-pad | no activator held | (base config) | normal game functions — crossbar ignores them |
 
 Three caveats on the Steam side (the third accepted by Kevin in discussion,
@@ -699,9 +699,10 @@ recorded here in round 3):
   place it can bite, and the escape hatches stand (single-emitter
   LB-chords-both-triggers, or a second key folded into `w_layer`, which the
   config's DIK lists support).
-- The slot buttons are built from **button chords, not action sets** (Kevin,
-  2026-08-15 — he finds action sets too buggy): each of the eight carries its
-  normal binding plus one chord per activator, **LT, RT and RB**. Twenty-four
+- The layout is built **entirely from button chords** (Kevin, 2026-08-15 —
+  neither action sets nor mode shifts, both of which he finds too buggy to
+  rely on): each of the eight slot buttons carries its normal binding plus one
+  chord per activator, **LT, RT and RB**. Twenty-four
   chord bindings, each explicit and independent of any layer applying and
   releasing cleanly. Leave RB out and set jumps have no numbers to chord with.
 - **No switch key reaches the addon while a trigger is held**, since RB is
