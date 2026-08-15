@@ -180,9 +180,8 @@ The addon reads keys. Turning a controller into those keys is Steam Input's
 job, so nothing here is enforced by the addon — any layout that emits the
 right keys works, and a keyboard player can press them directly.
 
-Six keys drive everything, chosen because FFXI binds none of them to a game
-function — pressed on their own they would only open the chat log, and the
-crossbar keeps them to itself so that they do not:
+Six keys drive everything, chosen because FFXI does nothing with any of them
+and the crossbar can take them cleanly:
 
 | Key | Role |
 | --- | --- |
@@ -193,8 +192,10 @@ crossbar keeps them to itself so that they do not:
 | `=` | Select — opens your map; with a side held, opens the binder |
 | `1`–`8` | the eight slots — but only while a side or the switch is held; otherwise they reach the game as usual |
 
-You can still type all of them: once the chat box has focus the crossbar
-hands every key back, so `;`, `\` and the rest reach your message normally.
+You can still type them: once the chat box has focus the crossbar hands every
+key back, so `;` and the rest reach your message normally. (`\` is the
+exception, and not because of the crossbar — FFXI will not take a backslash
+as chat input either way.)
 
 **No modifiers are used**, deliberately. FFXI's own macros live on Ctrl and
 Alt plus the number row, and the game acts on those chords by a route addons

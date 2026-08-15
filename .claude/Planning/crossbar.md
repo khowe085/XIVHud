@@ -121,14 +121,18 @@ Vocabulary, from SE's guide, used consistently from here on:
     only has to be a key the game ignores and the bridge can hold. Every slot
     press is then unchorded, and therefore blockable.
 
-  | Role | Key | DIK | Blocking verified |
-  | --- | --- | --- | --- |
-  | XHB left | `;` | 39 | pending |
-  | XHB right | `'` | 40 | pending |
-  | W-layer | `\` | 43 | **pending — may fail** |
-  | Slots 1–8 | `1`–`8` | 2–9 | yes |
-  | Set switch | `` ` `` | 41 | yes |
-  | Shortcut (Select) | `=` | 13 | yes |
+  | Role | Key | DIK |
+  | --- | --- | --- |
+  | XHB left | `;` | 39 |
+  | XHB right | `'` | 40 |
+  | W-layer | `\` | 43 |
+  | Slots 1–8 | `1`–`8` | 2–9 |
+  | Set switch | `` ` `` | 41 |
+  | Shortcut (Select) | `=` | 13 |
+
+  **All six verified in-client 2026-08-16**: each is silent under blocking,
+  and the model itself — hold states, the layer, slot firing, auto-repeat and
+  the chat guard — was exercised on them and behaved. The map is settled.
 
   - **`;` → XHB left, `'` → XHB right**; **both held = Expanded Hold**,
     order-sensitive as in FFXIV (`;` first → `expanded_lr`, `'` first →
@@ -140,15 +144,12 @@ Vocabulary, from SE's guide, used consistently from here on:
   - **Set switch `` ` ``**: held + slot key jumps to that set, tapped alone
     cycles. **Draw gesture** = `\` held + `` ` `` tapped with no side active.
   - **"It opens the chat log" is not evidence a key is free** (learned the
-    hard way, 2026-08-16). `[` and `]` passed that test and were adopted as
-    the side keys; in fact `]` hides the game UI and `[` takes a screenshot,
-    and **blocking does not stop either** — the same class of failure as the
-    macro chords that killed v3. The only test that means anything is: with
-    blocking on, does the game still react? Sides are now `;` and `'`, which
-    Kevin confirms do nothing in game; `\` came from the same discredited
-    batch as `[` and `]` and is **unproven**, with `-` `,` `.` `/` as
-    fallbacks. The spike's `//is probe` blocks all the candidates at once so
-    one run settles it.
+    hard way, 2026-08-16, and the reason two maps died). `[` and `]` passed
+    that test and were adopted as the side keys; in fact `]` hides the game
+    UI and `[` takes a screenshot, and **blocking stops neither** — the same
+    class of failure as the macro chords that killed v3. The only test worth
+    running is: with blocking on, does the game still react? Every key in the
+    table above has now passed it.
     They are ours exclusively while the crossbar is live; the chat guard hands
     them back the moment the chat box has focus, so they remain typeable.
   - **FFXI's macro palette is untouched** — Ctrl/Alt+1–0 keep working, and the
@@ -714,18 +715,25 @@ Results, now platform facts:
   reads its macro chords by a route Windower's keyboard hook does not sit in
   front of. **Consequence**: no key the crossbar wants may be a game-bound
   chord, which is what v4's modifier-free map delivers.
-- **`` ` ``, `=` and the number row block cleanly.** Verified: with blocking
-  on they do nothing at all.
-- **`[` and `]` cannot be taken from the game** (2026-08-16, and the reason
-  the map moved again): with blocking on, `]` still hides the game UI and `[`
-  still takes a screenshot. They had been adopted on the strength of opening
-  the chat log when unblocked — which turns out to prove nothing, since they
-  do both. Whatever reads them is the same path FFXI's macro chords come
-  through, which the keyboard hook does not sit in front of.
-- **`;` and `'` do nothing in game** (Kevin, 2026-08-16) and are the new side
-  keys. `\` was adopted in the same batch as `[` and `]` and is therefore
-  **unproven**; `//is probe` in the spike blocks it along with `-` `,` `.` `/`
-  so one run picks a layer key that is genuinely free.
+- **Which punctuation the game will give up** (`//is probe`, 2026-08-16).
+  Blocked on sight and pressed one at a time, a key we can have does nothing
+  at all:
+
+  | Key | Ours? |
+  | --- | --- |
+  | `;` `'` `\` `/` `` ` `` `=` | **yes** — silent under blocking |
+  | `[` `]` | no — `]` hides the game UI, `[` takes a screenshot, and blocking stops neither |
+  | `-` `,` `.` | no — still act in game |
+
+  `/` is spare. `[` and `]` were in the run as a control: they misbehaved as
+  expected, which is how we know the probe was live.
+- **The model itself was exercised on the final keys and behaved**: `;`+`\`
+  plus a slot key fired the slot exactly once while `repeats` climbed
+  separately for as long as the key was held (the auto-repeat guard), and
+  with the chat box open `;` typed into it normally (the chat guard handing
+  our keys back).
+- **`\` cannot be typed into FFXI's chat at all** — a property of the game,
+  not of our blocking, and worth knowing before someone reports it as a bug.
 - **`setkey` is the injection mechanism** and its key names parse as guessed:
   `//setkey e down` answers `Setting key code "e" to state: down`.
 - **The `flags` parameter is populated**: Ctrl+3 arrives with `flags=4` on the
@@ -1972,13 +1980,11 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
 
 ## Open questions
 
-1. **Input map: v4 decided 2026-08-08 and verified in-client** — no
-   modifiers; `;`/`'` sides, `\` layer (unproven), backtick switch, `=`
+1. **Input map: settled and fully verified in-client (2026-08-16)** — no
+   modifiers; `;`/`'` sides, `\` layer, backtick switch, `=`
    shortcut, number row slots, all config-with-defaults. Every key confirmed free; blocking
-   confirmed for the switch, the shortcut and the number row. Residue:
-   **(a)** proving the layer key can be blocked at all — `\` is unproven and
-   `-` `,` `.` `/` are the fallbacks, settled by `//is probe` in one run — and
-   injected-key echo, both before CB2; **(b)** the layout-mode interaction — layout mode uses plain CTRL for
+   confirmed for the switch, the shortcut and the number row. Residue: **(a)** injected-key
+   echo — one console command, before CB2; **(b)** the layout-mode interaction — layout mode uses plain CTRL for
    free-drag, which v4 no longer touches at all, but component keyboard
    dispatch (touchpoint 1) is still built **inert-during-layout-mode** so the
    two can never contend. Verified in-client at CB4.
