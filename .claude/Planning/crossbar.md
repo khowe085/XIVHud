@@ -30,10 +30,10 @@ Vocabulary, from SE's guide, used consistently from here on:
 | Term | Meaning |
 | --- | --- |
 | **set** | 16 slots — a left side and a right side. 8 sets = 128 actions per job. |
-| **side** | 8 slots shown by one trigger: the D-pad cross (4) + the face cross (4). |
-| **XHB** | the plain hold-a-trigger bar showing the active set. FFXIV: LT → left side, RT → right; ours: `[` → left, `]` → right. |
+| **side** | 8 slots activated by one key: the D-pad cross (4) + the face cross (4). Both sides of a bar are drawn; one at a time is active. |
+| **XHB** | the bar showing the active set, permanently on screen. Holding a side key activates that side — FFXIV: LT → left, RT → right; ours: `[` → left, `]` → right. |
 | **WXHB** | "double cross hotbar" — a second bar; FFXIV reaches it by double-tapping a trigger, ours by the `\\` layer key (v4, 2026-08-08). |
-| **Expanded Hold** | a further bar reached by holding *both* activators (FFXIV: both triggers; ours: `[`+`]`); the press orders are distinct. |
+| **Expanded Hold** | a further **single side** (8 slots, not a full bar) reached by holding *both* activators (FFXIV: both triggers; ours: `[`+`]`); the press orders are distinct. |
 | **view** | where WXHB / Expanded Hold get their contents: each is *pointed at* a (set, side). Bindings live only in sets. |
 
 ### Decisions (2026-08-05, Kevin)
@@ -602,8 +602,8 @@ Guards, all mandatory (tightened after blind review, 2026-08-06):
 - **Chat**: while `windower.ffxi.get_info().chat_open`, emit no *action*
   intents (`fire`/`jump`/`cycle`/`draw`/`shortcut`) and block nothing —
   **`activate` is exempt** (round 8): it mirrors state, and suppressing it
-  strands a drawn bar when an activator is released mid-chat (`activate none`
-  is what tells the widget to hide). Consequence, accepted: pressing an
+  strands an active side when an activator is released mid-chat
+  (`activate none` is what clears it). Consequence, accepted: pressing an
   activator while chat is open draws an inert bar over the screen — **backtick and the shortcut keys included** (round 4: they
   must be typeable into chat; "always blocked" everywhere else means "always,
   subject to these guards") — but **keep tracking key state, slot-key
@@ -742,7 +742,8 @@ Alt+R, not R. Same class as the opener-chord issue; arrange Steam Input
 accordingly.
 
 `input.lua` emits *intents* (`activate <hold-state id or none>` — release back
-to nothing emits `activate none`, the widget's cue to hide — `fire slot`,
+to nothing emits `activate none`, the widget's cue to drop the active
+panel — the bar itself stays drawn — `fire slot`,
 `jump n`, `cycle`, `draw`, `shortcut <verb>`). Per keyboard event it returns
 **(intents, block)** — the intent list, possibly empty, plus the latched block
 decision for that key. (An earlier revision also demanded a held-modifier
@@ -1200,11 +1201,12 @@ tap-vs-chord logic is testable at all.
 7. **Prim budget** (revised 2026-08-15, after the persistent-bar correction —
    the earlier figure assumed one bar on screen at a time and was far too
    low). A *bar* is two sides = 16 slots; at ~9 prims a slot that is ~144
-   prims per bar. Worst resting case is XHB + WXHB both drawn = **~290
-   prims**, plus the active panel and the skillchain indicator. Expanded
-   replaces rather than adds, so it is not additive. Sets are data — switching
-   sets repaints existing prims rather than allocating more, and the six
-   hold states share the same three bars' worth of prims. Whether the WXHB's
+   prims per bar; Expanded Hold is a single side, so half that. Worst resting
+   case is XHB + WXHB both drawn = **~290 prims**, plus the active panel and
+   the skillchain indicator; Expanded replaces rather than adds, so the
+   ceiling is unchanged. Sets are data — switching sets repaints existing
+   prims rather than allocating more, and the six hold states share
+   2.5 bars' worth (16 + 16 + 8 slots). Whether the WXHB's
    prims are destroyed or merely hidden when `always_show_wxhb` is off is a
    CB5 measurement, not a guess. The binder adds its own in edit mode only.
 
@@ -1811,9 +1813,9 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   its active-side panel**, no recast/cost yet. **Until CB7 lands, milestone verification authors bindings
   by hand-editing `data/<Character>/crossbar/<MAIN>.lua` (and `SHARED.lua` for
   the shared-set acceptance)** — the file format is
-  deliberately readable for exactly this. *Accepts when* holding a trigger
-  in-client shows a correctly laid-out compact cross with icons and
-  `//hud layout` drags and scales it.
+  deliberately readable for exactly this. *Accepts when* the XHB sits on screen
+  in-client, correctly laid out and inactive; a held side key panels that side
+  and releasing clears it; and `//hud layout` drags and scales it.
 - **CB5 — activation + all sides + sets + live state.** **Slot presses execute
   their bound actions from this milestone on** (CB2's log-only stand-in
   retires — added in round 3, execution previously had no milestone home);
