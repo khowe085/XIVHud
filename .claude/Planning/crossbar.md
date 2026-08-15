@@ -389,6 +389,33 @@ rule: **anything keyed to a job must resolve main *and* sub, and anything keyed
 to job points must resolve main only.** `crossbar_render_spec` carries the
 sub-job case for the counter specifically.
 
+### Ninja tool counts (verified 2026-08-15)
+
+How many of a ninjutsu's tool you are carrying, drawn in the slot's cost
+position — the same prim the stratagem counter uses, and never both at once,
+since a ninjutsu is not a stratagem ability. Corsair Quick Draw cards ride the
+same machinery. Upstream has the feature (`consumables.lua:125`); the fork
+chain fixed its master-tool half ("Fixed Ninja Tools not showing a count if
+using master tools").
+
+- **Each ninjutsu maps to a tool**: `ninja_tool_lookup[spell_id] -> item id`.
+- **Master tools substitute for a whole family**
+  (`master_tool_lookup[tool_id] -> master id`): **Inoshishinofuda** (2971)
+  covers Uchitake, Tsurara, Kawahori-Ogi, Makibishi, Hiraishin, Mizu-Deppo;
+  **Shikanofuda** (2972) covers Shihei, Shinobi-Tabi, Sanjaku-Tenugui,
+  Kabenro, Furusumi, Mokujin, Ranka, Ryuno; **Chonofuda** (2973) covers
+  Jusatsu, Kaginawa, Kodoku, Sairui-Ran, Soshi; **Trump Card** (2974) covers
+  the eight Corsair element cards.
+- **Master tools count only on main NIN** — sub-NIN sums the plain tool alone
+  (`ui.lua:1136-1141`). Another instance of the main-only rule already stated
+  for the stratagem JP gift.
+- **Display**: the total, or `99+` above ninety-nine.
+- **Colour**: green when the plain tool count alone exceeds 50; yellow when
+  only the total (with master tools) does; red otherwise.
+- **At zero**: a red X over the slot and the recast text hidden.
+- **Counts stay fresh** from the `add item` / `remove item` events the
+  framework already forwards, seeded by an inventory read — no new touchpoint.
+
 ### Open actions (renamed from "menu", 2026-08-06)
 
 A code table in the component (`openers.lua`), `name → { opener, icon }`, where
@@ -1069,7 +1096,8 @@ tap-vs-chord logic is testable at all.
    `send_command`),
    `get_spell_recasts`, `get_ability_recasts`, `get_key_items` + mount/KI resource
    tables and `random` (`mr`), `job_points` off the player table (the SCH
-   stratagem gift), `get_items` per bag + the `bags` resource +
+   stratagem gift), item counts kept from the already-forwarded
+   `add item`/`remove item` events (ninja tool counts), `get_items` per bag + the `bags` resource +
    `extdata.decode` + `set_equip` + `send_ipc` (warp; `ipc message` also needs
    forwarding), `get_player` (main/sub job, buffs),
    `get_spells` + `get_abilities` + spell/ability resource tables and
@@ -1638,6 +1666,12 @@ covers the widget level.
   dead upstream); window
   state machine across waiting → open → expired with an injected clock; no
   target / dead target → no indicator and no chain results.
+- **Ninja tool counts** (pure): spell -> tool -> master tool resolution for
+  each family; **master tools counted on main NIN and ignored on sub**; the
+  `99+` cap at 99/100; the colour bands at 50/51 for plain and total; the
+  zero state producing the crossed-out slot; a ninjutsu whose tool the player
+  has none of, and a non-ninjutsu spell producing no count at all; Corsair
+  cards resolving through Trump Card the same way.
 - **Stratagem counter** (in `render.lua`'s plan or its own pure helper): max
   charges at each level boundary (9/10, 29/30, 49/50, 69/70, 89/90), the JP
   gift at 549/550 **for main SCH only**, available = `max - ceil(recast /
@@ -1780,7 +1814,8 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   WXHB (own anchor) and Expanded Hold wired; set jump/cycle; the crossbar
   consuming the `job change`/buff events with per-job reload live (CB5's own
   acceptance depends on them); recast sweep and
-  animation, MP/TP cost, unusable dimming, press feedback, the SCH stratagem counter;
+  animation, MP/TP cost, unusable dimming, press feedback, the SCH stratagem counter,
+  ninja tool counts;
   the prim-budget measurement (touchpoint 7); in-client verification of the opener entries and
   the `draw` disengage spelling. *Accepts when* each of the 8 slot keys fires
   the right action in-client, every hold state is reachable with the documented
