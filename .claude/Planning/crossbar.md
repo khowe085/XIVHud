@@ -517,9 +517,9 @@ prose rules below are normative where they elaborate:
 | `[`+`]` held, `[` first | XHB and WXHB hidden; **`expanded_lr` shown, active** |
 | `[`+`]` held, `]` first | XHB and WXHB hidden; **`expanded_rl` shown, active** |
 | `\` held + `` ` `` (41) tapped, **no side active**, no slot key chorded | fire the `draw` toggle |
-| `` ` `` held + slot key *n* | jump to set *n* (any set) — **switch-held takes precedence over slot fire**, sides held or not (the FFXIV motion is trigger + switch + button) |
-| `` ` `` tapped alone (incl. inside a WXHB view, where `\` is necessarily held — that taps `cycle`, it does not draw) | cycle to the next non-empty set in the current weapon state's rotation |
-| slot keys `1`–`8` (DIK 2–9) with a hold state active, switch up | fire that slot |
+| `` ` `` held + slot key *n*, **no side held** | jump to set *n* (any set) |
+| `` ` `` tapped, **no side held** | cycle to the next non-empty set in the current weapon state's rotation |
+| slot keys `1`–`8` (DIK 2–9) with a hold state active | fire that slot |
 | shortcut key (`=` 13) tapped | its `tap` verb bare / its `chorded` verb with a side held (blocked as ours, subject to the guards — in edit mode only the `edit`-verb key is live) |
 | nothing held | no hold state active — every key falls through to the game (the switch and shortcut keys excepted: always ours, always blocked) |
 
@@ -546,11 +546,14 @@ Resolution rules:
   **views** are only the four configurable (set, side) pointers — config keys
   `wxhb_left`, `wxhb_right`, `expanded_lr`, `expanded_rl`, with
   `wxhb-l`/`wxhb-r`/`exp-lr`/`exp-rl` as their CLI spellings (normative).
-- **The switch key is ours exclusively**: always blocked. Tap alone = `cycle`;
-  held + slot key = `jump n`; tapped while `\` is held **with no side active**
-  (no slot key chorded) = the `draw` toggle instead of cycle — the
-  no-side condition keeps a tap inside a WXHB view meaning `cycle`, not a
-  surprise dismount. On the pad the draw gesture is hold-LB + tap-RB.
+- **The switch key is ours exclusively**: always blocked, and **inert while
+  any side is held** (Kevin, 2026-08-15 — holding a side means you are using
+  the crossbar, not changing sets). With no side held: tap alone = `cycle`;
+  held + slot key = `jump n`; tapped while `\` is held (no slot key chorded)
+  = the `draw` toggle instead of cycle. Because sides and the switch can
+  never both be live, slot keys need no precedence rule between firing and
+  jumping — the two cases are disjoint. On the pad this falls out of the
+  layout anyway: RB is `\` while RT is held, so no switch key is emitted.
 - **Shortcut keys**: dedicated keys, always blocked, that fire
   `//hud crossbar` verbs — one verb on a bare tap, another while a side is
   held. The first entry is the pad's **Select** button: bare tap → `open map`,
@@ -560,9 +563,10 @@ Resolution rules:
   blocked decides its release too (a `3` pressed unblocked whose release
   arrives after a side went down must still reach the game, or FFXI sees a key
   held forever; likewise across guard transitions). Blocked at press: slot keys
-  while a hold state is active **or while the switch is held** (the
-  no-side set jump must not leak bare numbers to the game), the switch always,
-  and shortcut keys always; nothing else is ever blocked. **Verified
+  while a hold state is active **or while the switch is held** (the set-jump
+  chord must not leak bare numbers to the game), the switch always — including
+  while a side is held, where it does nothing but is still ours — and shortcut
+  keys always; nothing else is ever blocked. **Verified
   in-client**: an unchorded key returns cleanly to us and never reaches the
   game — the property v3 assumed and did not have.
 
@@ -1520,8 +1524,9 @@ covers the widget level.
   back to the XHB side, the layer alone → no intent, both sides + layer →
   Expanded unchanged (the normative no-op);
   the draw gesture (layer held, no side active: switch tap → `draw` intent and
-  no `cycle`; switch chorded with a slot key → `jump n` regardless of the
-  layer; switch tap with a side active → `cycle`); switch-chord vs switch-tap (a chord followed by
+  no `cycle`; switch chorded with a slot key → `jump n`); **the switch inert
+  while any side is held** — no `cycle`, no `jump`, no `draw`, while still
+  blocked, and slot keys in that state firing their slot rather than jumping; switch-chord vs switch-tap (a chord followed by
   release emits no cycle); backtick always blocked, held or tapped, hold state active
   or not; shortcut keys (bare tap → its `tap` verb, tap with any activator held
   → its `chorded` verb, always blocked, any press exiting edit mode while edit

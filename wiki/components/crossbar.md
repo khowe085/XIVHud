@@ -144,7 +144,7 @@ Six keys drive everything, chosen because FFXI does nothing with them:
 | `[` | left side — hold to show it |
 | `]` | right side |
 | `\` | the W-layer — hold with a side for its WXHB bar |
-| `` ` `` | set switch — tap to cycle, hold and press a button to jump |
+| `` ` `` | set switch — tap to cycle, hold and press a button to jump; ignored while a side is held |
 | `=` | Select — opens your map; with a side held, opens the binder |
 | `1`–`8` | the eight slots |
 
@@ -165,7 +165,7 @@ A controller layout that produces them:
 | **RT + RB** | `\` | the WXHB's right side |
 | **LB** tapped | `R` | autorun, native game functionality — the crossbar does not read it |
 | **LB** long-pressed | `\` | held for the draw gesture below |
-| **RB** | `` ` `` | tap cycles sets; hold and press a face button to jump to a set |
+| **RB** | `` ` `` | tap cycles sets; hold and press a face button to jump to one (no trigger held) |
 | **Select** | `=` | your map; with a side held, the binder |
 | **face / D-pad** while LT, RT or RB is held | `1`–`8` | the eight slots |
 
@@ -183,17 +183,25 @@ game buttons, or you cannot play.
 | Y / B / A / X | your usual bindings | `1` `2` `3` `4` — face cluster |
 | D-pad ↑ → ↓ ← | your usual bindings | `5` `6` `7` `8` — D-pad cluster |
 
-The cleanest way to build this is **one action set layer** holding those eight
-bindings, applied while any of the three is held and removed when it is
-released — rather than three separate per-button mode shifts, which have to be
-kept identical by hand. (Steam Input calls the hold-to-apply behaviour a
-*mode shift* on a binding, or an *action set layer* applied on hold; either
-works, and the layer version is the one that stays maintainable.)
+Build this with **button chords**, not action sets. Each of the eight buttons
+gets its normal binding plus **three chord bindings** — one for LT held, one
+for RT, one for RB — each emitting the same number:
 
-**RB must apply that layer too, not just the triggers.** Jumping to a set is
-`` ` `` held plus a slot button — if the layer only follows LT and RT, then
-holding RB gives you a switch key and no numbers to press with it, and set
-jumping silently does nothing.
+```
+Y     → normal binding
+      + chord (LT held) → 1
+      + chord (RT held) → 1
+      + chord (RB held) → 1
+B, A, X, D-pad ↑ → ↓ ←   ... the same, for 2 through 8
+```
+
+Twenty-four chord bindings in total. It is repetitive to enter, but each one
+is explicit and independent, and nothing depends on a layer being applied and
+removed cleanly.
+
+**RB needs its chords too, not just the triggers.** Jumping to a set is
+`` ` `` held plus a slot button — leave RB out and you have a switch key with
+no numbers to press against it, and set jumping does nothing at all.
 
 **The bumpers each carry two or three meanings.** They need Steam's activator
 options — regular press, long press, and chord — rather than a plain binding:
@@ -203,12 +211,12 @@ options — regular press, long press, and chord — rather than a plain binding
 | LB | `R` (autorun) | `\` — the draw-gesture hold | `\` — WXHB left |
 | RB | `` ` `` — cycle / jump | — | `\` — WXHB right |
 
-Two consequences worth knowing before you wonder if something is broken:
+Two more things:
 
-- **Set switching is unavailable while RT is held**, because RB means `\` in
-  that chord — there is no `` ` `` to be had. Release RT first; the same
-  motion works normally from LT.
-- **Nothing should shift Select.** It is `=` in every state, so the binder and
+- **Set switching only works when no side is held.** Holding a side means you
+  are using the crossbar, so the switch key is ignored until you let go — on
+  the pad this falls out naturally, since RB is `\` while RT is held.
+- **Nothing should chord Select.** It is `=` in every state, so the binder and
   the map stay reachable no matter what you are holding.
 
 **Sheathe / unsheathe** is a gesture: hold **LB**, tap **RB**. Mounted, the
