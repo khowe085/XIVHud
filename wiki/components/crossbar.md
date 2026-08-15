@@ -22,9 +22,9 @@ straight to a numbered set.
 Two more bars exist beyond that. The **WXHB** is a second sixteen slots,
 reached by holding the **layer key** with a side — you can keep it on screen
 permanently or have it appear only when you reach for it. **Expanded Hold** is
-a third, reached by holding **both** side keys at once, and it takes over the
-screen from the other two for as long as you hold them; the order you press
-them in chooses between two of these. Both point at whatever set and side you
+a third, though only eight slots rather than sixteen: hold **both** side keys
+at once and it takes over the screen from the other two for as long as you do,
+with the order you pressed them choosing between two of these. Both point at whatever set and side you
 tell them to, so they are extra bars rather than extra storage.
 
 Sets can be **shared** across every job or kept to one, and individual slots
@@ -45,8 +45,18 @@ press them yourself.
 ## Commands
 
 All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
-`<slot>` accepts `1`–`8` or button names (`y`, `b`, `a`, `x`, `up`, `right`,
-`down`, `left`). `<side>` is `l` or `r`.
+`<slot>` accepts `1`–`8` or button names. `<side>` is `l` or `r`.
+
+Slots are numbered from the face buttons, clockwise from the top of each
+cluster — and the D-pad cluster draws on the **left** of the screen, the face
+cluster on the **right**, matching the controller:
+
+| Slot | Button | | Slot | Button |
+| --- | --- | --- | --- | --- |
+| 1 | `y` | | 5 | `up` |
+| 2 | `b` | | 6 | `right` |
+| 3 | `a` | | 7 | `down` |
+| 4 | `x` | | 8 | `left` |
 
 ### Everyday
 
@@ -108,7 +118,8 @@ icon of its own:
 Both follow the same layer prefixes as `bind`, so aliasing
 `ctx:light-arts:1` relabels only what that context puts in the slot. Both need
 something in the slot to act on — on an empty one they report an error rather
-than doing nothing quietly.
+than doing nothing quietly, and `icon` says so too if it cannot find the name
+you gave it.
 
 #### Using your own icons
 
@@ -180,8 +191,8 @@ The addon reads keys. Turning a controller into those keys is Steam Input's
 job, so nothing here is enforced by the addon — any layout that emits the
 right keys works, and a keyboard player can press them directly.
 
-Six keys drive everything, chosen because FFXI does nothing with any of them
-and the crossbar can take them cleanly:
+Six keys drive everything, chosen because the crossbar can take them cleanly
+— the game either does nothing with them or gives them up when asked:
 
 | Key | Role |
 | --- | --- |
@@ -257,11 +268,13 @@ Two more things:
   are using the crossbar, so the switch key is ignored until you let go. From
   RT the pad enforces it as well, since RB emits `\` in that chord; from LT
   the key still arrives and the crossbar is what ignores it.
-- **Nothing should chord Select.** It is `=` in every state, so the binder and
-  the map stay reachable no matter what you are holding.
+- **Leave Select alone.** It is `=` in every state, chorded or not — the
+  crossbar reads the chord itself, so the binder and the map stay reachable
+  whatever you are holding.
 
-**Sheathe / unsheathe** is a gesture: hold **LB**, tap **RB**. Mounted, the
-same gesture dismounts.
+**Sheathe / unsheathe** is a gesture: hold `\` and tap `` ` `` with no side
+held — on the pad, hold **LB** and tap **RB**. Mounted, the same gesture
+dismounts.
 
 ---
 
@@ -289,8 +302,8 @@ Each bar starts pointed at a different set, so nothing duplicates anything:
 the XHB on set 1, the WXHB on set 2, Expanded Hold on set 3.
 
 **Expanded Hold takes the screen over.** It is up only while both side keys
-are down, and it hides the XHB and WXHB for that time; release either key and
-you are back to whatever you had before. Adding the layer key changes nothing
+are down, and it hides the XHB and WXHB for that time; release one and you
+drop straight to the XHB side you are still holding. Adding the layer key changes nothing
 — there is no W version of Expanded Hold. Being eight slots rather than
 sixteen, it draws centred on the XHB's position — the bar you were looking at
 changes contents rather than moving.
@@ -323,7 +336,8 @@ that buff is on you, the context's overrides win.
 
 Scholar is the case this was built for:
 
-- Your base slot is a weaponskill. On Scholar, an override makes it **Light Arts**.
+- On Scholar the slot holds **Light Arts** — the job's own base, since sets
+  are per job unless you share them.
 - Use Light Arts, and the `light-arts` context activates — the same slot
   becomes **Addendum: White**.
 - Use that, and the `addendum-white` context activates — a whole WXHB side
@@ -353,8 +367,9 @@ In edit mode:
   quick. With no layer chosen, dragging a slot to empty space does nothing.
 
 **Getting out.** While edit mode is on the crossbar itself does nothing — no
-side activates and no slot fires — so the only ways out are `//hud crossbar
-edit` again, or **any press of the Select key** (`=`), chorded or not.
+side activates and no slot fires. Leave it with `//hud crossbar edit` again,
+with **any press of the Select key** (`=`), or by entering `//hud layout`,
+which takes over from it.
 
 You can also **drag**: from the action list onto a slot to bind it, from a
 slot onto another slot to swap them entirely, or from a slot onto empty space
@@ -472,8 +487,10 @@ weaponskill and job ability swaps its icon for the skillchain property it
 **Stratagem counts** show on the Scholar abilities that spend them.
 
 **Ninja tool counts** show on ninjutsu slots — how many of that tool you are
-carrying, green while you are well stocked, yellow as it runs down, red under
-about fifty, and the slot crossed out when you have none. On main Ninja the
+carrying, and the slot crossed out when you have none. The colour tells you
+where the count is coming from: **green** when you have more than fifty of the
+tool itself, **yellow** when it takes your master tools to get there, **red**
+when even together they are under fifty. On main Ninja the
 count includes your master tools; on `/NIN` it counts the plain tool only.
 Corsair cards are counted the same way, including Trump Cards.
 

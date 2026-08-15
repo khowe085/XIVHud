@@ -268,21 +268,24 @@ end
 local function on_key(dik, pressed, flags, blocked_in)
   counts.events = counts.events + 1
 
-  -- Probe runs ahead of the model, because it answers a question nothing else
-  -- here measures: can this key be taken from the game at all. It still
-  -- respects the chat box, though - blocking through an open chat line made
-  -- backslash look untypeable in FFXI when it was only this getting in the
-  -- way.
-  if probing and PROBE[dik] and not chat_open() then
+  -- Probe answers a question nothing else here measures: can this key be taken
+  -- from the game at all. It sits after the inbound-blocked check and honours
+  -- the chat box - blocking through an open chat line once made backslash look
+  -- untypeable in FFXI when it was only this getting in the way.
+  --
+  -- A release always consults the latch first, including for keys the probe
+  -- no longer covers: toggling probing off mid-hold must not leak a key-up the
+  -- game never saw a key-down for.
+  if not pressed and latched[dik] and PROBE[dik] then
+    latched[dik] = nil
+    return true
+  end
+  if probing and PROBE[dik] and not blocked_in and not chat_open() then
     if pressed then
       last.note = ("probing %s (dik %d) - anything happen?"):format(PROBE[dik], dik)
       counts.blocked = counts.blocked + 1
       latched[dik] = true
       pcall(refresh)
-      return true
-    end
-    if latched[dik] then
-      latched[dik] = nil
       return true
     end
     return false

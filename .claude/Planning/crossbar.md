@@ -610,8 +610,10 @@ Resolution rules:
   arrives after a side went down must still reach the game, or FFXI sees a key
   held forever). **The latch outranks every guard** (pinned 2026-08-16): if a
   press was blocked, its release is blocked as well, even if chat has since
-  opened, suppression has started, edit mode has been entered, or the release
-  arrives with an inbound `blocked` flag. Releasing a key the game never saw
+  opened, suppression has started, edit mode has been entered, the component
+  has been **disabled**, or the release arrives with an inbound `blocked`
+  flag. Disabling mid-hold is the one case where a key we no longer want is
+  still swallowed once, on its way up. Releasing a key the game never saw
   pressed is the one outcome none of the guards is worth. Blocked at press: **our five dedicated
   keys — both sides, the layer, the switch and the shortcut — whenever the
   component is enabled**, plus
@@ -628,10 +630,8 @@ Resolution rules:
   they stay typeable.
 
   **Verified in-client**: an unchorded key returns cleanly to us and never
-  reaches the game — the property v3 assumed and did not have. **Not yet
-  verified for `;`, `'` and `\` specifically** (see the spike results): the
-  earlier run only exercised blocking on the switch, the shortcut and the
-  number row.
+  reaches the game — the property v3 assumed and did not have. Verified for
+  every key in the map — see the spike results for which test covered which.
 
 Guards, all mandatory (tightened after blind review, 2026-08-06):
 
@@ -659,9 +659,11 @@ Guards, all mandatory (tightened after blind review, 2026-08-06):
   which by the rationale above would open the chat log mid-cutscene and leave
   the component inert once suppression lifted). Slot keys do fall through:
   they are the game's the moment we are not using them.
-- **Disabled**: when the component is switched off entirely, every key falls
-  through, ours included — the keys go back to the game because nothing here
-  wants them.
+- **Disabled**: `visible = false` for the component — `//hud hide crossbar`,
+  or right-click in layout mode (2026-08-16: the framework has no separate
+  "disabled" state, only visibility and suppression, so this is what the word
+  means here). Every key falls through, ours included: the crossbar is off,
+  so the keys go back to the game. Only a latched release is still swallowed.
 - **Inbound `blocked`**: the keyboard event's own `blocked` argument (another
   addon already consumed the key) short-circuits action intents and blocking —
   **all state still tracks** (activators, slot-key down/latch bookkeeping) and
@@ -674,7 +676,8 @@ Guards, all mandatory (tightened after blind review, 2026-08-06):
   until CB8 lands, the `edit` verb and Select-chord reply "binder not yet
   available" instead of setting the flag): the exit key is **any shortcut key
   one of whose verbs is `edit`** (zero such keys → edit mode only via the
-  verb; other shortcut keys are inert and unblocked in edit mode); while edit mode is on, sides, the layer, the switch and
+  verb; other shortcut keys are inert but **still blocked**, like the rest of
+  ours); while edit mode is on, sides, the layer, the switch and
   slot keys fire nothing **though their state still tracks**; our five keys
   stay blocked (same reason as the suppression guard — an unblocked side key would
   open the chat log over the binder), while slot keys fall through. The only
@@ -689,9 +692,11 @@ Two throwaway addons, both under [spikes/](spikes/):
   (`//lua load dikecho`; `//dik echo`).
 - **[inputspike](spikes/inputspike/inputspike.lua)** — added 2026-08-08,
   answers *does the model work and does blocking hold*. A working prototype of
-  `input.lua`: the full v3 hold-state resolution with an on-screen readout,
-  selective blocking with the latch-at-press rule, and every guard (chat,
-  focus, auto-repeat edge detection, inbound `blocked`). Blocking starts OFF;
+  `input.lua`: the v4 hold-state resolution with an on-screen readout,
+  selective blocking with the latch-at-press rule, and **four of the six
+  guards** — chat, focus, auto-repeat edge detection and inbound `blocked`.
+  Suppression and edit mode need the framework, so they are the component's
+  to prove rather than the spike's. Blocking starts OFF;
   the handler is wrapped so an error disables blocking rather than swallowing
   the keyboard, and `//is panic` kills it from the chat box. It closes spike
   items 2 and 6 outright and item 4 partially (held-state booleans, not an
@@ -715,18 +720,21 @@ Results, now platform facts:
   reads its macro chords by a route Windower's keyboard hook does not sit in
   front of. **Consequence**: no key the crossbar wants may be a game-bound
   chord, which is what v4's modifier-free map delivers.
-- **Which punctuation the game will give up** (`//is probe`, 2026-08-16).
-  Blocked on sight and pressed one at a time, a key we can have does nothing
-  at all:
+- **Which keys the game will give up** (2026-08-16). Three different tests
+  contributed, and it matters which, because each answers a different
+  question:
 
-  | Key | Ours? |
-  | --- | --- |
-  | `;` `'` `\` `/` `` ` `` `=` | **yes** — silent under blocking |
-  | `[` `]` | no — `]` hides the game UI, `[` takes a screenshot, and blocking stops neither |
-  | `-` `,` `.` | no — still act in game |
+  | Key | Verdict | How it was established |
+  | --- | --- | --- |
+  | `;` `'` | ours | pressed unblocked: they do nothing in game at all, so there is nothing to take |
+  | `\` `/` | ours | `//is probe` — blocked on sight, and silent |
+  | `` ` `` `=` | ours | `//is block` — they open the chat log unblocked, nothing when blocked |
+  | `1`–`8` | ours while held | `//is block` and `//is bare` — a bare `3` is swallowed |
+  | `[` `]` | **not ours** | `//is probe` — `]` still hides the game UI, `[` still screenshots |
+  | `-` `,` `.` | **not ours** | `//is probe` — still act in game |
 
-  `/` is spare. `[` and `]` were in the run as a control: they misbehaved as
-  expected, which is how we know the probe was live.
+  `/` is spare. `[` and `]` were in the probe run as a control: they
+  misbehaved as expected, which is how we know the probe was live.
 - **The model itself was exercised on the final keys and behaved**: `;`+`\`
   plus a slot key fired the slot exactly once while `repeats` climbed
   separately for as long as the key was held (the auto-repeat guard), and
@@ -795,8 +803,10 @@ recorded here in round 3):
   neither action sets nor mode shifts, both of which he finds too buggy to
   rely on): each of the eight slot buttons carries its normal binding plus one
   chord naming **LT, RT and RB** together, since a Steam chord fires on any of
-  the buttons listed in it (corrected 2026-08-16 — an earlier note had this as
-  three chords apiece). Ten chords in all, the eight slot buttons plus the two
+  the buttons listed in it (Kevin, 2026-08-16 — **not independently verified**,
+  and worth five minutes in the Steam UI before CB5: if a chord takes one
+  button, this is 24 slot chords rather than 8, and both documents are wrong
+  about the count). Ten chords in all, the eight slot buttons plus the two
   bumper-to-trigger pairs that emit `\\`. Leave RB out of the slot chords and
   set jumps have no numbers to chord with.
 - **Set switching is unavailable while a side is held** — the model makes the
@@ -804,10 +814,8 @@ recorded here in round 3):
   braces from RT, where RB emits `\\` rather than backtick; from **LT** the
   backtick does still arrive and the addon is what ignores it.
 
-Known edge, accepted: a bare-key output pressed while a modifier is physically
-down reaches the game modified — e.g. LB's `R` tapped while RT is held arrives as
-Alt+R, not R. Same class as the opener-chord issue; arrange Steam Input
-accordingly.
+(An earlier revision recorded a "bare key pressed under a held modifier
+arrives modified" edge here. v4 holds no modifiers, so it no longer exists.)
 
 `input.lua` emits *intents* (`activate <hold-state id or none>` — release back
 to nothing emits `activate none`, the widget's cue to drop the active
@@ -1101,6 +1109,8 @@ src/components/crossbar/
     slot.png frame.png                       -- xivcrossbar ffxiv theme
     cooldown/frame_01-32.png                 -- radial recast sweep, imported
                                              --   from Petit Trois (decided)
+    red-x.png                                -- ui/, drawn over a slot whose
+                                             --   ninja tool count is zero
     bar_bg_compact.png feedback.png          -- default pack, ui/ (press flash);
     black-square.png frame_step1-8.png       --   recast overlay + frame anim -
                                              --   import-or-synthesise decided at CB4
@@ -1704,8 +1714,10 @@ covers the widget level.
   just internal state);  auto-repeat
   streams firing each action exactly once; inbound-`blocked` events producing
   no action intent and no block while still updating state and `activate`; `lose focus` clearing all held
-  state; suppression/disabled full inertness (nothing blocked, backtick
-  included); an
+  state; **disabled** full inertness (nothing fires, nothing blocked, ours
+  included) against **suppression**, where our five keys stay blocked and only
+  firing stops; a latched release swallowed even after the component is
+  disabled mid-hold; an
   activator still "held" across a suppression transition or reload not stranding
   state.
 - **`bindings.lua`** — per-job load, defaults merge, sets/views resolution (a view
@@ -1894,7 +1906,7 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   and Q11 resolved)*. `bindings.lua` (**layer-aware from day
   one** — retrofitting the stack into flat storage later would be a rewrite),
   `actions.lua`, `roulette.lua`, `warp.lua`, `enchanted.lua`, `openers.lua`,
-  `contexts.lua` (the roster), `defaults.lua` + specs. Still no
+  `contexts.lua` (the roster), `kebab.lua`, `defaults.lua` + specs. Still no
   framework dependency. *Accepts when* a `(job, set, side, slot)` address
   resolves through the full layer stack to the exact command string / key
   sequence / roulette behaviour specified, for every bindable type; the
@@ -1935,8 +1947,8 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   WXHB (its two anchors) and Expanded Hold wired; set jump/cycle; the crossbar
   consuming the `job change`/buff events with per-job reload live (CB5's own
   acceptance depends on them); recast sweep and
-  animation, MP/TP cost, unusable dimming, press feedback, the SCH stratagem counter,
-  ninja tool counts;
+  animation, MP/TP cost, unusable dimming, press feedback, and `counters.lua` — the SCH
+  stratagem counter and ninja tool counts;
   the prim-budget measurement (touchpoint 7); in-client verification of the opener entries and
   the `draw` disengage spelling. *Accepts when* each of the 8 slot keys fires
   the right action in-client, every hold state is reachable with the documented
@@ -1985,12 +1997,14 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
 
 1. **Input map: settled and fully verified in-client (2026-08-16)** — no
    modifiers; `;`/`'` sides, `\` layer, backtick switch, `=`
-   shortcut, number row slots, all config-with-defaults. Every key confirmed free; blocking
-   confirmed for the switch, the shortcut and the number row. Residue: **(a)** injected-key
+   shortcut, number row slots, all config-with-defaults. Every key confirmed free and confirmed
+   takeable from the game. Residue: **(a)** injected-key
    echo — one console command, before CB2; **(b)** the layout-mode interaction — layout mode uses plain CTRL for
    free-drag, which v4 no longer touches at all, but component keyboard
-   dispatch (touchpoint 1) is still built **inert-during-layout-mode** so the
-   two can never contend. Verified in-client at CB4.
+   dispatch (touchpoint 1) **fires nothing during layout mode** so the two can
+   never contend, while **our five keys stay blocked there** (pinned
+   2026-08-16) — otherwise placing the four anchors would open the chat log
+   with every `;`. Verified in-client at CB4.
 2. **Does event-level blocking suffice without `unbind`? Answered
    2026-08-08: yes for unchorded keys, no for modified ones.** `return true`
    swallows a bare key completely but does not stop FFXI acting on a Ctrl/Alt
@@ -2083,10 +2097,11 @@ Seven notices apply and all must land in `assets/LICENSE.txt` (re-verified
 Square Enix's underlying rights in the icon artwork are unaddressed by any of
 these — see Q7. Our own source files keep the repo's BSD headers, holder
 **Azureblood2** — with two exceptions pinned in round 3, because BSD clause 1
-wants the original notice retained in derived *source*: `skillchain.lua`
-(transcribed tables) carries Ivaar's header, `roulette.lua` (ported module)
-carries Dean James's, and `warp.lua` carries from20020516's — each alongside
-ours.
+wants the original notice retained in derived *source*, five files carry an
+upstream header alongside ours: `skillchain.lua` (Ivaar's, for the transcribed
+tables), `roulette.lua` (Dean James's), `warp.lua` (from20020516's),
+`render.lua` (WG Incorporated's, for the sweep algorithm) and, if touchpoint 6
+promotes it, `lib/icons.lua` (Rubenator's).
 
 ## References
 
