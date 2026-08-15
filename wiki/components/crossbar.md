@@ -270,7 +270,9 @@ nothing appearing or disappearing as you play.
 
 **Expanded Hold takes the screen over.** It is up only while both side keys
 are down, and it hides the XHB and WXHB for that time; release either key and
-you are back to whatever you had before.
+you are back to whatever you had before. Being eight slots rather than
+sixteen, it draws centred on the XHB's position — the bar you were looking at
+changes contents rather than moving.
 
 Each of these bars is positioned separately in `//hud layout`, along with the
 skillchain indicator, so a permanently-visible WXHB can live somewhere the
@@ -447,4 +449,5 @@ count includes your master tools; on `/NIN`, which cannot use them, it does
 not. Corsair cards work the same way, counting Trump Cards.
 
 **Positioning.** The XHB, the WXHB and the skillchain indicator each move and
-scale independently in `//hud layout`.
+scale independently in `//hud layout`. Expanded Hold follows the XHB, since it
+only ever appears in the XHB's place.

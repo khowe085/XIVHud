@@ -936,8 +936,13 @@ Beyond the wholesale rejection of its input model and slot order:
 - **Position, scale and visibility belong to the framework.** Drop `Style.OffsetX/Y`
   and the `ui_y_res - 120` anchor; the widget is dragged in `//hud layout` and its
   state lives in layout slots. Scale multiplies the 40 px slot, the spacing, the font
-  and every offset. Three anchors — `main` (the XHB), `wxhb`, `indicator` (skillchain) — each independently positioned
-  (touchpoint 2).
+  and every offset. **Three** anchors — `main` (the XHB), `wxhb`,
+  `indicator` (skillchain) — each independently positioned (touchpoint 2).
+  **Expanded Hold has no anchor of its own** (decided 2026-08-15): it is the
+  only bar that *replaces* rather than coexists, so it draws **centred on the
+  `main` anchor's footprint** — eight slots centred across the XHB's sixteen,
+  which is where the reader is already looking. Upstream does the same, its
+  Expanded bars sitting at `+150` between the XHB halves at `0` and `+300`.
 - **The bar is persistent, not hold-to-show** (corrected 2026-08-15 by Kevin;
   earlier revisions of this plan had it appearing on a held key, which was
   wrong). While the component is visible, something is always on screen; the
@@ -951,7 +956,8 @@ Beyond the wholesale rejection of its input model and slot order:
   | both side keys held | **hidden** | **hidden** | **visible, active** |
 
   So the WXHB appears on demand when `always_show_wxhb` is off, and Expanded
-  Hold always replaces the others for as long as it is held. **Active** is
+  Hold always replaces the others for as long as it is held — drawing centred
+  on the `main` anchor, where the XHB it replaced was. **Active** is
   drawn as a panel behind that side (the reference's
   `bar_bg_compact.png`, repositioned onto whichever bar is active,
   `ui.lua:862-866`); inactive sides render normally, undimmed.
@@ -1052,10 +1058,10 @@ tap-vs-chord logic is testable at all.
    needs `blocked`. The guard's `false`
    fallback stays — a dead handler must never keep swallowing the keyboard.
 2. **Multi-anchor widget contract (decided 2026-08-05: extend the contract, not a
-   second widget).** A widget may expose N named anchors — here `main` (XHB +
-   Expanded Hold display), `wxhb`, and `indicator` (skillchain — Q5, resolved;
-   provisioned at CB3, populated at CB6) — each with its
-   own pos, scale and layout-mode bounds. Touches: the layout-slot schema
+   second widget).** A widget may expose N named anchors — here `main` (the XHB,
+   and Expanded Hold when it replaces it), `wxhb`, and `indicator`
+   (skillchain — Q5, resolved; provisioned at CB3, populated at CB6) — each
+   with its own pos, scale and layout-mode bounds. Touches: the layout-slot schema
    (per-anchor `pos`/`scale` nested under the component's slot entry),
    `layout_mode` hit-testing and drag (per anchor, not per widget), `overlay`
    (one highlight per anchor), the contract members
@@ -1681,8 +1687,8 @@ covers the widget level.
   stratagem-consuming abilities carry the number.
 - **Visibility and activation** (`render.lua`'s plan): the full state table —
   XHB always drawn, WXHB drawn on `always_show_wxhb` or its own gesture,
-  Expanded replacing both while held and restoring them on release; the
-  active-side panel following the held key and clearing when nothing is held;
+  Expanded replacing both while held, drawn centred on the `main` anchor,
+  and restoring them on release; the active-side panel following the held key and clearing when nothing is held;
   no side active while the component is suppressed or hidden.
 - **`render.lua`** — compact cross geometry for all 8 slots against the constants in
   Reference facts **using our slot map**; per-anchor scale; per-anchor bounds; the radial recast sweep — observed-maximum
