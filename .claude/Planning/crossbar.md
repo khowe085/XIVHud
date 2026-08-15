@@ -732,13 +732,11 @@ Results, now platform facts:
   separately for as long as the key was held (the auto-repeat guard), and
   with the chat box open `;` typed into it normally (the chat guard handing
   our keys back).
-- **Whether `\` can be typed into FFXI's chat is still open.** It did not
-  appear during the probe run, and an earlier revision of this plan wrote that
-  up as a game limitation — wrongly: the spike's probe mode blocked ahead of
-  its own chat guard, so the key never reached the game to be refused. The
-  probe now stands down while the chat box has focus, and this wants one
-  re-test with `//is block` on and probing off. Every key must stay typeable
-  in chat; that is what the chat guard is for.
+- **Every key stays typeable in chat, `\` included** (confirmed 2026-08-16).
+  An earlier revision recorded backslash as untypeable in FFXI; that was the
+  spike's probe mode blocking ahead of its own chat guard, not the game. With
+  the probe standing down while the chat box has focus, the key types
+  normally — which is the chat guard doing what it exists for.
 - **`setkey` is the injection mechanism** and its key names parse as guessed:
   `//setkey e down` answers `Setting key code "e" to state: down`.
 - **The `flags` parameter is populated**: Ctrl+3 arrives with `flags=4` on the
