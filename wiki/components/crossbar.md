@@ -133,6 +133,7 @@ picture.
 | `//hud crossbar share <set> on\|off` | share a set across every job, or keep it to this one |
 | `//hud crossbar cycle <set> drawn\|sheathed\|both\|none` | choose which rotations a set belongs to |
 | `//hud crossbar view <wxhb-l\|wxhb-r\|exp-lr\|exp-rl> <set> <l\|r>` | point a view at a set and side |
+| `//hud crossbar wxhb [on\|off]` | keep the WXHB on screen at rest, or show it only while held — omit the argument to report the setting |
 
 ### Inspection
 
@@ -262,10 +263,10 @@ While the component is visible, this is what you see:
 The active side is marked with a panel drawn behind it, so it is obvious
 which eight buttons are live.
 
-**Always show WXHB** is a setting. Leave it off and the WXHB only appears
-while you are holding for it, which keeps the resting HUD to sixteen slots;
-turn it on and both bars sit there permanently, thirty-two slots, nothing
-appearing or disappearing as you play.
+Whether the WXHB rests on screen is up to you — `//hud crossbar wxhb on|off`.
+Off, it appears only while you are holding for it, which keeps the resting HUD
+to sixteen slots; on, both bars sit there permanently, thirty-two slots, with
+nothing appearing or disappearing as you play.
 
 **Expanded Hold takes the screen over.** It is up only while both side keys
 are down, and it hides the XHB and WXHB for that time; release either key and

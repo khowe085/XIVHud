@@ -1341,6 +1341,7 @@ one-line hint, consistent chat prefix.
 //hud crossbar icon <set> <l|r> <slot> [<icon>]    -- re-icon a slot; omit <icon> to clear
 //hud crossbar list [<set>]                        -- bindings on this job
 //hud crossbar view <wxhb-l|wxhb-r|exp-lr|exp-rl> <set> <l|r>   -- repoint a view
+//hud crossbar wxhb [on|off]                      -- WXHB on screen at rest; no argument reports
 //hud crossbar share <set> on|off                  -- shared (all jobs) vs job-specific
 //hud crossbar cycle <set> drawn|sheathed|both|none -- with args: rotation membership per weapon state
 //hud crossbar swap <set> <l|r> <slot> <set> <l|r> <slot>  -- swap two slots' ENTIRE stacks
@@ -1671,7 +1672,8 @@ covers the widget level.
   released on unload.
 - **`crossbar_commands_spec.lua`** (added after review — the CLI previously had
   no spec): every verb happy-path, the layer prefixes (`sub:`, `ctx:<name>:`),
-  slot-name aliases, `swap` addressing, `alias`/`icon` writing only the
+  slot-name aliases, `swap` addressing, `wxhb` toggling and reporting
+  `always_show_wxhb`, `alias`/`icon` writing only the
   `alias`
   and `icon` on the addressed entry, honouring layer prefixes, clearing when
   the final argument is omitted, and refusing an empty slot or an
