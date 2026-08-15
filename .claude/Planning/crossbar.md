@@ -772,9 +772,11 @@ recorded here in round 3):
 - The layout is built **entirely from button chords** (Kevin, 2026-08-15 —
   neither action sets nor mode shifts, both of which he finds too buggy to
   rely on): each of the eight slot buttons carries its normal binding plus one
-  chord per activator, **LT, RT and RB**. Twenty-four
-  chord bindings, each explicit and independent of any layer applying and
-  releasing cleanly. Leave RB out and set jumps have no numbers to chord with.
+  chord naming **LT, RT and RB** together, since a Steam chord fires on any of
+  the buttons listed in it (corrected 2026-08-16 — an earlier note had this as
+  three chords apiece). Ten chords in all, the eight slot buttons plus the two
+  bumper-to-trigger pairs that emit `\\`. Leave RB out of the slot chords and
+  set jumps have no numbers to chord with.
 - **Set switching is unavailable while a side is held** — the model makes the
   switch inert there (see the hold-state rules). On the pad this is belt and
   braces from RT, where RB emits `\\` rather than backtick; from **LT** the

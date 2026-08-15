@@ -219,45 +219,38 @@ A controller layout that produces them:
 
 ### Button chords
 
-Several controls mean different things depending on what else is held, and
-setting those up is most of the work of building the layout. All of it is done
-with **button chords** — a binding that only fires while another button is
-held. Nothing here uses action sets or mode shifts.
+Several controls mean different things depending on what else is held. All of
+it is done with **button chords** — a binding that only fires while another
+button is held. Nothing here uses action sets or mode shifts.
 
-**The face buttons and D-pad carry the eight slots — but only while you are
-reaching for the crossbar.** The rest of the time they have to be your normal
-game buttons, or you cannot play.
+The face buttons and D-pad carry the eight slots while you are reaching for
+the crossbar, and are your normal game buttons the rest of the time. Steam
+lets one chord list several trigger buttons and fire on **any of them**, so
+each slot button needs one chord rather than three:
 
-| Control | Nothing held | LT, RT **or RB** held |
-| --- | --- | --- |
-| Y / B / A / X | your usual bindings | `1` `2` `3` `4` — face cluster |
-| D-pad ↑ → ↓ ← | your usual bindings | `5` `6` `7` `8` — D-pad cluster |
+| Chord | Emits |
+| --- | --- |
+| Y + LT, RT or RB | `1` |
+| B + LT, RT or RB | `2` |
+| A + LT, RT or RB | `3` |
+| X + LT, RT or RB | `4` |
+| D-pad ↑ + LT, RT or RB | `5` |
+| D-pad → + LT, RT or RB | `6` |
+| D-pad ↓ + LT, RT or RB | `7` |
+| D-pad ← + LT, RT or RB | `8` |
+| LB + LT | `\` |
+| RB + RT | `\` |
 
-Each of the eight buttons gets its normal binding plus **three chords** — one
-for LT held, one for RT, one for RB — each emitting the same number:
+Ten chords. Everything else on the pad is a plain binding, listed in the table
+above.
 
-```
-Y     → normal binding
-      + chord (LT held) → 1
-      + chord (RT held) → 1
-      + chord (RB held) → 1
-B, A, X, D-pad ↑ → ↓ ←   ... the same, for 2 through 8
-```
-
-Twenty-four chords in total. It is repetitive to enter, but each one is
-explicit and independent of the others.
-
-**RB needs its chords too, not just the triggers.** Jumping to a set is
+**RB belongs in the slot chords, not just the triggers.** Jumping to a set is
 `` ` `` held plus a slot button — leave RB out and you have a switch key with
 no numbers to press against it, and set jumping does nothing at all.
 
-**The bumpers each carry two or three meanings**, so they need a regular
-press, a long press, and a chord rather than one plain binding:
-
-| Control | Regular press | Long press | While its trigger is held |
-| --- | --- | --- | --- |
-| LB | `R` (autorun) | `\` — the draw-gesture hold | `\` — WXHB left |
-| RB | `` ` `` — cycle / jump | — | `\` — WXHB right |
+**The bumpers need more than one binding each.** LB is `R` on a regular press
+and `\` on a long press; RB is `` ` `` on a press. Their chords are in the
+table above.
 
 Two more things:
 
