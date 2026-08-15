@@ -193,9 +193,7 @@ and the crossbar can take them cleanly:
 | `1`–`8` | the eight slots — but only while a side or the switch is held; otherwise they reach the game as usual |
 
 You can still type them: once the chat box has focus the crossbar hands every
-key back, so `;` and the rest reach your message normally. (`\` is the
-exception, and not because of the crossbar — FFXI will not take a backslash
-as chat input either way.)
+key back, so they all reach your message normally.
 
 **No modifiers are used**, deliberately. FFXI's own macros live on Ctrl and
 Alt plus the number row, and the game acts on those chords by a route addons

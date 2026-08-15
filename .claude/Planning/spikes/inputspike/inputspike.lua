@@ -268,9 +268,12 @@ end
 local function on_key(dik, pressed, flags, blocked_in)
   counts.events = counts.events + 1
 
-  -- Probe runs ahead of everything: it exists to answer "can this key be
-  -- taken from the game at all", which nothing else here measures.
-  if probing and PROBE[dik] then
+  -- Probe runs ahead of the model, because it answers a question nothing else
+  -- here measures: can this key be taken from the game at all. It still
+  -- respects the chat box, though - blocking through an open chat line made
+  -- backslash look untypeable in FFXI when it was only this getting in the
+  -- way.
+  if probing and PROBE[dik] and not chat_open() then
     if pressed then
       last.note = ("probing %s (dik %d) - anything happen?"):format(PROBE[dik], dik)
       counts.blocked = counts.blocked + 1
@@ -316,9 +319,6 @@ local function on_key(dik, pressed, flags, blocked_in)
     held.switch = pressed
   end
 
-  -- Slot-key down-state is bookkeeping, not action: releases must clear it
-  -- even when a guard below swallows the rest, or the next press after chat
-  -- closes reads as an auto-repeat. (Round 11.)
   -- Slot-key down-state is bookkeeping, not action: it tracks through every
   -- guard, in both directions. Tracking only releases meant a key held down
   -- while typing read as a fresh press when chat closed.
