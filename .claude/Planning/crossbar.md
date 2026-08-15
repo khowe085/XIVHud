@@ -12,10 +12,12 @@ whose widget occupies more than one place on screen.
 
 ## Goal
 
-FFXIV's **Cross Hotbar (XHB)** for FFXI: hold a trigger and two four-slot crosses
-appear — the D-pad cluster and the face-button cluster — showing each bound action's
-icon, name, cost, recast and skillchain property, and firing it when the button is
-pressed.
+FFXIV's **Cross Hotbar (XHB)** for FFXI: a persistent sixteen-slot bar of
+four-slot crosses — D-pad and face-button clusters, eight slots a side —
+showing each bound action's icon, name, cost, recast and skillchain property.
+Holding a side key makes that side **active** (panel behind it, its eight
+buttons live); the bar itself is on screen either way. See the visibility
+table under Deviations.
 
 **The spec is Square Enix's XHB.** The FFXIV UI guide and the akhmorning controller
 guide (References) define the behaviour.
@@ -507,12 +509,13 @@ prose rules below are normative where they elaborate:
 
 | Input (default DIKs) | Result |
 | --- | --- |
-| `[` (26) held | left side, active set |
-| `]` (27) held | right side, active set |
-| `[` + `\` (43) held | the `wxhb_left` view |
-| `]` + `\` held | the `wxhb_right` view |
-| `[`+`]` held, `[` first | the `expanded_lr` view |
-| `[`+`]` held, `]` first | the `expanded_rl` view |
+| nothing held | XHB on screen, no side active |
+| `[` (26) held | XHB **left side active** |
+| `]` (27) held | XHB **right side active** |
+| `[` + `\` (43) held | WXHB shown if hidden, **left side active** |
+| `]` + `\` held | WXHB shown if hidden, **right side active** |
+| `[`+`]` held, `[` first | XHB and WXHB hidden; **`expanded_lr` shown, active** |
+| `[`+`]` held, `]` first | XHB and WXHB hidden; **`expanded_rl` shown, active** |
 | `\` held + `` ` `` (41) tapped, **no side active**, no slot key chorded | fire the `draw` toggle |
 | `` ` `` held + slot key *n* | jump to set *n* (any set) — **switch-held takes precedence over slot fire**, sides held or not (the FFXIV motion is trigger + switch + button) |
 | `` ` `` tapped alone (incl. inside a WXHB view, where `\` is necessarily held — that taps `cycle`, it does not draw) | cycle to the next non-empty set in the current weapon state's rotation |
@@ -901,13 +904,25 @@ Beyond the wholesale rejection of its input model and slot order:
   state lives in layout slots. Scale multiplies the 40 px slot, the spacing, the font
   and every offset. Three anchors — `main` (the XHB), `wxhb`, `indicator` (skillchain) — each independently positioned
   (touchpoint 2).
-- **`show()` means permitted, not drawn** (round 8 — the crossbar is the
-  first widget that is normally invisible while framework-visible):
-  framework `show()` grants permission; the component draws only while a hold
-  state is active (or in preview/edit). `get_bounds` answers from the anchors'
-  last-known geometry regardless, so the clamp and layout-mode hit-testing
-  keep working; `//hud list` will report "shown" for a bar that is usually
-  not on screen — accepted. Pinned before CB4.
+- **The bar is persistent, not hold-to-show** (corrected 2026-08-15 by Kevin;
+  earlier revisions of this plan had it appearing on a held key, which was
+  wrong). While the component is visible, something is always on screen; the
+  held keys choose which part is **active**, not whether anything is drawn.
+
+  | State | XHB | WXHB | Expanded |
+  | --- | --- | --- | --- |
+  | nothing held | visible, **inactive** | visible only if `always_show_wxhb` | hidden |
+  | an XHB side held | visible, **that side active** | as above | hidden |
+  | a WXHB side held | visible, inactive | **visible, that side active** | hidden |
+  | both side keys held | **hidden** | **hidden** | **visible, active** |
+
+  So the WXHB appears on demand when `always_show_wxhb` is off, and Expanded
+  Hold always replaces the others for as long as it is held. **Active** is
+  drawn as a panel behind that side (the reference's
+  `bar_bg_compact.png`, repositioned onto whichever bar is active,
+  `ui.lua:862-866`); inactive sides render normally, undimmed.
+  `show()`/`hide()` remain framework-owned and mean what they do for every
+  other component.
 - **Auto-hide is framework-owned.** The `event` / `zoning` / `logged_out` suppression
   set replaces the addon's own `status change` handling. Interaction to verify
   in-client: a trigger held across a cutscene boundary must not strand a side on
@@ -1141,11 +1156,16 @@ tap-vs-chord logic is testable at all.
    `origin/dev` into this worktree on 2026-08-08 (HEAD `12cdd4c`) brought
    equipviewer in, so the promotion can be authored here with both callers
    present.
-7. **Prim budget.** 8 slots × ~9 prims per displayed bar, × 2 bars (XHB and WXHB are
-   *allocated* together as headroom — only one hold state displays at a time) + indicator — but *displayed* sides, not stored sets: sets are data,
-   so switching sets repaints prims rather than multiplying them. Roughly 150 prims
-   live; hiding vs destroying on side-swap is a CB5 measurement, not a guess. The
-   binder panel adds its own prims in edit mode only.
+7. **Prim budget** (revised 2026-08-15, after the persistent-bar correction —
+   the earlier figure assumed one bar on screen at a time and was far too
+   low). A *bar* is two sides = 16 slots; at ~9 prims a slot that is ~144
+   prims per bar. Worst resting case is XHB + WXHB both drawn = **~290
+   prims**, plus the active panel and the skillchain indicator. Expanded
+   replaces rather than adds, so it is not additive. Sets are data — switching
+   sets repaints existing prims rather than allocating more, and the six
+   hold states share the same three bars' worth of prims. Whether the WXHB's
+   prims are destroyed or merely hidden when `always_show_wxhb` is off is a
+   CB5 measurement, not a guess. The binder adds its own in edit mode only.
 
 ## Settings (defaults, in `data/<Character>/crossbar.lua`)
 
@@ -1170,6 +1190,8 @@ Bindings live in the per-job files (below), not here.
       [13] = { tap = "open map", chorded = "edit" },  -- '=' ; pad Select
     },
   },
+  always_show_wxhb = false,        -- WXHB on screen at rest, or only while its
+                                   -- own gesture is held (FFXIV's own option)
   views = {                        -- what WXHB / Expanded Hold display: set + side
     -- note: with active_set = 1 these defaults make WXHB mirror the XHB until
     -- repointed; harmless, but the W-layer looks inert on first run
@@ -1596,6 +1618,11 @@ covers the widget level.
   the named regression — **the counter drawing on `RDM/SCH` as well as `SCH`**
   (Kevin's own fix), while a non-SCH job draws nothing. Only the sixteen
   stratagem-consuming abilities carry the number.
+- **Visibility and activation** (`render.lua`'s plan): the full state table —
+  XHB always drawn, WXHB drawn on `always_show_wxhb` or its own gesture,
+  Expanded replacing both while held and restoring them on release; the
+  active-side panel following the held key and clearing when nothing is held;
+  no side active while the component is suppressed or hidden.
 - **`render.lua`** — compact cross geometry for all 8 slots against the constants in
   Reference facts **using our slot map**; per-anchor scale; per-anchor bounds; the radial recast sweep — observed-maximum
   denominator (raised when a larger value arrives, cleared at zero, correct
@@ -1639,10 +1666,12 @@ covers the widget level.
 - **Widget level** — per-anchor group move, destroy disposes every prim, render plan
   → prim calls, preview mode showing sample sides and restoring live state on exit.
 
-In-client smoke (Windows/Windower, per milestone): a side appears on activator-hold
-and vanishes on release; each of the 8 slot keys fires the right action; the
-layer key reaches both WXHB views and both side press orders reach the
-right Expanded view;
+In-client smoke (Windows/Windower, per milestone): the XHB sits on screen with
+nothing lit, a held side key lights that side and releasing unlights it, the
+WXHB obeys `always_show_wxhb` and appears on its own gesture regardless,
+Expanded replaces both while held and restores them on release; each of the 8
+slot keys fires the right action; both side press orders reach the right
+Expanded view;
 typing in chat fires nothing and the number keys reach the chat box; jump reaches
 any set while cycle skips empties and visits the drawn vs sheathed rotation
 (engage manually -> combat rotation; kill the mob -> it stays; press draw ->
@@ -1707,8 +1736,8 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   (a few icons per imported category, hand-listed per the partylist
   convention, `XIVHud.lua:698-743` — see Packaging consideration), and the
   `lib/` extractor promotion (touchpoint 6) if item slots are to show real
-  item art, registered, XHB anchor only, one side, no
-  recast/cost yet. **Until CB7 lands, milestone verification authors bindings
+  item art, registered, XHB anchor only — **the persistent 16-slot XHB with
+  its active-side panel**, no recast/cost yet. **Until CB7 lands, milestone verification authors bindings
   by hand-editing `data/<Character>/crossbar/<MAIN>.lua` (and `SHARED.lua` for
   the shared-set acceptance)** — the file format is
   deliberately readable for exactly this. *Accepts when* holding a trigger
@@ -1747,7 +1776,8 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   reference fork; **and the drag matrix and tooltips behave as specified**
   (all four gestures, the layer-only unbind, tooltips from known data).
 - **Backlog** (order TBD): auto-switch on draw/sheathe; "return to XHB after WXHB
-  input"; face-buttons-only WXHB; non-compact layout; theme + icon-pack resolution;
+  input"; face-buttons-only WXHB (note: "always display WXHB" left the backlog
+  2026-08-15 — it is core config now that the bar is persistent); non-compact layout; theme + icon-pack resolution;
    consumables, and the rest of the enchanted-item
   surface beyond what `warp` needs (xivcrossbar's `enchanteditem` bind type
   for arbitrary items — `enchanted.lua` lands at CB1 as warp's dependency, so

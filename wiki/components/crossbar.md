@@ -6,23 +6,27 @@
 
 ## What it is
 
-FFXIV's Cross Hotbar, for FFXI. Hold one of two **side keys** and two
-four-slot crosses appear over your HUD — a D-pad cluster on the left, a
-face-button cluster on the right, eight slots between them. Each slot shows
-what is bound to it, whether it is ready, and what it costs. Press the
-matching button while the key is held and the action fires; let go and the
-bar goes away.
+FFXIV's Cross Hotbar, for FFXI. A bar of sixteen slots sits on your HUD,
+arranged as four-slot crosses — D-pad clusters and face-button clusters, eight
+slots on its **left side** and eight on its **right**. Each slot shows what is
+bound to it, whether it is ready, and what it costs.
 
-Those sixteen slots — eight per side — are a **set**, and you have eight sets.
-Tapping the **switch key** moves to the next one; holding it and pressing a
-button jumps straight to a numbered set.
+The bar is **always on screen**. Holding one of two **side keys** does not
+summon it — it makes that side **active**, marked with a panel behind it, and
+the eight buttons of that side now fire what they show. Let go and the bar
+stays where it is, just with nothing lit.
 
-Two more bars sit on top of that. Holding the **layer key** together with a
-side gives you a second pair of crosses — FFXIV calls this the **WXHB**.
-Holding **both** side keys gives you another, **Expanded Hold**, where the
-order you press them in chooses between two of them. Each points at whatever
-set and side you tell it to, so they are extra bars rather than extra
-storage.
+Those sixteen slots are a **set**, and you have eight sets. Tapping the
+**switch key** moves to the next one; holding it and pressing a button jumps
+straight to a numbered set.
+
+Two more bars exist beyond that. The **WXHB** is a second sixteen slots,
+reached by holding the **layer key** with a side — you can keep it on screen
+permanently or have it appear only when you reach for it. **Expanded Hold** is
+a third, reached by holding **both** side keys at once, and it takes over the
+screen from the other two for as long as you hold them; the order you press
+them in chooses between two of these. Both point at whatever set and side you
+tell them to, so they are extra bars rather than extra storage.
 
 Sets can be **shared** across every job or kept to one. Individual slots can
 be overridden for a particular subjob, or change themselves while a buff is up
@@ -155,11 +159,11 @@ A controller layout that produces them:
 
 | Pad input | Emits | You get |
 | --- | --- | --- |
-| **LT** held | `[` | left side of the active set |
-| **RT** held | `]` | right side |
-| **LT + RT** | both | Expanded Hold — which one depends on the order you pressed them |
-| **LT + LB** | `\` | WXHB left (let go of LB and you are back on the left side) |
-| **RT + RB** | `\` | WXHB right |
+| **LT** held | `[` | activates the XHB's left side |
+| **RT** held | `]` | activates its right side |
+| **LT + RT** | both | Expanded Hold takes over the screen — which one depends on the order you pressed them |
+| **LT + LB** | `\` | activates the WXHB's left side (bringing it on screen if it was not) |
+| **RT + RB** | `\` | the WXHB's right side |
 | **LB** tapped | `R` | autorun, native game functionality — the crossbar does not read it |
 | **LB** long-pressed | `\` | held for the draw gesture below |
 | **RB** | `` ` `` | tap cycles sets; hold and press a face button to jump to a set |
@@ -177,6 +181,34 @@ Two things to know when building the layout:
 same gesture dismounts.
 
 ---
+
+## What is on screen
+
+The crossbar does not come and go as you press things. While the component is
+visible at all, this is what you see:
+
+| While you hold | XHB | WXHB | Expanded Hold |
+| --- | --- | --- | --- |
+| nothing | on screen, nothing lit | on screen if you asked for it | hidden |
+| an XHB side | **that side lit** | as above | hidden |
+| a WXHB side | on screen, nothing lit | **on screen, that side lit** | hidden |
+| both side keys | hidden | hidden | **on screen and lit** |
+
+The lit side is marked with a panel drawn behind it, so it is obvious which
+eight buttons are live.
+
+**Always show WXHB** is a setting. Leave it off and the WXHB only appears
+while you are holding for it, which keeps the resting HUD to sixteen slots;
+turn it on and both bars sit there permanently, thirty-two slots, nothing
+appearing or disappearing as you play.
+
+**Expanded Hold always replaces** the other two rather than adding to them —
+it is on screen only while both side keys are down, and the moment you release
+one you are back to whatever you had before.
+
+Each of these bars is positioned separately in `//hud layout`, along with the
+skillchain indicator, so a permanently-visible WXHB can live somewhere the
+XHB is not.
 
 ## Layers: how a slot decides what to show
 
