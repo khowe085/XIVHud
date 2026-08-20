@@ -1,0 +1,2794 @@
+--[[
+Copyright © 2026, Azureblood2
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of XIVHud nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL Azureblood2 BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+]]
+
+--[[ The CB5 crossbar: the persistent cross hotbar, live. Slot presses
+     execute their bound actions (bindings from the directory store through
+     actions.resolve into ctx.send_command), all three bars own prims - the
+     XHB, the WXHB's two separately-anchored halves, and Expanded Hold
+     centred on main - and the per-frame tick drives the recast sweep,
+     MP/TP costs, unusable dimming, the stratagem and ninja-tool counters,
+     the press flash, the item-icon extraction queue and the pending-warp
+     state machine.
+
+     The ctx's prim constructors are optional on purpose: without new_image
+     the widget runs headless - input machine, bindings, execution, anchors,
+     real bounds - which is what the CB2/CB3-era specs exercise and what safe
+     degradation looks like if the entry point ever hands out less than it
+     should. Every other ctx member is likewise guarded: a missing accessor
+     reads as "the client has nothing to say", never a crash.
+
+     The guards wire to what already exists: chat/suppression/layout-mode
+     come from ctx, `disabled` is the widget's own visibility (core owns
+     whether it is on screen), and edit mode does not exist until CB8. ]]
+
+local new_input = require("components/crossbar/input")
+local new_render = require("components/crossbar/render")
+local new_actions = require("components/crossbar/actions")
+local new_bindings = require("components/crossbar/bindings")
+local new_commands = require("components/crossbar/commands")
+local new_roulette = require("components/crossbar/roulette")
+local new_warp = require("components/crossbar/warp")
+local enchanted = require("components/crossbar/enchanted")
+local counters = require("components/crossbar/counters")
+local openers = require("components/crossbar/openers")
+local new_skillchain = require("components/crossbar/skillchain")
+local new_retry = require("components/crossbar/retry")
+local new_travel = require("components/crossbar/travel")
+local new_catalog = require("components/crossbar/catalog")
+local new_binder = require("components/crossbar/binder")
+local new_icon_cache = require("lib/icon_cache")
+local build_defaults = require("components/crossbar/defaults")
+
+local ANCHORS = { "main", "wxhb_left", "wxhb_right", "indicator" }
+
+--[[ The five slot groups, in prim-construction order (a spec contract): the
+     XHB's two sides on the main anchor, the WXHB's halves on their own
+     anchors, and Expanded Hold's single side centred on main. `flag` names
+     the render.visible plan key that shows the group; the expanded row has
+     none - its plan entry carries the active hold state, not a boolean, and
+     refresh keys it on group.key instead. ]]
+local GROUPS = {
+  { key = "xhb_left", bar = "xhb", side = "left", anchor = "main", flag = "xhb" },
+  { key = "xhb_right", bar = "xhb", side = "right", anchor = "main", flag = "xhb" },
+  { key = "wxhb_left", bar = "wxhb", side = "left", anchor = "wxhb_left", flag = "wxhb_left" },
+  { key = "wxhb_right", bar = "wxhb", side = "right", anchor = "wxhb_right", flag = "wxhb_right" },
+  { key = "expanded", bar = "expanded", side = "left", anchor = "main" },
+}
+
+local ASSETS = "components/crossbar/assets/"
+local SLOT_COUNT = 8
+local MOUNTED_BUFF = 252
+-- Namespaced so a real MyHome on another character neither triggers nor is
+-- triggered by us; the receiver matches it exactly.
+local IPC_WARP_MESSAGE = "xivhud crossbar warp"
+-- GearSwap's names for the two equip slots the warp ladder can touch.
+local GS_SLOT_NAMES = { [0] = "main", [13] = "ring1" }
+-- The pending warp's wall-clock ceiling. enchanted.step abandons any wait
+-- whose REMAINING delay exceeds 30s, so a wait it accepts must finish inside
+-- that bound; the extra 15s covers equip latency and a set_equip that
+-- silently no-opped (Windower drops mismatched args), which would otherwise
+-- freeze activation_time and answer "wait" forever.
+local WARP_DEADLINE_SECONDS = 45
+-- Upstream's fixed overlay alpha for the recast sweep and the red X.
+local OVERLAY_ALPHA = 150
+-- The tool-count colour bands, upstream's own RGB (ui.lua:963-967).
+local TOOL_COLORS = {
+  green = { 0, 255, 0 },
+  yellow = { 255, 255, 0 },
+  red = { 255, 0, 0 },
+}
+-- The stratagem count is a plain number, drawn in explicit white.
+local STRATAGEM_COLOR = { 255, 255, 255 }
+-- The skillchain indicator's shipped colours and opacity - the fallbacks
+-- when the config's skillchain block is hand-broken - and its constant
+-- black backdrop (upstream's own 150-alpha black).
+local SC_WAITING_COLOR = { r = 237, g = 28, b = 36 }
+local SC_OPEN_COLOR = { r = 15, g = 205, b = 5 }
+local SC_OPACITY = 220
+local SC_BG_ALPHA = 150
+-- The chain-result overlay's dim state, upstream's numbers: a WS slot short
+-- of its 1000 TP draws the result at 75 over a 150 frame.
+local SC_DIM_ICON_ALPHA = 75
+local SC_DIM_FRAME_ALPHA = 150
+-- The chunks the skillchain engine feeds on beyond the action packet: the
+-- action message (buff wear-off), the buff-list refresh, and zone-out.
+local ACTION_CHUNK = 0x028
+-- Zoning out: every mob id on this side of the line is stale, and so is any
+-- cast the retry is still holding.
+local ZONE_OUT_CHUNK = 0x0B
+local SC_CHUNKS = { [0x29] = true, [0x63] = true, [ZONE_OUT_CHUNK] = true }
+-- The player statuses that mean dead ("Dead" and "Engaged dead"): whatever
+-- was in flight when you fell is not worth sending afterwards.
+local DEAD_STATUSES = { [2] = true, [3] = true }
+
+--[[ How the cast retry treats a bound record's target word, in three
+     groups. A command's target is resolved by the GAME when the command is
+     sent, so a re-send would otherwise land wherever the token points THEN
+     - "at whatever you are now pointed at", the reference queue's own
+     defect. The answer is to PIN: resolve the token to a mob id at the
+     press and send the id in place of the token when re-sending, so the
+     cast lands on what was aimed at however far the cursor has wandered.
+
+     PINNED: `<t>` and `<bt>`. Deliberately only these two: they are the
+     tokens this repo already asks `get_mob_by_target` for (skillchain.lua
+     passes exactly `"t", "bt"`), and CLAUDE.md's rule is that Windower
+     behaviour is unverified until it has been read for - a user-authored
+     word is never handed to the client's lookup on a guess.
+
+     FIXED: yourself and your pet. Nothing a cursor or a roster can move,
+     so the re-send is the press verbatim and no pin is needed.
+
+     EVERYTHING ELSE IS NOT WATCHED AT ALL - the rule is the two lists
+     above, not the cases below, so a token nobody thought of falls out
+     unwatched rather than guessed at. The cases worth naming:
+
+     - the subtarget family (`<stpc>` and friends), which would re-open a
+       selection cursor the player has already answered;
+     - a record with no target word, whose command has nothing to
+       substitute;
+     - **party and alliance slots** (decided 2026-08-19). `<p3>` is whoever
+       is standing third, not a person: a member leaving or zoning inside
+       the deadline shifts everyone below them, and a re-send would land on
+       someone the press never meant. Pinning them by id would need
+       `get_mob_by_target("p3")` to work, which nobody here has read for,
+       so the honest answer is not to hold them at all;
+     - and the rest of what the bind parser accepts - `<ft>`, `<r>`,
+       `<scan>`, `<lastst>`, `<stal>` - which are simply on neither list.
+       Adding one means deciding whether it can be pinned, and that is a
+       question about the client nobody here has answered. ]]
+local FIXED_TARGETS = { me = true, pet = true }
+local PINNED_TARGETS = { t = true, bt = true }
+
+--[[ Bind types the cast retry watches, mapped to the kind whose refusal
+     message and blocking buffs answer them (retry.lua owns both tables).
+     Everything absent is never watched: an item, a `ct` line, a console
+     command and the built-ins are all refused - where they are refused at
+     all - in words nothing here reads.
+
+     `pet` is deliberately out. A blood pact is an ability by every other
+     measure in this component, but it goes out as its own command word and
+     nobody has seen which message refuses it; guessing it is `ja`'s would
+     be the one thing this feature must not do. ]]
+local RETRY_KINDS = { ma = "spell", ja = "ability", ws = "weaponskill" }
+
+-- The resource table each bindable type's action name lives in -- the same
+-- mapping meta_for reads, exposed for the CLI's "is that really an action?"
+-- question.
+local RESOURCE_TABLES = {
+  ma = "spells",
+  ja = "job_abilities",
+  pet = "job_abilities",
+  ws = "weapon_skills",
+  item = "items",
+  mount = "mounts",
+}
+
+local function new(ctx)
+  local self = { name = "crossbar", wants_store = true }
+
+  -- Per-anchor placement pushed by core.
+  local placed = {}
+
+  local screen_width, screen_height = ctx.screen()
+  self.defaults = build_defaults(screen_width, screen_height)
+
+  local config = self.defaults
+
+  local function say(lines)
+    if ctx.say ~= nil and lines ~= nil then
+      ctx.say(lines)
+    end
+  end
+
+  --[[ A travel countdown's NAMED lines - the one that arms it and the one
+       that calls it off - carry the component's prefix like every other
+       line it says. The bare counts ("4...") deliberately do not: they read
+       as a continuation of the line that named them, and five prefixed
+       lines per mount is the chat spam this repo treats as a defect. ]]
+  local function say_travel(line)
+    if line ~= nil then
+      say("crossbar: " .. line)
+    end
+  end
+
+  local function send_command(command)
+    if ctx.send_command ~= nil then
+      ctx.send_command(command)
+    end
+  end
+
+  -- Wall clock for the extdata maths (their timestamps are os.time-based);
+  -- ctx.now is the monotonic frame clock and would misread every enchant.
+  local function time_now()
+    if ctx.time ~= nil then
+      return ctx.time()
+    end
+    return 0
+  end
+
+  local function get_player()
+    if ctx.get_player ~= nil then
+      return ctx.get_player()
+    end
+    return nil
+  end
+
+  local function file_exists(relative)
+    return ctx.file_exists ~= nil and ctx.asset ~= nil and ctx.file_exists(ctx.asset(relative)) == true
+  end
+
+  -- icon_for reads only the module-level built-in table, so an actions
+  -- instance with no execution deps is enough for icon resolution.
+  local icon_for = new_actions({}).icon_for
+
+  -- Rebuilt at attach over the live config; the defaults-backed one answers
+  -- bounds for layout mode before any login has attached a config.
+  local render = new_render({ config = self.defaults, icon_for = icon_for })
+
+  --[[ Execution collaborators. Mount roulette needs the resource tables, so
+       without them it degrades to a no-op ride; warp degrades rung by rung
+       (an empty bag table walks to "you don't have it"). ]]
+  local resources = ctx.resources
+
+  local roulette = nil
+  if resources ~= nil then
+    roulette = new_roulette({
+      mounts = resources.mounts or {},
+      key_items = resources.key_items or {},
+      get_key_items = function()
+        if ctx.get_key_items ~= nil then
+          return ctx.get_key_items()
+        end
+        return {}
+      end,
+      get_buffs = function()
+        local player = get_player()
+        return player and player.buffs or {}
+      end,
+      random = ctx.random or math.random,
+    })
+  end
+
+  local warp_bags = {}
+  if resources ~= nil then
+    for id, bag in pairs(resources.bags or {}) do
+      if type(bag) == "table" then
+        warp_bags[id] = { name = bag.name or bag.en or tostring(id), equippable = bag.equippable and true or false }
+      end
+    end
+  end
+
+  local warp = new_warp({
+    bags = warp_bags,
+    get_player = get_player,
+    get_spells = function()
+      if ctx.get_spells ~= nil then
+        return ctx.get_spells()
+      end
+      return {}
+    end,
+    get_items = function(bag)
+      if ctx.get_items ~= nil then
+        return ctx.get_items(bag)
+      end
+      return nil
+    end,
+    extdata_decode = function(item)
+      local ext = ctx.decode_extdata ~= nil and ctx.decode_extdata(item) or nil
+      -- A missing extdata library reads as "not usable, not enchanted":
+      -- the ladder notes the rung and walks on rather than crashing.
+      return ext or { type = "unavailable" }
+    end,
+    now = time_now,
+  })
+
+  local actions = new_actions({
+    roulette = roulette or {
+      ride = function()
+        return nil
+      end,
+    },
+    warp = warp,
+  })
+
+  --[[ The chain-state engine (CB6): pure, always built - it needs no
+       resources, only the clock and the target, and degrades to "no chain"
+       without either. 't' falling back to 'bt' is the reference's own read:
+       the chain you are fighting is the one that matters mid-cast.
+
+       The target dep is memoized PER TICK: the engine asks for the target
+       from window() and again from every bound slot's result(), which
+       during an open window would be a client read per slot per frame.
+       One read per tick is the contract (targetbar's "the target itself is
+       read per frame" precedent - deliberately fresher than the 200ms
+       cache, so a target switch drops the indicator the same frame); the
+       memo lives in the dep, keeping the engine's API untouched. ]]
+  local sc_target = nil
+  local sc_target_read = false
+
+  local skillchain = new_skillchain({
+    now = function()
+      if ctx.now ~= nil then
+        return ctx.now()
+      end
+      return 0
+    end,
+    get_mob_by_target = function()
+      if not sc_target_read then
+        sc_target_read = true
+        sc_target = nil
+        if ctx.get_mob_by_target ~= nil then
+          sc_target = ctx.get_mob_by_target("t", "bt")
+        end
+      end
+      return sc_target
+    end,
+    get_player = get_player,
+  })
+
+  --[[ The cast retry (CB9): one refused spell, re-sent. It reads the config
+       through a closure rather than a copy, so `//hud crossbar retry off`
+       reaches it the moment the write lands - including with a cast already
+       pending, which it drops rather than firing. ]]
+  local retry = new_retry({
+    now = function()
+      if ctx.now ~= nil then
+        return ctx.now()
+      end
+      return 0
+    end,
+    config = function()
+      return config.retry
+    end,
+    get_player = get_player,
+  })
+
+  --[[ The travel countdown (CB10): mount, mount roulette and warp wait five
+       seconds, saying so once a second, before they go. The config is read
+       through a closure for the same reason the retry's is - a write to
+       `delay` reaches it at once, including the zero that switches it off.
+
+       The resource table goes in whole: the module resolves the resting
+       status out of it by english name rather than trusting a number from
+       memory, and degrades to its own constant when resources did not
+       load. ]]
+  local travel = new_travel({
+    now = function()
+      if ctx.now ~= nil then
+        return ctx.now()
+      end
+      return 0
+    end,
+    config = function()
+      return config
+    end,
+    statuses = resources ~= nil and resources.statuses or nil,
+  })
+
+  --[[ The item-icon extraction pipeline (lib/icon_cache): built only when
+       the ctx carries the file surface; a config-level game_path override
+       wins over the client's own answer, equipviewer's convention.
+
+       Deliberately a SEPARATE instance per component: the on-disk cache
+       under <addon>/icons/ is shared (an icon either component extracts is
+       found by the other through cached_icon), but the queues and
+       abandoned-lists are not, so one session can in the worst case
+       extract an icon twice - once per component - before the disk copy
+       wins. Accepted as the cost of no cross-component coupling; a shared
+       lib-level instance is the fallback if a third consumer appears. ]]
+  local icon_cache = nil
+  if ctx.file_exists ~= nil and ctx.read_dat ~= nil and ctx.write_binary ~= nil and ctx.asset ~= nil then
+    icon_cache = new_icon_cache({
+      asset = ctx.asset,
+      file_exists = ctx.file_exists,
+      read_dat = ctx.read_dat,
+      write_binary = ctx.write_binary,
+      game_path = function()
+        -- Empty is "no override" (equipviewer's own guard shape): the
+        -- shipped default is "" so the key is discoverable, and a copied
+        -- equipviewer idiom must not silently abandon every item icon.
+        if type(config.game_path) == "string" and config.game_path ~= "" then
+          return config.game_path
+        end
+        return ctx.game_path ~= nil and ctx.game_path() or nil
+      end,
+    })
+  end
+
+  local machine = nil
+  --[[ The binder (CB8), declared here and built far below: everything it
+       needs - the render instance, the model, the drawn groups, the icon
+       and tooltip lookups - is a local defined later in this constructor,
+       while refresh() and paint_slot() above it must already be able to ask
+       whether edit mode is on. Its prims exist only while edit mode is
+       open, so a closed binder costs nothing on the tick path. ]]
+  local binder = nil
+  -- The simulated buff list while the binder previews a context, or nil for
+  -- "the client's own". Declared with the binder because apply_buffs()
+  -- below is the only reader and the preview callback the only writer.
+  local previewing = nil
+  local function editing()
+    return binder ~= nil and binder.active()
+  end
+
+  local visible = false
+  local preview = false
+  local active_state = "none"
+
+  -- The job scope: nil until the client can name a main job; a `job change`
+  -- notes the id it announced so a stale get_player() is not rescoped.
+  local scoped_main = nil
+  local scoped_sub = nil
+  local rescope_want = nil
+
+  -- Ninja/Corsair tool counts from the inventory bag, re-read only when an
+  -- item event names a tracked id (giltracker's pattern).
+  local tool_counts = {}
+  local tools_dirty = true
+
+  -- The pending-warp state machine: gs disable -> equip -> wait -> use, with
+  -- `gs enable` on every exit path (success, give-up, suppression, detach).
+  local pending_warp = nil
+
+  local function build_bindings(store)
+    local function nothing() end
+    return new_bindings({
+      -- Store reads land only in set_job - once per file per scope (attach,
+      -- job change), never per frame - so lib/settings' "missing file is
+      -- re-read per call" contract costs one stat per absent job file per
+      -- scope and needs no negative-cache sentinel.
+      load = store ~= nil and store.load or nothing,
+      save = store ~= nil and store.save or nothing,
+      get_config = function()
+        return config
+      end,
+    })
+  end
+
+  local bindings = build_bindings(nil)
+
+  -- Core's config save, handed in at attach: the authoring verbs that write
+  -- the component's own config need it, and nothing else here does.
+  local save = nil
+
+  --[[ Resource name lookups, indexed lazily by lowercased English name; the
+       items table alone is tens of thousands of entries, so nothing walks it
+       until an item record actually needs it. ]]
+  local name_indexes = {}
+  local function resource_by_name(table_name, name)
+    if resources == nil or type(name) ~= "string" then
+      return nil
+    end
+    local index = name_indexes[table_name]
+    if index == nil then
+      index = {}
+      for _, entry in pairs(resources[table_name] or {}) do
+        if type(entry) == "table" and type(entry.en) == "string" then
+          index[entry.en:lower()] = entry
+        end
+      end
+      name_indexes[table_name] = index
+    end
+    return index[name:lower()]
+  end
+
+  -- Built here rather than beside the model: its action_exists dep closes
+  -- over resource_by_name, which is a local declared just above -- built
+  -- any earlier, the closure would capture a global that is never set.
+  --[[ The authoring CLI (CB7). Reads the model through a getter, since
+       attach and detach rebuild it, and validates an icon name against the
+       same two candidates render.icon_candidates draws from - the player's
+       own art first, then the shipped pack. ]]
+  local authoring = new_commands({
+    bindings = function()
+      return bindings
+    end,
+    get_config = function()
+      return config
+    end,
+    file_exists = file_exists,
+    validate = actions.validate,
+    action_exists = function(kind, name)
+      local table_name = RESOURCE_TABLES[kind]
+      if resources == nil or table_name == nil then
+        -- Nothing to check against: the CLI keeps the user's reading and
+        -- says so, rather than guessing.
+        return nil
+      end
+      return resource_by_name(table_name, name) ~= nil
+    end,
+  })
+
+  --[[ The load-time check actions.lua documents: a built-in action name
+       must not shadow an authoring verb, the way the registry validates a
+       component name against the reserved command words. It could only ever
+       fire on a code change, so it is said to chat rather than thrown -- an
+       error here would take the whole component down over a naming slip,
+       and the addon's own posture is that a load failure must stay
+       diagnosable. ]]
+  local collisions = actions.check_collisions(authoring.verbs())
+  if #collisions > 0 then
+    say("crossbar: built-in action name(s) shadow an authoring verb: " .. table.concat(collisions, ", "))
+  end
+
+  -- "WhiteMagic" -> "White Magic": meta.category is the DISPLAY form (the
+  -- icon-candidate contract) - kebab maps it to the pack directory, and the
+  -- raw resource type would silently miss the whole directory.
+  local function display_category(resource_type)
+    if type(resource_type) ~= "string" then
+      return nil
+    end
+    return (resource_type:gsub("(%l)(%u)", "%1 %2"))
+  end
+
+  --[[ What the resources know about a bound record: recast id, costs, the
+       icon-resolution fields. The SP job suffix takes the player's main job
+       id - the owning job coincides for your own SP; a shared set viewed
+       cross-job may draw the viewing job's art (accepted, same as binding
+       it fresh). ]]
+  local function meta_for(record)
+    if record == nil then
+      return nil
+    end
+    if record.type == "ma" then
+      local spell = resource_by_name("spells", record.action)
+      if spell ~= nil then
+        return {
+          kind = "spell",
+          spell_id = spell.id,
+          recast_id = spell.recast_id,
+          mp_cost = spell.mp_cost,
+          category = display_category(spell.type),
+        }
+      end
+    elseif record.type == "ja" or record.type == "pet" then
+      local ability = resource_by_name("job_abilities", record.action)
+      if ability ~= nil then
+        local player = get_player()
+        return {
+          kind = "ability",
+          -- The ability's own id, for the chain-result lookup: recast ids
+          -- are shared pool timers (every blood pact rides 173, every
+          -- Ready move 102) and can never address the chain table.
+          ability_id = ability.id,
+          recast_id = ability.recast_id,
+          mp_cost = ability.mp_cost,
+          tp_cost = ability.tp_cost,
+          job_id = player and player.main_job_id or nil,
+        }
+      end
+    elseif record.type == "ws" then
+      local ws = resource_by_name("weapon_skills", record.action)
+      if ws ~= nil then
+        local skill = resources ~= nil and resources.skills and resources.skills[ws.skill] or nil
+        return { kind = "ws", ws_id = ws.id, weapon = skill and skill.en or nil, tp_cost = 1000 }
+      end
+    elseif record.type == "item" then
+      local item = resource_by_name("items", record.action)
+      if item ~= nil then
+        return { kind = "item", item_id = item.id }
+      end
+    end
+    return nil
+  end
+
+  -- The two framework states that make the crossbar inert without hiding
+  -- it, read the way input.lua reads them (a missing dep is "no").
+  local function chat_open()
+    return ctx.chat_open ~= nil and ctx.chat_open() == true
+  end
+
+  local function layout_active()
+    return ctx.layout_active ~= nil and ctx.layout_active() == true
+  end
+
+  --[[ The id the given target token points at right now, for the cast
+       retry's pin alone. The RECORD's own token, not always `t`: `<bt>` and
+       `<t>` are different selections. Read once on a press of a
+       token-targeted spell - never per frame, and not at all while the
+       feature is off. ]]
+  local function selected_id(token)
+    local mob = ctx.get_mob_by_target ~= nil and ctx.get_mob_by_target(token) or nil
+    return mob ~= nil and mob.id or nil
+  end
+
+  --[[ The command the cast retry would RE-SEND for a press, or nil for a
+       press it must not watch at all. The first send is never touched: it
+       goes out with the token exactly as it always did, and only this
+       later copy names a concrete mob.
+
+       A pinned token becomes the id it stood for at the press - the shape
+       the reference addon sends, `/ma "Fire IV" 16941234`. The suffix is
+       matched and replaced literally rather than by pattern, and a command
+       that does not end in the expected `<token>` is not watched: a
+       substitution this cannot prove correct is worse than no retry. ]]
+  local function resend_command(command, target)
+    if type(command) ~= "string" then
+      return nil
+    end
+    -- Folded, because the config files are hand-editable: the CLI writes
+    -- lower case, but `target = "T"` fires in game exactly as `t` does and
+    -- must not go unwatched for the capital.
+    target = type(target) == "string" and target:lower() or target
+    if FIXED_TARGETS[target] then
+      return command
+    end
+    if not PINNED_TARGETS[target] then
+      -- Not watched: a subtarget prompt, a bracketed name, or no target
+      -- word at all. A nil target lands here too, and deliberately - the
+      -- command has nothing to substitute, and appending a target would
+      -- send a shape the press itself never used.
+      return nil
+    end
+    local id = selected_id(target)
+    if id == nil then
+      -- Pressed with nothing selected there is no id to carry, and
+      -- re-resolving the token later is the behaviour the pin exists to
+      -- prevent.
+      return nil
+    end
+    -- The suffix is matched case-insensitively for the same reason, over a
+    -- tail of the command's own length rather than a pattern.
+    local suffix = " <" .. target .. ">"
+    if command:sub(-#suffix):lower() ~= suffix then
+      -- Unreachable as things stand: actions.resolve appends the target
+      -- suffix last for every `ma` record, so a watched command always ends
+      -- in it. Kept as the one thing that makes the substitution provable
+      -- rather than assumed, not as a branch anything can cover.
+      return nil
+    end
+    return command:sub(1, #command - #suffix) .. " " .. tostring(id)
+  end
+
+  local function draw_state()
+    local player = get_player()
+    local mounted = false
+    for _, buff in ipairs(player and player.buffs or {}) do
+      if buff == MOUNTED_BUFF then
+        mounted = true
+        break
+      end
+    end
+    return {
+      mounted = mounted,
+      weapon_drawn = bindings.weapon_state() == "drawn",
+      has_target = ctx.get_mob_by_target ~= nil and ctx.get_mob_by_target("t") ~= nil,
+    }
+  end
+
+  --[[ Prims. Or nil when the ctx has no constructors (the headless shape the
+       CB2/CB3 specs run). Construction order is a spec contract AND the
+       z-order: the panel, then per group and slot six images in upstream's
+       own layering - background, chain overlay, icon, sweep, frame,
+       feedback - and three texts (name, cost, recast), then the skillchain
+       indicator's bg and fill. The sweep overlay doubles as the red X over
+       an empty-tool slot - upstream's own prim reuse; the chain overlay
+       gets its own prim because, unlike the X, it must draw WITH the
+       sweep, not instead of it. ]]
+  local prims = nil
+  if ctx.new_image ~= nil and ctx.new_text ~= nil and ctx.asset ~= nil then
+    --[[ Sibling-component construction hygiene: draggable off, one tile,
+         never fit-to-texture (fit(true) silently defeats size()), an
+         explicit untinted color, and hidden from the first frame. `texture`
+         is optional - the icon and sweep prims have no art until content
+         picks one. Alphas are config-owned and land at attach. ]]
+    local function image(texture)
+      local prim = ctx.new_image()
+      prim.draggable(false)
+      prim.repeat_xy(1, 1)
+      prim.fit(false)
+      if texture ~= nil then
+        prim.path(ctx.asset(ASSETS .. texture))
+      end
+      prim.color(255, 255, 255)
+      prim.hide()
+      return prim
+    end
+
+    local function text()
+      local prim = ctx.new_text()
+      prim.text("")
+      prim.hide()
+      return prim
+    end
+
+    prims = { panel = image("bar_bg_compact.png"), groups = {} }
+    for _, group in ipairs(GROUPS) do
+      local slots = {}
+      for slot = 1, SLOT_COUNT do
+        -- Field order IS z-order (creation order draws bottom to top),
+        -- mirroring upstream's ui.lua:407-412: background, then the chain
+        -- overlay (CB6's per-slot chain result, upstream's slot_warmup),
+        -- icon, the sweep/red-X overlay, the frame - so the frame-step
+        -- border animation draws OVER the chain icon and the sweep, as
+        -- shipped - and the press flash above everything, which is where
+        -- the reference loads its feedback icon ("last so it stays above
+        -- everything else").
+        slots[slot] = {
+          background = image("slot.png"),
+          chain = image(),
+          icon = image(),
+          sweep = image(),
+          frame = image("frame.png"),
+          feedback = image("feedback.png"),
+          name = text(),
+          cost = text(),
+          recast = text(),
+        }
+      end
+      prims.groups[group.key] = slots
+    end
+    -- The skillchain indicator, on its own anchor: a black backdrop and a
+    -- centre-anchored fill, both the component's own white square tinted at
+    -- draw time (fill after bg, so it draws on top).
+    prims.indicator = { bg = image("indicator.png"), fill = image("indicator.png") }
+  end
+
+  -- Per-slot content resolved at repaint time: the record, its meta, the
+  -- icon candidate that won, and the press-flash alpha in flight.
+  local contents = {}
+  local function reset_contents()
+    contents = {}
+    for _, group in ipairs(GROUPS) do
+      contents[group.key] = {}
+      for slot = 1, SLOT_COUNT do
+        -- The sweep key is per prim slot and built once - never per frame.
+        local sweep_key = group.key .. ":" .. slot
+        contents[group.key][slot] = { written = {}, sweep_key = sweep_key }
+        render.clear_sweep(sweep_key)
+      end
+    end
+  end
+  reset_contents()
+
+  -- Which groups the last refresh left on screen, so the tick skips the rest.
+  local shown_groups = {}
+
+  --[[ The indicator's own change-gate cache (it is not a slot): the fill and
+       bg geometry last pushed, the colour state, and visibility. Wiped by
+       layout() - anchor moves and scales land there - so the next tick
+       reapplies everything against the new origin. ]]
+  local indicator_written = { fill = {}, bg = {} }
+
+  local function reset_indicator_written()
+    indicator_written = { fill = {}, bg = {} }
+  end
+
+  --[[ The indicator down with the widget - draw_indicator's own no-plan
+       branch, reached from refresh() instead of the tick. The cache is NOT
+       wiped: hiding a prim does not make it forget where it is, so what the
+       gate holds stays true across the hide, and layout() is what invalidates
+       it when the anchor actually moves. Only the two keys that changed are
+       written, so a widget that is already hidden costs nothing to keep
+       hidden - core calls refresh once per mouse move of a drag. ]]
+  local function hide_indicator()
+    if prims == nil then
+      return
+    end
+    if indicator_written.visible ~= false then
+      indicator_written.visible = false
+      indicator_written.state = nil
+      prims.indicator.bg.hide()
+      prims.indicator.fill.hide()
+    end
+  end
+
+  -- One prim's gated pos/size push against its cache slot.
+  local function push_rect(prim, cache, x, y, width, height)
+    if cache.x ~= x or cache.y ~= y then
+      cache.x, cache.y = x, y
+      prim.pos(x, y)
+    end
+    if cache.w ~= width or cache.h ~= height then
+      cache.w, cache.h = width, height
+      prim.size(width, height)
+    end
+  end
+
+  local function placement(anchor)
+    if render.bounds(anchor) == nil then
+      return nil
+    end
+    local entry = placed[anchor]
+    if not entry then
+      entry = { scale = 1 }
+      placed[anchor] = entry
+    end
+    return entry
+  end
+
+  function self.anchors()
+    return ANCHORS
+  end
+
+  local function config_hide(key)
+    local hide = config.hide
+    return type(hide) == "table" and hide[key] == true
+  end
+
+  -- The (set, side) a group displays; nil while no job is scoped or the
+  -- view config is broken. Expanded shows whichever view its press order
+  -- selected, and nothing while it is not held.
+  local function group_target(group)
+    if scoped_main == nil then
+      return nil
+    end
+    if group.bar == "xhb" then
+      return bindings.active_set(), group.side
+    end
+    local view_name = group.key
+    if group.key == "expanded" then
+      if active_state ~= "expanded_lr" and active_state ~= "expanded_rl" then
+        return nil
+      end
+      view_name = active_state
+    end
+    local view = bindings.view_target(view_name)
+    if type(view) ~= "table" then
+      return nil
+    end
+    return view.set, view.side
+  end
+
+  -- Applies values that live in config; construction only knows paths.
+  local function dress()
+    if prims == nil then
+      return
+    end
+    local text_color = type(config.text_color) == "table" and config.text_color or {}
+    local stroke = type(config.text_stroke) == "table" and config.text_stroke or {}
+    local function dress_text(prim, right_justified)
+      prim.font(config.font or "sans-serif")
+      prim.size(config.font_size or 7)
+      prim.color(text_color.r or 255, text_color.g or 255, text_color.b or 255)
+      prim.alpha(text_color.a or 255)
+      prim.stroke_width(stroke.width or 0)
+      prim.stroke_color(stroke.r or 0, stroke.g or 0, stroke.b or 0)
+      -- stroke_alpha, not stroke_transparency: the library reads a 0..1
+      -- transparency and would turn a 0-255 alpha wildly negative.
+      prim.stroke_alpha(stroke.a or 255)
+      -- The texts library draws its own opaque box behind a line unless
+      -- told not to, and every sibling widget turns it off (parambar,
+      -- partylist, targetbar, equipviewer, lib/overlay). Missing here since
+      -- CB4 - a slot label would have carried a black box over the art.
+      prim.bg_visible(false)
+      prim.right_justified(right_justified == true)
+    end
+    prims.panel.alpha(config.button_bg_alpha)
+    -- The indicator's backdrop is constant; the fill's colour is state
+    -- (waiting/open) and lands from the tick.
+    prims.indicator.bg.color(0, 0, 0)
+    prims.indicator.bg.alpha(SC_BG_ALPHA)
+    for _, group in ipairs(GROUPS) do
+      for slot = 1, SLOT_COUNT do
+        local pair = prims.groups[group.key][slot]
+        pair.background.alpha(config.slot_alpha)
+        pair.frame.alpha(255)
+        dress_text(pair.name, false)
+        dress_text(pair.cost, true)
+        dress_text(pair.recast, true)
+      end
+    end
+  end
+
+  -- Repositions one slot's prims from its anchor's origin and scale. The
+  -- icon carries its candidate's offset (the 32x32 sheets centre at +4/+4).
+  -- `metrics` is optional and exists for layout(), which places up to forty
+  -- slots in one pass: without it every slot builds the same table twice
+  -- (once here, once inside slot_pos).
+  local function place_slot(group, slot, metrics)
+    if prims == nil then
+      return
+    end
+    local entry = placed[group.anchor]
+    if entry == nil or entry.pos == nil then
+      return
+    end
+    local scale = entry.scale
+    metrics = metrics or render.metrics()
+    local x, y = render.slot_pos(group.bar, group.side, slot, metrics)
+    local ax, ay = entry.pos.x, entry.pos.y
+    local pair = prims.groups[group.key][slot]
+    local size = metrics.slot * scale
+    pair.background.pos(ax + x * scale, ay + y * scale)
+    pair.background.size(size, size)
+    pair.frame.pos(ax + x * scale, ay + y * scale)
+    pair.frame.size(size, size)
+    pair.sweep.pos(ax + x * scale, ay + y * scale)
+    pair.sweep.size(size, size)
+    pair.feedback.pos(ax + x * scale, ay + y * scale)
+    pair.feedback.size(size, size)
+    pair.chain.pos(ax + x * scale, ay + y * scale)
+    pair.chain.size(size, size)
+    local offset = contents[group.key][slot].offset or { x = 0, y = 0 }
+    pair.icon.pos(ax + (x + offset.x) * scale, ay + (y + offset.y) * scale)
+    pair.icon.size((metrics.slot - 2 * offset.x) * scale, (metrics.slot - 2 * offset.y) * scale)
+    -- Slot-relative text offsets (no screen width here); the cost and
+    -- recast texts are right-justified, so their drawn x hangs off the
+    -- screen's right edge - subtracted AFTER scaling, or the screen term
+    -- would scale with the anchor (the texts-library gotcha giltracker
+    -- documents).
+    local offsets = render.text_offsets(x, y)
+    local font_size = (config.font_size or 7) * scale
+    pair.name.pos(ax + offsets.name.x * scale, ay + offsets.name.y * scale)
+    pair.name.size(font_size)
+    pair.cost.pos(ax + offsets.cost.x * scale - screen_width, ay + offsets.cost.y * scale)
+    pair.cost.size(font_size)
+    pair.recast.pos(ax + offsets.recast.x * scale - screen_width, ay + offsets.recast.y * scale)
+    pair.recast.size(font_size)
+  end
+
+  --[[ Lays out the slots on one anchor, or every group when `anchor` is nil.
+       Scoped deliberately, and it is only one of three things that keep a
+       layout-mode drag cheap: core's per-move apply() pushes a placement for
+       EVERY anchor, then the preview flag, then show(), so scoping this alone
+       still left the untouched anchors being re-shown and repainted. The
+       other two are the no-op guards on set_pos/set_scale/set_preview/show
+       and refresh()'s change-gate, which writes only where the answer
+       changed. Measured on the full core sequence, one mouse move costs 433
+       prim calls where it once cost 8530, and what remains is this: the
+       moved anchor's own slots. ]]
+  local function layout(anchor)
+    if prims == nil then
+      return
+    end
+    local metrics = render.metrics()
+    for _, group in ipairs(GROUPS) do
+      if anchor == nil or group.anchor == anchor then
+        for slot = 1, SLOT_COUNT do
+          place_slot(group, slot, metrics)
+        end
+      end
+    end
+    -- The indicator has no resting geometry - the tick draws it from the
+    -- live plan - but whatever was pushed is now against the wrong origin.
+    if anchor == nil or anchor == "indicator" then
+      reset_indicator_written()
+    end
+  end
+
+  --[[ Applies the visibility plan for the current hold state: which bars
+       are on screen, which slots inside them, and where the active-side
+       panel sits. Core owns whether the component is visible at all; this
+       owns what "visible" shows. Dynamic prims (cost, recast, sweep,
+       feedback) are hidden here when their group leaves the screen and
+       re-shown by the tick when it next has something to draw. ]]
+  --[[ The change-gate: nothing is written to a prim that already holds it
+       (partylist's written/push pattern - 363 prims at sixty frames a
+       second would otherwise rewrite every value each tick). `written` is
+       the last value pushed, per prim property, per slot; paint_slot and
+       the refresh blanking wipe it so event-driven writes stay authoritative. ]]
+  local function push(written, key, value, apply)
+    if written[key] == value then
+      return
+    end
+    written[key] = value
+    apply(value)
+  end
+
+  local function want(written, prim, key, on)
+    on = on and true or false
+    if written[key] == on then
+      return
+    end
+    written[key] = on
+    if on then
+      prim.show()
+    else
+      prim.hide()
+    end
+  end
+
+  local function push_color(written, prim, key, r, g, b)
+    local encoded = r * 65536 + g * 256 + b
+    if written[key] == encoded then
+      return
+    end
+    written[key] = encoded
+    prim.color(r, g, b)
+  end
+
+  -- The sweep overlay's one gated write: `mode` is false (hidden), "x" (the
+  -- red X) or a frame number - compared BEFORE any path string is built, so
+  -- a slot whose frame index has not moved costs no allocation at all.
+  local function set_sweep(written, prim, mode)
+    if written["sweep.mode"] == mode then
+      return
+    end
+    written["sweep.mode"] = mode
+    if mode == false then
+      prim.hide()
+      return
+    end
+    if mode == "x" then
+      prim.path(ctx.asset(ASSETS .. "red-x.png"))
+    else
+      prim.path(ctx.asset(ASSETS .. ("cooldown/frame_%02d.png"):format(mode)))
+    end
+    prim.alpha(OVERLAY_ALPHA)
+    prim.show()
+  end
+
+  -- The chain overlay's gated write: `prop` is false (hidden) or the
+  -- property whose icon to draw - compared before any path string is built.
+  local function set_chain(written, prim, prop)
+    if written["chain.prop"] == prop then
+      return
+    end
+    written["chain.prop"] = prop
+    if prop == false then
+      prim.hide()
+      return
+    end
+    prim.path(ctx.asset(ASSETS .. "icons/skillchain/" .. prop:lower() .. ".png"))
+    prim.show()
+  end
+
+  -- The slot frame doubles as the chain border animation: `step` is false
+  -- (the plain frame) or a frame_step index.
+  local function set_frame(written, prim, step)
+    if written["frame.step"] == step then
+      return
+    end
+    written["frame.step"] = step
+    if step == false then
+      prim.path(ctx.asset(ASSETS .. "frame.png"))
+      return
+    end
+    prim.path(ctx.asset(ASSETS .. ("frame_step%d.png"):format(step)))
+  end
+
+  local function refresh()
+    if prims == nil then
+      return
+    end
+    local hidden = not visible or machine == nil
+    local plan = render.visible(active_state, { hidden = hidden })
+    if (preview or editing()) and not hidden then
+      -- Layout placement: with always_show_wxhb off the WXHB is invisible
+      -- in play, so preview forces its halves up to give the anchors a
+      -- visible footprint. Edit mode wants them for the same reason from
+      -- the other end - every side must be reachable by mouse.
+      plan.wxhb_left = true
+      plan.wxhb_right = true
+    end
+    shown_groups = {}
+    for _, group in ipairs(GROUPS) do
+      local entry = placed[group.anchor]
+      local shown
+      if group.key == "expanded" then
+        shown = plan.expanded ~= nil
+      else
+        shown = plan[group.flag] == true
+      end
+      shown = shown and entry ~= nil and entry.pos ~= nil
+      shown_groups[group.key] = shown
+      for slot = 1, SLOT_COUNT do
+        local content = contents[group.key][slot]
+        local pair = prims.groups[group.key][slot]
+        if not shown then
+          content.flash = nil
+          -- The chain state goes down with its prim: left standing, the
+          -- icon predicate below would read it on the re-show repaint and
+          -- leave the slot with neither icon nor chain for a frame.
+          content.chain_prop = nil
+        end
+        --[[ The tick's own cache, deliberately shared rather than wiped:
+             every write below goes through the gate, so what it holds after
+             this pass is the truth about these prims, and a group that has
+             not moved costs nothing on the next refresh - which matters
+             because core runs one per mouse move of a layout-mode drag.
+             Sharing is safe in the other direction too: flash() and
+             paint_slot's chain hide write a prim without the gate but sync
+             the key they wrote, and paint_slot's raw icon/name writes are
+             preceded by a wipe of the whole cache. The non-visibility values
+             (text, colour, alpha, path) stay true while a prim is hidden -
+             hiding a prim does not make it forget them - so the tick has
+             nothing to re-push when the group comes back either. ]]
+        local written = content.written
+        -- Empty slots come back for the binder whatever the config says:
+        -- an invisible slot is still a drop target, which is the one thing
+        -- edit mode cannot have.
+        local slot_shown = shown and (content.record ~= nil or editing() or not config_hide("empty_slots"))
+        want(written, pair.background, "background.visible", slot_shown)
+        want(written, pair.frame, "frame.visible", slot_shown)
+        -- Chain-aware on purpose: while a chain result covers the slot the
+        -- tick keeps the action icon down, and refresh must agree with it
+        -- or the two would fight over the prim between frames. Both write
+        -- the same gate key for the same reason.
+        want(
+          written,
+          pair.icon,
+          "icon.visible",
+          shown and content.record ~= nil and content.icon_found and content.chain_prop == nil
+        )
+        local label = content.label
+        want(
+          written,
+          pair.name,
+          "name.visible",
+          shown and content.record ~= nil and label ~= nil and label ~= "" and not config_hide("action_name")
+        )
+        if not shown then
+          want(written, pair.cost, "cost.visible", false)
+          want(written, pair.recast, "recast.visible", false)
+          set_sweep(written, pair.sweep, false)
+          want(written, pair.feedback, "feedback.visible", false)
+          set_chain(written, pair.chain, false)
+        end
+      end
+    end
+    local panel_shown = false
+    if plan.panel ~= nil then
+      local anchor = plan.panel.bar == "wxhb" and ("wxhb_" .. plan.panel.side) or "main"
+      local entry = placed[anchor]
+      if entry ~= nil and entry.pos ~= nil then
+        local rect = render.panel_pos(plan.panel.bar, plan.panel.side)
+        prims.panel.pos(entry.pos.x + rect.x * entry.scale, entry.pos.y + rect.y * entry.scale)
+        prims.panel.size(rect.width * entry.scale, rect.height * entry.scale)
+        prims.panel.show()
+        panel_shown = true
+      end
+    end
+    if not panel_shown then
+      prims.panel.hide()
+    end
+    if hidden then
+      -- The indicator follows the widget down; while shown, the tick owns it.
+      hide_indicator()
+    end
+  end
+
+  -- The first existing candidate wins; without a file surface nothing can
+  -- be verified, so nothing draws.
+  local function pick_icon(record, meta, state)
+    for _, candidate in ipairs(render.icon_candidates(record, meta, state)) do
+      if file_exists(candidate.path) then
+        return candidate
+      end
+    end
+    return nil
+  end
+
+  -- Re-resolves one slot's content: the record through the live layer
+  -- stack, its meta, its icon, its label.
+  local function paint_slot(group, slot, state)
+    local content = contents[group.key][slot]
+    content.written = {}
+    local record = nil
+    local source = nil
+    local set, side = group_target(group)
+    if set ~= nil then
+      record, source = bindings.resolve(set, side, slot)
+    end
+    if record ~= content.record then
+      -- The slot's action changed: its recast denominator is the OLD
+      -- action's and must be re-learned, or a fresh 30s recast draws
+      -- nearly done under a stale 300s maximum. The icon memo goes the
+      -- same way, and so does the chain result - the new action's is the
+      -- next tick's to compute, and until it does the OLD action's
+      -- property must not be left on screen. The prim comes down with the
+      -- state, exactly as the not-shown branch of refresh() takes it down:
+      -- state and prim are cleared together or one frame draws the dead
+      -- one.
+      render.clear_sweep(content.sweep_key)
+      content.icon_memo = nil
+      content.chain_prop = nil
+      if prims ~= nil then
+        prims.groups[group.key][slot].chain.hide()
+        content.written["chain.prop"] = false
+      end
+    end
+    local meta = meta_for(record)
+    content.record = record
+    content.meta = meta
+    content.label = nil
+    if prims == nil then
+      return
+    end
+    local pair = prims.groups[group.key][slot]
+    if record ~= nil then
+      state = state or draw_state()
+      --[[ The icon memo: the candidate walk stats the disk, so it re-runs
+           only when its answer could change - a different record (the same
+           identity rule the sweep uses), a state-swapped builtin icon
+           (draw's attack/disengage/dismount), or an extraction still
+           pending. A settled repaint stats nothing. ]]
+      local builtin = icon_for(record, state)
+      local memo = content.icon_memo
+      if memo == nil or memo.record ~= record or memo.builtin ~= builtin or memo.awaiting then
+        content.icon_found = false
+        content.offset = nil
+        content.awaiting_item_icon = false
+        if
+          icon_cache ~= nil
+          and meta ~= nil
+          and meta.item_id ~= nil
+          and icon_cache.cached_icon(meta.item_id) == nil
+        then
+          -- Queued, never extracted here: one icon per frame, off the hot
+          -- path. The slot draws its fallback meanwhile and is repainted
+          -- when the extraction lands - unless the cache has given up on
+          -- the item, which only a detach (reset) forgives.
+          if not icon_cache.is_abandoned(meta.item_id) then
+            icon_cache.request_icon(meta.item_id)
+            content.awaiting_item_icon = true
+          end
+        end
+        local candidate = pick_icon(record, meta, state)
+        if candidate ~= nil then
+          content.icon_found = true
+          content.offset = candidate.offset
+          pair.icon.path(ctx.asset(candidate.path))
+        end
+        content.icon_memo = {
+          record = record,
+          builtin = builtin,
+          awaiting = content.awaiting_item_icon,
+        }
+      end
+      -- The player's own label, then the game's own casing for what the
+      -- record names, then the raw command form.
+      local label = record.alias or record.display or record.action or record.type or ""
+      --[[ The source tag, edit mode only: nothing for the job base (the
+           common case), one mark for a subjob layer and another for a
+           context, so "where is this coming from" is answered before any
+           click - and the tags leave with edit mode, since the played bar
+           has no room for them. ]]
+      local mark = editing() and binder.mark(source) or ""
+      content.label = mark ~= "" and (mark .. " " .. tostring(label)) or tostring(label)
+      pair.name.text(content.label)
+    else
+      content.icon_found = false
+      content.offset = nil
+      content.awaiting_item_icon = false
+      content.icon_memo = nil
+      pair.name.text("")
+    end
+    place_slot(group, slot)
+  end
+
+  local function repaint()
+    if prims ~= nil then
+      -- One draw-state read per repaint, not one per slot.
+      local state = draw_state()
+      for _, group in ipairs(GROUPS) do
+        for slot = 1, SLOT_COUNT do
+          paint_slot(group, slot, state)
+        end
+      end
+    end
+    refresh()
+    -- Whatever moved the bar - a bind, a buff, a job change - moved what
+    -- the binder's panels are describing too. Closed, this costs a nil
+    -- check; nothing here reaches the tick path.
+    if binder ~= nil then
+      binder.refresh()
+    end
+  end
+
+  -- An icon landing on disk can only change slots still waiting for item
+  -- art, so only those repaint - a full repaint would re-stat every settled
+  -- slot's candidates each time the queue lands one. (Chosen over teaching
+  -- lib/icon_cache to report which id landed: no lib API change, and
+  -- equipviewer stays untouched.)
+  local function repaint_unresolved_items()
+    if prims ~= nil then
+      local state = draw_state()
+      for _, group in ipairs(GROUPS) do
+        for slot = 1, SLOT_COUNT do
+          local content = contents[group.key][slot]
+          if content.awaiting_item_icon then
+            paint_slot(group, slot, state)
+          end
+        end
+      end
+    end
+    refresh()
+  end
+
+  --[[ Execution ----------------------------------------------------------- ]]
+
+  local function abort_warp(message)
+    if pending_warp == nil then
+      return
+    end
+    if message ~= nil then
+      say(message)
+    end
+    if pending_warp.gs_slot ~= nil then
+      -- Every exit path re-enables the slot; harmless without GearSwap.
+      send_command("gs enable " .. pending_warp.gs_slot)
+    end
+    pending_warp = nil
+  end
+
+  --[[ Runs a warp plan. `broadcast`, when given, is `warp all`'s IPC send,
+       and it fires where the LOCAL warp commits and nowhere else: with the
+       command for a spell, a consumable or a ring already charged; with the
+       deferred use for a ring being warmed up; at once when the ladder found
+       nothing at all, the alts' own ladders being independent of ours. A
+       warm-up that is later abandoned therefore sends nobody - the press
+       alone was never a warp. ]]
+  local function run_warp_plan(plan, broadcast)
+    if pending_warp ~= nil then
+      -- One warp at a time, whatever the rung: a second gs disable or a
+      -- crossed pair of equips mid-wait helps nobody.
+      say("crossbar: warp already in progress - " .. tostring(pending_warp.name))
+      return
+    end
+    for _, note in ipairs(plan.notes or {}) do
+      say("crossbar: " .. note)
+    end
+    if plan.type == "spell" or plan.type == "use" then
+      send_command(plan.command)
+    elseif plan.type == "equip" then
+      -- Deferred: the broadcast travels with the pending machine and goes
+      -- when the item does.
+      local gs_slot = GS_SLOT_NAMES[plan.equip_slot]
+      if gs_slot ~= nil then
+        -- xivcrossbar's enchanted-item pattern: a running GearSwap would
+        -- otherwise swap the ring straight back off before it fires.
+        send_command("gs disable " .. gs_slot)
+      end
+      if ctx.set_equip ~= nil then
+        ctx.set_equip(plan.bag_slot, plan.equip_slot, plan.bag)
+      end
+      pending_warp = {
+        broadcast = broadcast,
+        name = plan.name,
+        command = plan.command,
+        item_id = plan.id,
+        bag = plan.bag,
+        bag_slot = plan.bag_slot,
+        gs_slot = gs_slot,
+        deadline = time_now() + WARP_DEADLINE_SECONDS,
+      }
+      return
+    end
+    -- Nothing deferred: it either just went, or there was nothing here to
+    -- send and the alts are asked anyway.
+    if broadcast ~= nil then
+      broadcast()
+    end
+  end
+
+  -- One poll of the equip -> wait -> use machine, from the prerender tick:
+  -- no coroutine sleeps, and every exit re-enables GearSwap. The poll runs
+  -- once a second (MyHome's own cadence), never a whole-bag read per frame;
+  -- the suppression and deadline aborts check every frame, ahead of the
+  -- poll gate.
+  local function tick_warp()
+    if pending_warp == nil then
+      return
+    end
+    if ctx.suppressed ~= nil and ctx.suppressed() then
+      abort_warp("crossbar: warp abandoned")
+      return
+    end
+    if time_now() >= pending_warp.deadline then
+      abort_warp("crossbar: warp abandoned - " .. tostring(pending_warp.name) .. " took too long")
+      return
+    end
+    local now = ctx.now ~= nil and ctx.now() or 0
+    if pending_warp.next_poll ~= nil and now < pending_warp.next_poll then
+      return
+    end
+    pending_warp.next_poll = now + 1
+    local bag = ctx.get_items ~= nil and ctx.get_items(pending_warp.bag) or nil
+    -- Matched by id AND slot: the remembered slot is not trusted to still
+    -- hold the ring (a sort, a trade, GearSwap itself can move it).
+    local item = nil
+    for _, entry in ipairs(bag or {}) do
+      if type(entry) == "table" and entry.slot == pending_warp.bag_slot and entry.id == pending_warp.item_id then
+        item = entry
+        break
+      end
+    end
+    if item == nil then
+      abort_warp("crossbar: warp abandoned - " .. tostring(pending_warp.name) .. " went missing")
+      return
+    end
+    local ext = ctx.decode_extdata ~= nil and ctx.decode_extdata(item) or nil
+    local step = ext ~= nil and enchanted.step(ext, time_now()) or nil
+    if step == nil then
+      -- A decode that is not enchanted-shaped: degrade, never arithmetic -
+      -- this runs under the shared prerender guard.
+      abort_warp("crossbar: warp abandoned - " .. tostring(pending_warp.name) .. " cannot be read")
+      return
+    end
+    if step == "use" then
+      local broadcast = pending_warp.broadcast
+      send_command(pending_warp.command)
+      abort_warp(nil)
+      if broadcast ~= nil then
+        broadcast()
+      end
+    elseif step == "abandon" then
+      -- Not a timer: the REMAINING delay exceeds the bound, so waiting is
+      -- pointless and the item is abandoned at once (MyHome's rule).
+      abort_warp("crossbar: warp abandoned - " .. tostring(pending_warp.name) .. " needs more than 30 sec")
+    end
+  end
+
+  local function flash(group_key, slot)
+    if prims == nil then
+      return
+    end
+    -- A hand-edited config can name a ninth slot key: the binding still
+    -- fires, but there is no ninth prim to flash.
+    local content = contents[group_key] ~= nil and contents[group_key][slot] or nil
+    local slots = prims.groups[group_key]
+    if content == nil or slots == nil or slots[slot] == nil then
+      return
+    end
+    local feedback = type(config.feedback) == "table" and config.feedback or {}
+    content.flash = feedback.alpha or 150
+    local pair = slots[slot]
+    pair.feedback.alpha(content.flash)
+    pair.feedback.show()
+    content.written["feedback.alpha"] = content.flash
+    content.written["feedback.visible"] = true
+  end
+
+  -- Runs a resolved plan. `setkey` strings are composed here, in testable
+  -- code - the ctx stays a plain send_command.
+  local function execute(plan, hint)
+    if plan == nil then
+      if hint ~= nil then
+        say("crossbar: " .. hint)
+      end
+      return
+    end
+    if plan.weapon_state ~= nil then
+      -- Firing draw flips the component's weapon state, which flips the
+      -- cycle rotation AND the draw slot's own icon - same as FFXIV.
+      bindings.set_weapon_state(plan.weapon_state)
+      repaint()
+    end
+    if plan.kind == "command" then
+      send_command(plan.command)
+    elseif plan.kind == "keys" then
+      for _, edge in ipairs(plan.sequence or {}) do
+        send_command("setkey " .. edge.key .. " " .. edge.state)
+      end
+    elseif plan.kind == "message" then
+      say("crossbar: " .. plan.message)
+    elseif plan.kind == "warp" then
+      run_warp_plan(plan.plan)
+    end
+  end
+
+  --[[ The travel gate (CB10): mount, mount roulette and warp arm a
+       countdown instead of firing, and the widget fires them when it runs
+       out. Answers whether the press was held - false means fire it now,
+       which is every other press, a dismount, an enchanted warp rung and a
+       `delay` of zero.
+
+       `fire` is how the press goes when the countdown ends, and the default
+       RE-RESOLVES rather than closing over the plan computed at the press:
+       five seconds is long enough for the ladder's rung, the mount pick or
+       the mounted state to have moved on, and the later one wins. ]]
+  --[[ The config modes: `//hud layout` and the binder are for arranging
+       the HUD, not for playing in. Answers the open one by the name the
+       player types, or nil. Layout mode is asked first because entering it
+       closes the binder, so it is the one that is open when both look it. ]]
+  local function config_mode()
+    if layout_active() then
+      return "//hud layout"
+    end
+    if editing() then
+      return "edit mode"
+    end
+    return nil
+  end
+
+  local function delay_travel(record, plan, fire)
+    local label = travel.label(record, plan)
+    if label == nil then
+      -- A trip that goes at once - a dismount, a warp on an enchanted rung,
+      -- a `delay` of zero - is still a newer trip, so it ends whatever was
+      -- counting down rather than firing alongside it. An ordinary press is
+      -- not a trip at all and leaves the countdown alone: curing something
+      -- while you wait to warp is not a change of mind.
+      if travel.travels(record) then
+        say_travel(travel.cancel())
+      end
+      return false
+    end
+    --[[ Refused where the press is made, rather than armed and called off
+         a frame later by the gate on the tick: the outcome is the same and
+         this is one line to read instead of two that contradict each other.
+         The gate still has the other direction to catch - a mode opened
+         while a trip is already counting down. ]]
+    local mode = config_mode()
+    if mode ~= nil then
+      say("crossbar: " .. label .. " - not while " .. mode .. " is open")
+      return true
+    end
+    local message = travel.arm({
+      label = label,
+      fire = fire or function()
+        execute(actions.resolve(record, draw_state()))
+      end,
+    })
+    if message == nil then
+      return false
+    end
+    say_travel(message)
+    return true
+  end
+
+  -- The (set, side) a hold state fires from, plus the group that flashes.
+  local function state_target(state)
+    if state == "xhb_left" or state == "xhb_right" then
+      return bindings.active_set(), state:sub(5), state
+    end
+    if state == "wxhb_left" or state == "wxhb_right" then
+      local view = bindings.view_target(state)
+      if type(view) == "table" then
+        return view.set, view.side, state
+      end
+    elseif state == "expanded_lr" or state == "expanded_rl" then
+      local view = bindings.view_target(state)
+      if type(view) == "table" then
+        return view.set, view.side, "expanded"
+      end
+    end
+    return nil
+  end
+
+  local function fire_slot(slot)
+    if scoped_main == nil or machine == nil then
+      return
+    end
+    local set, side, group_key = state_target(machine.hold_state())
+    if set == nil then
+      return
+    end
+    local record = bindings.resolve(set, side, slot)
+    if record == nil then
+      -- An empty slot is silent: no command, no hint, no flash. It is still
+      -- a newer slot press, though, so it drops whatever the cast retry was
+      -- watching - nothing may outlive the moment it belonged to.
+      retry.sent(nil)
+      return
+    end
+    flash(group_key, slot)
+    local plan, hint = actions.resolve(record, draw_state())
+    -- A travel press counts down instead of going; everything else fires
+    -- the moment it is pressed, exactly as it always did.
+    if not delay_travel(record, plan) then
+      execute(plan, hint)
+    end
+    --[[ Hand the press to the cast retry - after the send, never before it:
+         this feature reacts, and a press the game accepts is never delayed
+         by it. What is stored is the RE-SEND form, target already pinned;
+         the send above went out with the token, untouched. The KIND goes
+         with it, because a spell, an ability and a weaponskill are each
+         refused in their own words and stopped by their own buffs; the
+         address rides along so the retry can ask whether the slot still
+         holds this very record. Any other press hands over nil, which
+         drops whatever was being watched - a newer press means the player
+         has moved on. ]]
+    local sent = nil
+    local kind = RETRY_KINDS[record.type]
+    if kind ~= nil and plan ~= nil and plan.kind == "command" and retry.enabled() then
+      local resend = resend_command(plan.command, record.target)
+      if resend ~= nil then
+        sent = { record = record, command = resend, kind = kind, set = set, side = side, slot = slot }
+      end
+    end
+    retry.sent(sent)
+  end
+
+  --[[ Job scoping and events ---------------------------------------------- ]]
+
+  --[[ The ONE writer of the model's buff state. While the binder previews a
+       context, the simulated list owns it outright and live buff events are
+       dropped rather than queued - the alternative, letting both write,
+       reverts the previewed bar under a header still claiming the simulated
+       view. The handover (preview(nil)) re-reads the client here, so
+       nothing stale can survive the preview coming down. ]]
+  local function apply_buffs()
+    if previewing ~= nil then
+      return bindings.update_buffs(previewing)
+    end
+    local player = get_player()
+    if player == nil then
+      return false
+    end
+    return bindings.update_buffs(player.buffs or {})
+  end
+
+  local function sync_buffs()
+    if apply_buffs() then
+      repaint()
+    end
+  end
+
+  local function try_scope(force)
+    local player = get_player()
+    if player == nil or player.main_job == nil then
+      return
+    end
+    if rescope_want ~= nil then
+      -- The job change event outran get_player(): the client still reports
+      -- the old job - or, on a sub-only change, the old SUB under the same
+      -- main - and scoping it would stick. The want stays armed until both
+      -- announced ids agree with what the client answers.
+      if rescope_want.main ~= nil and player.main_job_id ~= nil and player.main_job_id ~= rescope_want.main then
+        return
+      end
+      if rescope_want.sub ~= nil and player.sub_job_id ~= nil and player.sub_job_id ~= rescope_want.sub then
+        return
+      end
+    end
+    local wanted = rescope_want ~= nil
+    rescope_want = nil
+    if not force and not wanted and player.main_job == scoped_main and player.sub_job == scoped_sub then
+      return
+    end
+    bindings.set_job(player.main_job, player.sub_job)
+    scoped_main, scoped_sub = player.main_job, player.sub_job
+    tools_dirty = true
+    -- Through the one writer: set_job clears the active contexts, and a
+    -- job change landing mid-preview must re-assert the simulated list
+    -- rather than the client's.
+    apply_buffs()
+    repaint()
+  end
+
+  --[[ The per-frame tick -------------------------------------------------- ]]
+
+  local function recount_tools()
+    tools_dirty = false
+    tool_counts = {}
+    local bag = ctx.get_items ~= nil and ctx.get_items(0) or nil
+    for _, item in ipairs(bag or {}) do
+      if type(item) == "table" and item.id ~= nil and item.id ~= 0 and counters.tracked_item(item.id) then
+        tool_counts[item.id] = (tool_counts[item.id] or 0) + (item.count or 0)
+      end
+    end
+  end
+
+  local function recast_label(seconds)
+    if seconds >= 3600 then
+      return ("%dh"):format(math.floor(seconds / 3600))
+    end
+    if seconds >= 60 then
+      return ("%dm"):format(math.floor(seconds / 60))
+    end
+    return ("%ds"):format(math.ceil(seconds))
+  end
+
+  -- Seconds remaining on a slot's recast. Spell recasts arrive in 60ths of
+  -- a second, ability recasts in seconds - the client's own units.
+  local function remaining_for(meta, spell_recasts, ability_recasts)
+    if meta == nil or meta.recast_id == nil then
+      return 0
+    end
+    if meta.kind == "spell" then
+      return (spell_recasts[meta.recast_id] or 0) / 60
+    end
+    return ability_recasts[meta.recast_id] or 0
+  end
+
+  local function has_job(player, job)
+    return player ~= nil and (player.main_job == job or player.sub_job == job)
+  end
+
+  -- The count drawn in a slot's cost corner, when the action carries one:
+  -- SCH stratagem charges or NIN/COR tool counts - never both, a ninjutsu
+  -- is not a stratagem ability.
+  local function counter_for(content, player, ability_recasts)
+    local record = content.record
+    local meta = content.meta
+    if record.type == "ja" and counters.stratagem_ability(record.action) then
+      local charges = counters.stratagems(player, ability_recasts[231] or 0)
+      if charges ~= nil then
+        -- Explicit white: the fork sets no colour here and inherits
+        -- whatever the cost prim last showed.
+        return { text = tostring(charges.available), color = STRATAGEM_COLOR }
+      end
+      return nil
+    end
+    -- The fork's own gates (its ui.lua:1057/1102): tool counts draw only
+    -- while the owning school's job is somewhere on the pair - a shared
+    -- Utsusemi slot viewed on WHM shows no count and no red X.
+    local tool = nil
+    if meta ~= nil and meta.spell_id ~= nil and has_job(player, "NIN") then
+      tool = counters.tool_for_spell(meta.spell_id)
+    end
+    if tool == nil and record.type == "ja" and has_job(player, "COR") then
+      tool = counters.tool_for_ability(record.action)
+    end
+    if tool ~= nil then
+      local display = counters.tool_display(tool, tool_counts, player and player.main_job or nil)
+      return { text = display.text, color = TOOL_COLORS[display.color], zero = display.zero }
+    end
+    return nil
+  end
+
+  local function tick_slot(group, slot, player, vitals, spell_recasts, ability_recasts, chain_step)
+    local content = contents[group.key][slot]
+    local pair = prims.groups[group.key][slot]
+    local written = content.written
+
+    if content.flash ~= nil then
+      content.flash = render.feedback_fade(content.flash)
+      if content.flash == nil then
+        want(written, pair.feedback, "feedback.visible", false)
+      else
+        push(written, "feedback.alpha", content.flash, pair.feedback.alpha)
+      end
+    end
+
+    local record = content.record
+    if record == nil then
+      want(written, pair.cost, "cost.visible", false)
+      want(written, pair.recast, "recast.visible", false)
+      set_sweep(written, pair.sweep, false)
+      content.chain_prop = nil
+      set_chain(written, pair.chain, false)
+      set_frame(written, pair.frame, false)
+      push(written, "frame.alpha", 255, pair.frame.alpha)
+      return
+    end
+
+    --[[ The chain result (CB6): while the window is open, a WS or JA slot
+         whose action would continue the resonation swaps to the property's
+         icon under the animated frame - WS and JA/pet each by the action's
+         own id. Deviation from the reference fork, its own bug fixed: the
+         fork queries JA slots by recast_id, but the chain table is keyed by
+         ability id and the two are disjoint across all 75 entries (blood
+         pacts share recast 173, Ready moves 102), so its JA slots can never
+         light. A WS short of its 1000 TP draws the pair dimmed with the
+         cost still up; a JA is never TP-dimmed (a knowingly dropped
+         upstream quirk). ]]
+    local meta = content.meta
+    local chain_prop = nil
+    if chain_step ~= nil and meta ~= nil then
+      if record.type == "ws" and meta.ws_id ~= nil then
+        chain_prop = skillchain.result(meta.ws_id, "weapon_skills")
+      elseif (record.type == "ja" or record.type == "pet") and meta.ability_id ~= nil then
+        chain_prop = skillchain.result(meta.ability_id, "job_abilities")
+      end
+    end
+    content.chain_prop = chain_prop
+    local chain_dim = chain_prop ~= nil and record.type == "ws" and vitals.tp ~= nil and vitals.tp < 1000
+
+    local usable = true
+    local crossed_out = false
+
+    if chain_prop ~= nil and not chain_dim then
+      -- The undimmed result owns the slot; counters and costs sit out for
+      -- the window's few seconds, exactly as the reference blanks them.
+      want(written, pair.cost, "cost.visible", false)
+    else
+      local counter = counter_for(content, player, ability_recasts)
+      if counter ~= nil then
+        -- Deliberately NOT gated on hide.cost: a count is not a cost. The
+        -- option hides prices; how many tools you carry stays visible.
+        push(written, "cost.text", counter.text, pair.cost.text)
+        local color = counter.color or STRATAGEM_COLOR
+        push_color(written, pair.cost, "cost.color", color[1], color[2], color[3])
+        want(written, pair.cost, "cost.visible", true)
+        if counter.zero then
+          crossed_out = true
+          usable = false
+        end
+      else
+        local cost = render.cost(content.meta, vitals)
+        if cost ~= nil and not config_hide("cost") then
+          push(written, "cost.text", cost.text, pair.cost.text)
+          push_color(written, pair.cost, "cost.color", cost.color.r, cost.color.g, cost.color.b)
+          want(written, pair.cost, "cost.visible", true)
+        else
+          want(written, pair.cost, "cost.visible", false)
+        end
+        if cost ~= nil and not cost.affordable then
+          usable = false
+        end
+      end
+    end
+
+    local remaining = remaining_for(content.meta, spell_recasts, ability_recasts)
+    if remaining > 0 then
+      usable = false
+    end
+    -- No sweep work at all while the animation is configured away - the
+    -- maxima simply re-learn (starting full, the algorithm's own posture)
+    -- if it is ever turned back on.
+    local frame = nil
+    if not config_hide("recast_animation") then
+      frame = render.sweep(content.sweep_key, remaining)
+    end
+
+    if crossed_out then
+      -- The sweep overlay doubles as the red X (upstream's prim reuse), and
+      -- the recast text hides under it.
+      set_sweep(written, pair.sweep, "x")
+      want(written, pair.recast, "recast.visible", false)
+    else
+      if frame ~= nil then
+        set_sweep(written, pair.sweep, frame)
+      else
+        set_sweep(written, pair.sweep, false)
+      end
+      if remaining > 0 and not config_hide("recast_text") then
+        push(written, "recast.text", recast_label(remaining), pair.recast.text)
+        want(written, pair.recast, "recast.visible", true)
+      else
+        want(written, pair.recast, "recast.visible", false)
+      end
+    end
+
+    if chain_prop ~= nil then
+      set_chain(written, pair.chain, chain_prop)
+      push(written, "chain.alpha", chain_dim and SC_DIM_ICON_ALPHA or 255, pair.chain.alpha)
+      set_frame(written, pair.frame, chain_step)
+      push(written, "frame.alpha", chain_dim and SC_DIM_FRAME_ALPHA or 255, pair.frame.alpha)
+    else
+      set_chain(written, pair.chain, false)
+      set_frame(written, pair.frame, false)
+      push(written, "frame.alpha", 255, pair.frame.alpha)
+    end
+    -- The action icon hides under a chain result and comes back with it;
+    -- refresh() applies the same predicate, so the two never fight.
+    want(written, pair.icon, "icon.visible", chain_prop == nil and content.icon_found)
+
+    -- Deviation from upstream, deliberate: dimming covers the ICON only.
+    -- Upstream dims icon + cost + element together (toggle_slot); the
+    -- element prim does not exist at CB5 (hide.element defaults on, no
+    -- milestone home), and the cost text keeps its own semantic colours -
+    -- the mp/tp/tool bands ARE its signal, and greying them would fight it.
+    push(written, "icon.alpha", render.slot_alpha(usable), pair.icon.alpha)
+  end
+
+  --[[ Draws (or hides) the window indicator for this tick. Colour and
+       opacity land only on a state flip (upstream's own gate); geometry
+       lands whenever it moves, which while a window runs is every frame -
+       that IS the animation, upstream's too. In preview the full open-state
+       bar stands in, so layout mode has the anchor's real footprint to
+       drag whatever the live chain state. ]]
+  local function draw_indicator(delay, window)
+    if prims == nil then
+      return
+    end
+    local pair = prims.indicator
+    local entry = placed.indicator
+    local cfg = type(config.skillchain) == "table" and config.skillchain or {}
+    local plan = nil
+    if entry ~= nil and entry.pos ~= nil and cfg.indicator ~= false then
+      if preview then
+        plan = skillchain.indicator_plan(0, 7)
+      else
+        plan = skillchain.indicator_plan(delay, window)
+      end
+    end
+    local w = indicator_written
+    if plan == nil then
+      if w.visible ~= false then
+        w.visible = false
+        w.state = nil
+        pair.bg.hide()
+        pair.fill.hide()
+      end
+      return
+    end
+    if w.state ~= plan.state then
+      w.state = plan.state
+      local color = plan.state == "waiting" and SC_WAITING_COLOR or SC_OPEN_COLOR
+      local tuned = plan.state == "waiting" and cfg.waiting_color or cfg.open_color
+      if type(tuned) ~= "table" then
+        tuned = color
+      end
+      pair.fill.color(tuned.r or color.r, tuned.g or color.g, tuned.b or color.b)
+      pair.fill.alpha(type(cfg.opacity) == "number" and cfg.opacity or SC_OPACITY)
+    end
+    local scale = entry.scale
+    local ax, ay = entry.pos.x, entry.pos.y
+    local fill, bg = plan.fill, plan.bg
+    push_rect(pair.fill, w.fill, ax + fill.x * scale, ay + fill.y * scale, fill.width * scale, fill.height * scale)
+    push_rect(pair.bg, w.bg, ax + bg.x * scale, ay + bg.y * scale, bg.width * scale, bg.height * scale)
+    if w.visible ~= true then
+      w.visible = true
+      pair.bg.show()
+      pair.fill.show()
+    end
+  end
+
+  -- How long a job-change gate keeps the per-frame get_player retry alive
+  -- before standing down (parambar's login-retry precedent): a stale or
+  -- dying announcement must not poll forever. The next job change event
+  -- re-arms it.
+  local RESCOPE_DEADLINE_SECONDS = 10
+
+  --[[ Client reads ride the roster cadence (200ms - the plan's partylist
+       cadence, targetbar's precedent). The sweep has 32 frames of
+       granularity, so nothing visible is lost; the per-frame work between
+       reads runs against the cached answers, and a bar with nothing on
+       screen reads nothing at all. ]]
+  local READ_INTERVAL_SECONDS = 0.2
+  local reads = nil
+  local next_read = 0
+
+  --[[ The binder (CB8) ----------------------------------------------------
+       Built here, at the foot of the constructor, because every dep below
+       closes over a local defined above it. The catalog instance is built
+       with it; the binder rebuilds its listing on each open, so a level-up
+       or a fresh spell is picked up without a reload. ]]
+
+  local catalog = new_catalog({
+    get_player = get_player,
+    get_spells = ctx.get_spells,
+    get_abilities = ctx.get_abilities,
+    get_items = ctx.get_items,
+    owned_mounts = roulette ~= nil and roulette.owned or nil,
+    -- The owned list is what /mount takes; this is how it is written.
+    mount_display = roulette ~= nil and roulette.display or nil,
+    resources = resources,
+  })
+
+  binder = new_binder({
+    new_image = ctx.new_image,
+    new_text = ctx.new_text,
+    asset = ctx.asset,
+    screen = ctx.screen,
+    text_style = function()
+      return { font = config.font or "sans-serif", size = config.font_size or 7 }
+    end,
+    -- The live render instance, not the construction-time one: attach
+    -- rebuilds it over the user's own config.
+    render = function()
+      return render
+    end,
+    -- Only the groups actually on screen, with the anchor placement they
+    -- are drawn at, so the hit-test can never claim a bar that is not
+    -- there. Expanded Hold cannot appear here: the widget ignores every
+    -- activate intent while the binder is up, so the displayed state is
+    -- whatever it was when edit mode opened.
+    groups = function()
+      local list = {}
+      for _, group in ipairs(GROUPS) do
+        local entry = placed[group.anchor]
+        local set, side = group_target(group)
+        if shown_groups[group.key] and entry ~= nil and entry.pos ~= nil and set ~= nil then
+          list[#list + 1] = {
+            key = group.key,
+            bar = group.bar,
+            -- Two sides, deliberately: the group's own half decides where
+            -- the slots are drawn, the view's decides what they address.
+            render_side = group.side,
+            side = side,
+            x = entry.pos.x,
+            y = entry.pos.y,
+            scale = entry.scale,
+            set = set,
+          }
+        end
+      end
+      return list
+    end,
+    bindings = function()
+      return bindings
+    end,
+    catalog = catalog,
+    validate = actions.validate,
+    icon = function(record)
+      local candidate = record ~= nil and pick_icon(record, meta_for(record), draw_state()) or nil
+      return candidate ~= nil and ctx.asset(candidate.path) or nil
+    end,
+    --[[ Tooltips carry only what the component already knows - no game
+         description text, which we do not hold and would have to vendor.
+         The recast reads ride the tick's 200ms cache when it has one: a
+         hover is a mouse-move stream, and a client read per move would be
+         hundreds a second. ]]
+    describe = function(record)
+      local meta = meta_for(record)
+      local facts = {
+        name = record.alias or record.display or record.action or record.type,
+        type = record.type,
+        target = record.target,
+      }
+      if meta ~= nil then
+        facts.mp_cost = meta.mp_cost
+        facts.tp_cost = meta.tp_cost
+        -- The tick's 200ms cache when there is one - a hover is a mouse
+        -- move stream - falling back to a live read rather than to an empty
+        -- table, which would report every recast as ready until the first
+        -- tick after attach landed.
+        local spell_recasts = reads ~= nil and reads.spell_recasts
+          or (ctx.get_spell_recasts ~= nil and ctx.get_spell_recasts())
+          or {}
+        local ability_recasts = reads ~= nil and reads.ability_recasts
+          or (ctx.get_ability_recasts ~= nil and ctx.get_ability_recasts())
+          or {}
+        local remaining = remaining_for(meta, spell_recasts, ability_recasts)
+        facts.recast = math.floor(remaining + 0.5)
+        if meta.ws_id ~= nil then
+          facts.property = skillchain.properties(meta.ws_id, "weapon_skills")
+        elseif meta.ability_id ~= nil then
+          facts.property = skillchain.properties(meta.ability_id, "job_abilities")
+        end
+      end
+      return facts
+    end,
+    say = say,
+    -- A binder write lands in the same store the CLI writes through, so the
+    -- bar has to be repainted from it exactly as an authoring verb would.
+    changed = repaint,
+    --[[ Preview = a SIMULATED buff list through the live resolver, never a
+         hand-toggled layer: picking dark-arts drops light-arts even if it
+         is actually up, and picking an addendum lights its arts too, so the
+         bar always shows the true stacked result. nil hands the live buff
+         list back. ]]
+    preview = function(buffs)
+      previewing = buffs
+      apply_buffs()
+      repaint()
+    end,
+  })
+
+  --[[ The cast retry's guards, answered for the record it is about to
+       re-send. Every fact comes from state the widget already holds - the
+       binding store, the memoised resource tables and the 200ms client read
+       - so a guard costs no client call, and the probe is only ever called
+       when a re-send is otherwise due. The target is not among them: it was
+       pinned at the press (see FIXED_TARGETS above), so there is nothing to
+       re-check and no second lookup to pay for. ]]
+  local function retry_facts(entry)
+    if bindings.resolve(entry.set, entry.side, entry.slot) ~= entry.record then
+      -- Rebound, re-set, or a context has swapped the slot out from under
+      -- the press. Identity, not contents: a different table at that
+      -- address is a different binding, whatever it says.
+      return { bound = false }
+    end
+    local meta = meta_for(entry.record)
+    local snapshot = reads or {}
+    local player = snapshot.player
+    local cost = render.cost(meta, player ~= nil and player.vitals or {})
+    return {
+      bound = true,
+      recast = remaining_for(meta, snapshot.spell_recasts or {}, snapshot.ability_recasts or {}),
+      affordable = cost == nil or cost.affordable ~= false,
+      buffs = player ~= nil and player.buffs or nil,
+    }
+  end
+
+  local function tick()
+    -- A fresh tick re-arms the one-per-tick target memo (see the engine's
+    -- construction above).
+    sc_target_read = false
+    local clock = ctx.now ~= nil and ctx.now() or 0
+    if rescope_want ~= nil and rescope_want.deadline ~= nil and clock >= rescope_want.deadline then
+      -- The client never confirmed the announced ids: stop gating and
+      -- scope whatever it answers now; the retry stands down with the want.
+      rescope_want = nil
+      try_scope(true)
+    elseif scoped_main == nil or rescope_want ~= nil then
+      try_scope(rescope_want ~= nil)
+    end
+    -- The warp poll keeps its own 1s cadence and must run even while the
+    -- bar is hidden - a warp mid-wait does not stop for a cutscene's hide.
+    tick_warp()
+    --[[ The travel countdown, ahead of the visibility gates for the same
+         reason: it is a press already made, and it is answered whether or
+         not the bar is on screen. With nothing counting down this is one
+         nil test and no client read at all.
+
+         A late trip goes only where a fresh press would, the cast retry's
+         own rule: `//hud layout` and the binder are configuration, not
+         play, so either of them calls a countdown off. The armed test comes
+         FIRST because the two questions behind it are ctx calls, and a
+         player with nothing counting down must not pay for them sixty
+         times a second. One gate covers both directions - a mode opened
+         mid-count, and a press made while one was already open - so
+         neither entry point needs a cancel of its own. Chat is deliberately
+         NOT here, unlike the retry: typing a line is not a config mode, and
+         answering a tell while you wait to warp should not strand you. ]]
+    if travel.armed() and config_mode() ~= nil then
+      say_travel(travel.cancel())
+    end
+    local travelling, count = travel.step()
+    if count ~= nil then
+      say(count)
+    end
+    if travelling ~= nil then
+      travelling.fire()
+    end
+    if icon_cache ~= nil and icon_cache.drain_queue() then
+      -- An icon landed on disk; only unresolved item slots can care.
+      repaint_unresolved_items()
+    end
+    if prims == nil or scoped_main == nil then
+      return
+    end
+    local any_shown = false
+    for _, group in ipairs(GROUPS) do
+      if shown_groups[group.key] then
+        any_shown = true
+        break
+      end
+    end
+    if not any_shown then
+      -- Hidden or suppressed: zero client reads.
+      return
+    end
+    -- The skillchain surface: the indicator from the window state, and the
+    -- per-slot results only while the window is actually open. The border
+    -- animation's clock advances once per tick, shared by every slot.
+    -- Decision: the indicator rides the bar's own tick and gates rather
+    -- than a path of its own - a hidden or suppressed bar is a hidden
+    -- indicator, which is the visibility contract, at the cost of the
+    -- indicator sitting out until a job is scoped.
+    local sc_delay, sc_window = skillchain.window()
+    draw_indicator(sc_delay, sc_window)
+    local chain_step = nil
+    if sc_window > 0 and sc_delay <= 0 and not config_hide("skillchain_icon") then
+      chain_step = render.chain_tick()
+    end
+    if tools_dirty then
+      recount_tools()
+    end
+    if reads == nil or clock >= next_read then
+      next_read = clock + READ_INTERVAL_SECONDS
+      reads = {
+        player = get_player(),
+        spell_recasts = ctx.get_spell_recasts ~= nil and ctx.get_spell_recasts() or {},
+        ability_recasts = ctx.get_ability_recasts ~= nil and ctx.get_ability_recasts() or {},
+      }
+      -- A hovered tooltip reads its recast from these, so it is rebuilt on
+      -- the same cadence rather than per frame - and only in edit mode,
+      -- where the binder is the only thing that has a tooltip at all.
+      if editing() then
+        binder.refresh_tooltip()
+      end
+    end
+    --[[ The cast retry, over the reads above. The pending test comes FIRST
+         and is a plain nil check on state this component already holds: the
+         guards below are client calls (chat_open() is get_info() behind a
+         wrapper), and a player who never turns the feature on must not pay
+         for one of those sixty times a second.
+
+         A re-send is the same slot press arriving late, so it fires only
+         where a slot press would - never into an open chat line, never
+         under the binder, never while layout mode owns the screen. (The
+         input machine's other two, suppressed and disabled, arrive here as
+         hide(), which clears outright.) A cast held when one of the three
+         opens is dropped, not queued behind it. ]]
+    if retry.pending() ~= nil then
+      if chat_open() or editing() or layout_active() then
+        retry.clear()
+      else
+        local resend = retry.step(retry_facts)
+        if resend ~= nil then
+          send_command(resend.command)
+        end
+      end
+    end
+    local player = reads.player
+    local vitals = player and player.vitals or {}
+    for _, group in ipairs(GROUPS) do
+      if shown_groups[group.key] then
+        for slot = 1, SLOT_COUNT do
+          tick_slot(group, slot, player, vitals, reads.spell_recasts, reads.ability_recasts, chain_step)
+        end
+      end
+    end
+  end
+
+  --[[ Edit mode ------------------------------------------------------------
+
+       One entry point for all three frontends: the `edit` verb, the Select
+       chord, and any press of that shortcut key while the binder is up.
+       Layout mode owns the mouse outright while it is on, so the two can
+       never contend - core refuses nothing here, the component does. ]]
+
+  local function close_edit()
+    if editing() then
+      binder.close()
+      -- The activate intents that arrived while the binder was up went
+      -- unheard, so the side memory is stale: read the machine, exactly as
+      -- show() does when the component comes back from hidden.
+      active_state = machine and machine.hold_state() or "none"
+      repaint()
+    end
+  end
+
+  local function toggle_edit()
+    if editing() then
+      close_edit()
+      return "crossbar: edit mode off"
+    end
+    if ctx.layout_active ~= nil and ctx.layout_active() then
+      return "crossbar: //hud layout owns the mouse - leave layout mode first"
+    end
+    if not visible then
+      return "crossbar: the crossbar is hidden - //hud show crossbar first"
+    end
+    if scoped_main == nil then
+      -- Nothing is bindable before a job is named: the binder would open on
+      -- a bar with no set behind it, which is worse than a refusal.
+      return "crossbar: no job scoped yet - log in first"
+    end
+    binder.open()
+    -- The bar repaints into its edit-mode dress: every side drawn, and each
+    -- slot wearing the tag of the layer its winner came from.
+    repaint()
+    return "crossbar: edit mode on - click a slot, then a layer, then an action"
+  end
+
+  --[[ Commands ------------------------------------------------------------ ]]
+
+  local function status_lines()
+    if scoped_main == nil then
+      return "crossbar: no job loaded yet"
+    end
+    local head = "crossbar: " .. scoped_main
+    if scoped_sub ~= nil then
+      head = head .. "/" .. scoped_sub
+    end
+    local lines = { head .. " - set " .. bindings.active_set() .. " (" .. bindings.weapon_state() .. ")" }
+    -- The CLI owns the view map: it is the spelling the user types, and a
+    -- second copy here could disagree with the verb that sets them.
+    for _, view in ipairs(authoring.views) do
+      local target = bindings.view_target(view.key)
+      if type(target) == "table" then
+        lines[#lines + 1] = "  " .. view.cli .. " -> set " .. tostring(target.set) .. " " .. tostring(target.side)
+      end
+    end
+    return lines
+  end
+
+  local function opener_lines()
+    local names = {}
+    for name in pairs(openers) do
+      names[#names + 1] = name
+    end
+    table.sort(names)
+    return { "crossbar open targets:", "  " .. table.concat(names, ", ") }
+  end
+
+  -- The one dispatcher behind both frontends: `//hud crossbar ...` through
+  -- core's passthrough, and the shortcut keys' verbs. Answers a string or a
+  -- list of lines (or nil when execution already happened).
+  local function dispatch_command(args)
+    args = args or {}
+    local verb = type(args[1]) == "string" and args[1]:lower() or nil
+    if verb == nil or verb == "" then
+      return status_lines()
+    end
+    if verb == "set" then
+      -- The CLI absorbs the model's asymmetry: `jump` takes numbers only
+      -- (the input machine hands it one), while `bind` also takes numeric
+      -- strings because its set argument carries the layer prefixes. A
+      -- command line is all strings, so the conversion belongs here.
+      local set = tonumber(args[2])
+      if set == nil then
+        return "crossbar: set takes a number - //hud crossbar set <1-8>"
+      end
+      local landed, err = bindings.jump(set)
+      if landed == nil then
+        return "crossbar: " .. err
+      end
+      repaint()
+      return "crossbar: set " .. landed
+    end
+    if verb == "cycle" and args[2] == nil then
+      -- The bare/args overload: bare advances the rotation, with args it
+      -- edits rotation membership (the authoring half, below) - never a
+      -- silent advance either way.
+      local landed, err = bindings.cycle()
+      if landed == nil then
+        return "crossbar: " .. err
+      end
+      repaint()
+      return "crossbar: set " .. landed
+    end
+    if verb == "open" and args[2] == nil then
+      return opener_lines()
+    end
+    if verb == "edit" then
+      return toggle_edit()
+    end
+    if verb == "warp" then
+      --[[ The broadcast rides the local warp rather than the press: a
+           countdown the player calls off, or a ring warm-up that is later
+           abandoned, must not leave the alts already sent home. It is
+           handed to run_warp_plan, which knows where the warp commits. ]]
+      local broadcast = nil
+      if type(args[2]) == "string" and args[2]:lower() == "all" and ctx.send_ipc ~= nil then
+        broadcast = function()
+          ctx.send_ipc(IPC_WARP_MESSAGE)
+        end
+      end
+      local record = { type = "warp" }
+      local ladder = warp.plan()
+      if
+        not delay_travel(record, { kind = "warp", plan = ladder }, function()
+          -- Re-walked here: the rung that was best five seconds ago may
+          -- not be the one to fire now.
+          run_warp_plan(warp.plan(), broadcast)
+        end)
+      then
+        run_warp_plan(ladder, broadcast)
+      end
+      return nil
+    end
+    if authoring.handles(verb) then
+      local reply, save_config, needs_repaint = authoring.command(args)
+      -- Every accepted change persists immediately: a binding write went
+      -- through the store on its way here, and a config write needs core's
+      -- own save. Both then re-render, since a repointed view or a flipped
+      -- shared flag changes what the bar is showing.
+      if save_config and save ~= nil then
+        save()
+      end
+      -- A config write can have been `retry off`, and switching the feature
+      -- off must drop a cast pending at that moment rather than let a last
+      -- one through. Generic on purpose: no verb is named here.
+      retry.sync()
+      if needs_repaint then
+        repaint()
+      end
+      return reply
+    end
+    -- Arguments fold case like verbs do (the framework convention):
+    -- `open EQUIPMENT` is the same opener.
+    local argument = args[2]
+    if type(argument) == "string" then
+      argument = argument:lower()
+    end
+    local plan, hint = actions.resolve_builtin(verb, argument, draw_state())
+    if plan == nil then
+      if hint ~= nil and not hint:find("unknown built%-in") then
+        return "crossbar: " .. hint
+      end
+      -- `help` first: the CLI's own unknown-verb reply is unreachable (the
+      -- widget routes on handles() before it), so this is the only hint an
+      -- unknown verb ever sees, and the full list is one word away.
+      return "crossbar: unknown command '" .. verb .. "' - try help, set, cycle, open, draw, mr or warp"
+    end
+    -- The same record resolve_builtin just built, so the typed command and
+    -- a bound slot reach the travel gate identically - one path by design.
+    if not delay_travel({ type = verb, action = argument }, plan) then
+      execute(plan)
+    end
+    return nil
+  end
+
+  -- A shortcut key's verb is a `//hud crossbar` line without the prefix.
+  local function run_shortcut(verb)
+    if type(verb) ~= "string" then
+      return
+    end
+    local words = {}
+    for word in verb:gmatch("%S+") do
+      words[#words + 1] = word
+    end
+    local reply = dispatch_command(words)
+    if reply ~= nil then
+      say(reply)
+    end
+  end
+
+  --[[ The widget contract ------------------------------------------------- ]]
+
+  function self.attach(new_config, persist, store)
+    -- Re-read on every attach (targetbar's precedent): the right-justified
+    -- text x subtracts the width, and a resolution change must correct
+    -- here. The height's only consumer is the construction-time defaults.
+    screen_width = ctx.screen()
+    config = type(new_config) == "table" and new_config or self.defaults
+    save = persist
+    render = new_render({ config = config, icon_for = icon_for })
+    bindings = build_bindings(store)
+    --[[ A countdown belongs to the configuration that armed it. NOT the
+         detach clear by another name: core re-attaches WITHOUT detaching
+         (`//hud reset crossbar`, and the reload `//hud copy` does when it
+         writes the character being played), so a trip armed beforehand
+         would otherwise fire afterwards carrying a record from the
+         configuration just thrown away - and unlike the cast retry there is
+         no `bound` guard here to notice that it had. Silent: a reset is not
+         a cancellation the player needs told about. ]]
+    travel.clear()
+    scoped_main, scoped_sub, rescope_want = nil, nil, nil
+    tools_dirty = true
+    reset_contents()
+    -- A hand-broken input block degrades to the shipped defaults rather
+    -- than crashing attach: one bad config file at login would otherwise
+    -- leave every component after this one unattached.
+    machine = new_input({
+      keys = type(config.input) == "table" and config.input or self.defaults.input,
+      chat_open = ctx.chat_open,
+      suppressed = ctx.suppressed,
+      layout_mode = ctx.layout_active,
+      -- The sixth guard, live from CB8: while the binder is up the
+      -- crossbar's own keys fire nothing though they stay blocked and keep
+      -- tracking, and the one live input is the shortcut key that exits.
+      edit_mode = editing,
+      disabled = function()
+        --[[ Disabled means the USER-hidden case only, and it outranks
+             suppression: a crossbar the player turned off keeps its keys
+             with the game through cutscenes and zoning. Core's user flag
+             is the one truthful source - suppression and a user hide both
+             reach this widget as hide() (and a hide arriving DURING a
+             cutscene is never signalled at all, the widget already being
+             hidden), so show()/hide() cannot rank the two. ]]
+        if ctx.component_visible ~= nil then
+          return ctx.component_visible() ~= true
+        end
+        -- Degraded ctx (the wire missing): infer from show()/hide() and
+        -- rank suppression above the ambiguous hidden state.
+        return not visible and not (ctx.suppressed ~= nil and ctx.suppressed() == true)
+      end,
+    })
+    --[[ A hand-edited key map can give one DIK two jobs; input.lua keeps the
+         first claim and drops the rest, and this is the only place the player
+         would ever hear about it - said once per config read, not once per
+         press, and one line per key so a map broken twice reads as two
+         problems. ]]
+    if ctx.say ~= nil then
+      for _, clash in ipairs(machine.conflicts()) do
+        ctx.say(
+          ("crossbar: DIK %d is bound to more than one thing - %s wins, and %s is ignored"):format(
+            clash.dik,
+            clash.kept,
+            table.concat(clash.dropped, " and ")
+          )
+        )
+      end
+    end
+    active_state = "none"
+    reads, next_read = nil, 0
+    dress()
+    layout()
+    -- The login may already be far enough along to name the job; otherwise
+    -- the tick keeps looking (core scopes on the character name alone -
+    -- anything else a component needs it waits for itself).
+    try_scope()
+    repaint()
+  end
+
+  function self.detach()
+    -- The binder describes a character's bindings; a logout invalidates
+    -- every one of them, so it goes down with the scope.
+    close_edit()
+    -- gs enable on every exit path: a logout mid-warp must not leave the
+    -- slot disabled.
+    abort_warp(nil)
+    -- A logout (or a reload) invalidates a held cast with everything else.
+    -- Belt and braces: the binding store deep-copies on load, so the record
+    -- a re-attach resolves can never be the table the press pinned, and the
+    -- `bound` guard would drop it anyway. Kept because this is where the
+    -- rest of the per-character state is let go, not because it is the only
+    -- thing standing there.
+    retry.clear()
+    -- And a countdown, dropped without a word: a logout leaves nobody
+    -- reading the chat it would have been cancelled in.
+    travel.clear()
+    -- Core's save belongs to the attached config; holding it past a detach
+    -- would write a config this widget no longer has.
+    save = nil
+    -- The machine is rebuilt on attach (the plan's detach handshake): a key
+    -- released while detached would otherwise strand held/down/latch state
+    -- and make the next press read as an auto-repeat.
+    machine = nil
+    active_state = "none"
+    scoped_main, scoped_sub, rescope_want = nil, nil, nil
+    reads, next_read = nil, 0
+    bindings = build_bindings(nil)
+    reset_contents()
+    -- Chain state is per character and per zone at best; a detach (logout,
+    -- reload) invalidates all of it, exactly like the reference's logout.
+    skillchain.reset()
+    if icon_cache ~= nil then
+      icon_cache.reset()
+    end
+    refresh()
+  end
+
+  function self.on_keyboard(key, down, flags, blocked)
+    if not machine then
+      return false
+    end
+    local intents, block = machine.on_key(key, down, flags, blocked)
+    for _, intent in ipairs(intents) do
+      if intent.type == "activate" then
+        --[[ Activations are silent: the panel shows which side is active.
+             OPEN QUESTION (chat-focus display): `activate` passes
+             the chat guard by design, so the display follows the physical
+             keys even while the chat box has focus. A "freeze the display
+             while chat has focus" option would gate THIS branch on
+             ctx.chat_open() - nothing else - and is deliberately not
+             decided here.
+
+             Edit mode is the one state that ignores them outright: the
+             machine keeps tracking every key (CB0's contract is untouched),
+             but the widget stops reacting, so no side lights, Expanded
+             never replaces the XHB, and the slots cannot move out from
+             under an open stack panel. close_edit() reads hold_state() on
+             the way out - the same handshake show() uses. ]]
+        if not editing() then
+          local was_expanded = active_state == "expanded_lr" or active_state == "expanded_rl"
+          active_state = intent.state
+          local is_expanded = active_state == "expanded_lr" or active_state == "expanded_rl"
+          if was_expanded ~= is_expanded or is_expanded then
+            -- Entering Expanded (or crossing between its two views) is the
+            -- one activation that changes CONTENT, not just visibility.
+            repaint()
+          else
+            refresh()
+          end
+        end
+      elseif intent.type == "fire" then
+        fire_slot(intent.slot)
+      elseif intent.type == "jump" then
+        if bindings.jump(intent.set) ~= nil then
+          repaint()
+        end
+      elseif intent.type == "cycle" then
+        if bindings.cycle() ~= nil then
+          repaint()
+        end
+      elseif intent.type == "draw" then
+        execute(actions.resolve({ type = "draw" }, draw_state()))
+      elseif intent.type == "shortcut" then
+        run_shortcut(intent.verb)
+      end
+    end
+    return block
+  end
+
+  function self.update(event, a, ...)
+    if event == nil then
+      tick()
+      return
+    end
+    if event == "lose focus" then
+      if machine ~= nil then
+        machine.focus_lost()
+        active_state = "none"
+        refresh()
+      end
+    elseif event == "job change" then
+      -- The event carries (main_id, main_lv, sub_id, sub_lv); both ids gate
+      -- the reload - get_player() can still answer the OLD job (or the old
+      -- sub) here, and scoping it would stick.
+      local sub_id = select(2, ...)
+      -- A cast held across a job change belongs to the job that pressed it,
+      -- and so does a trip counting down.
+      retry.clear()
+      say_travel(travel.cancel())
+      rescope_want = nil
+      if type(a) == "number" then
+        rescope_want = {
+          main = a,
+          sub = type(sub_id) == "number" and sub_id or nil,
+          deadline = (ctx.now ~= nil and ctx.now() or 0) + RESCOPE_DEADLINE_SECONDS,
+        }
+      end
+      try_scope(true)
+    elseif event == "gain buff" or event == "lose buff" then
+      sync_buffs()
+      if a == MOUNTED_BUFF then
+        -- Not a context, but the draw slot's icon follows it.
+        repaint()
+      end
+    elseif event == "status" then
+      if DEAD_STATUSES[a] then
+        retry.clear()
+        -- Whatever you were travelling towards, you are not going now.
+        say_travel(travel.cancel())
+      end
+      -- Resting calls a countdown off, which is the way out the opening
+      -- line names. The status is the trigger, never the command text.
+      say_travel(travel.on_status(a))
+      local before = bindings.weapon_state()
+      bindings.on_status(a)
+      if bindings.weapon_state() ~= before then
+        repaint()
+      end
+    elseif event == "ipc message" then
+      if a == IPC_WARP_MESSAGE then
+        -- The receiving half of `warp all`: warp locally, never re-broadcast.
+        run_warp_plan(warp.plan())
+      end
+    elseif event == "add item" or event == "remove item" then
+      if counters.tracked_item(a) then
+        tools_dirty = true
+      end
+    elseif event == "chunk" then
+      if roulette ~= nil then
+        roulette.on_chunk(a)
+      end
+      -- The skillchain feed, attached only: the action packet, decoded once
+      -- by the entry point's dispatch and handed down beside the raw bytes,
+      -- plus the buff and zone chunks the engine reads raw. Chain state
+      -- changes draw from the tick - no repaint here, packets are not a
+      -- place to touch prims.
+      if machine ~= nil then
+        local original, parsed = ...
+        -- The cast retry's refusal branch, reading the same action-message
+        -- packet the skillchain engine takes its wear-off from - and the
+        -- zone-out, which invalidates a held cast exactly as it does the
+        -- chain state.
+        retry.on_chunk(a, original)
+        if a == ZONE_OUT_CHUNK then
+          retry.clear()
+          -- A zone ends the moment a countdown belonged to as surely as it
+          -- ends a held cast.
+          say_travel(travel.cancel())
+        end
+        if a == ACTION_CHUNK then
+          -- nil when the parse failed, which reads as nothing having landed.
+          if parsed ~= nil then
+            skillchain.on_action(parsed)
+          end
+        elseif SC_CHUNKS[a] then
+          skillchain.on_chunk(a, original)
+        end
+      end
+    end
+  end
+
+  --[[ Core pushes scale AND position for every anchor on every mouse move,
+       though a drag moves one anchor and changes only one of the two; the
+       push that changes nothing is dropped before it can lay anything out. ]]
+  function self.set_pos(x, y, anchor)
+    local entry = placement(anchor)
+    if entry == nil or (entry.pos ~= nil and entry.pos.x == x and entry.pos.y == y) then
+      return
+    end
+    entry.pos = { x = x, y = y }
+    layout(anchor)
+    refresh()
+  end
+
+  function self.set_scale(scale, anchor)
+    local entry = placement(anchor)
+    if entry == nil or entry.scale == scale then
+      return
+    end
+    entry.scale = scale
+    layout(anchor)
+    refresh()
+  end
+
+  function self.set_preview(on)
+    local wanted = on == true
+    -- Core pushes the flag on every apply, which during a layout-mode drag
+    -- is every mouse move; only a change is worth a pass.
+    if wanted == preview then
+      return
+    end
+    preview = wanted
+    if preview then
+      -- Core sets preview as layout mode opens, which is the one signal a
+      -- component gets for it: entering layout mode exits edit mode, so the
+      -- two never contend for the mouse. close_edit repaints on its own;
+      -- preview itself only changes which groups the plan raises.
+      close_edit()
+    end
+    refresh()
+  end
+
+  --[[ Core calls show() on every apply, so a layout-mode drag calls it on
+       every mouse move; a widget already on screen has nothing to re-sync
+       and must not repaint forty slots (or re-read the player) for it. The
+       work below is the way back from hidden - a user hide, or core's
+       suppression - and `visible` is the one thing that says which this is.
+       Preview and edit-mode toggles do their own repainting, so nothing
+       else rides on this call. ]]
+  function self.show()
+    if visible then
+      return
+    end
+    visible = true
+    -- Resync the side memory: while hidden the widget is disabled, so the
+    -- machine swallowed releases (and ignored presses) without emitting
+    -- activate intents, and the memory here went stale. This is the plan's
+    -- suppression re-enable handshake: read hold_state() on the way back.
+    active_state = machine and machine.hold_state() or "none"
+    -- And repaint, not just refresh: an Expanded hold entered while hidden
+    -- never painted its view's contents (group_target answered nil), so a
+    -- bare refresh would show an empty bar. The change-gate and icon memo
+    -- keep this cheap when nothing actually changed.
+    repaint()
+  end
+
+  function self.hide()
+    visible = false
+    -- Suppression (a cutscene, zoning) and a user hide both arrive here,
+    -- and a cast held through either would fire into a moment that has
+    -- gone. Nothing the retry holds outlives the bar being on screen, and
+    -- neither does a trip counting down.
+    retry.clear()
+    say_travel(travel.cancel())
+    -- A hidden crossbar has no bar to bind against, and its panels would be
+    -- left floating over a screen with nothing under them. Suppression
+    -- (cutscene, zoning) arrives here as a hide too, and takes the binder
+    -- with it for the same reason.
+    close_edit()
+    refresh()
+  end
+
+  -- The same origin set_pos was given, with render.lua's real footprint:
+  -- main answers the whole XHB whatever is currently drawn in it.
+  function self.get_bounds(anchor)
+    local entry = placed[anchor]
+    if not entry or not entry.pos then
+      return nil
+    end
+    local width, height = render.bounds(anchor, entry.scale)
+    return entry.pos.x, entry.pos.y, width, height
+  end
+
+  function self.handle_command(args)
+    return dispatch_command(args)
+  end
+
+  --[[ The mouse, dispatched by core while any component declares
+       `on_mouse` (touchpoint 3). Core has already answered an event layout
+       mode owns or another addon took, so everything arriving here is
+       genuinely free. Closed, this is one call and one comparison per
+       event. ]]
+  function self.on_mouse(mouse_type, x, y, delta)
+    if not editing() then
+      return false
+    end
+    return binder.mouse(mouse_type, x, y, delta) == true
+  end
+
+  function self.destroy()
+    if binder ~= nil then
+      binder.destroy()
+    end
+    abort_warp(nil)
+    if prims == nil then
+      return
+    end
+    prims.panel.destroy()
+    prims.indicator.bg.destroy()
+    prims.indicator.fill.destroy()
+    for _, group in ipairs(GROUPS) do
+      for slot = 1, SLOT_COUNT do
+        for _, prim in pairs(prims.groups[group.key][slot]) do
+          prim.destroy()
+        end
+      end
+    end
+    prims = nil
+  end
+
+  return self
+end
+
+return new

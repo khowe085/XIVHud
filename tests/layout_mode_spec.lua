@@ -36,7 +36,10 @@ describe("layout_mode", function()
       components = function()
         return components
       end,
-      state = function(component)
+      state = function(component, anchor)
+        if anchor then
+          return component.state.anchors and component.state.anchors[anchor]
+        end
         return component.state
       end,
       apply = function(component)
@@ -276,11 +279,149 @@ describe("layout_mode", function()
       assert.are.same({ 350, 450 }, pos_of(bar))
     end)
 
+    it("ignores a right-click on a widget that cannot report state", function()
+      local ghost = { name = "ghost" }
+      function ghost.get_bounds()
+        return 500, 500, 50, 50
+      end
+      components[#components + 1] = ghost
+      assert.has_no.errors(function()
+        assert.is_false(mode.mouse(RIGHT_DOWN, 510, 510))
+      end)
+      assert.is_nil(persisted.ghost)
+    end)
+
     it("does not toggle mid-drag, and keeps the input to itself", function()
       mode.mouse(LEFT_DOWN, 150, 250)
       assert.is_true(mode.mouse(RIGHT_DOWN, 150, 250))
       assert.is_true(bar.state.visible)
       assert.is_nil(persisted.bar)
+    end)
+  end)
+
+  -- Touchpoint 2: a widget exposing `anchors()` is hit-tested, dragged and
+  -- scaled per anchor; only the right-click enable toggle stays whole-widget.
+  describe("multi-anchor widgets", function()
+    local cross
+
+    -- Two 100x50 anchors: `top` at (100, 100), `bottom` at (100, 400).
+    local function anchored_widget(name)
+      local w = {
+        name = name,
+        state = {
+          anchors = {
+            top = { pos = { x = 100, y = 100 }, scale = 1 },
+            bottom = { pos = { x = 100, y = 400 }, scale = 1 },
+          },
+          visible = true,
+        },
+      }
+      function w.anchors()
+        return { "top", "bottom" }
+      end
+      function w.get_bounds(anchor)
+        local entry = w.state.anchors[anchor]
+        if not entry then
+          return nil
+        end
+        return entry.pos.x, entry.pos.y, 100, 50
+      end
+      components[#components + 1] = w
+      return w
+    end
+
+    local function anchor_pos(w, anchor)
+      return { w.state.anchors[anchor].pos.x, w.state.anchors[anchor].pos.y }
+    end
+
+    before_each(function()
+      cross = anchored_widget("cross")
+      mode.enter()
+    end)
+
+    it("drags the anchor under the cursor and leaves the others alone", function()
+      assert.is_true(mode.mouse(LEFT_DOWN, 150, 425))
+      assert.is_true(mode.mouse(MOVE, 650, 725))
+      assert.are.same({ 600, 700 }, anchor_pos(cross, "bottom"))
+      assert.are.same({ 100, 100 }, anchor_pos(cross, "top"))
+    end)
+
+    it("saves the component once when an anchor drag ends", function()
+      mode.mouse(LEFT_DOWN, 150, 425)
+      mode.mouse(MOVE, 650, 725)
+      assert.is_nil(persisted.cross)
+      mode.mouse(LEFT_UP, 650, 725)
+      assert.are.equal(1, persisted.cross)
+    end)
+
+    it("snaps and clamps an anchor drag like any other", function()
+      mode.mouse(LEFT_DOWN, 150, 425)
+      mode.mouse(MOVE, 154, 429)
+      assert.are.same({ 100, 400 }, anchor_pos(cross, "bottom"))
+      mode.mouse(MOVE, 1900, 1070)
+      assert.are.same({ 1820, 1030 }, anchor_pos(cross, "bottom"))
+    end)
+
+    it("gives an overlapping pixel to the anchor later in the list", function()
+      cross.state.anchors.bottom.pos = { x = 120, y = 120 }
+      mode.mouse(LEFT_DOWN, 150, 140)
+      mode.mouse(MOVE, 650, 640)
+      assert.are.same({ 620, 620 }, anchor_pos(cross, "bottom"))
+      assert.are.same({ 100, 100 }, anchor_pos(cross, "top"))
+    end)
+
+    it("scales only the anchor under the wheel", function()
+      assert.is_true(mode.mouse(WHEEL, 150, 425, 120))
+      assert.are.equal(2.2, cross.state.anchors.bottom.scale)
+      assert.are.equal(1, cross.state.anchors.top.scale)
+      assert.are.equal(1, persisted.cross)
+    end)
+
+    it("toggles the whole widget with a right-click on any anchor", function()
+      assert.is_true(mode.mouse(RIGHT_DOWN, 150, 425))
+      assert.is_false(cross.state.visible)
+      assert.are.equal(1, persisted.cross)
+      mode.mouse(RIGHT_UP, 150, 425)
+      mode.mouse(RIGHT_DOWN, 150, 125)
+      assert.is_true(cross.state.visible, "the top anchor toggles the same flag")
+    end)
+
+    it("still hit-tests a plain widget drawn over an anchor", function()
+      local bar = widget("bar", 80, 380, 200, 100)
+      mode.mouse(LEFT_DOWN, 150, 425)
+      mode.mouse(MOVE, 650, 725)
+      assert.are.same({ 580, 680 }, pos_of(bar), "the later registration wins the pixel")
+      assert.are.same({ 100, 400 }, anchor_pos(cross, "bottom"))
+    end)
+
+    it("abandons a drag whose anchor state disappears mid-drag", function()
+      mode.mouse(LEFT_DOWN, 150, 425)
+      cross.state.anchors.bottom = nil
+      assert.has_no.errors(function()
+        assert.is_true(mode.mouse(MOVE, 650, 725), "the grab still owns the mouse")
+        assert.is_true(mode.mouse(LEFT_UP, 650, 725))
+      end)
+      assert.are.same({ 100, 100 }, anchor_pos(cross, "top"))
+    end)
+
+    it("treats a non-table anchors() answer as a single-anchor widget", function()
+      local odd = widget("odd", 100, 200, 200, 100)
+      odd.anchors = function()
+        return 5
+      end
+      assert.is_true(mode.mouse(LEFT_DOWN, 150, 250))
+      mode.mouse(MOVE, 400, 500)
+      assert.are.same({ 350, 450 }, pos_of(odd))
+    end)
+
+    it("ignores input on an anchor whose state entry is missing", function()
+      cross.get_bounds = function()
+        return 100, 400, 100, 50
+      end
+      cross.state.anchors = {}
+      assert.is_false(mode.mouse(LEFT_DOWN, 150, 425))
+      assert.is_false(mode.mouse(WHEEL, 150, 425, 120))
+      assert.is_nil(persisted.cross)
     end)
   end)
 

@@ -50,8 +50,9 @@ local new_logic = require("components/targetbar/logic")
 local build_defaults = require("components/targetbar/defaults")
 
 local ASSET_DIR = "components/targetbar/assets/xiv/"
--- The one chunk this widget reads: the action packet, parsed for it by
--- windower.packets.parse_action via the ctx.
+-- The one chunk this widget reads: the action packet, which reaches it
+-- already decoded - the entry point's dispatch runs
+-- windower.packets.parse_action once for every component that wants it.
 local ACTION_CHUNK = 0x028
 
 local function new(ctx)
@@ -373,7 +374,7 @@ local function new(ctx)
        read. Everything else is ignored quietly, which is the contract:
        core.dispatch has no idea who wants what, and a handler that threw
        would be disabled for the rest of the session. ]]
-  function self.update(event, id, original)
+  function self.update(event, id, _original, parsed)
     if event == nil then
       render()
       return
@@ -381,9 +382,10 @@ local function new(ctx)
     if event ~= "chunk" or id ~= ACTION_CHUNK or not attached then
       return
     end
-    local act = ctx.parse_action(original)
-    if act then
-      logic.on_action(act, ctx.now())
+    -- Already decoded, by the one dispatch that sees the packet: nil when the
+    -- parse failed, which reads the same as nothing having happened.
+    if parsed then
+      logic.on_action(parsed, ctx.now())
     end
   end
 

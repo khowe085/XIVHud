@@ -9,7 +9,14 @@ local M = {}
 -- In-memory stand-in for the addon-relative file I/O injected into lib/settings.
 -- `files` is the backing store, so specs can seed it (`put`) and assert on it.
 function M.file_system(seed)
-  local fs = { files = seed or {}, fail_writes = false, fail_write_paths = {}, dot_entries = false, writes = 0 }
+  local fs = {
+    files = seed or {},
+    fail_writes = false,
+    fail_write_paths = {},
+    dot_entries = false,
+    writes = 0,
+    deletes = {},
+  }
 
   function fs.put(path, contents)
     fs.files[path] = contents
@@ -45,7 +52,11 @@ function M.file_system(seed)
     return entries
   end
 
+  -- Every attempted path is recorded, hit or miss: deleting a *directory*
+  -- goes through the same dep (os.remove at runtime, a no-op on Windows for
+  -- non-empty dirs), and the attempt is the only thing a spec can pin.
   function fs.delete_file(path)
+    fs.deletes[#fs.deletes + 1] = path
     if fs.files[path] == nil then
       return false
     end
@@ -172,7 +183,10 @@ end
 
 -- A component implementing the widget contract, recording everything the
 -- framework does to it. `defaults` is the component's own config defaults.
-function M.widget(name, defaults)
+-- `anchor_names` makes it a multi-anchor widget (touchpoint 2): it grows the
+-- optional `anchors()` member, and set_pos/set_scale/get_bounds address one
+-- anchor each, recorded under `w.anchor[name]`.
+function M.widget(name, defaults, anchor_names)
   local w = {
     name = name,
     defaults = defaults or {},
@@ -187,14 +201,19 @@ function M.widget(name, defaults)
     height = 100,
   }
 
-  function w.attach(config, save)
+  -- `store` arrives only for widgets declaring `wants_store = true` (the
+  -- directory config form); it is recorded either way so specs can assert on
+  -- both sides of that contract.
+  function w.attach(config, save, store)
     w.config = config
     w.save = save
+    w.store = store
   end
 
   function w.detach()
     w.config = nil
     w.save = nil
+    w.store = nil
   end
 
   function w.set_pos(x, y)
@@ -230,6 +249,37 @@ function M.widget(name, defaults)
 
   function w.destroy()
     w.destroyed = w.destroyed + 1
+  end
+
+  if anchor_names then
+    w.anchor = {}
+
+    -- An anchor-addressed call without an anchor is a framework bug; indexing
+    -- with the nil key makes the test error loudly rather than pass quietly.
+    local function entry(anchor)
+      w.anchor[anchor] = w.anchor[anchor] or {}
+      return w.anchor[anchor]
+    end
+
+    function w.anchors()
+      return anchor_names
+    end
+
+    function w.set_pos(x, y, anchor)
+      entry(anchor).pos = { x, y }
+    end
+
+    function w.set_scale(scale, anchor)
+      entry(anchor).scale = scale
+    end
+
+    function w.get_bounds(anchor)
+      local placed = w.anchor[anchor]
+      if not placed or not placed.pos then
+        return nil
+      end
+      return placed.pos[1], placed.pos[2], w.width, w.height
+    end
   end
 
   return w

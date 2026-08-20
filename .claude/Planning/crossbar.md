@@ -241,10 +241,10 @@ rotation the switch key walks — same as FFXIV.
 `actions.lua` keeps a table of **named built-in actions** — currently `draw`,
 `mr` (renamed from `roulette` 2026-08-08 so the bind type and the command
 verb are one name — `mr` is Xurion's own Mount Roulette alias, surviving in
-the vendored lib's commented-out `_addon.commands`), `warp` (aliases
-`mh`/`warp`, MyHome's own), and
+the vendored lib's commented-out `_addon.commands`), `warp` (MyHome's own `mh` alias was
+dropped 2026-08-19 - one name per built-in, and the machinery with it), and
 `open <name>` for each entry in `openers.lua`. An entry carries
-everything both frontends need: the execution, the command alias(es), **and the
+everything both frontends need: the execution, the command name, **and the
 icon a slot shows when the action is bound** — a fixed path for most (the default
 pack's singles cover them: `mount` for `mr`, `items/warp-ring` for warp,
 `item`/`map`/etc. for openers), or a
@@ -261,17 +261,29 @@ membership (args missing a mode → validation hint, never a silent advance).
 
 ### Mount roulette (from `libs/mountroulette/`, verified 2026-08-05)
 
-Owned mounts = key items of category `Mounts` (excluding "trainer's whistle"),
-matched against `resources.mounts` names (the KI name carries a music-note
-prefix, written as **byte escapes** (`"\226\153\170"`) in our source:
+Owned mounts = key items of category `Mounts`, matched against
+`resources.mounts` names. A mount KI's name carries a music-note prefix,
+written as **byte escapes** (`"\226\153\170"`) in our source:
 `tests/sources_spec.lua:42-56` forbids non-ASCII bytes outside comments in
 `src/` — FFXI chat is not UTF-8. Upstream matches with `windower.wc_match`, a
 Windower global; our pure port does a plain **prefix match** — upstream's
 pattern carries a trailing wildcard, so equality-after-strip would drop any
-KI name with a suffix);
-refreshed on **incoming chunk `0x055`** (KI update). If buff **252** (Mounted) is
-up, `/dismount`; if no mounts, no-op; else `/mount "<random pick>"`. Ported as a
-pure module with injected KI list, buff list, mount resources and RNG.
+KI name with a suffix. Refreshed on **incoming chunk `0x055`** (KI update).
+
+**The quest-only trainer's whistle is excluded by that prefix match, not by
+name** (2026-08-19). Upstream tests the name; we do not, because the whistle
+carries no note prefix and the match therefore rejects it already. The name
+test was removed rather than kept as belt and braces: it is a string literal
+that has to track a resource file to stay true, and would go quietly dead the
+day the name changed, with nothing failing. It rests entirely on the
+whistle's name lacking that prefix — an assumption only our fixture has ever
+confirmed, and **in-client question H**. If the whistle does carry the
+prefix, it prefix-matches a mount and becomes a rideable entry, and the name
+test goes back with a comment saying why it is not redundant.
+
+If buff **252** (Mounted) is up, `/dismount`; if no mounts, no-op; else
+`/mount "<random pick>"`. Ported as a pure module with injected KI list,
+buff list, mount resources and RNG.
 
 ### Auto-warp (from `MyHome`, verified 2026-08-08 against Icydeath/ffxi-addons)
 
@@ -324,6 +336,102 @@ Blocked entirely while `player.status > 1`.
   `pairs`, so the documented Ring -> Cudgel -> Instant order is not actually
   guaranteed (use `ipairs`); and `log_flag` is a module-level global set once
   and never reset, so its progress message prints at most once per session.
+
+### Travel delay (decided 2026-08-19, Kevin)
+
+`mount`, `mr` and `warp` do not fire the moment you press them. They arm a
+**five-second countdown**, say so in chat once a second, and then act — so a
+mis-press costs you five seconds of reading rather than a trip to your Mog
+House. The delay is the point of the feature, not a side effect.
+
+- **Applies to `mount`, `mr` and `warp`**, in both frontends: the typed command
+  and a bound slot resolve through one path by design, so they cannot behave
+  differently.
+- **Not `draw`.** Dismounting is how you get *out* of something; it stays
+  instant.
+- **`delay = 5` is config, in seconds. Zero means no delay** — the setting is
+  the off switch, so no separate verb is needed.
+
+**The countdown speaks every second** (Kevin's call over a quieter opening line
+only): the first line names the action, the span and the way out, and the rest
+are the seconds remaining.
+
+```
+crossbar: Mount roulette in 5 seconds. /heal to cancel.
+4...
+3...
+2...
+1...
+```
+
+**The named lines carry the component's prefix, the counts do not** (decided
+2026-08-19): every other line the crossbar says is prefixed, so the line that
+arms a countdown and the one that cancels it are too - but a bare count reads
+as a continuation of the line that named it, and five prefixed lines per mount
+is the chat spam this repo treats as a defect elsewhere.
+
+**Resting cancels it.** `/heal` is the idiom, but the trigger is the *status*,
+not the command text — `Sel-Include.lua:2313` does exactly this, cancelling a
+pending item on a status change away from Idle or Engaged, and it catches
+resting however you entered it. Ours cancels on resting and on the transitions
+CB9 already treats as the end of a moment: zone, death, logout, job change and
+suppression. A cancel says so (`Mount roulette cancelled.`) rather than going
+quiet.
+
+**And on the config modes** (Kevin, 2026-08-19): `//hud layout` and the binder
+(`//hud crossbar edit`) each call a countdown off, on CB9's own reasoning - a
+late action fires only where a fresh press would, and opening a config mode
+means you are not playing just now. Both directions are covered, from one
+`config_mode()` test used twice: a mode opened while a trip counts down is
+cancelled on the tick, and a trip pressed while a mode is already open is
+**refused where it is pressed** rather than armed and cancelled a frame later -
+the outcome is the same and it is one line to read instead of two that
+contradict each other (`Mount roulette - not while //hud layout is open`). An
+instant trip is unaffected: a dismount is the press itself, not a late action.
+**An open chat line is deliberately NOT one of these**, unlike the cast retry's
+gate: answering a tell while you wait to warp is playing, and a re-send is a
+keypress where this is not.
+
+**A re-attach clears it too, silently** (2026-08-19): core re-attaches without
+detaching for `//hud reset crossbar` and for the reload `//hud copy` does, so a
+countdown armed beforehand would otherwise fire holding a record from the
+configuration just thrown away - and unlike the cast retry there is no `bound`
+identity guard here to notice. Silent because a reset is not a cancellation the
+player needs told about.
+
+**Warp skips the delay only when using the item actually entails a wait**
+(corrected 2026-08-19: the first wording said "when the rung is an enchanted
+item", which lost the condition Kevin actually stated — *"if it uses an item
+that requires a cooldown then it can skip the delay"*). A Warp Ring that must
+be equipped and warmed up already makes you wait, with `gs disable` held over
+the slot (see **Auto-warp**), and that wait *is* the window this feature exists
+to give you — five more seconds on top buys nothing. **An already-equipped,
+charged ring entails no wait at all**, so it takes the countdown like a spell:
+skipping there would fire an instant warp with no window, which is the
+rationale inverted. Spell rungs (Warp, Teleport,
+Retrace) take the countdown. The plan is computed at the press to decide which
+of the two applies, and **re-computed when the countdown ends** so it acts on
+the state you are actually in five seconds later; the two can legitimately
+disagree, and the later one wins.
+
+**`warp all` broadcasts when the warp goes, not when it is pressed** (decided
+2026-08-19, with the countdown): MyHome's own shape sends first and warps
+second, which under a countdown would leave a cancelled press with every other
+character already sent home. The IPC message therefore rides the moment the
+local warp **commits**, which is three different moments by rung (corrected
+2026-08-19, second pass): with the command for a spell, a consumable or a ring
+already charged; with the *deferred* use for a ring being equipped and warmed
+up - that rung skips the countdown but is not a warp until the item fires, so a
+warm-up later abandoned ("took too long", "went missing", suppression) sends
+nobody; and at once when the ladder found nothing at all, the alts' own ladders
+being independent of ours. A receiver still warps immediately, since the
+sender's countdown was the window and a second one on every alt buys nothing.
+
+**Open, on the in-client list**: the numeric player status for *Resting*. The
+component works in numbers where GearSwap works in names, and this repo does
+not hardcode a platform fact from memory - resolve it from `res.statuses` by
+name where the resources library is present, keep a named fallback constant,
+and confirm the number in a client.
 
 ### Recast animation: the radial sweep (decided 2026-08-08)
 
@@ -489,6 +597,147 @@ events, so each new key-event entry needs in-client verification, and the
 sequences assume the client's default keyboard bindings (~85% that's acceptable;
 a per-entry override in config would cover rebinds if it ever matters).
 
+### Cast retry (decided 2026-08-19, Kevin)
+
+Casting several spells back to back, FFXI refuses one sent too soon after the
+last with **"Unable to cast spells at this time"** and the press is simply
+lost. The gap is "usually 1-2 seconds, but" — Kevin's words — and it is worst
+exactly when it hurts most, with a lot to get out quickly.
+
+**This is deliberately not a port of Selindrile's MiniQueue** (read at
+`Selindrile/GearSwap@77d52f5`, `libs/Sel-Utility.lua`, `libs/Sel-Include.lua`).
+Kevin ran it and turned it off. Two things about it decide our shape:
+
+- **It queues on recast, and never expires.** An action blocked by a cooldown
+  is held with no timestamp and fired whenever the tick next runs — after you
+  have moved on, at whatever you are now pointed at. That is the fighting he
+  describes. **We never queue on recast**, and everything we hold has a
+  deadline.
+- **Its real signal is dead code.** Its `0x029` handler compares
+  `action.message`, but Windower's field label is `Message` and the packets
+  library declares no aliases (`fields.lua:1919-1927`, `packets.lua:38-41`),
+  so the branch never runs. Everything therefore falls back to blind timers —
+  a hardcoded per-action-type pacing guess and a 5-second recast heuristic —
+  which is where the queue's bad behaviour comes from. **We use the signal it
+  intended to use.**
+
+**React, do not predict.**
+
+- A slot press **sends immediately, exactly as now**. A press that would have
+  worked is never delayed. This is the reason not to port the pacing model as
+  well: a predicted window is wrong in both directions, and a varying gap is
+  precisely what a predictor gets wrong and a reactor does not notice.
+- The record we sent is remembered with its timestamp.
+- An "unable to cast" for us, arriving within a short window of that send,
+  makes that record **pending**.
+- The tick re-sends after a backoff, bounded by a small attempt cap and a
+  short deadline.
+- **Any newer slot press replaces pending outright**; zone, death, logout, job
+  change and suppression clear it. Nothing can outlive the moment it belonged
+  to.
+
+**The target is pinned at press time** (Kevin, 2026-08-19, correcting a first
+implementation that got this backwards). A record bound with a volatile token —
+`<t>`, `<bt>` — has that token resolved to a **concrete mob id the moment you
+press**, and the retry sends the id in place of the token. The cast then lands
+on what you were aiming at when you pressed, however far your cursor has
+wandered since.
+
+- The **first send is unchanged**: it goes out with the token exactly as it
+  always did, so nothing about an accepted press differs.
+- **Party and alliance slots are not retried at all** (Kevin, 2026-08-19).
+  `<p3>` is whoever is standing third, not a person: a member leaving or
+  zoning inside the deadline shifts everyone below them, and the re-send would
+  land on someone the press never meant. Pinning them by id would need
+  `get_mob_by_target("p3")` to work, which nobody here has read for, so the
+  honest answer is not to hold them. `<me>` and `<pet>` stay watched and
+  re-send verbatim.
+- Only the **re-send** substitutes. Fixed tokens (`<me>` and friends) need no
+  pinning; sub-target prompts (`<st>`, `<stpc>`, `<stnpc>`) are never retried,
+  since re-opening a selection cursor is not a thing to do behind the player.
+- If the pinned target is gone by re-send time the cast simply fails and costs
+  one attempt. We do not spend a second client read proving what the server
+  will say anyway.
+- **This is the one thing the reference implementation got structurally right
+  and we first got wrong.** MiniQueue stores `spell.target.id` and re-sends
+  `/ma "Fire IV" 16941234` — the raw id. Our first pass instead *dropped* the
+  retry when the target changed, which solves the problem backwards: the point
+  is to fire what you meant at what you meant it for, not to give up because
+  you looked elsewhere.
+- **Costs one `get_mob_by_target` per press of a token-targeted spell** — on
+  the keypress path, never per frame, and not at all while the feature is off.
+  That is the one new client read this milestone sanctions, and it buys the
+  behaviour the whole feature exists for.
+- **Open, on the in-client list**: whether FFXI accepts a bare numeric target
+  id in a command. Selindrile's files depend on it and are widely used, which
+  is good evidence and not observation.
+
+**Guards before every retry**, from state the widget already holds:
+
+- still off cooldown (the recast tables the dimming already uses),
+- still affordable (`render.cost`'s MP/TP),
+- not silenced or amnesia'd (the buff list the contexts already re-sync),
+- the slot still holds that record.
+
+A target that has *changed* is deliberately **not** a guard — see the pinning
+rule above.
+
+**Recorded limit (2026-08-19): a slot bound in the binder is never retried.**
+`catalog.lua` builds its records as `{ type = 'ma', action = <name> }` with no
+target word, so CB8’s mouse path — the *primary* authoring surface — produces
+exactly the records the pin cannot hold, and the retry ignores them. Only a
+binding made from the CLI with an explicit target (`bind 1 l 5 ma "Cure IV" t`)
+is watched. This is deliberately **not** patched by having the retry invent
+`<t>` for a targetless record: what a bare `/ma "Cure IV"` does in game is
+unobserved (in-client question F), and the real question it raises — should
+the binder be writing an explicit target at all? — belongs to CB8, not here.
+
+A failed guard **drops** pending rather than spending an attempt: "unable to
+cast" has non-timing causes (silence, an area that forbids it, no MP), and a
+blind retry would hammer a doomed spell until its deadline.
+
+**Scope: spells, abilities and weaponskills** (Kevin, 2026-08-19 — the
+"spells only in v1" line is lifted). Each is refused in its own words, so the
+trigger is **per kind** and the message ids are not shared: 17/18 for a spell,
+71 for an ability, 72 for a weaponskill. The ability and weaponskill ids are
+the weaker guess of the three — the spell pair at least carries the reference
+addon's citation — and in-client question C now asks for all three to be
+collected in one sitting. A kind with no refusal message is never watched at
+all, which is what keeps items, `ct`, `ex` and the built-ins out. **`pet` is
+deliberately out too**: a blood pact is an ability by every other measure here,
+but it goes out as its own command word and nobody has seen which message
+refuses it.
+
+**Blocking buffs are per kind as well**, and pooling them would be wrong:
+**silence (6) and mute (29)** stop spells, **amnesia (16)** stops abilities and
+weaponskills, and neither set touches the other — a silenced player can still
+Provoke, and throwing that retry away would be a defect, not caution.
+
+**No new plumbing.** `0x29` is already dispatched to the component and already
+parsed by `skillchain.lua:1281` (message 206, the buff wear-off); this reads
+the same chunk for a different message.
+
+Two things are **open, and on the in-client list** — both cheap to observe,
+neither answerable from here:
+
+1. **Confirm 17/18 on `0x029`** really are what a too-soon cast produces, and
+   that the packet carries an actor we can match to the player. The reference's
+   handler has never executed, so nobody has verified this in practice, and a
+   trigger built on an unverified id is a guess wearing a citation.
+2. **The backoff.** Too fast and the retry collects another refusal. A few
+   minutes of casting settles it. It ships configurable and is **tuned
+   in-client, not shipped as settled**.
+
+**Off by default until (1) is confirmed**, and switchable at any time with
+`//hud crossbar retry off` - which drops a pending cast rather than letting a
+last one through. After confirmation the default is Kevin's call — the feature is
+low-risk by construction, but its trigger is the one part nobody has seen fire.
+
+**Interaction with GearSwap**: if Selindrile's files are loaded with MiniQueue
+on, both systems retry the same press on different timers. `gs c toggle
+MiniQueue` off plus this on is the combination that gives the behaviour Kevin
+asked for; the wiki should say so when this ships.
+
 ## XHB reference facts (from SE's UI guide + akhmorning, read 2026-08-05)
 
 The target behaviour. SE's guide is authoritative on inputs and settings, akhmorning
@@ -612,8 +861,11 @@ Resolution rules:
   press was blocked, its release is blocked as well, even if chat has since
   opened, suppression has started, edit mode has been entered, the component
   has been **disabled**, or the release arrives with an inbound `blocked`
-  flag. Disabling mid-hold is the one case where a key we no longer want is
-  still swallowed once, on its way up. Releasing a key the game never saw
+  flag. **Auto-repeats follow the latch too**, in both directions (pinned
+  2026-08-16): a latched `;` repeating into a chat line that has since opened
+  must not type, and an unlatched `3` repeating after a side went down must
+  keep reaching the game. Disabling mid-hold is the one case where a key we no
+  longer want is still swallowed once, on its way up. Releasing a key the game never saw
   pressed is the one outcome none of the guards is worth. Blocked at press: **our five dedicated
   keys — both sides, the layer, the switch and the shortcut — whenever the
   component is enabled**, plus
@@ -648,7 +900,11 @@ Guards, all mandatory (tightened after blind review, 2026-08-06):
   released during chat must clear its down-state or the next press reads as
   an auto-repeat and never fires.
 - **Focus**: reset all held-state on `lose focus` (alt-tab mid-hold must not
-  strand an activator "down").
+  strand an activator "down"). **The latch clears too** (pinned 2026-08-16):
+  this trades "never release a key the game never saw pressed" for one stray
+  key-up after an alt-tab, which is harmless — a latch surviving into the
+  refocused session and swallowing a fresh key's release is not. The spike
+  shipped this and it was verified in-client.
 - **Edge detection**: all transitions fire on state *change* only — Windows
   key auto-repeat delivers repeated `pressed=true` events for held keys, and a
   held slot key must fire its action exactly once (upstream defends with
@@ -664,6 +920,18 @@ Guards, all mandatory (tightened after blind review, 2026-08-06):
   "disabled" state, only visibility and suppression, so this is what the word
   means here). Every key falls through, ours included: the crossbar is off,
   so the keys go back to the game. Only a latched release is still swallowed.
+  **Disabled outranks suppressed** (pinned 2026-08-19): a user-hidden
+  crossbar keeps its keys with the game through cutscenes and zoning -
+  suppression must never re-block keys for a component the player turned
+  off. The widget therefore needs the truth about user visibility, not an
+  inference from hide/show calls, which core issues for both reasons.
+  State keeps tracking, so re-enabling mid-hold resumes correctly — but no
+  `activate` is re-emitted until the next state *change*; the widget must read
+  `hold_state()` when it comes back (CB5 handshake). A second CB5 handshake:
+  **detach calls the focus reset** (or rebuilds the machine on attach) — a key
+  released while detached, with core no longer delivering events, would
+  otherwise strand held/down/latch state and make the next press read as an
+  auto-repeat.
 - **Inbound `blocked`**: the keyboard event's own `blocked` argument (another
   addon already consumed the key) short-circuits action intents and blocking —
   **all state still tracks** (activators, slot-key down/latch bookkeeping) and
@@ -735,6 +1003,30 @@ Results, now platform facts:
 
   `/` is spare. `[` and `]` were in the probe run as a control: they
   misbehaved as expected, which is how we know the probe was live.
+- **Known art gaps, inherited from upstream's icon sheet** (recorded at CB4
+  review, 2026-08-18): four lv1 SP abilities have no id-sheet art anywhere
+  (Mighty Strikes, Azure Lore, Bolster, Elemental Sforzo - the files
+  `00000.01/.16/.21/.22.png` do not exist upstream either), and (re-counted at
+  CB4 round 5 with per-school attribution) **81 spells** - **60 of them the
+  entire Geomancy school** (every Indi-/Geo-; recast ids 768+ have no
+  id-sheet file and no pack dir, upstream included), 12 trusts, and a
+  handful of Blue/Black/White Magic strays - plus **42 non-SP job
+  abilities** (Vallation, Rayke, Entrust, the Waltzes, ...), plus **20
+  recast-0 pet abilities** (the Astral Flow blood pacts - Perfect Defense,
+  Zantetsuken, Chronoshift, Deconstruction - and the wyvern breaths), which
+  land on the nonexistent plain `00000.png` by design rather than wear a
+  lv1 SP's art. A GEO player should expect blank spell slots out of the
+  box, and a SMN binding Astral Flow blood pacts blank ability slots;
+  `icons/custom/` or a future pack addition is the route. Those slots
+  draw no icon; `icons/custom/` is the user's route. We do not invent art.
+  Two semantics to carry into CB5: **`meta.category` is the display form**
+  ("Blue Magic", not the raw resource type "BlueMagic") - kebab maps it to
+  the pack dir, and a raw type would silently miss the whole directory; and
+  the SP sheet's job suffix wants the
+  ability's **owning** job, which coincides with the main job for your own SP
+  but diverges on a shared set viewed cross-job - the ctx hands render the
+  main job, so a cross-job SP slot may draw the viewing job's art. Accepted;
+  same behaviour as binding it fresh.
 - **The model itself was exercised on the final keys and behaved**: `;`+`\`
   plus a slot key fired the slot exactly once while `repeats` climbed
   separately for as long as the key was held (the auto-repeat guard), and
@@ -1305,9 +1597,17 @@ tap-vs-chord logic is testable at all.
    the skillchain indicator; Expanded replaces rather than adds, so the
    ceiling is unchanged. Sets are data — switching sets repaints existing
    prims rather than allocating more, and the six hold states share
-   2.5 bars' worth (16 + 16 + 8 slots). Whether the WXHB's
-   prims are destroyed or merely hidden when `always_show_wxhb` is off is a
-   CB5 measurement, not a guess. The binder adds its own in edit mode only.
+   2.5 bars' worth (16 + 16 + 8 slots). CB5 settled the shape (2026-08-19):
+   **the resting inventory is 363 prims, constructed up front and merely
+   hidden when not shown** - 243 images + 120 texts: nine prims a slot (six images, three
+   texts) across the forty slots of the three bars, plus the panel and the
+   skillchain indicator's pair, pinned by the widget spec's inventory test.
+   They are built in the factory `new(ctx)`, at `core.register` time and so
+   before login; attach only dresses and lays them out. Whether that resting cost is
+   acceptable in the client remains the in-client measurement; if it is not,
+   destroy-when-off is the fallback, and the change is confined to the
+   widget's build/refresh. The binder is on top of that and never resident: it
+   builds its own prims when edit mode opens and destroys them when it closes.
 
 ## Settings (defaults, in `data/<Character>/crossbar.lua`)
 
@@ -1372,6 +1672,9 @@ Bindings live in the per-job files (below), not here.
     waiting_color = { r = 237, g = 28, b = 36 },
     open_color    = { r = 15,  g = 205, b = 5 },
   },
+  delay = 5,                       -- seconds mount / mr / warp count down before
+                                   -- they go (Travel delay); 0 is the off switch,
+                                   -- seeded from travel.lua like retry's block
   -- framework-owned; per-anchor under the multi-anchor contract (touchpoint 2)
   slots = { default = { anchors = { main       = { pos = ..., scale = 1 },
                                     wxhb_left  = { pos = ..., scale = 1 },
@@ -1479,6 +1782,7 @@ one-line hint, consistent chat prefix.
 //hud crossbar list [<set>]                        -- bindings on this job
 //hud crossbar view <wxhb-l|wxhb-r|exp-lr|exp-rl> <set> <l|r>   -- repoint a view
 //hud crossbar wxhb [on|off]                      -- WXHB on screen at rest; no argument reports
+//hud crossbar retry [on|off]                     -- cast retry (CB9); no argument reports
 //hud crossbar share <set> on|off                  -- shared (all jobs) vs job-specific
 //hud crossbar cycle <set> drawn|sheathed|both|none -- with args: rotation membership per weapon state
 //hud crossbar swap <set> <l|r> <slot> <set> <l|r> <slot>  -- swap two slots' ENTIRE stacks
@@ -1512,7 +1816,11 @@ one-line hint, consistent chat prefix.
   `<icon>` is a bare name, resolved in order —
 
   1. `<addon>/icons/custom/<name>.png` — the player's own art;
-  2. the shipped pack, by the same `<category>/<kebab_casify(name)>.png` rule
+  2. the shipped pack, by the relative name **as typed** — `items/warp-ring`,
+     not a kebab of a display name (corrected 2026-08-19 at CB7 review: both
+     `render.icon_candidates` and the `icon` verb take the name verbatim; the
+     kebab rule applies to names the component derives from game actions, not
+     to what a user types here)
      the catalog uses, so `mount`, `attack`, `map` and the other singles work
      by name.
 
@@ -1592,6 +1900,20 @@ part worth mining; its navigation is not.
   row for the layer being edited carries that entry's label and icon, both
   changeable in place — the mouse equivalent of the `alias` and `icon`
   commands, writing the same `alias` and `icon` fields on the same entry.
+  **Deferred out of v1 at CB8 (2026-08-19), to the same backlog item as
+  `ct`/`ex` binder entry.** Showing the label and icon lands; changing them
+  does not. Both values are free text - a rename is an arbitrary string and an
+  icon override an arbitrary path fragment - so neither can be a click target
+  the way a catalog entry is, and enumerating every shipped icon as a second
+  picker would still leave `alias` unreachable. Taking text means a keyboard
+  capture mode: `input.lua` would stop resolving DIKs into crossbar intents
+  and start accumulating characters, with shift state, backspace,
+  enter/escape, and a blocking policy that keeps every typed key off the game
+  while a field has focus and returns them the instant it closes. That is
+  precisely the machinery the `ct`/`ex` backlog item already needs, so the two
+  belong together rather than half-built here. `//hud crossbar alias` and
+  `//hud crossbar icon` write the identical fields on the identical entry
+  meanwhile, and the binder's panel shows the result immediately.
 - **Hover tooltips, edit mode only** (decided 2026-08-08). XIVHotbar2 shows a
   description panel when the cursor rests on a slot; the played crossbar is
   hold-a-trigger with no cursor on screen, so tooltips belong to the binder or
@@ -1620,7 +1942,8 @@ part worth mining; its navigation is not.
   | catalog entry | a slot | bind it there, in the layer under the `EDITING ->` cursor |
   | catalog entry | anywhere else | **no-op** — the drag is abandoned silently |
   | a slot | another slot | whole-stack swap (the mouse frontend of `swap`) |
-  | a slot | anywhere else | **unbind the cursor's layer only** — never the whole stack; no-op when no layer row is selected |
+  | a slot | genuinely empty space | **unbind the cursor's layer only** — never the whole stack; no-op when no layer row is selected |
+  | a slot | any binder surface (stack panel, catalog, pager) | **cancel, silently** — corrected 2026-08-19 at CB8 review: the stack panel opens 8px from its slot, so "anywhere else" made an accidental unbind a routine mis-drag with no undo. The wiki's "onto empty space to clear it" was always the safer reading and is now the rule |
 
   Because the catalog only unlocks after a layer row is clicked, a catalog
   drag always has an explicit layer already — the drop inherits it, so
@@ -1784,8 +2107,9 @@ covers the widget level.
   fraction for the slot overlay, ready/not-ready boundaries, and the
   equip -> wait -> use plan including the give-up rule (abandon when the
   remaining delay exceeds 30 s; 29 s waits, 31 s aborts).
-- **`roulette.lua`** — KI list → owned mounts (category filter, whistle exclusion,
-  music-note-prefix matching via the byte-escape literal), chunk `0x055` refresh, mounted-buff → dismount, empty list →
+- **`roulette.lua`** — KI list → owned mounts (category filter and
+  music-note-prefix matching via the byte-escape literal; the whistle is
+  excluded by that prefix match, with no name test of its own), chunk `0x055` refresh, mounted-buff → dismount, empty list →
   no-op, pick uses the injected RNG and stays in range.
 - **`skillchain.lua`** — WS → property list for single-, double- and triple-property
   skills and an aeonic; unknown WS → no icon, not a crash; **chain resolution**:
@@ -1974,6 +2298,27 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   spells appear in the catalog and bind** — the defect that drove him off the
   reference fork; **and the drag matrix and tooltips behave as specified**
   (all four gestures, the layer-only unbind, tooltips from known data).
+- **CB9 — cast retry.** `retry.lua` + spec (the pending record, the guard set,
+  the attempt cap and deadline), a branch on the `0x29` the component already
+  receives, a check on the tick that already runs, and a
+  **`//hud crossbar retry [on|off]`** toggle (no argument reports, `wxhb`'s
+  shape) that must be able to switch the feature off outright at any time,
+  including with a cast already pending - which it drops rather than firing.
+  **The wiki page is a deliverable of this milestone, not a follow-up**: the
+  command row and the Extras entry land with the code. Adds no touchpoint, and
+  the only new client read is the target pin on a token-targeted press. See
+  **Cast retry** above for the design and the two open in-client questions;
+  **it must never hold an action blocked by a recast** — that is the whole
+  reason the reference's version was abandoned. *Accepts when* Kevin can cast
+  several spells back to back at his own pace with none lost to "unable to
+  cast", and nothing ever fires after he has moved on to something else.
+- **CB10 — travel delay.** The five-second countdown on `mount`, `mr` and
+  `warp`, its per-second chat, the resting cancel, and the skip for a warp rung
+  whose use entails a wait. Config `delay` in seconds, zero for off. See **Travel delay** above.
+  The wiki page is a deliverable of this milestone, not a follow-up. *Accepts
+  when* a mis-pressed mount can be called off with `/heal` before it fires, a
+  Warp Ring still goes the moment its own warmup is done, and nothing counts
+  down after a zone, a death or a logout.
 - **Backlog** (order TBD): auto-switch on draw/sheathe; "return to XHB after WXHB
   input"; face-buttons-only WXHB (note: "always display WXHB" left the backlog
   2026-08-15 — it is core config now that the bar is persistent); non-compact layout; theme + icon-pack resolution;
@@ -2004,7 +2349,17 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
    dispatch (touchpoint 1) **fires nothing during layout mode** so the two can
    never contend, while **our five keys stay blocked there** (pinned
    2026-08-16) — otherwise placing the four anchors would open the chat log
-   with every `;`. Verified in-client at CB4.
+   with every `;`. Core therefore keeps **delivering** keyboard events during
+   layout mode: the inertness lives inside the component's input module, which
+   still sees every event and answers block-but-no-fire — not in the dispatch
+   going quiet, which would make blocking impossible (pinned 2026-08-16, CB2
+   must land this reading). Slot keys fall through in layout mode as they do
+   under suppression — only the five dedicated keys stay blocked (pinned
+   2026-08-16). Verified in-client at CB4. One CB2 residue for CB3's TP2:
+   the CB2 stand-in registers with the multi-anchor slot schema before the
+   framework understands it, so `layout.slot` fabricates and persists a
+   spurious top-level `pos = {0, 0}` in crossbar config written during CB2 —
+   CB3 must tolerate that key and drop it on its first write.
 2. **Does event-level blocking suffice without `unbind`? Answered
    2026-08-08: yes for unchorded keys, no for modified ones.** `return true`
    swallows a bare key completely but does not stop FFXI acting on a Ctrl/Alt

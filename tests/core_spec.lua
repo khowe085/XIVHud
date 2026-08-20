@@ -974,4 +974,491 @@ describe("core", function()
       assert.is_false(env.capture)
     end)
   end)
+
+  -- Touchpoint 1: a component may consume the keyboard by declaring an
+  -- optional `on_keyboard(key, down, flags, blocked) -> block` member. Core
+  -- delivers every event and propagates a `true` out to Windower.
+  describe("component keyboard dispatch", function()
+    local function keyboard_widget(name)
+      local widget = bar(name)
+      widget.keys = {}
+      widget.block = false
+      widget.on_keyboard = function(key, down, flags, blocked)
+        widget.keys[#widget.keys + 1] = { key, down, flags, blocked }
+        return widget.block
+      end
+      return widget
+    end
+
+    it("forwards the full event signature, not just key and down", function()
+      local widget = core.register(keyboard_widget())
+      login()
+      core.on_keyboard(39, true, 4, false)
+      assert.are.same({ 39, true, 4, false }, widget.keys[1])
+    end)
+
+    it("propagates a component's true return out to Windower", function()
+      local widget = core.register(keyboard_widget())
+      login()
+      widget.block = true
+      assert.is_true(core.on_keyboard(39, true, 0, false))
+      widget.block = false
+      assert.is_false(core.on_keyboard(39, false, 0, false))
+    end)
+
+    it("answers false when no component wants the keyboard", function()
+      core.register(bar())
+      login()
+      assert.is_false(core.on_keyboard(39, true, 0, false))
+    end)
+
+    it("blocks when any one of several components does", function()
+      local quiet = core.register(keyboard_widget("quiet"))
+      local hungry = core.register(keyboard_widget("hungry"))
+      login()
+      hungry.block = true
+      assert.is_true(core.on_keyboard(39, true, 0, false))
+      assert.are.equal(1, #quiet.keys, "every keyboard component still sees the event")
+    end)
+
+    -- The mirror ordering: a block from an EARLIER component must survive the
+    -- later ones answering false - the fold is an OR, not last-answer-wins.
+    it("keeps an early component's block when a later one answers false", function()
+      local hungry = core.register(keyboard_widget("hungry"))
+      local quiet = core.register(keyboard_widget("quiet"))
+      login()
+      hungry.block = true
+      assert.is_true(core.on_keyboard(39, true, 0, false))
+      assert.are.equal(1, #quiet.keys, "the later component still sees the event")
+    end)
+
+    -- Pinned 2026-08-16: the inertness during layout mode lives inside the
+    -- component's input module, NOT in dispatch going quiet - otherwise its
+    -- dedicated keys could not stay blocked while anchors are placed.
+    it("keeps delivering, and honouring blocks, while layout mode is on", function()
+      local widget = core.register(keyboard_widget())
+      login()
+      core.on_command({ "layout" })
+      widget.block = true
+      assert.is_true(core.on_keyboard(39, true, 0, false))
+      assert.are.equal(1, #widget.keys)
+    end)
+
+    it("still tracks CTRL for the layout-mode grid while a component listens", function()
+      local widget = core.register(keyboard_widget("grabby"))
+      local mover = core.register(bar("mover"))
+      login()
+      core.on_command({ "layout" })
+      core.on_keyboard(29, true, 0, false)
+      core.on_mouse(LEFT_DOWN, mover.pos[1] + 50, mover.pos[2] + 50)
+      core.on_mouse(MOVE, mover.pos[1] + 54, mover.pos[2] + 56)
+      assert.are.same({ 104, 206 }, mover.pos, "CTRL must free the grid exactly as before")
+      assert.is_true(#widget.keys > 0)
+    end)
+
+    -- Suppression hides the HUD; it must not hide the keyboard from the
+    -- component, whose own guards decide what stays blocked (a latched
+    -- release, the dedicated keys) while nothing fires.
+    it("keeps delivering while suppressed", function()
+      local widget = core.register(keyboard_widget())
+      login()
+      core.on_status_change(EVENT_STATUS)
+      core.on_keyboard(39, true, 0, false)
+      assert.are.equal(1, #widget.keys)
+    end)
+
+    it("keeps delivering while logged out, so a latched release is still swallowed", function()
+      local widget = core.register(keyboard_widget())
+      login()
+      widget.block = true
+      core.on_keyboard(39, true, 0, false)
+      core.on_logout()
+      core.on_keyboard(39, false, 0, false)
+      assert.are.equal(2, #widget.keys)
+    end)
+
+    it("answers false and calls nobody after unload", function()
+      local widget = core.register(keyboard_widget())
+      login()
+      core.on_unload()
+      assert.is_false(core.on_keyboard(39, true, 0, false))
+      assert.are.equal(0, #widget.keys)
+    end)
+
+    -- A keyboard consumer's input guards need to know what core knows: its
+    -- suppression guard keys off the same resolver that hides the HUD.
+    it("exposes the suppression the components are subject to", function()
+      login()
+      assert.is_false(core.suppressed())
+      core.on_status_change(EVENT_STATUS)
+      assert.is_true(core.suppressed())
+      core.on_logout()
+      assert.is_true(core.suppressed(), "logged out counts as suppressed")
+    end)
+
+    -- The other half of core.suppressed() for the same guards: suppression
+    -- and a user hide both reach a widget as hide(), and only core can say
+    -- which is which - disabled must outrank suppressed.
+    it("exposes a component's user visibility, unmoved by suppression", function()
+      core.register(bar())
+      login()
+      assert.is_true(core.component_visible("bar"))
+      core.on_status_change(EVENT_STATUS)
+      assert.is_true(core.component_visible("bar"), "suppression is not the user's hide")
+      core.on_command({ "hide", "bar" })
+      assert.is_false(core.component_visible("bar"), "the user's hide is, even mid-suppression")
+      core.on_command({ "show", "bar" })
+      assert.is_true(core.component_visible("bar"))
+      assert.is_false(core.component_visible("nobody"))
+    end)
+
+    it("reports whether any registered component wants the keyboard", function()
+      assert.is_false(core.wants_keyboard())
+      core.register(keyboard_widget())
+      assert.is_true(core.wants_keyboard())
+      core.on_unload()
+      assert.is_false(core.wants_keyboard())
+    end)
+  end)
+
+  -- Touchpoint 3: same shape for the mouse, for edit-mode UI. Unlike the
+  -- keyboard, layout mode owns the mouse outright while it is on - entering
+  -- layout mode exits edit mode, so the two never contend.
+  describe("component mouse dispatch", function()
+    local function mouse_widget(name)
+      local widget = bar(name)
+      widget.mice = {}
+      widget.block = false
+      widget.on_mouse = function(mouse_type, x, y, delta, extra)
+        -- `extra` catches a fifth argument the contract does not promise:
+        -- core answers a blocked event itself, so a component only ever sees
+        -- events nobody has taken - there is no `blocked` to forward.
+        widget.mice[#widget.mice + 1] = { mouse_type, x, y, delta, extra }
+        return widget.block
+      end
+      return widget
+    end
+
+    it("forwards mouse events to a component that asks, and propagates its block", function()
+      local widget = core.register(mouse_widget())
+      login()
+      widget.block = true
+      assert.is_true(core.on_mouse(LEFT_DOWN, 10, 20, 0, false))
+      assert.are.same({ LEFT_DOWN, 10, 20, 0 }, widget.mice[1])
+      widget.block = false
+      assert.is_false(core.on_mouse(MOVE, 11, 21, 0, false))
+    end)
+
+    -- Blocker first: the fold across components is an OR, so a later false
+    -- must not overwrite an earlier block.
+    it("keeps an early component's block when a later one answers false", function()
+      local hungry = core.register(mouse_widget("hungry"))
+      local quiet = core.register(mouse_widget("quiet"))
+      login()
+      hungry.block = true
+      assert.is_true(core.on_mouse(LEFT_DOWN, 10, 20, 0, false))
+      assert.are.equal(1, #quiet.mice, "the later component still sees the event")
+    end)
+
+    it("gives layout mode the mouse while it is on, not the component", function()
+      local widget = core.register(mouse_widget())
+      login()
+      core.on_command({ "layout" })
+      core.on_mouse(LEFT_DOWN, widget.pos[1] + 50, widget.pos[2] + 50)
+      assert.are.equal(0, #widget.mice)
+    end)
+
+    it("passes nothing a prior addon already blocked", function()
+      local widget = core.register(mouse_widget())
+      login()
+      assert.is_false(core.on_mouse(LEFT_DOWN, 10, 20, 0, true))
+      assert.are.equal(0, #widget.mice)
+    end)
+
+    it("passes nothing while something is suppressing", function()
+      local widget = core.register(mouse_widget())
+      login()
+      core.on_status_change(EVENT_STATUS)
+      assert.is_false(core.on_mouse(LEFT_DOWN, 10, 20, 0, false))
+      assert.are.equal(0, #widget.mice)
+    end)
+
+    it("answers false and calls nobody after unload", function()
+      local widget = core.register(mouse_widget())
+      login()
+      core.on_unload()
+      assert.is_false(core.on_mouse(LEFT_DOWN, 10, 20, 0, false))
+      assert.are.equal(0, #widget.mice)
+    end)
+
+    it("reports whether any registered component wants the mouse", function()
+      assert.is_false(core.wants_mouse())
+      core.register(mouse_widget())
+      assert.is_true(core.wants_mouse())
+    end)
+  end)
+
+  -- Touchpoint 2: a component exposing `anchors() -> {names}` keeps pos and
+  -- scale per anchor, nested under its slot entry; core applies, clamps,
+  -- describes and overlays each anchor on its own. `visible` stays per
+  -- component. Widgets without `anchors()` take the paths above unchanged.
+  describe("multi-anchor components", function()
+    local ANCHORS = { "top", "bottom" }
+
+    local function anchored_defaults()
+      return {
+        slots = {
+          default = {
+            anchors = {
+              top = { pos = { x = 100, y = 100 }, scale = 1 },
+              bottom = { pos = { x = 400, y = 600 }, scale = 1 },
+            },
+            visible = true,
+          },
+        },
+      }
+    end
+
+    local function cross(names)
+      return fakes.widget("cross", anchored_defaults(), names or ANCHORS)
+    end
+
+    it("applies each anchor's own position and scale from the defaults", function()
+      local widget = core.register(cross())
+      login()
+      assert.are.same({ 100, 100 }, widget.anchor.top.pos)
+      assert.are.same({ 400, 600 }, widget.anchor.bottom.pos)
+      assert.are.equal(1, widget.anchor.top.scale)
+      assert.is_true(widget.shown)
+    end)
+
+    it("pulls a stored anchor that is off screen back into reach, alone", function()
+      env.fs.put(
+        "data/Azureblood/cross.lua",
+        "return { slots = { default = { anchors = { bottom = { pos = { x = 5000, y = 4000 } } } } } }"
+      )
+      local widget = core.register(cross())
+      login()
+      assert.are.same({ 1720, 980 }, widget.anchor.bottom.pos)
+      assert.are.same({ 100, 100 }, widget.anchor.top.pos, "the on-screen anchor must not move")
+    end)
+
+    it("repairs an anchor scale below the floor in the stored state", function()
+      env.fs.put(
+        "data/Azureblood/cross.lua",
+        "return { slots = { default = { anchors = { top = { scale = 0.05 } } } } }"
+      )
+      local widget = core.register(cross())
+      login()
+      assert.are.equal(0.25, widget.anchor.top.scale)
+      assert.are.equal(1, widget.anchor.bottom.scale)
+    end)
+
+    it("lists every anchor's position and scale", function()
+      core.register(cross())
+      login()
+      core.on_command({ "list" })
+      local said = env.said()
+      assert.is_not_nil(said:find("cross", 1, true), "said: " .. said)
+      assert.is_not_nil(said:find("top", 1, true))
+      assert.is_not_nil(said:find("bottom", 1, true))
+      assert.is_not_nil(said:find("400,600", 1, true), "said: " .. said)
+    end)
+
+    it("drags one anchor in layout mode and persists it without moving the other", function()
+      local widget = core.register(cross())
+      login()
+      core.on_command({ "layout" })
+      assert.is_true(core.on_mouse(LEFT_DOWN, 450, 650))
+      assert.is_true(core.on_mouse(MOVE, 750, 850))
+      assert.is_true(core.on_mouse(LEFT_UP, 750, 850))
+
+      assert.are.same({ 700, 800 }, widget.anchor.bottom.pos)
+      assert.are.same({ 100, 100 }, widget.anchor.top.pos)
+      local written = env.fs.files["data/Azureblood/cross.lua"]
+      assert.is_not_nil(written:find("x = 700", 1, true), "wrote: " .. written)
+      assert.is_not_nil(written:find("x = 100", 1, true), "the other anchor keeps its place on disk")
+    end)
+
+    it("scales one anchor with the wheel and saves", function()
+      local widget = core.register(cross())
+      login()
+      core.on_command({ "layout" })
+      assert.is_true(core.on_mouse(WHEEL, 150, 150, 120))
+      assert.are.equal(2.2, widget.anchor.top.scale)
+      assert.are.equal(1, widget.anchor.bottom.scale)
+      assert.is_not_nil(env.fs.files["data/Azureblood/cross.lua"]:find("scale = 2.2", 1, true))
+    end)
+
+    it("right-click on any anchor toggles the whole component off", function()
+      local widget = core.register(cross())
+      login()
+      core.on_command({ "layout" })
+      assert.is_true(core.on_mouse(RIGHT_DOWN, 450, 650))
+      assert.is_true(widget.shown, "still force-shown while positioning")
+      assert.is_not_nil(env.fs.files["data/Azureblood/cross.lua"]:find("visible = false", 1, true))
+      core.on_command({ "layout" })
+      assert.is_false(widget.shown)
+    end)
+
+    it("draws one highlight per anchor, named for it, and clears them on exit", function()
+      core.register(cross())
+      login()
+      core.on_command({ "layout" })
+      assert.are.equal(2, #env.prims.images)
+      assert.are.same({ 100, 100 }, { env.prims.images[1].x, env.prims.images[1].y })
+      assert.are.same({ 400, 600 }, { env.prims.images[2].x, env.prims.images[2].y })
+      assert.are.equal("cross:top", env.prims.texts[1].last.text)
+      assert.are.equal("cross:bottom", env.prims.texts[2].last.text)
+
+      core.on_command({ "layout" })
+      assert.is_false(env.prims.images[1].visible)
+      assert.is_false(env.prims.images[2].visible)
+    end)
+
+    it("clears every anchor's highlight while something is suppressing", function()
+      core.register(cross())
+      login()
+      core.on_command({ "layout" })
+      core.on_status_change(EVENT_STATUS)
+      assert.is_false(env.prims.images[1].visible)
+      assert.is_false(env.prims.images[2].visible)
+    end)
+
+    -- The CB2 stand-in registered the anchored slot schema before the
+    -- framework understood it, so layout repair fabricated and persisted a
+    -- spurious top-level pos/scale. CB3 tolerates the residue and sheds it on
+    -- the first write.
+    it("drops the CB2 stand-in's stray top-level pos and scale on the first write", function()
+      env.fs.put(
+        "data/Azureblood/cross.lua",
+        "return { slots = { default = { pos = { x = 0, y = 0 }, scale = 1, visible = true, "
+          .. "anchors = { top = { pos = { x = 100, y = 100 }, scale = 1 }, "
+          .. "bottom = { pos = { x = 400, y = 600 }, scale = 1 } } } } }"
+      )
+      local widget = core.register(cross())
+      login()
+      assert.is_nil(widget.config.slots.default.pos)
+      assert.is_nil(widget.config.slots.default.scale)
+
+      core.on_command({ "hide", "cross" })
+      local written = env.fs.files["data/Azureblood/cross.lua"]
+      assert.is_nil(written:find("x = 0", 1, true), "wrote: " .. written)
+    end)
+
+    it("skips an anchor the component lists but its defaults do not", function()
+      local widget = core.register(cross({ "top", "bottom", "ghost" }))
+      assert.has_no.errors(function()
+        login()
+        core.on_command({ "list" })
+      end)
+      assert.is_nil(widget.anchor.ghost, "nothing must be applied to an anchor with no state")
+      assert.are.same({ 100, 100 }, widget.anchor.top.pos)
+    end)
+
+    it("skips a widget whose defaults are anchored but which exposes no anchors()", function()
+      -- The CB2 stand-in's exact shape: anchored defaults, no anchors()
+      -- member. layout.slot strips the top-level pos, so the single-anchor
+      -- apply must skip the mismatch rather than crash on it.
+      local widget = core.register(fakes.widget("odd", anchored_defaults()))
+      assert.has_no.errors(function()
+        login()
+      end)
+      assert.is_nil(widget.pos, "nothing must be applied through the mismatch")
+      assert.is_true(widget.shown)
+    end)
+
+    it("lists the mismatched widget without its unplaceable position", function()
+      core.register(fakes.widget("odd", anchored_defaults()))
+      login()
+      assert.has_no.errors(function()
+        core.on_command({ "list" })
+      end)
+      assert.is_not_nil(env.said():find("odd - shown", 1, true), "said: " .. env.said())
+    end)
+
+    it("treats a non-table anchors() answer as a single-anchor component", function()
+      local widget = fakes.widget("odd", slot_defaults(100, 200))
+      widget.anchors = function()
+        return 5
+      end
+      core.register(widget)
+      assert.has_no.errors(function()
+        login()
+      end)
+      assert.are.same({ 100, 200 }, widget.pos)
+    end)
+
+    it("keeps a named slot's anchors apart from the default slot's", function()
+      local widget = core.register(cross())
+      login()
+      core.on_command({ "slot", "create", "raid" })
+      core.on_command({ "slot", "raid" })
+      core.on_command({ "layout" })
+      core.on_mouse(LEFT_DOWN, 450, 650)
+      core.on_mouse(LEFT_UP, 750, 850)
+      core.on_command({ "layout" })
+      assert.are.same({ 700, 800 }, widget.anchor.bottom.pos)
+
+      core.on_command({ "slot", "default" })
+      assert.are.same({ 400, 600 }, widget.anchor.bottom.pos)
+    end)
+  end)
+
+  -- Touchpoint 5: a component declaring `wants_store = true` is attached with
+  -- a third argument, a store accessor over its own config directory. The
+  -- others see exactly what they always did.
+  describe("directory config store", function()
+    local function store_widget(name)
+      local widget = bar(name)
+      widget.wants_store = true
+      return widget
+    end
+
+    it("hands a store accessor to a component that claims the directory form", function()
+      local widget = core.register(store_widget())
+      login()
+      assert.is_not_nil(widget.store)
+      assert.is_true(widget.store.save("WAR", { active_set = 2 }))
+      -- Beside the component file, never into it: nothing has persisted
+      -- bar.lua at this point, and a store save must not be what creates it.
+      assert.is_nil(env.fs.files["data/Azureblood/bar.lua"])
+      assert.is_not_nil(env.fs.files["data/Azureblood/bar/WAR.lua"])
+      assert.are.same({ active_set = 2 }, widget.store.load("WAR"))
+    end)
+
+    it("passes no store to a component that does not claim it", function()
+      local widget = core.register(bar())
+      login()
+      assert.is_not_nil(widget.config)
+      assert.is_nil(widget.store)
+    end)
+
+    it("attaches with the store on a login after registration too", function()
+      local widget = core.register(store_widget())
+      assert.is_nil(widget.store)
+      login()
+      assert.is_not_nil(widget.store)
+    end)
+
+    it("clears the directory on reset and re-attaches with a working store", function()
+      local widget = core.register(store_widget())
+      login()
+      widget.store.save("WAR", { active_set = 5 })
+      core.on_command({ "reset", "bar" })
+      assert.is_nil(env.fs.files["data/Azureblood/bar/WAR.lua"], "reset must not leave per-job files behind")
+      assert.is_nil(widget.store.load("WAR"))
+      assert.is_true(widget.store.save("WAR", { active_set = 1 }))
+    end)
+
+    it("rebuilds the store after //hud copy, so copied files are not shadowed by a stale cache", function()
+      env.fs.put("data/Alpha/bar.lua", "return {}")
+      env.fs.put("data/Alpha/bar/WAR.lua", "return { active_set = 7 }")
+      local widget = core.register(store_widget())
+      login()
+      widget.store.save("WAR", { active_set = 1 })
+      core.on_command({ "copy", "Alpha", "Azureblood" })
+      assert.are.equal(7, widget.store.load("WAR").active_set)
+    end)
+  end)
 end)

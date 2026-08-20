@@ -109,6 +109,9 @@ local function new(deps)
   end
 
   local function load_handle(handle)
+    -- The store cache goes whenever the config is re-read: a login, logout,
+    -- character switch or `//hud copy` reload must all reach the disk again.
+    handle._store = {}
     if not character then
       handle._config = nil
       return
@@ -179,10 +182,79 @@ local function new(deps)
       return true
     end
 
+    --[[ The directory store: named files inside the directory `handle.dir()`
+         claims, for a component whose config outgrows one file (per-job
+         bindings). Same trust model as the component file - sandboxed load,
+         serialized write - plus a cache dropped whenever the config is
+         re-read. The name becomes a path segment, so anything but a plain
+         word is refused outright rather than composed. ]]
+
+    local function store_path(file)
+      local dir = handle.dir()
+      if not dir or type(file) ~= "string" or not file:match("^[%w_]+$") then
+        return nil
+      end
+      return dir .. "/" .. file .. ".lua"
+    end
+
+    -- Only found files are cached: a MISSING file is re-read from disk on
+    -- every call (nil is uncacheable in a table). That is the contract -
+    -- callers cache what they load and read on their own events (a job
+    -- change, an attach); calling this per frame is forbidden.
+    function handle.store_load(file)
+      local path = store_path(file)
+      if not path then
+        return nil
+      end
+      if handle._store[file] == nil then
+        handle._store[file] = load_file(path)
+      end
+      return handle._store[file]
+    end
+
+    function handle.store_save(file, value)
+      local path = store_path(file)
+      if not path or type(value) ~= "table" then
+        return false
+      end
+
+      local ok, text = pcall(serialize, value)
+      if not ok then
+        notify("could not serialize " .. file .. ": " .. tostring(text))
+        return false
+      end
+
+      local written, write_error = deps.write_file(path, text)
+      if written == false then
+        notify("could not write " .. path .. ": " .. tostring(write_error))
+        return false
+      end
+      handle._store[file] = value
+      return true
+    end
+
     function handle.reset()
       if not character then
         return false
       end
+      -- The per-directory files would silently survive a reset otherwise -
+      -- `//hud reset crossbar` must not leave last week's bindings behind.
+      -- Only possible when the deps can enumerate and delete; the store cache
+      -- is dropped either way. Deliberately NON-recursive: the store itself
+      -- is flat (`store_path` admits no separators), so a nested directory
+      -- here is not store data and is left alone. The trailing delete of the
+      -- emptied directory is best effort - os.remove refuses directories on
+      -- Windows, and an empty one left behind changes nothing.
+      if deps.list_dir and deps.delete_file then
+        local dir = handle.dir()
+        for _, entry in ipairs(deps.list_dir(dir) or {}) do
+          if entry ~= "." and entry ~= ".." then
+            deps.delete_file(dir .. "/" .. entry)
+          end
+        end
+        deps.delete_file(dir)
+      end
+      handle._store = {}
       handle._config = deep_copy(handle.defaults)
       return handle.save()
     end
