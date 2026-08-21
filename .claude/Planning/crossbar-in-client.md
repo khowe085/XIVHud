@@ -10,6 +10,13 @@ Gathered from the milestone acceptance lines and the per-milestone open items in
 [crossbar.md](crossbar.md); organised by what a player would do in one sitting,
 not by milestone.
 
+**The behavioural half of this list now lives in
+[crossbar-testplan.md](crossbar-testplan.md)**, as tick-boxes ordered so the
+sections build on each other. Every BLOCK check below has a row there, and
+its section O carries the readings that settle the open questions. This
+file stays as the reasoning: what each answer would mean, and what the code
+does in the meantime.
+
 Items marked **BLOCK** are blocking: if one of them fails the addon is unusable and
 nothing further on the list is worth running. Everything else is a confirmation —
 a failure is a defect to fix, not a stop-the-world.

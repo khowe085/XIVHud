@@ -80,6 +80,7 @@ These bindings are used by every later section — leave them in place.
 | C22 | `//hud crossbar swap 1 l 1 1 l 2` again | They swap back | [ ] | [ ] |  |
 | C23 | `//hud crossbar bind 1 l 8 ma "Dia" t` then `unbind 1 l 8` | Bound, then the slot empties | [ ] | [ ] |  |
 | C24 | `//hud crossbar bind 1 l 1 y ma "Cure" me` | The button name `y` works like slot 1 | [ ] | [ ] |  |
+| C25 | Type `/ma "Cure" <YourName>` straight into the game | It casts — a name in angle brackets IS a target | [ ] | [ ] |  |
 
 ## D. Sets and layers
 
@@ -136,6 +137,7 @@ These bindings are used by every later section — leave them in place.
 | F16 | Click a slot, then click far away | The choice resets, nothing is bound | [ ] | [ ] |  |
 | F17 | While the binder is open, hold `;` | The bar does not activate | [ ] | [ ] |  |
 | F18 | Press `=` | The binder closes | [ ] | [ ] |  |
+| F19 | Open and close it a few times, watching the frame it opens on | No stutter or hitch as it appears | [ ] | [ ] |  |
 
 ## G. Counters and the skillchain indicator
 
@@ -164,6 +166,7 @@ These bindings are used by every later section — leave them in place.
 | H8 | `//hud crossbar open` | Lists the screens it can open | [ ] | [ ] |  |
 | H9 | `//hud crossbar open equipment` | The equipment window opens | [ ] | [ ] |  |
 | H10 | `//hud crossbar help` | Prints the command list | [ ] | [ ] |  |
+| H11 | If you own a trainer's whistle, run `//hud crossbar mr` a dozen times | It is never picked as a mount | [ ] | [ ] |  |
 
 ## I. Warp
 
@@ -192,6 +195,8 @@ These bindings are used by every later section — leave them in place.
 | J6 | Press it with the charge spent | It says `no charges left` | [ ] | [ ] |  |
 | J7 | Press it while a warp countdown is running | It says something is already in progress | [ ] | [ ] |  |
 | J8 | Bind one with a target (`enchanteditem "X" t`) and press with nothing targeted | It refuses rather than firing later | [ ] | [ ] |  |
+| J9 | Bind an enchanted item worn somewhere that is **not** a ring — an earring, a cape, a body piece | It equips into the right slot and uses | [ ] | [ ] |  |
+| J10 | Straight after J9 | Your gear swapping works, with nothing left locked | [ ] | [ ] |  |
 
 ## K. The cast retry (the queue)
 
@@ -205,6 +210,9 @@ These bindings are used by every later section — leave them in place.
 | K6 | Retry a spell aimed at `t`, then tab to another mob | It lands on the first mob, not the new one | [ ] | [ ] |  |
 | K7 | Get silenced, then press a spell that is refused | Nothing is retried while silenced | [ ] | [ ] |  |
 | K8 | `//hud crossbar retry off` mid-hold | The held spell is dropped | [ ] | [ ] |  |
+| K9 | Whatever K3 did, write the game's refusal message **word for word** in the notes | — (this is a reading, not a pass) | [ ] | [ ] |  |
+| K10 | Roughly how long after the refusal did the re-send succeed? | — (a rough number in the notes is enough) | [ ] | [ ] |  |
+| K11 | Try the same with a job ability, then a weaponskill | Both are retried the way a spell is | [ ] | [ ] |  |
 
 ## L. Layout mode
 
@@ -254,6 +262,24 @@ Run these only when everything above is done.
 | N2 | `//hud show crossbar` | It returns | [ ] | [ ] |  |
 | N3 | `//hud reset crossbar` | Settings and every job's bindings are wiped | [ ] | [ ] |  |
 | N4 | `//lua unload xivhud` | No keybind is left broken behind it | [ ] | [ ] |  |
+
+## O. Facts the code is still guessing at
+
+These are not really pass/fail — they are **readings**. Tick Pass if you
+managed to look, and put what you saw in the notes. Each one settles a
+question the code currently guesses at, listed in
+[crossbar-in-client.md](crossbar-in-client.md).
+
+| # | Do this | What I need | Pass | Fail | What you saw |
+| --- | --- | --- | --- | --- | --- |
+| O1 | Look at an enchanted ring's entry in `res.items` | Does it have a `slots` field, and is it a set, a list, or a number? | [ ] | [ ] |  |
+| O2 | Look at `res.bags` | Is there a bag whose name contains `temporary`, and what exactly is it called? | [ ] | [ ] |  |
+| O3 | Look at `res.statuses` | Is there an entry whose english name is `Resting`, and what is its id? | [ ] | [ ] |  |
+| O4 | Sit with `/heal` and read your own status number | Does it match what O3 said? | [ ] | [ ] |  |
+| O5 | Type `/ma "Cure IV"` with a mob selected, then with nothing selected | What happens each time — does it use the target, prompt, or fail? | [ ] | [ ] |  |
+| O6 | Type `/item "Echo Drops" <a real mob id>` using a number, not a token | Does the game accept a bare numeric target? | [ ] | [ ] |  |
+| O7 | On a job with /COR, try to spend a **master** card (Trump Card) | Can a subjob COR burn one? | [ ] | [ ] |  |
+| O8 | If you own a trainer's whistle, look at its name in your key items | Does it start with the same music-note character the mounts do? | [ ] | [ ] |  |
 
 ---
 
