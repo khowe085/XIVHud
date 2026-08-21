@@ -674,6 +674,25 @@ describe("crossbar render", function()
       }, paths(candidates))
     end)
 
+    it("resolves enchanted gear the same way an item resolves", function()
+      -- An enchanteditem slot draws the item's own art: the difference
+      -- between the two types is how the press fires, not what it shows.
+      -- Without this the slot is a blank button whose icon was extracted
+      -- from the client's DATs and then never drawn.
+      local candidates = render.icon_candidates(
+        { type = "enchanteditem", action = "Vocation Ring" },
+        { item_id = 27546 }
+      )
+      assert.are.same({
+        "icons/custom/vocation-ring.png",
+        ASSETS .. "icons/items/vocation-ring.png",
+        "icons/27546.bmp",
+        -- The self-use art: a target-less enchanteditem aims at <me>, which
+        -- is what enchanteditem.lua defaults it to.
+        ASSETS .. "icons/usable-item.png",
+      }, paths(candidates))
+    end)
+
     it("falls back to the plain item art without a self target", function()
       local candidates = render.icon_candidates({ type = "item", action = "Tsurara" }, {})
       assert.are.equal(ASSETS .. "icons/item.png", candidates[#candidates].path)

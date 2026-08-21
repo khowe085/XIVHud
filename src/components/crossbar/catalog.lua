@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      alone - the same main-only rule the stratagem gift follows). ]]
 
 local openers = require("components/crossbar/openers")
+local enchanted = require("components/crossbar/enchanted")
 
 local LEVEL_CAP = 99
 local INVENTORY_BAG = 0
@@ -52,9 +53,10 @@ local RANK = {
   ["Job Abilities"] = 3,
   ["Weapon Skills"] = 4,
   Items = 5,
-  Mounts = 6,
-  Open = 7,
-  General = 8,
+  Enchanted = 6,
+  Mounts = 7,
+  Open = 8,
+  General = 9,
 }
 local SCHOOL_RANK = 1
 
@@ -210,6 +212,54 @@ local function new(deps)
     end
   end
 
+  --[[ Enchanted gear, bound as `enchanteditem` so a press equips it, waits
+       out the warmup and uses it. Unlike the Items group this walks every
+       EQUIPPABLE bag: gear lives in wardrobes, and a ring in one is as
+       usable as a ring in inventory.
+
+       Only items the resources say can be WORN are decoded, which drops
+       every consumable and crafting material - a consumable can never be
+       enchanted equipment. What remains is still the player's whole gear
+       collection, so a full set of wardrobes is a few hundred decodes on
+       the click that opens the binder. That is accepted: it is edit mode,
+       it happens once per opening, and nothing on the played path pays it.
+
+       Without a decoder there is no telling enchanted gear from plain
+       gear, so the group does not appear. Note that the entry point always
+       wires a decode function (one that answers nil when the library is
+       missing), so in a live client the empty group comes from the decodes
+       answering nothing rather than from the guard below - which is for a
+       ctx that never wired one at all. ]]
+  local function enchanted_gear(groups)
+    if type(deps.bags) ~= "table" or type(deps.extdata_decode) ~= "function" then
+      return
+    end
+    local resource = table_or_empty(table_or_empty(deps.resources).items)
+    local found = enchanted.collect(deps.bags, function(bag)
+      return call(deps.get_items, bag)
+    end)
+    local seen = {}
+    for id, entry in pairs(found) do
+      local item = resource[id]
+      -- A copy in a disabled bag is one the press refuses and the slot
+      -- count already excludes; offering it would bind a slot that reads
+      -- zero with a red X and answers "you cannot access it".
+      if
+        entry.enabled
+        and type(item) == "table"
+        and type(item.en) == "string"
+        and #enchanted.equip_slots(item) > 0
+        and not seen[item.en]
+      then
+        local ext = deps.extdata_decode(entry.item)
+        if type(ext) == "table" and ext.type == "Enchanted Equipment" then
+          seen[item.en] = true
+          add(groups, "Enchanted", { label = item.en, record = { type = "enchanteditem", action = item.en } })
+        end
+      end
+    end
+  end
+
   --[[ The owned list is the COMMAND form - lower case, because that is
        what `/mount` takes - so a label built off it reads "chocobo". The
        display casing rides along in the record's own `display` field, which
@@ -256,6 +306,7 @@ local function new(deps)
     spells(groups, jobs)
     abilities(groups, jobs)
     items(groups)
+    enchanted_gear(groups)
     mounts(groups)
     builtins(groups)
 

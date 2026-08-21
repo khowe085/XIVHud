@@ -31,9 +31,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      actions.resolve into ctx.send_command), all three bars own prims - the
      XHB, the WXHB's two separately-anchored halves, and Expanded Hold
      centred on main - and the per-frame tick drives the recast sweep,
-     MP/TP costs, unusable dimming, the stratagem and ninja-tool counters,
-     the press flash, the item-icon extraction queue and the pending-warp
-     state machine.
+     MP/TP costs, unusable dimming, the stratagem, ninja-tool and item
+     counters, the press flash, the item-icon extraction queue and the
+     pending equip -> wait -> use machine that the warp ladder and an
+     enchanteditem binding share.
 
      The ctx's prim constructors are optional on purpose: without new_image
      the widget runs headless - input machine, bindings, execution, anchors,
@@ -53,6 +54,7 @@ local new_bindings = require("components/crossbar/bindings")
 local new_commands = require("components/crossbar/commands")
 local new_roulette = require("components/crossbar/roulette")
 local new_warp = require("components/crossbar/warp")
+local new_enchanteditem = require("components/crossbar/enchanteditem")
 local enchanted = require("components/crossbar/enchanted")
 local counters = require("components/crossbar/counters")
 local openers = require("components/crossbar/openers")
@@ -86,14 +88,49 @@ local MOUNTED_BUFF = 252
 -- Namespaced so a real MyHome on another character neither triggers nor is
 -- triggered by us; the receiver matches it exactly.
 local IPC_WARP_MESSAGE = "xivhud crossbar warp"
--- GearSwap's names for the two equip slots the warp ladder can touch.
-local GS_SLOT_NAMES = { [0] = "main", [13] = "ring1" }
--- The pending warp's wall-clock ceiling. enchanted.step abandons any wait
--- whose REMAINING delay exceeds 30s, so a wait it accepts must finish inside
--- that bound; the extra 15s covers equip latency and a set_equip that
--- silently no-opped (Windower drops mismatched args), which would otherwise
--- freeze activation_time and answer "wait" forever.
-local WARP_DEADLINE_SECONDS = 45
+--[[ Windower equipment slot id -> the name GearSwap knows it by, for the
+     `gs disable` held over a slot while an enchanted item warms up. The
+     warp ladder only ever needed main and ring1; an enchanteditem binding
+     can name any worn piece, so the whole map is here.
+
+     The IDS are attested in this repo - equipviewer/logic.lua carries all
+     sixteen as the client's own equipment-table keys. The NAMES are not:
+     the client calls id 13 `left_ring` where GearSwap wants `ring1`, and
+     the same for the other ear and ring slots. Question J. ]]
+local GS_SLOT_NAMES = {
+  [0] = "main",
+  [1] = "sub",
+  [2] = "range",
+  [3] = "ammo",
+  [4] = "head",
+  [5] = "body",
+  [6] = "hands",
+  [7] = "legs",
+  [8] = "feet",
+  [9] = "neck",
+  [10] = "waist",
+  [11] = "ear1",
+  [12] = "ear2",
+  [13] = "ring1",
+  [14] = "ring2",
+  [15] = "back",
+}
+local EQUIPPED = enchanted.EQUIPPED
+--[[ How far past its own give-up bound a pending wait may run before the
+     wall clock ends it. enchanted.step abandons any wait whose REMAINING
+     delay exceeds that bound, so a wait it accepts must finish inside it;
+     the margin covers equip latency and a set_equip that silently no-opped
+     (Windower drops mismatched args), which would otherwise freeze
+     activation_time and answer "wait" forever.
+
+     Added to the PLAN's bound rather than a fixed 45: a rung that waits
+     longer needs a ceiling that waits longer too, or the deadline ends the
+     very wait the longer bound was granted for. ]]
+local PENDING_DEADLINE_MARGIN = 15
+-- enchanted.step's own default, for a plan that names no bound of its
+-- own. Read from the module rather than copied, so the deadline and the
+-- abandon message cannot drift from the bound `step` actually applies.
+local DEFAULT_GIVE_UP_SECONDS = enchanted.give_up_default()
 -- Upstream's fixed overlay alpha for the recast sweep and the red X.
 local OVERLAY_ALPHA = 150
 -- The tool-count colour bands, upstream's own RGB (ui.lua:963-967).
@@ -102,8 +139,10 @@ local TOOL_COLORS = {
   yellow = { 255, 255, 0 },
   red = { 255, 0, 0 },
 }
--- The stratagem count is a plain number, drawn in explicit white.
-local STRATAGEM_COLOR = { 255, 255, 255 }
+-- Counts with no colour meaning of their own - stratagem charges and item
+-- counts - are drawn in explicit white, never left inheriting whatever the
+-- cost prim last showed (the fork sets no colour there at all).
+local PLAIN_COUNT_COLOR = { 255, 255, 255 }
 -- The skillchain indicator's shipped colours and opacity - the fallbacks
 -- when the config's skillchain block is hand-broken - and its constant
 -- black backdrop (upstream's own 150-alpha black).
@@ -185,6 +224,7 @@ local RESOURCE_TABLES = {
   pet = "job_abilities",
   ws = "weapon_skills",
   item = "items",
+  enchanteditem = "items",
   mount = "mounts",
 }
 
@@ -274,17 +314,47 @@ local function new(ctx)
     })
   end
 
-  local warp_bags = {}
+  local equip_bags = {}
   if resources ~= nil then
     for id, bag in pairs(resources.bags or {}) do
       if type(bag) == "table" then
-        warp_bags[id] = { name = bag.name or bag.en or tostring(id), equippable = bag.equippable and true or false }
+        equip_bags[id] = { name = bag.name or bag.en or tostring(id), equippable = bag.equippable and true or false }
       end
     end
   end
 
+  -- Shared by the warp ladder and by a named enchanteditem binding: both
+  -- search the same bags and read the same extdata.
+  local function read_bag(bag)
+    if ctx.get_items ~= nil then
+      return ctx.get_items(bag)
+    end
+    return nil
+  end
+
+  local function read_ext(item)
+    return ctx.decode_extdata ~= nil and ctx.decode_extdata(item) or nil
+  end
+
+  --[[ The warp ladder's own reading of a decode it did not get: "not
+       usable, not enchanted", so the rung is noted and the walk carries on
+       to the next one rather than crashing.
+
+       enchanteditem deliberately does NOT get this substitute. It has one
+       item and no next rung, so "I could not read it" is a different answer
+       from "it is a plain item" - the latter sends a /item the game will
+       refuse, and tells the player nothing about why. ]]
+  local function decode_ext(item)
+    return read_ext(item) or { type = "unavailable" }
+  end
+
+  --[[ Forward declaration: an enchanteditem binding names its item, so the
+       module needs the resource index - which is built further down, after
+       the actions table it has to be handed to. ]]
+  local resource_by_name
+
   local warp = new_warp({
-    bags = warp_bags,
+    bags = equip_bags,
     get_player = get_player,
     get_spells = function()
       if ctx.get_spells ~= nil then
@@ -292,19 +362,24 @@ local function new(ctx)
       end
       return {}
     end,
-    get_items = function(bag)
-      if ctx.get_items ~= nil then
-        return ctx.get_items(bag)
-      end
-      return nil
-    end,
-    extdata_decode = function(item)
-      local ext = ctx.decode_extdata ~= nil and ctx.decode_extdata(item) or nil
-      -- A missing extdata library reads as "not usable, not enchanted":
-      -- the ladder notes the rung and walks on rather than crashing.
-      return ext or { type = "unavailable" }
-    end,
+    get_items = read_bag,
+    extdata_decode = decode_ext,
     now = time_now,
+    -- A ladder rung carrying a name rather than an id resolves it here.
+    find_item = function(name)
+      return resource_by_name("items", name)
+    end,
+  })
+
+  local enchanteditem = new_enchanteditem({
+    bags = equip_bags,
+    get_player = get_player,
+    get_items = read_bag,
+    extdata_decode = read_ext,
+    now = time_now,
+    find_item = function(name)
+      return resource_by_name("items", name)
+    end,
   })
 
   local actions = new_actions({
@@ -314,6 +389,7 @@ local function new(ctx)
       end,
     },
     warp = warp,
+    enchanteditem = enchanteditem,
   })
 
   --[[ The chain-state engine (CB6): pure, always built - it needs no
@@ -446,14 +522,26 @@ local function new(ctx)
   local scoped_sub = nil
   local rescope_want = nil
 
-  -- Ninja/Corsair tool counts from the inventory bag, re-read only when an
-  -- item event names a tracked id (giltracker's pattern).
-  local tool_counts = {}
-  local tools_dirty = true
+  --[[ Item counts for the slot corners: ninja/Corsair tools and every
+       consumable a slot is bound to, from the inventory, plus enchanted
+       gear from the other equippable bags. Re-read when an item event
+       names an id something is bound to (giltracker's pattern), and when a
+       repaint changes WHICH ids those are. ]]
+  local item_counts = {}
+  local gear_counts = {}
+  local temporary_seen = false
+  local counts_dirty = true
+  --[[ The bound-id set as it stood at the last repaint, so a repaint that
+       changed nothing worth counting costs no client read. Forward-declared
+       because repaint sits well above the counting code that builds it. ]]
+  local counted_signature = nil
+  local bound_item_signature
 
-  -- The pending-warp state machine: gs disable -> equip -> wait -> use, with
-  -- `gs enable` on every exit path (success, give-up, suppression, detach).
-  local pending_warp = nil
+  -- The pending equip -> wait -> use machine, shared by the warp ladder and
+  -- an enchanteditem binding: gs disable, equip, wait, use, with `gs enable`
+  -- on every exit path (success, give-up, suppression, detach) for every
+  -- slot it held. One at a time, whichever armed it.
+  local pending_item = nil
 
   local function build_bindings(store)
     local function nothing() end
@@ -478,9 +566,11 @@ local function new(ctx)
 
   --[[ Resource name lookups, indexed lazily by lowercased English name; the
        items table alone is tens of thousands of entries, so nothing walks it
-       until an item record actually needs it. ]]
+       until something actually needs it - an item record being painted, or
+       a warp press reaching a rung that names its item rather than
+       numbering it. ]]
   local name_indexes = {}
-  local function resource_by_name(table_name, name)
+  function resource_by_name(table_name, name)
     if resources == nil or type(name) ~= "string" then
       return nil
     end
@@ -498,8 +588,8 @@ local function new(ctx)
   end
 
   -- Built here rather than beside the model: its action_exists dep closes
-  -- over resource_by_name, which is a local declared just above -- built
-  -- any earlier, the closure would capture a global that is never set.
+  -- over resource_by_name, whose forward declaration sits with the other
+  -- state at the top of new() and which is only ASSIGNED just above.
   --[[ The authoring CLI (CB7). Reads the model through a getter, since
        attach and detach rebuild it, and validates an icon name against the
        same two candidates render.icon_candidates draws from - the player's
@@ -588,7 +678,9 @@ local function new(ctx)
         local skill = resources ~= nil and resources.skills and resources.skills[ws.skill] or nil
         return { kind = "ws", ws_id = ws.id, weapon = skill and skill.en or nil, tp_cost = 1000 }
       end
-    elseif record.type == "item" then
+    elseif record.type == "item" or record.type == "enchanteditem" then
+      -- Both draw the item's own icon and count its copies; the difference
+      -- between them is how the press fires, not what the slot shows.
       local item = resource_by_name("items", record.action)
       if item ~= nil then
         return { kind = "item", item_id = item.id }
@@ -1283,6 +1375,19 @@ local function new(ctx)
         end
       end
     end
+    --[[ A repaint is the only thing that can change WHICH ids need
+         counting - a bind, a set switch, a context flip, a view change -
+         but most repaints do not change them at all, and marking the counts
+         dirty on every one would re-read the inventory (and, with gear
+         bound, every wardrobe) on each hold state and set switch. So the
+         set is recomputed here and compared: it is forty table lookups
+         against up to ten client reads. Not a cache - it is rebuilt from
+         the contents each time, so there is nothing to invalidate. ]]
+    local signature = bound_item_signature()
+    if signature ~= counted_signature then
+      counted_signature = signature
+      counts_dirty = true
+    end
     refresh()
     -- Whatever moved the bar - a bind, a buff, a job change - moved what
     -- the binder's panels are describing too. Closed, this costs a nil
@@ -1314,32 +1419,57 @@ local function new(ctx)
 
   --[[ Execution ----------------------------------------------------------- ]]
 
-  local function abort_warp(message)
-    if pending_warp == nil then
+  local function abort_pending(message)
+    if pending_item == nil then
       return
     end
     if message ~= nil then
       say(message)
     end
-    if pending_warp.gs_slot ~= nil then
-      -- Every exit path re-enables the slot; harmless without GearSwap.
-      send_command("gs enable " .. pending_warp.gs_slot)
+    -- Every exit path re-enables every slot it held; harmless without
+    -- GearSwap, and leaving one disabled would quietly break the player's
+    -- gear swapping until they reloaded.
+    for _, name in ipairs(pending_item.gs_slots or {}) do
+      send_command("gs enable " .. name)
     end
-    pending_warp = nil
+    pending_item = nil
   end
 
-  --[[ Runs a warp plan. `broadcast`, when given, is `warp all`'s IPC send,
+  --[[ Giving up on whatever is in flight, naming it and (bar the bare
+       suppression case) why. One builder for all five exits so the wording
+       cannot drift apart, and so the noun stays the one that armed it. ]]
+  local function abandon(reason)
+    -- Guarded like abort_pending itself: this runs from the prerender
+    -- poll, where a nil dereference would repeat sixty times a second
+    -- until guard disabled the shared handler.
+    if pending_item == nil then
+      return
+    end
+    local message = "crossbar: " .. pending_item.noun .. " abandoned"
+    if reason ~= nil then
+      message = message .. " - " .. tostring(pending_item.name) .. " " .. reason
+    end
+    abort_pending(message)
+  end
+
+  --[[ Runs one of warp.lua's or enchanteditem.lua's plans - the same three
+       shapes, so the scheduler below serves both and cannot drift between
+       them. `noun` is what the chat calls the thing in progress ("warp",
+       "enchanted item"); `broadcast`, when given, is `warp all`'s IPC send,
        and it fires where the LOCAL warp commits and nowhere else: with the
        command for a spell, a consumable or a ring already charged; with the
        deferred use for a ring being warmed up; at once when the ladder found
        nothing at all, the alts' own ladders being independent of ours. A
        warm-up that is later abandoned therefore sends nobody - the press
        alone was never a warp. ]]
-  local function run_warp_plan(plan, broadcast)
-    if pending_warp ~= nil then
-      -- One warp at a time, whatever the rung: a second gs disable or a
-      -- crossed pair of equips mid-wait helps nobody.
-      say("crossbar: warp already in progress - " .. tostring(pending_warp.name))
+  local function run_item_plan(plan, broadcast, noun)
+    noun = noun or "warp"
+    if pending_item ~= nil then
+      -- One wait at a time, whatever armed it: a second gs disable or a
+      -- crossed pair of equips mid-wait helps nobody. A pending warp
+      -- therefore blocks an enchanted item and the reverse, which is the
+      -- honest reading - there is one pair of hands.
+      say("crossbar: " .. pending_item.noun .. " already in progress - " .. tostring(pending_item.name))
       return
     end
     for _, note in ipairs(plan.notes or {}) do
@@ -1350,24 +1480,59 @@ local function new(ctx)
     elseif plan.type == "equip" then
       -- Deferred: the broadcast travels with the pending machine and goes
       -- when the item does.
-      local gs_slot = GS_SLOT_NAMES[plan.equip_slot]
-      if gs_slot ~= nil then
-        -- xivcrossbar's enchanted-item pattern: a running GearSwap would
-        -- otherwise swap the ring straight back off before it fires.
-        send_command("gs disable " .. gs_slot)
+      --[[ xivcrossbar's enchanted-item pattern: a running GearSwap would
+           otherwise swap the ring straight back off before it fires. The
+           plan names which slots to hold - one when it chose the slot
+           itself, every slot the piece fits when it found the piece
+           already worn and cannot tell which one it is on. ]]
+      local gs_slots = {}
+      for _, slot_id in ipairs(plan.hold_slots or { plan.equip_slot }) do
+        local name = GS_SLOT_NAMES[slot_id]
+        if name ~= nil then
+          gs_slots[#gs_slots + 1] = name
+          send_command("gs disable " .. name)
+        end
       end
-      if ctx.set_equip ~= nil then
+      -- `equipped` says the piece is already on and only the enchantment is
+      -- still warming: re-equipping it would risk restarting that warmup.
+      -- The GearSwap hold above still applies - it can be swapped off
+      -- mid-wait whoever put it on.
+      if ctx.set_equip ~= nil and not plan.equipped then
         ctx.set_equip(plan.bag_slot, plan.equip_slot, plan.bag)
       end
-      pending_warp = {
+      pending_item = {
         broadcast = broadcast,
+        noun = noun,
+        -- Whether the piece was already on when the wait was armed, which
+        -- is what makes its activation_time trustworthy in the poll.
+        equipped = plan.equipped == true,
         name = plan.name,
-        command = plan.command,
+        --[[ Pinned here, at the press. This command is sent when the
+             enchantment goes live, as much as a minute later, and a
+             `<t>` carried that far lands on whatever has been tabbed to
+             since - the wander the cast retry exists to prevent.
+
+             resend_command answers the command unchanged for a fixed target
+             (`<me>` and friends need no pin) and nil in THREE cases: no
+             target word at all, a token that cannot be pinned (`<st>`), and
+             a pinnable token with nothing selected at the press. The first
+             is fine - there is no target to wander onto. The other two keep
+             the press's own line, so the token resolves when the
+             enchantment goes live rather than when it was pressed: `<st>`
+             opens a selection cursor up to a minute later, and `<t>` lands
+             on whatever has been targeted by then.
+
+             Left as it is rather than solved, because gear is self-targeting
+             in practice and a targeted enchanteditem is a user error rather
+             than a case to build for - but it is not benign, and it is not
+             the promise the retry makes. ]]
+        command = resend_command(plan.command, plan.target) or plan.command,
         item_id = plan.id,
         bag = plan.bag,
         bag_slot = plan.bag_slot,
-        gs_slot = gs_slot,
-        deadline = time_now() + WARP_DEADLINE_SECONDS,
+        gs_slots = gs_slots,
+        give_up = plan.give_up,
+        deadline = time_now() + (plan.give_up or DEFAULT_GIVE_UP_SECONDS) + PENDING_DEADLINE_MARGIN,
       }
       return
     end
@@ -1383,56 +1548,72 @@ local function new(ctx)
   -- once a second (MyHome's own cadence), never a whole-bag read per frame;
   -- the suppression and deadline aborts check every frame, ahead of the
   -- poll gate.
-  local function tick_warp()
-    if pending_warp == nil then
+  local function tick_pending()
+    if pending_item == nil then
       return
     end
     if ctx.suppressed ~= nil and ctx.suppressed() then
-      abort_warp("crossbar: warp abandoned")
+      abandon()
       return
     end
-    if time_now() >= pending_warp.deadline then
-      abort_warp("crossbar: warp abandoned - " .. tostring(pending_warp.name) .. " took too long")
+    if time_now() >= pending_item.deadline then
+      abandon("took too long")
       return
     end
     local now = ctx.now ~= nil and ctx.now() or 0
-    if pending_warp.next_poll ~= nil and now < pending_warp.next_poll then
+    if pending_item.next_poll ~= nil and now < pending_item.next_poll then
       return
     end
-    pending_warp.next_poll = now + 1
-    local bag = ctx.get_items ~= nil and ctx.get_items(pending_warp.bag) or nil
+    pending_item.next_poll = now + 1
+    local bag = ctx.get_items ~= nil and ctx.get_items(pending_item.bag) or nil
     -- Matched by id AND slot: the remembered slot is not trusted to still
     -- hold the ring (a sort, a trade, GearSwap itself can move it).
     local item = nil
     for _, entry in ipairs(bag or {}) do
-      if type(entry) == "table" and entry.slot == pending_warp.bag_slot and entry.id == pending_warp.item_id then
+      if type(entry) == "table" and entry.slot == pending_item.bag_slot and entry.id == pending_item.item_id then
         item = entry
         break
       end
     end
     if item == nil then
-      abort_warp("crossbar: warp abandoned - " .. tostring(pending_warp.name) .. " went missing")
+      abandon("went missing")
       return
     end
     local ext = ctx.decode_extdata ~= nil and ctx.decode_extdata(item) or nil
-    local step = ext ~= nil and enchanted.step(ext, time_now()) or nil
+    --[[ BOTH conditions, and neither alone is enough.
+
+         The press-time flag, because only a wait armed over a piece that
+         was ALREADY on may trust activation_time at all: on the equip path
+         the timestamp belongs to some earlier equip, and `status` flips to
+         worn the moment the CLIENT applies ours - which can be a poll ahead
+         of the server's extdata refresh. Inferring worn-ness from the live
+         item alone would start trusting that stale timestamp right there,
+         moving the fired-too-early bug one poll later instead of killing
+         it.
+
+         And the live status, because the piece can come OFF mid-wait: a
+         manual equip out of the game's own menu takes the ring off whatever
+         GearSwap was told, and every other check here - bag, slot, id,
+         extdata - is re-read for exactly that reason. ]]
+    local worn = pending_item.equipped and item.status == EQUIPPED
+    local step = ext ~= nil and enchanted.step(ext, time_now(), worn, pending_item.give_up) or nil
     if step == nil then
       -- A decode that is not enchanted-shaped: degrade, never arithmetic -
       -- this runs under the shared prerender guard.
-      abort_warp("crossbar: warp abandoned - " .. tostring(pending_warp.name) .. " cannot be read")
+      abandon("cannot be read")
       return
     end
     if step == "use" then
-      local broadcast = pending_warp.broadcast
-      send_command(pending_warp.command)
-      abort_warp(nil)
+      local broadcast = pending_item.broadcast
+      send_command(pending_item.command)
+      abort_pending(nil)
       if broadcast ~= nil then
         broadcast()
       end
     elseif step == "abandon" then
       -- Not a timer: the REMAINING delay exceeds the bound, so waiting is
       -- pointless and the item is abandoned at once (MyHome's rule).
-      abort_warp("crossbar: warp abandoned - " .. tostring(pending_warp.name) .. " needs more than 30 sec")
+      abandon("needs more than " .. (pending_item.give_up or DEFAULT_GIVE_UP_SECONDS) .. " sec")
     end
   end
 
@@ -1480,7 +1661,12 @@ local function new(ctx)
     elseif plan.kind == "message" then
       say("crossbar: " .. plan.message)
     elseif plan.kind == "warp" then
-      run_warp_plan(plan.plan)
+      run_item_plan(plan.plan)
+    elseif plan.kind == "enchanted" then
+      -- Deliberately outside the travel gate below: the warmup already is
+      -- the wait, and an enchanted item is not a trip you press by mistake
+      -- and want back (decided 2026-08-20).
+      run_item_plan(plan.plan, nil, "enchanted item")
     end
   end
 
@@ -1656,7 +1842,7 @@ local function new(ctx)
     end
     bindings.set_job(player.main_job, player.sub_job)
     scoped_main, scoped_sub = player.main_job, player.sub_job
-    tools_dirty = true
+    counts_dirty = true
     -- Through the one writer: set_job clears the active contexts, and a
     -- job change landing mid-preview must re-assert the simulated list
     -- rather than the client's.
@@ -1666,13 +1852,188 @@ local function new(ctx)
 
   --[[ The per-frame tick -------------------------------------------------- ]]
 
-  local function recount_tools()
-    tools_dirty = false
-    tool_counts = {}
-    local bag = ctx.get_items ~= nil and ctx.get_items(0) or nil
-    for _, item in ipairs(bag or {}) do
-      if type(item) == "table" and item.id ~= nil and item.id ~= 0 and counters.tracked_item(item.id) then
-        tool_counts[item.id] = (tool_counts[item.id] or 0) + (item.count or 0)
+  --[[ The item ids some painted slot is bound to, so a consumable's count
+       is read for the same reason a ninja tool's is. Two sets, because the
+       two types are not carried in the same places: `wanted` is everything,
+       `gear` the enchanteditem half, which resolves out of every equippable
+       bag rather than the inventory alone.
+
+       Walked on demand rather than cached: it is forty lookups, only an item
+       event and a recount ask for it, and a cache would be one more thing
+       to invalidate on every bind, set switch, context flip and job
+       change. ]]
+  local function bound_item_ids()
+    --[[ Three sets, not two: `plain` and `gear` are tracked separately
+         rather than "gear, and everything else", because ONE id can be
+         bound both ways on the same bar. Deriving plain as "wanted minus
+         gear" made such an id invisible to the temporary-bag read, so the
+         plain slot showed a red X over a copy it could use. ]]
+    local wanted, gear, plain = {}, {}, {}
+    for _, group in ipairs(GROUPS) do
+      for slot = 1, SLOT_COUNT do
+        local content = contents[group.key][slot]
+        local meta = content.meta
+        if meta ~= nil and meta.item_id ~= nil then
+          wanted[meta.item_id] = true
+          if content.record ~= nil and content.record.type == "enchanteditem" then
+            gear[meta.item_id] = true
+          else
+            plain[meta.item_id] = true
+          end
+        end
+      end
+    end
+    return wanted, gear, plain
+  end
+
+  --[[ Those same ids as one comparable string, for the repaint check. The
+       gear half is marked, because moving a slot from `item` to
+       `enchanteditem` changes which bags get read even though the id has
+       not moved. ]]
+  function bound_item_signature()
+    local _, gear, plain = bound_item_ids()
+    local parts = {}
+    --[[ Each id carries the KINDS bound to it, so unbinding one half of an
+         id bound both ways still changes the signature. A single marker
+         could not tell "gear only" from "gear and plain". ]]
+    for id in pairs(gear) do
+      parts[#parts + 1] = id .. "g"
+    end
+    for id in pairs(plain) do
+      parts[#parts + 1] = id .. "i"
+    end
+    table.sort(parts)
+    return table.concat(parts, ",")
+  end
+
+  local function recount_items()
+    counts_dirty = false
+    --[[ TWO tallies, because the two bindings do not count the same thing:
+         `item_counts` is what the inventory holds (tools and consumables -
+         the only bag `/item` can reach) and `gear_counts` what every
+         reachable equippable bag holds. One shared number would have to be
+         wrong for one of the slots whenever an id is bound both ways. ]]
+    item_counts = {}
+    gear_counts = {}
+    --[[ Whether a temporary bag was actually found and read this pass. When
+         it was not, a plain item's zero might simply be a copy we could not
+         see - the bag is matched on a resource name nothing here has read
+         (question M) - so the corner shows the number and withholds the red
+         X. A missing warning beats a false one over a press that works. ]]
+    temporary_seen = false
+    local wanted, gear, plain = bound_item_ids()
+
+    local function tally(into, bag, matches)
+      for _, item in ipairs(bag or {}) do
+        if type(item) == "table" and item.id ~= nil and item.id ~= 0 and matches(item.id) then
+          into[item.id] = (into[item.id] or 0) + (item.count or 0)
+        end
+      end
+    end
+
+    --[[ The inventory answers tools and consumables: a potion in a
+         wardrobe is not one the game will let you drink, so counting it
+         would promise a press that cannot fire.
+
+         The TEMPORARY bag answers alongside it, because an item held
+         there is one `/item` can use and the inventory alone would draw a
+         red X over a press that works. Resolved by NAME out of the
+         resources, the way travel.lua resolves the resting status, so no
+         bag id is being remembered here; without the resources it simply
+         does not apply.
+
+         NOT a claim about which items live there. Whether Instant Warp is
+         a temporary item is an open in-client question, and it matters
+         beyond this count: the warp ladder searches equippable bags only,
+         so if that scroll IS temporary the ladder has never been able to
+         see one. Recorded as question O rather than guessed at from
+         here. ]]
+    local function usable_from_here(id)
+      return counters.tracked_item(id) or wanted[id] == true
+    end
+    --[[ Reachability applies to bag 0 exactly as it does to every other
+         bag - the press refuses an entry from a bag the client has
+         disabled, whichever bag that is - so both tallies below share one
+         gate rather than the gear half having its own.
+
+         An ABSENT flag reads as reachable, and only an explicit `false`
+         excludes. The client always sends one; a fixture that has never
+         thought about the field should not have its counts silently
+         emptied, and "I did not say" is not the same answer as "no". ]]
+    local inventory = read_bag(0)
+    local inventory_reachable = type(inventory) == "table" and inventory.enabled ~= false
+    if inventory_reachable then
+      tally(item_counts, inventory, usable_from_here)
+    end
+    -- Only a plain `item` binding can want the temporary bag: gear is never
+    -- a temporary item, and tools are inventory-only by the rule below.
+    local wants_temporary = next(plain) ~= nil
+    -- Gear in the inventory counts too, off the same read - and under the
+    -- same reachability rule the other bags get, which the press path
+    -- applies to bag 0 as well.
+    if next(gear) ~= nil and inventory_reachable then
+      tally(gear_counts, inventory, function(id)
+        return gear[id] == true
+      end)
+    end
+    for bag_id, bag in pairs(equip_bags) do
+      --[[ A CONTAINS match, not equality: the resource string is one this
+           repo has never read, and "Temporary Items" is as plausible a
+           spelling as "Temporary". A miss is NOT harmless - the slot reads
+           0, crosses itself out and dims over a press that works, which is
+           worse than the blank corner these slots had before counts existed
+           at all. Question M is the read that settles the spelling. ]]
+      local name = type(bag.name) == "string" and bag.name:lower() or ""
+      if bag_id ~= 0 and name:find("temporary", 1, true) ~= nil then
+        --[[ The NAME matched, which is the thing question M is about. Set
+             here rather than after the read: an empty temporary bag is
+             ordinary and its zero is trustworthy, while no bag of that name
+             at ALL means the match itself failed and a plain item's zero
+             cannot be trusted. ]]
+        temporary_seen = true
+      end
+      if wants_temporary and bag_id ~= 0 and name:find("temporary", 1, true) ~= nil then
+        --[[ Read only once the NAME has matched: hoisting this above the
+             test would cost a client read for every bag on the character,
+             on every recount. ]]
+        local temporary = read_bag(bag_id)
+        -- Reachability, the rule every other bag here gets: presumably
+        -- always true for this one, but a presumption is not a reason to
+        -- differ.
+        if type(temporary) == "table" and temporary.enabled ~= false then
+          --[[ Bound items only, and never a ninja tool: `item_counts` is the
+             same table the tool counter reads, so folding a temporary-bag
+             copy in would clear a red X that is telling the truth about
+             what a ninjutsu can draw from. ]]
+          tally(item_counts, temporary, function(id)
+            return plain[id] == true and not counters.tracked_item(id)
+          end)
+        end
+      end
+    end
+
+    --[[ Gear is different: enchanteditem searches every equippable bag, so
+         a count that stopped at the inventory would cross out a slot whose
+         press works perfectly. Bag 0 is not walked in this loop - it was
+         tallied into `gear_counts` above, off the read the consumables
+         already paid for, so nothing is counted twice. ]]
+    if next(gear) ~= nil then
+      for bag_id, bag in pairs(equip_bags) do
+        -- Bag 0 was walked above; re-reading it here would cost a second
+        -- client read for nothing.
+        if bag_id ~= 0 and bag.equippable then
+          local held = read_bag(bag_id)
+          --[[ The runtime `enabled` flag, not the resource's `equippable`:
+               enchanteditem refuses a copy it cannot reach, so counting one
+               would promise the very press that cannot fire. ]]
+          -- Same rule as bag 0 above: an explicit false excludes, an absent
+          -- flag does not.
+          if type(held) == "table" and held.enabled ~= false then
+            tally(gear_counts, held, function(id)
+              return gear[id] == true
+            end)
+          end
+        end
       end
     end
   end
@@ -1703,20 +2064,38 @@ local function new(ctx)
     return player ~= nil and (player.main_job == job or player.sub_job == job)
   end
 
-  -- The count drawn in a slot's cost corner, when the action carries one:
-  -- SCH stratagem charges or NIN/COR tool counts - never both, a ninjutsu
-  -- is not a stratagem ability.
+  --[[ The count drawn in a slot's cost corner, when the action carries
+       one: SCH stratagem charges, NIN/COR tool counts, or how many of an
+       item the slot names are carried. At most one of the three can apply -
+       a ninjutsu is not a stratagem ability, and neither is an item. ]]
   local function counter_for(content, player, ability_recasts)
     local record = content.record
     local meta = content.meta
     if record.type == "ja" and counters.stratagem_ability(record.action) then
       local charges = counters.stratagems(player, ability_recasts[231] or 0)
       if charges ~= nil then
-        -- Explicit white: the fork sets no colour here and inherits
-        -- whatever the cost prim last showed.
-        return { text = tostring(charges.available), color = STRATAGEM_COLOR }
+        return { text = tostring(charges.available), color = PLAIN_COUNT_COLOR }
       end
       return nil
+    end
+    --[[ A plain item binding counts what it names: no master substitutes
+         and no job gate, both of which are tool facts rather than item
+         ones. Enchanted gear counts the same way, and note what that means
+         - these are COPIES, not charges, so a spent ring still reads "1".
+         Its charges are the press's business, and the press says so. ]]
+    if (record.type == "item" or record.type == "enchanteditem") and meta ~= nil and meta.item_id ~= nil then
+      local counts = record.type == "enchanteditem" and gear_counts or item_counts
+      local display = counters.item_display(meta.item_id, counts)
+      --[[ The zero flag raises the red X and dims the slot, so it is only
+           set where the zero is TRUSTWORTHY. A plain item counted without a
+           temporary bag having been found might have a copy we never read;
+           gear is never temporary, so its zero always stands. ]]
+      local trustworthy = record.type == "enchanteditem" or temporary_seen
+      return {
+        text = display.text,
+        color = PLAIN_COUNT_COLOR,
+        zero = display.zero and trustworthy,
+      }
     end
     -- The fork's own gates (its ui.lua:1057/1102): tool counts draw only
     -- while the owning school's job is somewhere on the pair - a shared
@@ -1729,7 +2108,7 @@ local function new(ctx)
       tool = counters.tool_for_ability(record.action)
     end
     if tool ~= nil then
-      local display = counters.tool_display(tool, tool_counts, player and player.main_job or nil)
+      local display = counters.tool_display(tool, item_counts, player and player.main_job or nil)
       return { text = display.text, color = TOOL_COLORS[display.color], zero = display.zero }
     end
     return nil
@@ -1796,7 +2175,7 @@ local function new(ctx)
         -- Deliberately NOT gated on hide.cost: a count is not a cost. The
         -- option hides prices; how many tools you carry stays visible.
         push(written, "cost.text", counter.text, pair.cost.text)
-        local color = counter.color or STRATAGEM_COLOR
+        local color = counter.color or PLAIN_COUNT_COLOR
         push_color(written, pair.cost, "cost.color", color[1], color[2], color[3])
         want(written, pair.cost, "cost.visible", true)
         if counter.zero then
@@ -1954,6 +2333,10 @@ local function new(ctx)
     -- The owned list is what /mount takes; this is how it is written.
     mount_display = roulette ~= nil and roulette.display or nil,
     resources = resources,
+    -- The enchanted group walks the equippable bags, not inventory alone -
+    -- the same table and the same decode the warp ladder searches with.
+    bags = equip_bags,
+    extdata_decode = ctx.decode_extdata,
   })
 
   binder = new_binder({
@@ -2097,7 +2480,7 @@ local function new(ctx)
     end
     -- The warp poll keeps its own 1s cadence and must run even while the
     -- bar is hidden - a warp mid-wait does not stop for a cutscene's hide.
-    tick_warp()
+    tick_pending()
     --[[ The travel countdown, ahead of the visibility gates for the same
          reason: it is a press already made, and it is answered whether or
          not the bar is on screen. With nothing counting down this is one
@@ -2154,8 +2537,8 @@ local function new(ctx)
     if sc_window > 0 and sc_delay <= 0 and not config_hide("skillchain_icon") then
       chain_step = render.chain_tick()
     end
-    if tools_dirty then
-      recount_tools()
+    if counts_dirty then
+      recount_items()
     end
     if reads == nil or clock >= next_read then
       next_read = clock + READ_INTERVAL_SECONDS
@@ -2322,7 +2705,7 @@ local function new(ctx)
       --[[ The broadcast rides the local warp rather than the press: a
            countdown the player calls off, or a ring warm-up that is later
            abandoned, must not leave the alts already sent home. It is
-           handed to run_warp_plan, which knows where the warp commits. ]]
+           handed to run_item_plan, which knows where the warp commits. ]]
       local broadcast = nil
       if type(args[2]) == "string" and args[2]:lower() == "all" and ctx.send_ipc ~= nil then
         broadcast = function()
@@ -2335,10 +2718,10 @@ local function new(ctx)
         not delay_travel(record, { kind = "warp", plan = ladder }, function()
           -- Re-walked here: the rung that was best five seconds ago may
           -- not be the one to fire now.
-          run_warp_plan(warp.plan(), broadcast)
+          run_item_plan(warp.plan(), broadcast)
         end)
       then
-        run_warp_plan(ladder, broadcast)
+        run_item_plan(ladder, broadcast)
       end
       return nil
     end
@@ -2419,8 +2802,14 @@ local function new(ctx)
          no `bound` guard here to notice that it had. Silent: a reset is not
          a cancellation the player needs told about. ]]
     travel.clear()
+    --[[ And the same argument for a wait already in flight, which the
+         countdown's own reasoning always covered and this did not do: its
+         command comes from the configuration being replaced, and it is
+         holding a GearSwap slot disabled meanwhile. abort_pending releases
+         every slot it held; the nil message keeps it silent, as above. ]]
+    abort_pending(nil)
     scoped_main, scoped_sub, rescope_want = nil, nil, nil
-    tools_dirty = true
+    counts_dirty = true
     reset_contents()
     -- A hand-broken input block degrades to the shipped defaults rather
     -- than crashing attach: one bad config file at login would otherwise
@@ -2483,7 +2872,7 @@ local function new(ctx)
     close_edit()
     -- gs enable on every exit path: a logout mid-warp must not leave the
     -- slot disabled.
-    abort_warp(nil)
+    abort_pending(nil)
     -- A logout (or a reload) invalidates a held cast with everything else.
     -- Belt and braces: the binding store deep-copies on load, so the record
     -- a re-attach resolves can never be the table the press pinned, and the
@@ -2619,11 +3008,11 @@ local function new(ctx)
     elseif event == "ipc message" then
       if a == IPC_WARP_MESSAGE then
         -- The receiving half of `warp all`: warp locally, never re-broadcast.
-        run_warp_plan(warp.plan())
+        run_item_plan(warp.plan())
       end
     elseif event == "add item" or event == "remove item" then
-      if counters.tracked_item(a) then
-        tools_dirty = true
+      if counters.tracked_item(a) or bound_item_ids()[a] then
+        counts_dirty = true
       end
     elseif event == "chunk" then
       if roulette ~= nil then
@@ -2771,7 +3160,7 @@ local function new(ctx)
     if binder ~= nil then
       binder.destroy()
     end
-    abort_warp(nil)
+    abort_pending(nil)
     if prims == nil then
       return
     end

@@ -17,6 +17,12 @@ local function build(state)
         return state.warp_plan
       end,
     },
+    enchanteditem = {
+      plan = function(name, target)
+        state.asked = { name = name, target = target }
+        return state.item_plan
+      end,
+    },
   })
   return actions, state
 end
@@ -245,6 +251,42 @@ describe("crossbar actions", function()
       local plan = actions.resolve({ type = "warp" })
       assert.equal("warp", plan.kind)
       assert.same(state.warp_plan, plan.plan)
+    end)
+  end)
+
+  describe("enchanted items", function()
+    it("relays the plan for the item the slot names", function()
+      local actions, state = build()
+      state.item_plan = { type = "use", name = "Vocation Ring", command = 'input /item "Vocation Ring" <me>' }
+      local plan = actions.resolve({ type = "enchanteditem", action = "Vocation Ring" })
+      assert.equal("enchanted", plan.kind)
+      assert.same(state.item_plan, plan.plan)
+      assert.equal("Vocation Ring", state.asked.name)
+    end)
+
+    it("passes the bound target through", function()
+      local actions, state = build()
+      state.item_plan = { type = "none", notes = {} }
+      actions.resolve({ type = "enchanteditem", action = "Vocation Ring", target = "t" })
+      assert.equal("t", state.asked.target)
+    end)
+
+    it("refuses a slot with no item named, the way every game type does", function()
+      local actions = build()
+      local plan, hint = actions.resolve({ type = "enchanteditem" })
+      assert.is_nil(plan)
+      assert.equal("missing item name for enchanteditem", hint)
+    end)
+
+    it("validates without searching a single bag", function()
+      -- Binding is authoring, not firing: validate must not run the plan,
+      -- which reads the client's bags and its clock.
+      local actions, state = build()
+      assert.is_true(actions.validate({ type = "enchanteditem", action = "Vocation Ring" }))
+      assert.is_nil(state.asked, "the plan was never asked for")
+      local ok, complaint = actions.validate({ type = "enchanteditem" })
+      assert.is_nil(ok)
+      assert.equal("enchanteditem needs an item name", complaint)
     end)
   end)
 

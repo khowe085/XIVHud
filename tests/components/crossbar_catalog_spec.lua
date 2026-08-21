@@ -77,6 +77,8 @@ local function build(overrides)
     end,
     mount_display = overrides.mount_display,
     resources = overrides.resources == nil and resources() or overrides.resources,
+    bags = overrides.bags,
+    extdata_decode = overrides.extdata_decode,
   })
   return catalog, world
 end
@@ -370,6 +372,112 @@ describe("crossbar catalog", function()
       assert.has_no.errors(function()
         catalog.build()
       end)
+    end)
+  end)
+
+  describe("enchanted equipment", function()
+    -- Gear lives in wardrobes as well as inventory, so this group walks the
+    -- equippable bags rather than bag 0 alone.
+    local function enchanted_world(overrides)
+      overrides = overrides or {}
+      local res = resources()
+      res.items[27546] = { id = 27546, en = "Vocation Ring", category = "Armor", slots = { [13] = true } }
+      res.items[11111] = { id = 11111, en = "Plain Ring", category = "Armor", slots = { [13] = true } }
+      local decoded = overrides.decoded
+        or {
+          [27546] = { type = "Enchanted Equipment", charges_remaining = 3 },
+          [11111] = { type = "General" },
+        }
+      return build({
+        resources = res,
+        items = {
+          [0] = { enabled = true, { id = 4165, count = 2, slot = 1 } },
+          [8] = { enabled = true, { id = 27546, count = 1, slot = 2 }, { id = 11111, count = 1, slot = 3 } },
+        },
+        bags = {
+          [0] = { id = 0, name = "Inventory", equippable = true },
+          [8] = { id = 8, name = "Wardrobe", equippable = true },
+        },
+        extdata_decode = function(item)
+          return decoded[item.id]
+        end,
+      })
+    end
+
+    it("lists enchanted gear from every equippable bag, bound as enchanteditem", function()
+      local catalog = enchanted_world()
+      local list = catalog.build()
+      assert.is_true(has(list, "Enchanted", "Vocation Ring"))
+      local entry = category(list, "Enchanted").entries[1]
+      assert.equal("enchanteditem", entry.record.type)
+      assert.equal("Vocation Ring", entry.record.action)
+    end)
+
+    it("leaves out gear in a bag that cannot be reached", function()
+      -- Binding it would produce a slot reading 0 with a red X, whose press
+      -- answers "you cannot access it" - the count and the press already
+      -- agree on this, and the picker has to as well.
+      local res = resources()
+      res.items[27546] = { id = 27546, en = "Vocation Ring", category = "Armor", slots = { [13] = true } }
+      local catalog = build({
+        resources = res,
+        items = { [8] = { enabled = false, { id = 27546, count = 1, slot = 2 } } },
+        bags = { [8] = { id = 8, name = "Wardrobe", equippable = true } },
+        extdata_decode = function()
+          return { type = "Enchanted Equipment", charges_remaining = 3 }
+        end,
+      })
+      assert.is_nil(category(catalog.build(), "Enchanted"))
+    end)
+
+    it("leaves out gear with no enchantment on it", function()
+      local catalog = enchanted_world()
+      assert.is_false(has(catalog.build(), "Enchanted", "Plain Ring"))
+    end)
+
+    it("does not move consumables out of Items", function()
+      local catalog = enchanted_world()
+      local list = catalog.build()
+      assert.is_true(has(list, "Items", "Prism Powder"))
+      assert.is_false(has(list, "Enchanted", "Prism Powder"))
+    end)
+
+    it("decodes only what could be worn, never the whole bag", function()
+      -- A wardrobe pass that decoded every stack would be hundreds of
+      -- extdata reads on the click that opens the binder.
+      local seen = {}
+      local res = resources()
+      res.items[27546] = { id = 27546, en = "Vocation Ring", category = "Armor", slots = { [13] = true } }
+      local catalog = build({
+        resources = res,
+        items = { [0] = { enabled = true, { id = 4165, count = 2, slot = 1 }, { id = 27546, count = 1, slot = 2 } } },
+        bags = { [0] = { id = 0, name = "Inventory", equippable = true } },
+        extdata_decode = function(item)
+          seen[#seen + 1] = item.id
+          return { type = "Enchanted Equipment" }
+        end,
+      })
+      catalog.build()
+      assert.are.same({ 27546 }, seen, "Prism Powder has no slots, so it was never decoded")
+    end)
+
+    it("draws no Enchanted group without an extdata decoder", function()
+      -- The library is optional; the rest of the catalog carries on.
+      local res = resources()
+      res.items[27546] = { id = 27546, en = "Vocation Ring", category = "Armor", slots = { [13] = true } }
+      local catalog = build({
+        resources = res,
+        items = { [0] = { enabled = true, { id = 4165, count = 2, slot = 1 }, { id = 27546, count = 1, slot = 2 } } },
+        bags = { [0] = { id = 0, name = "Inventory", equippable = true } },
+      })
+      local list = catalog.build()
+      assert.is_nil(category(list, "Enchanted"))
+      assert.is_true(has(list, "Items", "Prism Powder"))
+    end)
+
+    it("draws no Enchanted group without a bag table to walk", function()
+      local catalog = build({ bags = nil })
+      assert.is_nil(category(catalog.build(), "Enchanted"))
     end)
   end)
 end)

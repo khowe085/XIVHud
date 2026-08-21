@@ -479,7 +479,11 @@ local function new(deps)
           add(ASSETS .. "icons/weapons/" .. (RANGED_WEAPONS[weapon] or weapon) .. ".png", true)
         end
       end
-    elseif record.type == "item" then
+    elseif record.type == "item" or record.type == "enchanteditem" then
+      -- Both draw the item's own art. Leaving enchanteditem out did not
+      -- fall back to something plainer: it fell all the way through to the
+      -- built-in defaults, which have nothing for it, so the slot drew
+      -- NOTHING while still paying for the DAT extraction.
       if type(record.action) == "string" then
         add(ASSETS .. "icons/items/" .. kebab(record.action) .. ".png")
       end
@@ -488,7 +492,12 @@ local function new(deps)
         -- under data/ - see equipviewer for why.
         add(("icons/%d.bmp"):format(meta.item_id), true)
       end
-      add(ASSETS .. (record.target == "me" and "icons/usable-item.png" or "icons/item.png"))
+      --[[ An enchanteditem with no target word still aims at <me> (that is
+           enchanteditem.lua's default, since gear is worn by the person
+           wearing it), so it draws the self-use art rather than the
+           generic - the two files agreeing on what "no target" means. ]]
+      local on_self = record.target == "me" or (record.type == "enchanteditem" and record.target == nil)
+      add(ASSETS .. (on_self and "icons/usable-item.png" or "icons/item.png"))
     elseif record.type == "ra" then
       add(ASSETS .. "icons/ranged.png")
     elseif record.type == "mount" then

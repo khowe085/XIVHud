@@ -16,6 +16,13 @@ local BAGS = {
 }
 
 local RING = 28540
+-- The Tavnazian Ring has no id here on purpose: nobody in this repo knows
+-- it, and the ladder resolves the rung by NAME rather than writing one
+-- down from memory. This is simply the id the fake resources answer with.
+local TAVNAZIAN = 26123
+local TAVNAZIAN_RESOURCES = {
+  ["tavnazian ring"] = { id = TAVNAZIAN, en = "Tavnazian Ring", slots = { [13] = true, [14] = true } },
+}
 local CUDGEL = 17040
 local SCROLL = 4181
 
@@ -37,6 +44,11 @@ local function build(state)
       return state.items[bag_id] or { enabled = true }
     end,
     bags = state.bags or BAGS,
+    -- A rung named rather than numbered resolves its id through here; the
+    -- three original rungs carry their ids and never ask.
+    find_item = function(name)
+      return state.resources and state.resources[name:lower()] or nil
+    end,
     extdata_decode = function(item)
       return state.ext[item.id]
     end,
@@ -152,6 +164,158 @@ describe("crossbar warp", function()
       local plan = build(state).plan()
       assert.equal("use", plan.type)
       assert.equal('input /item "Warp Ring" <me>', plan.command)
+    end)
+
+    it("waits out a worn ring's warmup rather than giving up on it", function()
+      --[[ Equipping a Warp Ring by hand and pressing warp a moment later is
+           the ordinary flow, and the ring becomes usable in seconds. The
+           ladder used to fire it early (CB12's defect); walking past it
+           instead traded one wrong answer for another, since with no rung
+           below it the press did nothing at all and had to be repeated.
+
+           So the same wait an `enchanteditem` binding on that ring would
+           arm - no re-equip, the GearSwap hold on, the scheduler polling -
+           which is what makes "both callers put the same question to step"
+           true of the ANSWER as well as the question. ]]
+      local state = ready_ring()
+      state.items[0][1].status = 5
+      state.ext[RING].activation_time = READY + 10
+      local plan = build(state).plan()
+      assert.equal("equip", plan.type)
+      assert.is_true(plan.equipped, "already on: the scheduler waits without re-equipping")
+      assert.equal(13, plan.equip_slot)
+      assert.equal('input /item "Warp Ring" <me>', plan.command)
+    end)
+
+    it("holds every ring slot a worn ring could be on, not the one it would equip into", function()
+      --[[ A NUMBERED rung's `equip_slot` says where the ladder would PUT
+           the ring; it says nothing about which finger the ring is already
+           on. Holding ring1 while the ring sits on ring2 leaves GearSwap
+           free to swap it off mid-wait, and the wait then dies at its
+           deadline having disabled the wrong slot the whole time.
+
+           So a numbered rung asks the resources for its slots too - which
+           is the only reason it consults them at all. ]]
+      local state = ready_ring()
+      state.resources = {
+        ["warp ring"] = { id = RING, en = "Warp Ring", slots = { [13] = true, [14] = true } },
+      }
+      state.items[0][1].status = 5
+      state.ext[RING].activation_time = READY + 10
+      local plan = build(state).plan()
+      assert.are.same({ 13, 14 }, plan.hold_slots)
+    end)
+
+    it("falls back to the rung's own slot when the resources name none", function()
+      -- Without a resource there is nothing better to hold than the slot
+      -- the rung would have equipped into.
+      local state = ready_ring()
+      state.items[0][1].status = 5
+      state.ext[RING].activation_time = READY + 10
+      assert.are.same({ 13 }, build(state).plan().hold_slots)
+    end)
+
+    it("walks past a worn ring it would have to wait too long for", function()
+      --[[ CB12. "Worn" was taken for "ready" on the recast alone, so a ring
+           you had just put on by hand fired an `/item` the game refuses
+           seconds early - the same defect enchanteditem fixes on its own
+           side, and the same question asked of the same `step`. A rung that
+           is not ready is a rung to walk past: the cudgel below it may well
+           be ready now. ]]
+      --[[ Past the give-up bound, so there is nothing worth waiting for and
+           the rungs below it get their turn. Only THIS case walks past - a
+           warmup inside the bound is waited out by the test above. ]]
+      local state = ready_ring()
+      state.items[0][1].status = 5
+      state.ext[RING].activation_time = READY + 45
+      local plan = build(state).plan()
+      assert.equal("none", plan.type, "no cudgel and no scroll here, so the ladder runs out")
+      assert.are.same({
+        -- In its own words: MyHome's bare "Warp Ring." means out of
+        -- charges, which is a different thing to do something about.
+        "Warp Ring: warm-up too long.",
+        "You don't have Warp Cudgel.",
+        "You don't have Instant Warp.",
+      }, plan.notes, "one note for the ring, then the rungs below it")
+    end)
+
+    it("still fires a worn ring whose warmup it cannot read", function()
+      -- No activation_time at all is a decode we cannot judge, and refusing
+      -- there would lose a warp that works today over a reading we do not
+      -- have. It degrades to the behaviour that shipped.
+      local state = ready_ring()
+      state.items[0][1].status = 5
+      local plan = build(state).plan()
+      assert.equal("use", plan.type)
+    end)
+
+    it("falls to the Tavnazian Ring when every rung above it is unavailable", function()
+      -- The item of last resort: below the Warp Ring, the Warp Cudgel and
+      -- Instant Warp, and reached only when none of them can go.
+      local plan = build({
+        resources = TAVNAZIAN_RESOURCES,
+        items = { [0] = { enabled = true, { id = TAVNAZIAN, status = 0, slot = 2 } } },
+        ext = { [TAVNAZIAN] = { type = "Enchanted Equipment", charges_remaining = 1, next_use_time = READY } },
+      }).plan()
+      assert.equal("equip", plan.type)
+      assert.equal("Tavnazian Ring", plan.name)
+      assert.equal(TAVNAZIAN, plan.id, "the id came from the resources, not from a constant")
+      assert.equal(13, plan.equip_slot, "ring1, read off the resource's own slots")
+    end)
+
+    it("never reaches the Tavnazian Ring while a rung above it can go", function()
+      local state = ready_ring()
+      state.resources = TAVNAZIAN_RESOURCES
+      state.items[0][2] = { id = TAVNAZIAN, status = 0, slot = 2 }
+      state.ext[TAVNAZIAN] = { type = "Enchanted Equipment", charges_remaining = 1, next_use_time = READY }
+      assert.equal("Warp Ring", build(state).plan().name)
+    end)
+
+    it("gives the Tavnazian Ring a wait long enough for its own warmup", function()
+      --[[ Its enchantment takes about thirty seconds to come up, which is
+           exactly the module's default give-up bound - so on the default it
+           would abandon on any slop at all. The rung carries its own. ]]
+      local plan = build({
+        resources = TAVNAZIAN_RESOURCES,
+        items = { [0] = { enabled = true, { id = TAVNAZIAN, status = 0, slot = 2 } } },
+        ext = { [TAVNAZIAN] = { type = "Enchanted Equipment", charges_remaining = 1, next_use_time = READY } },
+      }).plan()
+      assert.is_true(plan.give_up > 30, "longer than the thirty seconds it needs")
+    end)
+
+    it("walks past a rung whose equip slot the resources will not give up", function()
+      --[[ `slots` in a shape this build cannot read. The rung cannot be
+           equipped, so it cannot be used either: the ring is in the bag,
+           not on a finger, and `/item` at it is refused. Firing anyway
+           would also make `warp all` send the alts home on a warp that
+           never happened. ]]
+      local plan = build({
+        resources = { ["tavnazian ring"] = { id = TAVNAZIAN, en = "Tavnazian Ring", slots = "unreadable" } },
+        items = { [0] = { enabled = true, { id = TAVNAZIAN, status = 0, slot = 2 } } },
+        ext = { [TAVNAZIAN] = { type = "Enchanted Equipment", charges_remaining = 1, next_use_time = READY } },
+      }).plan()
+      assert.equal("none", plan.type, "no command at all, least of all a doomed one")
+      assert.are.same({
+        "You don't have Warp Ring.",
+        "You don't have Warp Cudgel.",
+        "You don't have Instant Warp.",
+        "Cannot tell which slot Tavnazian Ring goes in.",
+      }, plan.notes)
+    end)
+
+    it("does not offer the Tavnazian Ring when the resources cannot name it", function()
+      -- No resources library, or a name the table does not carry: the rung
+      -- has no id to search for, so it simply is not a rung today.
+      local plan = build({
+        items = { [0] = { enabled = true, { id = TAVNAZIAN, status = 0, slot = 2 } } },
+        ext = { [TAVNAZIAN] = { type = "Enchanted Equipment", charges_remaining = 1, next_use_time = READY } },
+      }).plan()
+      assert.equal("none", plan.type)
+      assert.are.same({
+        "You don't have Warp Ring.",
+        "You don't have Warp Cudgel.",
+        "You don't have Instant Warp.",
+      }, plan.notes, "silently: an item we cannot even name is not one to report missing")
     end)
 
     it("skips a ring in a disabled bag, with a notice", function()

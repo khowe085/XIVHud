@@ -229,6 +229,101 @@ only our fixture has ever confirmed. If the whistle DOES carry the prefix, it
 prefix-matches a mount and becomes a rideable entry in the roulette, and the
 name test goes back in with a comment saying why it is not redundant.
 
+**I. Does `res.items[].slots` exist, and what shape is it?** (gates the whole
+`enchanteditem` bind type.) Read one enchanted ring's entry out of
+`windower.res.items` in a live client - a Vocation Ring, a Warp Ring, whatever
+is to hand - and note whether it carries a `slots` field and whether that field
+is a set (slot id -> true) or a list of ids.
+
+Everything about the new bind type hangs off this field, twice over: it is how
+the equip slot is chosen, and how the binder decides what belongs in its
+Enchanted group. No other component in this repo has ever read it, so it is an
+assumption rather than a fact. Three shapes are accepted - a set, a list of ids
+and a bitfield - and a shape outside those degrades to "cannot tell which
+slot X goes in", which both callers walk past. The bitfield reading is
+restricted to numbers ABOVE 15, because a bare slot id is 0..15 and so is a
+bitfield naming nothing above ammo: down there the two are the same number
+and the code refuses rather than guess. What that costs, if `slots` really
+is a bitfield, is any piece confined to main/sub/range/ammo - a weapon
+bound as an `enchanteditem` would answer "cannot tell which slot". What it
+avoids is equipping a ring into the main hand.
+
+The one thing NO shape handling covers is a wrong field NAME: every bind
+refuses and the binder's Enchanted group never appears at all.
+
+**J. Do the sixteen GearSwap slot names match, and does the binder open without
+a hitch?** Two cheap observations while the binder is up:
+
+1. `GS_SLOT_NAMES` maps Windower's slot ids to the words `gs disable` takes.
+   The IDS are already attested in this repo - `equipviewer/logic.lua`
+   carries all sixteen as the client's own equipment-table keys - so what is
+   unverified is only GearSwap's vocabulary for four of them:
+   `ear1`/`ear2`/`ring1`/`ring2` where the client says
+   `left_ear`/`right_ear`/`left_ring`/`right_ring`. A wrong word is silent:
+   GearSwap goes on swapping the piece off mid-warmup and the wait dies at
+   its deadline with "took too long".
+2. Opening `//hud crossbar edit` decodes the extdata of every wearable item in
+   every equippable bag, in one frame. A full set of wardrobes is several
+   hundred decodes. Watch for a stutter on the frame the binder opens; if it
+   is visible, the pass needs spreading over frames the way icon extraction
+   already is.
+
+**K. Does `/item` take a bare numeric target id?** (gates the enchanted
+item's target pin.) The deferred `/item` is sent when the enchantment goes
+live, so a `<t>` written into the binding is pinned at the press and re-sent
+as the mob id - the same substitution the cast retry makes. Question E asks
+this of `/ma`, where Selindrile's widely-used files are the evidence.
+NOTHING vouches for the `/item` form. Only reachable when a binding names
+`t` or `bt`, which is rare for enchanted gear (most of it is self-targeting),
+so a failure here is narrow: the deferred use is refused and nothing else
+misbehaves.
+
+**L. Is `res.items[].category` a safer gate for the binder's Enchanted group
+than `slots`?** The group currently appears only for items whose `slots`
+field reads as a set, a list or a bitfield. `category` is a field this repo
+already relies on (the Items group tests `category == "Usable"`), so
+`"Armor"` / `"Weapon"` would be a gate with existing evidence behind it,
+leaving `slots` used only where an actual slot id is needed. Worth reading
+one piece of gear's resource entry and comparing the two fields while
+answering question I.
+
+**M. What is the Temporary bag actually called in `res.bags`?** A slot bound
+to an Instant Warp counts out of that bag, found by a name match rather than
+by a bag id nobody here has confirmed. The match is a `contains "temporary"`
+so a spelling like `Temporary Items` still lands, but the string itself has
+never been read. A miss is NOT harmless: the slot reads 0, crosses
+itself out and dims, over a press that works. That is worse than what these
+slots had before counts existed, which was a blank corner - `render.cost`
+answers nothing for an item meta, so an `item` binding drew no number and no
+X at all. Read `res.bags` and note the exact `en`.
+
+**N. What does extdata's `usable` flag actually mean?** `enchanted.step`
+short-circuits on it before any other test, so it outranks the `worn`
+argument that exists precisely because the client's extdata lags a
+`set_equip`. That reasoning was applied to `activation_time` and not to
+`usable`. If the flag means "worn and warm" the current code is right; if it
+means "charged and off recast" then on the equip path it can be true one
+frame after `set_equip`, and the `/item` goes out before the ring is on.
+Pre-existing on the warp path and apparently fine in a live client, which is
+the only evidence either way - so this is a thing to watch while testing
+question I rather than a defect claim.
+
+**O. Where does Instant Warp actually live, and can the warp ladder see
+it?** Two halves of one question, and the second half is a possible defect.
+
+1. Is Instant Warp (and its Records of Eminence siblings) a **temporary**
+   item, or an ordinary inventory one? The item-count path reads a
+   name-matched Temporary bag on the assumption that an item can be either.
+2. If it IS temporary, **the warp ladder has never been able to reach it**.
+   `enchanted.collect` walks equippable bags only and the temporary bag is
+   not one - so `//hud crossbar warp` would answer "You don't have Instant
+   Warp." while the player is holding one, and while a slot bound
+   `item "Instant Warp"` counts it and fires it perfectly.
+
+Check with one scroll in hand and no ring or cudgel: does `//hud crossbar
+warp` offer it? If not, the fix is the ladder's bag scope - a change to the
+search rather than to the ladder.
+
 ---
 
 ## Not on this list, and why

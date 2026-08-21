@@ -60,8 +60,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
        { type = "spell", command }              -- cast Warp / Warp II
        { type = "use",   command, name, notes } -- /item something already usable
-       { type = "equip", command, name, equip_slot, bag, bag_slot, notes }
-                                                -- enchanted gear to equip first
+       { type = "equip", command, name, id, equip_slot, hold_slots, bag,
+                         bag_slot, warmup, give_up, equipped, notes }
+                                                -- gear to equip and wait for,
+                                                -- or (equipped) already on and
+                                                -- only waiting
        { type = "none",  notes }                -- nothing available; notes are
                                                 -- the chat hints, never a crash
 
@@ -78,14 +81,31 @@ local enchanted = require("components/crossbar/enchanted")
 local BLM = 4
 local WARP_SPELL = 261
 local WARP2_SPELL = 262
--- item.status for a piece of equipment currently equipped.
-local EQUIPPED = 5
+local EQUIPPED = enchanted.EQUIPPED
 
--- The priority ladder, in the order it must be walked.
+--[[ The priority ladder, in the order it must be walked.
+
+     A rung carries EITHER an `id` (MyHome's three, whose ids came across
+     with the port and are attested by it) or nothing, in which case its id
+     is resolved from the resources by name at plan time. Naming rather than
+     numbering is how a rung gets added without writing down an id from
+     memory - the class of unverified constant this repo keeps being bitten
+     by - at the cost of the rung simply not existing when the resources are
+     absent.
+
+     A rung carries no wait bound of its own: how long an enchantment takes
+     to come up is a fact about the ITEM, so `enchanted.give_up_for` answers
+     it and a slot bound `enchanteditem "<the same ring>"` waits exactly as
+     long as the rung does. ]]
 local LADDER = {
   { id = 28540, name = "Warp Ring", equip_slot = 13 },
   { id = 17040, name = "Warp Cudgel", equip_slot = 0 },
   { id = 4181, name = "Instant Warp" },
+  --[[ The item of last resort (Kevin, 2026-08-20). Its id is not written
+       here on purpose, and neither is its warmup bound - that lives with
+       the item in enchanted.lua, so a slot bound `enchanteditem "Tavnazian
+       Ring"` waits exactly as long as this rung does. ]]
+  { name = "Tavnazian Ring" },
 }
 
 local function new(deps)
@@ -110,36 +130,6 @@ local function new(deps)
     end
   end
 
-  -- Every item in every equippable bag, by item id. Bags walk in id order so
-  -- a duplicate resolves the same way every call (upstream's pairs walk left
-  -- that to chance too).
-  local function collect_items()
-    local bag_ids = {}
-    for id, bag in pairs(deps.bags) do
-      if bag.equippable then
-        bag_ids[#bag_ids + 1] = id
-      end
-    end
-    table.sort(bag_ids)
-
-    local found = {}
-    for _, bag_id in ipairs(bag_ids) do
-      local bag = deps.get_items(bag_id) or {}
-      for _, item in ipairs(bag) do
-        if item.id and item.id > 0 then
-          -- An entry from an enabled bag always beats one from a disabled
-          -- bag, whatever the walk order -- a duplicate in a disabled
-          -- wardrobe must not shadow the usable copy.
-          local existing = found[item.id]
-          if existing == nil or (not existing.enabled and bag.enabled) then
-            found[item.id] = { item = item, bag = bag_id, enabled = bag.enabled and true or false }
-          end
-        end
-      end
-    end
-    return found
-  end
-
   function self.plan()
     local player = deps.get_player()
     -- get_player() can return nil (not logged in, zoning) -- nothing to do.
@@ -159,14 +149,32 @@ local function new(deps)
     end
 
     local now = deps.now()
-    local found = collect_items()
+    local found = enchanted.collect(deps.bags, deps.get_items)
     local notes = {}
     for _, rung in ipairs(LADDER) do
-      local entry = found[rung.id]
+      --[[ Every rung asks the resources, not only the named ones. A named
+           rung NEEDS the answer - it has no id otherwise, and is passed
+           over in silence when the resources cannot name it, since the
+           player has no way to act on "an item I cannot name is absent".
+
+           A numbered rung wants it for the slots: a ring already on your
+           hand could be on either ring slot, and the rung's own
+           `equip_slot` names where it would PUT the piece, not where the
+           piece already is. Holding the wrong one leaves GearSwap free to
+           swap the ring off mid-wait. ]]
+      local resource = deps.find_item ~= nil and deps.find_item(rung.name) or nil
+      local rung_id = rung.id or (type(resource) == "table" and resource.id or nil)
+      local entry = rung_id ~= nil and found[rung_id] or nil
+      --[[ The resource's own spelling where the resources answered, the
+           ladder's otherwise: `find_item` folds case, so a name matching
+           loosely would otherwise ship the ladder's spelling to `/item`.
+           enchanteditem states the same rule. Declared out here so every
+           note below reads the same way, whichever branch writes it. ]]
+      local label = type(resource) == "table" and resource.en or rung.name
       if entry and entry.enabled then
         local ext = deps.extdata_decode(entry.item)
         local recast = enchanted.recast_remaining(ext, now)
-        local command = 'input /item "' .. rung.name .. '" <me>'
+        local command = 'input /item "' .. label .. '" <me>'
         if recast == 0 or ext.type == "General" then
           -- A rung that must be equipped first makes the widget wait out the
           -- enchantment with the GearSwap slot held disabled. The travel
@@ -175,30 +183,113 @@ local function new(deps)
           -- "using this entails a wait" rather than "this is enchanted
           -- equipment": an already-equipped, charged ring is enchanted and
           -- yet fires the moment it is asked.
-          if ext.type == "Enchanted Equipment" and entry.item.status ~= EQUIPPED then
-            return {
-              type = "equip",
-              id = rung.id,
-              name = rung.name,
-              equip_slot = rung.equip_slot,
-              bag = entry.bag,
-              bag_slot = entry.item.slot,
-              command = command,
-              warmup = true,
-              notes = notes,
-            }
+          local worn = ext.type ~= "Enchanted Equipment" or entry.item.status == EQUIPPED
+          if not worn then
+            --[[ NOT worn, so this rung can only go by being equipped
+                 first. A numbered rung names its slot; a resolved one
+                 reads it off the resource, lowest first, exactly as
+                 enchanteditem does.
+
+                 Where the resource will not answer - a `slots` shape this
+                 build cannot read, still an open in-client question - the
+                 rung is walked past. Arming it would send no `gs disable`
+                 at all and drop a `set_equip` with a nil slot; and falling
+                 through to the use branch below would fire `/item` at a
+                 ring that is in the bag rather than on a finger, which the
+                 game refuses and which `warp all` would broadcast on. ]]
+            local equip_slot = rung.equip_slot or enchanted.equip_slots(resource)[1]
+            if equip_slot ~= nil then
+              return {
+                type = "equip",
+                id = rung_id,
+                name = label,
+                equip_slot = equip_slot,
+                bag = entry.bag,
+                bag_slot = entry.item.slot,
+                command = command,
+                warmup = true,
+                give_up = enchanted.give_up_for(rung.name),
+                notes = notes,
+              }
+            end
+            notes[#notes + 1] = "Cannot tell which slot " .. rung.name .. " goes in."
+          else
+            --[[ CB12. Worn is not ready: an enchantment warms up whether
+                 or not the equip was ours, so a ring just put on by hand
+                 fires an `/item` the game refuses seconds early. `step` is
+                 the one reading of that question, asked here exactly as
+                 enchanteditem asks it, with `worn` true because this
+                 branch is reached only on a piece the client says is
+                 equipped - or on a plain consumable, which has no warmup
+                 to read and answers nil below.
+
+                 What happens when it is NOT ready depends on why. A rung
+                 on RECAST is walked past - the cudgel below it may be
+                 ready right now. A rung merely still WARMING UP is waited
+                 out just below, because walking past that one left the
+                 press doing nothing at all when no rung sat beneath it.
+                 Only a warmup longer than the item's own bound is walked
+                 past, there being nothing worth waiting for.
+
+                 A decode with no activation_time at all cannot be judged,
+                 and refusing there would lose a warp that works today over
+                 a reading we do not have, so that case degrades to the
+                 behaviour that shipped. ]]
+            local step = ext.type == "Enchanted Equipment"
+                and enchanted.step(ext, now, true, enchanted.give_up_for(rung.name))
+              or nil
+            if step == nil or step == "use" then
+              return { type = "use", name = label, command = command, notes = notes }
+            end
+            --[[ Still warming, and inside the bound: wait it out exactly as an
+                 `enchanteditem` binding on this ring would - no re-equip
+                 (it is already on), the GearSwap hold over its slot, the
+                 scheduler polling. Walking past instead would leave the
+                 press doing nothing at all when nothing sits below it,
+                 which is what equipping a ring by hand and pressing warp a
+                 moment later would meet. ]]
+            local worn_slots = enchanted.equip_slots(resource)
+            local equip_slot = rung.equip_slot or worn_slots[1]
+            if step == "wait" and equip_slot ~= nil then
+              return {
+                type = "equip",
+                equipped = true,
+                id = rung_id,
+                name = label,
+                equip_slot = equip_slot,
+                --[[ EVERY slot the piece fits, not the one the rung would
+                     have equipped into: the piece is already on, and which
+                     slot it is on is not knowable from here. A ring is a
+                     coin flip, and the losing side is GearSwap swapping it
+                     off mid-wait and the wait dying at its deadline.
+                     `{ equip_slot }` is the fallback for a resource that
+                     named no slots at all. ]]
+                hold_slots = #worn_slots > 0 and worn_slots or { equip_slot },
+                bag = entry.bag,
+                bag_slot = entry.item.slot,
+                command = command,
+                warmup = true,
+                give_up = enchanted.give_up_for(rung.name),
+                notes = notes,
+              }
+            end
+            --[[ Warming for longer than the wait allows, or with no slot to
+                 hold. Said in its own words rather than reusing MyHome's
+                 bare "<name>." below, which means OUT OF CHARGES: a player
+                 who cannot tell those two apart cannot act on either. ]]
+            notes[#notes + 1] = label .. (step == "abandon" and ": warm-up too long." or ": still warming up.")
           end
-          return { type = "use", name = rung.name, command = command, notes = notes }
+        else
+          -- On recast, or out of charges (recast nil): note it and walk on.
+          -- The bare "<name>." for the no-charges case is MyHome's own log
+          -- wording, kept deliberately rather than inventing new text.
+          notes[#notes + 1] = recast and (rung.name .. ": " .. recast .. " sec recast.") or (rung.name .. ".")
         end
-        -- On recast, or out of charges (recast nil): note it and walk on.
-        -- The bare "<name>." for the no-charges case is MyHome's own log
-        -- wording, kept deliberately rather than inventing new text.
-        notes[#notes + 1] = recast and (rung.name .. ": " .. recast .. " sec recast.") or (rung.name .. ".")
       elseif entry then
         local bag_name = deps.bags[entry.bag].name
-        notes[#notes + 1] = "You cannot access " .. rung.name .. " from " .. bag_name .. " at this time."
-      else
-        notes[#notes + 1] = "You don't have " .. rung.name .. "."
+        notes[#notes + 1] = "You cannot access " .. label .. " from " .. bag_name .. " at this time."
+      elseif rung_id ~= nil then
+        notes[#notes + 1] = "You don't have " .. label .. "."
       end
     end
     return { type = "none", notes = notes }

@@ -180,4 +180,40 @@ describe("crossbar counters", function()
       assert.is_false(counters.tracked_item(nil))
     end)
   end)
+  describe("item counts on a plain item binding", function()
+    it("counts what the bag holds", function()
+      local display = counters.item_display(4148, { [4148] = 12 })
+      assert.equal(12, display.total)
+      assert.equal("12", display.text)
+      assert.is_false(display.zero)
+    end)
+
+    it("caps the text at 99+ while the total stays honest", function()
+      local display = counters.item_display(4148, { [4148] = 120 })
+      assert.equal(120, display.total)
+      assert.equal("99+", display.text)
+      --[[ The boundary itself. Not "you cannot carry 100" - you can, across
+           stacks, which is the whole reason a cap is needed: 99 is the
+           widest count the corner has room to draw. ]]
+      assert.equal("99", counters.item_display(4148, { [4148] = 99 }).text)
+      assert.equal("99+", counters.item_display(4148, { [4148] = 100 }).text)
+    end)
+
+    it("raises the zero flag for an item the bag no longer holds", function()
+      local display = counters.item_display(4148, {})
+      assert.equal(0, display.total)
+      assert.equal("0", display.text)
+      assert.is_true(display.zero)
+    end)
+
+    it("never substitutes a master tool the way tool_display does", function()
+      -- Shihei's master is Inoshishinofuda; an item slot bound to Shihei is a
+      -- plain item binding and counts only what it names.
+      assert.equal(1, counters.item_display(1179, { [1179] = 1, [2972] = 40 }).total)
+    end)
+
+    it("survives a missing counts table", function()
+      assert.equal(0, counters.item_display(4148, nil).total)
+    end)
+  end)
 end)

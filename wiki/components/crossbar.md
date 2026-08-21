@@ -86,6 +86,7 @@ rest of the line means:
 | `ja` | a job ability | `bind 1 l 2 ja "Divine Seal"` |
 | `ws` | a weaponskill | `bind 1 r 1 ws "Savage Blade" t` |
 | `item` | a usable item | `bind 2 l 1 item "Echo Drops" me` |
+| `enchanteditem` | enchanted gear — equips it, waits out the warmup, uses it | `bind 2 l 2 enchanteditem "Vocation Ring"` |
 | `pet` | a pet command | `bind 2 r 1 pet "Fight" t` |
 | `mount` | one specific mount — counts down before it summons, like `mr` | `bind 3 l 1 mount "Chocobo"` |
 | `ra` | *nothing* — ranged attack takes a target only | `bind 1 r 4 ra t` |
@@ -199,8 +200,9 @@ context. With no prefix you are editing the job's base layer. See
 Most of this is also bindable by mouse in `//hud crossbar edit`, which is
 usually easier — the binder lists what you actually know rather than asking
 you to spell it. `ct`, `ex` and `pet` are the exceptions: those three are
-command-only. See [What you can bind](#what-you-can-bind) for the
-fuller picture.
+command-only. Enchanted gear the binder does list, under **Enchanted** — it
+reads your wardrobes as well as your inventory to find it. See
+[What you can bind](#what-you-can-bind) for the fuller picture.
 
 ### Sets
 
@@ -492,9 +494,43 @@ so a set rotation does not lurch back mid-pull.
 | `ja` | job abilities |
 | `ws` | weaponskills |
 | `item` | usable items |
+| `enchanteditem` | enchanted gear — a Vocation Ring, a Warp Cudgel, a charged cape |
 | `pet` | pet commands |
 | `mount` | a specific mount |
 | `ra` | ranged attack |
+
+**Enchanted gear** is the one type that does more than send a command. Press
+it and the crossbar equips the piece, holds GearSwap off that slot so it
+cannot be swapped straight back out, waits for the enchantment to come up,
+uses it, and releases the slot again. If the piece is already on when you
+press it, the crossbar cannot tell *which* slot it is on — a ring could be
+either — so it holds **both**, and releases both afterwards. If you keep a
+slot disabled in GearSwap yourself, that release will re-enable it.
+If the item is already worn and charged it simply fires.
+
+Note that equipping the piece **displaces whatever was in that slot**,
+and the crossbar does not put the old piece back — it only releases the
+GearSwap hold. Your next gear swap will sort it out; a `//gs c` or a
+manual re-equip will do it sooner. A wait needing more than about 30
+further seconds is given up at once rather than sat through, and nothing
+is held much beyond that — the bar says which, and why, in chat. A few
+items whose enchantments take longer to come up are allowed a
+correspondingly longer wait; the Tavnazian Ring is one.
+
+A slot on recast says so instead of firing, and only one of these can be in
+flight at a time (a warp counts as one too — there is one pair of hands).
+If you press one while a `warp` countdown is running, the warp is dropped
+when its countdown ends rather than queued behind the item, and `warp all`
+does not send your other characters.
+Unlike `mount`, `mr` and `warp`, an enchanted item takes **no** five-second
+countdown: the warmup already is the wait.
+
+Both `item` and `enchanteditem` slots show **how many you carry** in the
+corner, and cross themselves out at zero — enchanted gear always, and a plain item once the crossbar has found your temporary items, so that a slot is never crossed out on a guess. Consumables are counted from
+your inventory and your temporary items; enchanted gear is counted
+wherever you can reach it, wardrobes included. That is a count of the items
+themselves, not of an enchantment's charges — a spent ring still reads `1`,
+and pressing it answers `Vocation Ring: no charges left.`
 
 ### Text and scripts
 
@@ -512,7 +548,7 @@ script is the way to put a sequence on a slot.
 | --- | --- |
 | `draw` | sheathe / unsheathe, and dismount when mounted. Its icon follows the state. |
 | `mr` | mount roulette — picks at random from the mounts you actually own, and dismounts if you are already up |
-| `warp` | picks the best warp you have: Warp, Warp II, Warp Ring, Warp Cudgel, Instant Warp. Equips the ring or cudgel for you and waits out the enchantment — though if it has more than 30 seconds left to charge it gives up rather than waiting. `warp all` sends your other characters running XIVHud home — when this character's warp actually fires, so calling the countdown off, or a ring warm-up that gets abandoned, leaves them where they are. |
+| `warp` | picks the best warp you have: Warp, Warp II, Warp Ring, Warp Cudgel, Instant Warp, and a Tavnazian Ring as the last resort. Equips the ring or cudgel for you and waits out the enchantment — though if it has more than about 30 seconds left to charge it gives up rather than waiting. The Tavnazian Ring is allowed longer, because its own warm-up is roughly that. A piece already on your finger is not assumed to be ready either: if its enchantment is still coming up, the crossbar waits it out for you, the same as it would for a ring it equipped itself. `warp all` sends your other characters running XIVHud home — when this character's warp actually fires, so calling the countdown off, or a ring warm-up that gets abandoned, leaves them where they are. |
 | `open <name>` | opens a game screen |
 
 `mr` and `warp` count five seconds down before they go, and so does the

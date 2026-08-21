@@ -790,8 +790,12 @@ on counts and practical detail.
   session-only, never persisted;
   starts **sheathed** on attach, login, job change and reload — and
   self-corrects on the next engagement.
-- **Deferred to backlog**: auto-switch on drawing/sheathing the weapon, "return to
-  XHB after WXHB input", face-buttons-only WXHB.
+- **Deferred**: "return to XHB after WXHB input"
+  ([#15](https://github.com/khowe085/XIVHud/issues/15)). (This line once also
+  carried face-buttons-only WXHB, dropped 2026-08-20 as not wanted, and
+  "auto-switch on drawing/sheathing the weapon";
+  the table above superseded that on 2026-08-07 — the drawing half shipped as
+  the one-way game trigger, and the sheathing half is rejected, not deferred.)
 
 ### The hold-state model
 
@@ -1930,7 +1934,16 @@ part worth mining; its navigation is not.
   architecturally plausible now that `read_dat` exists, but those offsets are
   unresearched. Neither is worth it for data we mostly hold already - and the
   owning-layer line, which no reference has, is the part a binder actually
-  needs. Backlog if it is ever missed.
+  needs.
+
+  **Reopened and settled 2026-08-20 (Kevin): the tooltip should show what
+  XIVHotbar2 shows, and the text is vendored from XIVHotbar2.** The scope
+  decision above therefore stands only for what shipped at CB8. Vendoring wins
+  over DAT extraction because the offsets are unresearched and the tables are
+  right there; the two costs it carries are accepted rather than avoided - a
+  further upstream licence notice in `assets/LICENSE.txt`, and description text
+  that goes stale on a content update until the tables are refreshed. The DAT
+  route stays available if staleness ever bites.
 - **Drag and drop** (specified 2026-08-08; reference implementation is
   [XIVhotbar2-Petit_Trois_Edition](https://github.com/WGINC/XIVhotbar2-Petit_Trois_Edition),
   a descendant of xivcrossbar's ancestor — Kevin does not use its drag/drop
@@ -1996,7 +2009,7 @@ part worth mining; its navigation is not.
   **`ra`** appears in the catalog as a single "Ranged Attack"
   entry (upstream precedent, `ranged` icon); **`pet`** commands stay CLI-only
   in v1 (pet command coverage varies too much by job to catalog blind —
-  backlog). The catalog's **"Attack" entry is the `draw` built-in** (decided 2026-08-06) —
+  [#19](https://github.com/khowe085/XIVHud/issues/19)). The catalog's **"Attack" entry is the `draw` built-in** (decided 2026-08-06) —
   picking Attack binds the state-aware sheathe/dismount toggle, not a bare
   `/attack` line. `ct`/`ex` stay CLI-only in v1.
 - **Mouse precedent**: xivcrossbar's selector grid already click-selects
@@ -2319,24 +2332,261 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   when* a mis-pressed mount can be called off with `/heal` before it fires, a
   Warp Ring still goes the moment its own warmup is done, and nothing counts
   down after a zone, a death or a logout.
-- **Backlog** (order TBD): auto-switch on draw/sheathe; "return to XHB after WXHB
-  input"; face-buttons-only WXHB (note: "always display WXHB" left the backlog
-  2026-08-15 — it is core config now that the bar is persistent); non-compact layout; theme + icon-pack resolution;
-   consumables, and the rest of the enchanted-item
-  surface beyond what `warp` needs (xivcrossbar's `enchanteditem` bind type
-  for arbitrary items — `enchanted.lua` lands at CB1 as warp's dependency, so
-  this becomes a binding/catalog question, not new machinery); `ct`/`ex` entry in the binder (needs keyboard text
-  capture in edit mode; xivcrossbar's `environment_chooser` proves it possible);
-  **evaluate migrating partylist onto the multi-anchor contract** (Kevin,
-  2026-08-07). Round 7 caveats recorded: partylist's alliance lists default
-  hidden and toggle independently (`//hud show|hide alliancelist1`), which
-  the contract cannot express while `visible` stays per-component — the
-  migration therefore *requires* per-anchor visibility as a contract
-  follow-on — and CLAUDE.md records one-dir-many-names as a deliberate
-  convention, so the migration is a decision to revisit post-CB3 with the
-  anchor work in hand, not a foregone conclusion; more context condition types (level, weapon, zone);
-  `pet` catalog entries;
-  per-hold-state disable.
+- **CB11 — consumables and enchanted items** (built 2026-08-20; scope settled
+  with Kevin before any code). Three pieces, one milestone:
+  1. **Item counts.** A slot bound `item` (or `enchanteditem`) shows how many
+     the bag holds, capped at `99+`, with the red X at zero — the display the
+     ninja-tool counter already had, minus the two things that are tool facts
+     rather than item facts: master-tool substitution and the `>50` colour
+     bands. Plain white, because there is no defined "low" for an arbitrary
+     consumable and inventing one would be inventing a preference. The bag
+     re-read stays gated: `counters.tracked_item(id)` **or** an id some
+     painted slot is bound to, walked from the contents rather than cached,
+     so an unrelated item moving still costs nothing and no cache has to be
+     invalidated on every bind, set switch, context flip and job change.
+  2. **The `enchanteditem` bind type.** `enchanteditem.lua` is warp's ladder
+     with the ladder taken out: one named piece of gear, searched for across
+     every equippable bag, resolved into warp's own three plan shapes so the
+     widget's equip → wait → use scheduler runs either without knowing which
+     asked. The bag walk itself moved into `enchanted.collect` and warp now
+     calls it, so there is one implementation of "which copy is reachable".
+     `GS_SLOT_NAMES` grew from two entries to all sixteen, since a binding
+     can name any worn piece rather than only a ring or a main hand.
+     **No travel countdown** (Kevin, 2026-08-20): the warmup already is the
+     wait, which is the same reasoning that makes a warp skip its countdown
+     for a rung it has to warm up. One wait of any kind at a time, so a
+     pending warp blocks an enchanted item and the reverse.
+  3. **Catalog.** An **Enchanted** group in the binder, walking the
+     equippable bags rather than inventory alone, decoding only items the
+     resources say can be worn — a wardrobe pass that decoded every stack
+     would be hundreds of extdata reads on the click that opens the binder.
+     Without the extdata library the group simply does not appear.
+
+  Deliberate calls worth recording: an item that is readable and simply not
+  enchanted **fires as a plain `/item`** (binding a Prism Powder as an
+  enchanteditem is a mistake that should still fire the powder), but an
+  extdata we cannot read at all **refuses with a message** rather than
+  sending a command that would silently do nothing. That distinction needs
+  enchanteditem to get the **raw** decode: the widget's shared `decode_ext`
+  substitutes `{ type = "unavailable" }` for a nil, which is right for the
+  ladder (note the rung, walk on) and wrong here (there is no next rung, and
+  the substitute reads as "a plain item"). `validate` never runs a plan, so
+  binding costs no bag read.
+
+  **Every copy is considered, not just the best-ranked one.**
+  `enchanted.candidates` returns each copy of an item ranked - reachable
+  before locked away, the one on your hand before a spare, then bag order -
+  and the plan walks that list until a copy yields something firable.
+  Ranking alone is not enough: two Warp Rings with the worn one spent would
+  otherwise answer "no charges" for the rest of the day while the charged
+  spare sat in the bag, which is worse than the built-in `warp` ladder that
+  has no worn preference at all. `enchanted.collect` (one copy per id, what
+  the ladder wants) deliberately does NOT rank worn first for that same
+  reason - it reads charges off its single copy and then walks to the next
+  RUNG, with no way back to another copy.
+
+  **Counting is per type and uses two tallies, because the two are not
+  carried in the same places.** A consumable counts from the **inventory and
+  the Temporary bag** - a potion in a wardrobe is not one the game will let
+  you drink, so counting it would promise a press that cannot fire, but an
+  item held temporarily is one `/item` can use - while gear counts across
+  every equippable bag, the same ones `enchanteditem` searches. The
+  temporary bag is found by NAME out of the resources, never by a remembered
+  id, and read only when something is actually bound to an item id.
+
+  A **repaint re-derives the bound-id set and marks the counts dirty only
+  when it CHANGED**. Marking every repaint dirty was the first attempt and
+  is the thing being avoided: a hold state, a view change or a set switch
+  onto the same contents would each re-read up to ten bags for nothing. The
+  invalidation is needed at all because without it a freshly bound slot read
+  0, crossed itself out and dimmed until an unrelated inventory event
+  happened along - the path the mouse binder takes every time.
+
+  **Known limitation, recorded rather than fixed**: a bag's runtime
+  `enabled` flag flipping - walking out of a Mog House - dirties nothing, so
+  a gear count can sit stale until the next repaint that changes the bound
+  ids, an item event, or a job change. The press stays honest ("You cannot
+  access X from Wardrobe 2 at this time"), so the corner disagrees with it
+  for a while rather than lying about a press that would work. Fixing it
+  means either polling bag flags or finding an event for them, and neither
+  is worth a client read per frame for a corner that self-corrects.
+
+  **Known interaction, left as it stands**: pressing an enchanted item while
+  a travel countdown is running means the warp, when it fires, meets "already
+  in progress" and is swallowed - and `warp all`'s IPC broadcast goes with
+  it. That is the existing rule (the broadcast rides the LOCAL commit, so a
+  warp that did not happen sends nobody), and it is said in chat rather than
+  silent, but it is a corner nobody has pressed in a client.
+
+  **One reading of "is it ready", not two** (Kevin, 2026-08-20, after review
+  round 3). `enchanted.step` answers it and `enchanteditem`'s plan asks
+  `step` rather than deciding for itself: the plan chooses between firing
+  now and arming the wait that `step` then drives, so a rule only the plan
+  knew armed waits that never fired and died at the 45s deadline, while the
+  same press a second later worked.
+
+  **And the rule is conditional, which round 4 caught the hard way.** `step`
+  reads an elapsed warmup as ready **only when told the piece is already
+  worn**. `activation_time` is written at the equip, so on an item that is
+  *not* worn it is a leftover from some previous one - and an unconditional
+  version of the rule made the first poll fire the `/item` one frame after
+  `set_equip`, before the equip had reached the server. That was a
+  regression in the shipped **warp ladder**, not just the new type, and it
+  would have broadcast `warp all` on a commit that never happened. The
+  fixture that hid it (an unworn ring given a *future* warmup, which only an
+  equip can produce) was reverted rather than kept; the guard that now
+  catches it presses with the extdata the client actually still holds, which
+  is what every other equip-path test rewrites before the first poll.
+
+  **The GearSwap hold covers every slot the piece fits** when the item is
+  found already worn, because which one it is on is not knowable from the
+  resources - a ring is a coin flip, and the losing side is GearSwap
+  swapping the warming ring off and the wait dying at the deadline. When the
+  component does the equipping itself it knows the slot and holds only that
+  one. Reading the worn slot out of `get_items().equipment` would be exact,
+  but its key names are not the ones GearSwap takes and nobody here has
+  verified the mapping.
+
+  Found by the CB11 review gate and fixed there: an `enchanteditem` slot drew
+  **no icon at all** (`render.lua` gated the item art on `type == "item"`, so
+  the record fell through to the built-in defaults, which have nothing for
+  it) while still paying for the DAT extraction; an already-worn item was
+  called ready on its **recast alone**, firing an `/item` seconds before the
+  enchantment went live; gear in a **disabled bag** was counted as available
+  though the press refuses it; ordinary armour bound here sent `/item` at a
+  Rope Belt; and a **re-attach** (`//hud reset crossbar`, `//hud copy`'s
+  reload) left a wait in flight holding a GearSwap slot, carrying a command
+  from the configuration just replaced - the argument the travel countdown's
+  own clear had always made, never applied to the wait beside it.
+
+  *Open in client*: two things, and the first is question I.
+
+  **What shape is `res.items[].slots`?** Nothing in this repo had read the
+  field before CB11. Three shapes are accepted - a set (`{[13]=true}`), a
+  list of ids, and a bitfield - and anything else answers "cannot tell which
+  slot", which the ladder walks past and `enchanteditem` refuses. The
+  bitfield branch is deliberately **restricted to numbers above 15**: a bare
+  slot id is 0..15, and so is a bitfield naming nothing above ammo, so down
+  there the two cannot be told apart - and guessing wrong is not a quiet
+  failure, since reading `13` as a bitfield answers slots 0, 2 and 3 and
+  equips a RING into the main hand. A dead feature is the better wrong
+  answer, and the in-client read settles it.
+
+  **Do the sixteen GearSwap slot NAMES match?** The slot ids themselves are
+  already attested in-repo - `equipviewer/logic.lua` carries all sixteen as
+  the client's own equipment-table keys. What is unverified is only
+  GearSwap's vocabulary for four of them: `ear1`/`ear2`/`ring1`/`ring2`
+  against the client's `left_ear`/`right_ear`/`left_ring`/`right_ring`.
+### Queue (Kevin, 2026-08-20, in order) - BOTH BUILT 2026-08-20
+
+1. **CB12 - the warp ladder's worn-means-ready defect.** See the follow-up
+   below. The fix is built and sitting in `enchanted.step`: the ladder's
+   `type = "use"` branch wants `enchanted.step(ext, now, true)` rather than
+   `entry.item.status == EQUIPPED` alone. Needs its own red-green pass
+   because it changes what an existing warp test describes.
+2. **CB13 - Tavnazian Ring as the warp ladder's last rung.** Decisions
+   already taken with Kevin (2026-08-20):
+   - it is a **ring like the Warp Ring, with a 30 second EQUIP WARMUP**;
+   - it goes **last**, below Warp Ring, Warp Cudgel and Instant Warp, as the
+     item of last resort;
+   - it is **resolved by NAME through the resources**, not by a hardcoded
+     item id - nobody here knows its id, and writing one down from memory is
+     exactly the unverified constant this repo keeps getting bitten by;
+   - and its 30s warmup sits **exactly on** `enchanted.step`'s
+     `GIVE_UP_SECONDS` bound, so any slop in the poll timing or the equip
+     latency tips it into "abandon". The bound therefore has to become
+     **per-rung** rather than the single module constant it is now.
+
+- **CB12 - the ladder's worn-means-ready defect (built 2026-08-20).** The
+  worn branch now asks `enchanted.step(ext, now, true)`, the same question
+  `enchanteditem` asks, so a ring put on by hand no longer fires an `/item`
+  the game refuses seconds early. Two calls made in the building:
+  - a rung on RECAST is one to walk past - the cudgel below it may be ready
+    right now - but a rung merely still WARMING UP is one to wait out
+    (revised at review round 22): walking past it left the press doing
+    nothing at all when no rung sat below, which is exactly what equipping a
+    ring by hand and pressing warp a moment later meets. It now arms the
+    same wait an `enchanteditem` binding on that ring would, which is what
+    makes "both callers put the same question to `step`" true of the answer
+    and not only the question. A warmup longer than the item's own bound is
+    still walked past, since there is nothing worth waiting for;
+  - a decode with **no `activation_time` at all** degrades to the behaviour
+    that shipped rather than refusing, because losing a warp that works over
+    a reading we do not have is the worse trade.
+
+    No existing warp test needed changing, for two different reasons worth
+    keeping straight: `crossbar_warp_spec`'s ring fixture carries no
+    `activation_time` at all and lands on that degrade path, while
+    `crossbar_spec`'s `RING_EXT_READY` does carry an elapsed one and simply
+    never reaches the new call, because its ring is not worn.
+- **CB13 - Tavnazian Ring as the last rung (built 2026-08-20).** A fourth
+  rung below Instant Warp, and the first one **resolved by name**: a rung
+  carries either an `id` (MyHome's three, attested by the port) or nothing,
+  in which case `deps.find_item` answers it from the resources at plan time.
+  Absent resources, the rung simply is not a rung today - and it is passed
+  over **in silence** rather than noted as missing, since "an item I cannot
+  name is absent" is not something a player can act on. Its equip slot is
+  read off the resource's own `slots` (lowest first, as `enchanteditem`
+  does) rather than written down.
+
+  **The give-up bound is now per ITEM, not per rung** (moved there at
+  review round 20: a slot bound `enchanteditem "Tavnazian Ring"` has to wait
+  exactly as long as the ladder rung does, or the ring works from one and
+  "randomly refuses" from the other). Its warmup is about thirty seconds and
+  the test is `warm > bound`, so thirty exactly still waits - what does not
+  is thirty plus anything, and equip latency, a late poll or a rounded
+  timestamp each supply the plus. On the default bound those turn into
+  "needs more than 30 sec". The item carries `give_up = 40`: ten seconds of
+  headroom for the slop, not for the warmup.
+
+  **The widget's wall-clock deadline is measured from the plan's bound**
+  (`bound + 15`) rather than a fixed 45, or the deadline would end the very
+  wait the longer bound was granted for.
+
+  *Open in client*: the ring's real warmup, and its behaviour generally -
+  everything here rests on Kevin's "like a Warp Ring, 30 second cooldown"
+  plus the reading that the thirty seconds is the EQUIP WARMUP rather than a
+  recast between uses. If it is really a recast, the `give_up` is harmless
+  but pointless and the rung needs no bound at all.
+
+- ~~**Follow-up, found at the CB11 review gate: the warp ladder treats
+  "worn" as "ready".**~~ **Done as CB12, 2026-08-20** - kept here for the
+  record of how it was found. Original note:** `warp.lua`'s equip branch is gated on
+  `entry.item.status ~= EQUIPPED`, so a Warp Ring already on your finger and
+  off recast falls straight through to `type = "use"` with **no warmup
+  test** - press `warp` right after equipping the ring by hand and it fires
+  an `/item` the game refuses. It is exactly the defect `enchanteditem`
+  fixes on its own side, and the fix is now built and sitting there: pass
+  `enchanted.step(ext, now, true)` the way the plan does. Deliberately NOT
+  done inside CB11, which had no business rewriting the ladder mid-gate.
+  Note it changes what an existing warp test describes, so it wants its own
+  red-green pass rather than a drive-by.
+- **Backlog** (order TBD; items with an issue number are tracked on GitHub and
+  are listed here only so the plan stays a complete record):
+  - ~~consumables, and the rest of the enchanted-item surface~~ — **built as
+    CB11, 2026-08-20**; see the milestone below;
+  - hover tooltips carrying the same information XIVHotbar2 shows, its
+    description tables **vendored** from that addon (Kevin, 2026-08-20 —
+    superseding the "no game description text" scope decision above, and
+    settling the vendor-vs-DAT question in favour of vendoring);
+  - more context condition types (level, weapon, zone).
+  - **Filed as issues, 2026-08-20**: `pet` catalog entries — the type binds
+    from the console already, so the gap is the binder's catalog
+    ([#19](https://github.com/khowe085/XIVHud/issues/19)); `ct`/`ex` entry in the binder, together
+    with rename and re-icon — one item, since all three need the same keyboard
+    text-capture mode, and **all three already work from the console**, so the
+    gap is mouse convenience only
+    ([#18](https://github.com/khowe085/XIVHud/issues/18)); "return to XHB after WXHB input"
+    ([#15](https://github.com/khowe085/XIVHud/issues/15)); non-compact layout
+    **merged with** theme + icon-pack resolution, which are one piece of work
+    ([#16](https://github.com/khowe085/XIVHud/issues/16)); evaluating the
+    partylist migration onto the multi-anchor contract, with its per-anchor
+    visibility prerequisite ([#17](https://github.com/khowe085/XIVHud/issues/17)).
+  - **Dropped, 2026-08-20**: "auto-switch on draw/sheathe" was stale residue —
+    it predates the 2026-08-07 revision that gave the weapon state its one-way
+    game trigger. Auto-*unsheathe* shipped (`bindings.on_status`); auto-sheathe
+    is a rejected design, not a deferral, because a mob dying between pulls
+    would flap the bar back to the sheathed rotation.
 
 ## Open questions
 

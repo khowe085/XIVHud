@@ -33,6 +33,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        { kind = "keys", sequence }              -- setkey down/up edges, in order
        { kind = "message", message }            -- a chat hint, nothing fired
        { kind = "warp", plan }                  -- the warp ladder's own plan
+       { kind = "enchanted", plan }             -- one named enchanted item's,
+                                                -- the same three plan shapes
        { kind = "none" }                        -- a legitimate no-op
        nil, hint                                -- rejected input
 
@@ -210,6 +212,14 @@ local function new(deps)
     if kind == "warp" then
       return { kind = "warp", plan = deps.warp.plan() }
     end
+    -- The named-item sibling of warp: the same plan shapes, so the widget's
+    -- equip -> wait -> use scheduler runs either without knowing which asked.
+    if kind == "enchanteditem" then
+      if not valid_name(record.action) then
+        return nil, "missing item name for enchanteditem"
+      end
+      return { kind = "enchanted", plan = deps.enchanteditem.plan(record.action, record.target) }
+    end
     return nil, "unknown action type: " .. tostring(kind)
   end
 
@@ -269,6 +279,14 @@ local function new(deps)
     if kind == "ct" or kind == "ex" then
       if not valid_name(record.action) then
         return nil, kind == "ct" and "ct needs a chat line" or "ex needs a console command"
+      end
+      return true
+    end
+    if kind == "enchanteditem" then
+      -- Name only. Whether the item exists, is carried, is enchanted or is
+      -- charged is a question about right now, and binding is not now.
+      if not valid_name(record.action) then
+        return nil, "enchanteditem needs an item name"
       end
       return true
     end

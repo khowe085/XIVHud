@@ -600,6 +600,15 @@ describe("crossbar live widget", function()
   -- Slot keys: DIK 2-9 = slots 1-8.
   local DIK_SLOT = { 2, 3, 4, 5, 6, 7, 8, 9 }
 
+  --[[ What the resources call the temporary bag. A test can blank it to
+       describe a client whose `res.bags` does not carry that word at all,
+       which is the case question M is open about - and the case where a
+       plain item's zero stops being trustworthy. ]]
+  local temporary_bag = "Temporary"
+  local function temporary_bag_name()
+    return temporary_bag
+  end
+
   -- Resource fixtures: only the fields the widget reads.
   local function resources()
     return {
@@ -624,7 +633,19 @@ describe("crossbar live widget", function()
         [42] = { id = 42, en = "Savage Blade", skill = 4 },
       },
       skills = { [4] = { id = 4, en = "Sword" } },
-      items = { [4165] = { id = 4165, en = "Prism Powder", stack = 12 } },
+      items = {
+        [4165] = { id = 4165, en = "Prism Powder", stack = 12 },
+        -- Enchanted gear, for the enchanteditem bind type. `slots` is the
+        -- set shape Windower's resources use; ring1 and ring2 both fit.
+        [27546] = { id = 27546, en = "Vocation Ring", slots = { [13] = true, [14] = true } },
+        -- Worn somewhere that is not a ring, so the GearSwap slot map is
+        -- exercised past its one long-standing entry.
+        [17040] = { id = 17040, en = "Warp Cudgel", slots = { [0] = true } },
+        [4181] = { id = 4181, en = "Instant Warp" },
+        -- The warp ladder's last rung, resolved by name rather than by an
+        -- id anyone here claims to know.
+        [26123] = { id = 26123, en = "Tavnazian Ring", slots = { [13] = true, [14] = true } },
+      },
       -- One owned mount, for the travel delay: nothing is owned until a
       -- test puts the key item in env.key_items and lets the KI chunk in.
       mounts = { [1] = { name = "Chocobo" } },
@@ -633,7 +654,17 @@ describe("crossbar live widget", function()
       -- a fixture that agreed with the constant would pass whether or not
       -- the resource table was ever read.
       statuses = { [0] = { en = "Idle" }, [1] = { en = "Engaged" }, [7] = { en = "Resting" } },
-      bags = { [0] = { id = 0, en = "Inventory", equippable = true } },
+      -- Two equippable bags, because gear legitimately lives in a wardrobe
+      -- and a ring in one is as usable as a ring in inventory. The third is
+      -- the temporary bag, which a test can rename to describe a client
+      -- whose resources do not call it that.
+      bags = {
+        [0] = { id = 0, en = "Inventory", equippable = true },
+        [8] = { id = 8, en = "Wardrobe 2", equippable = true },
+        -- Not equippable, and not the inventory: where the Records of
+        -- Eminence rewards live. Named as the resources name it.
+        [3] = { id = 3, en = temporary_bag_name(), equippable = false },
+      },
     }
   end
 
@@ -686,6 +717,7 @@ describe("crossbar live widget", function()
 
   local function build_world(opts)
     opts = opts or {}
+    temporary_bag = opts.no_temporary_bag and "Satchel" or "Temporary"
     env = {
       chat = {},
       chat_open = false,
@@ -1962,6 +1994,10 @@ describe("crossbar live widget", function()
       assert.are.equal(reads, env.item_reads, "an untracked item is no reason to re-read the bag")
       widget.update("remove item", 1179)
       widget.update()
+      --[[ Exact, not merely "more": the read budget is the point of the
+           gate. ONE bag per recount here - nothing is bound to an item id,
+           so the temporary bag has nothing it could answer for and is not
+           read at all. A binding that did name one would cost a second. ]]
       assert.are.equal(reads + 1, env.item_reads, "a tracked one is")
     end)
 
@@ -1978,6 +2014,176 @@ describe("crossbar live widget", function()
       assert.is_true(sweep.visible)
       assert.are.equal("addon/components/crossbar/assets/red-x.png", sweep.last.path)
       assert.is_false(text_of("xhb_left", 1, "recast").visible, "the recast text hides under the X")
+    end)
+
+    it("counts what an item slot is bound to, in plain white", function()
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
+      build_world({ store_files = files })
+      env.items[0] = { { id = 4165, count = 7, slot = 1 } }
+      widget.update()
+      local cost = text_of("xhb_left", 6, "cost")
+      assert.are.equal("7", cost.last.text)
+      assert.are.same({ 255, 255, 255 }, cost.last.color, "no bands - there is no defined low for a consumable")
+    end)
+
+    it("crosses out an item slot the bag can no longer supply", function()
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
+      build_world({ store_files = files })
+      env.items[0] = {}
+      widget.update()
+      assert.are.equal("0", text_of("xhb_left", 6, "cost").last.text)
+      assert.is_true(image_of("xhb_left", 6, "sweep").visible, "the red X, the same one a spent tool raises")
+    end)
+
+    it("counts an item the moment it is bound, without waiting for an inventory event", function()
+      -- The count is read for the ids some painted slot holds, so binding
+      -- one changes what has to be counted. Without this the new slot reads
+      -- 0, crosses itself out and dims until something unrelated moves.
+      build_world({ store_files = war_bindings() })
+      env.items[0] = { { id = 4165, count = 7, slot = 1 } }
+      widget.update()
+      widget.handle_command({ "bind", "1", "l", "6", "item", "Prism Powder", "me" })
+      widget.update()
+      assert.are.equal("7", text_of("xhb_left", 6, "cost").last.text)
+      assert.is_false(image_of("xhb_left", 6, "sweep").visible, "no red X on an item we are holding")
+    end)
+
+    it("counts enchanted gear sitting in a wardrobe, not inventory alone", function()
+      -- enchanteditem resolves out of every equippable bag, so a count that
+      -- read bag 0 alone would cross out a slot whose press works.
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "enchanteditem", action = "Vocation Ring" }
+      build_world({ store_files = files })
+      env.items[0] = { enabled = true }
+      env.items[8] = { enabled = true, { id = 27546, slot = 2, status = 0, count = 1 } }
+      widget.update()
+      assert.are.equal("1", text_of("xhb_left", 6, "cost").last.text)
+      assert.is_false(image_of("xhb_left", 6, "sweep").visible)
+    end)
+
+    it("re-reads the bags only when a repaint changes WHICH ids are bound", function()
+      -- A repaint is the event that can invalidate the counts, but most of
+      -- them do not: a hold state, a set switch, a context flip. Binding a
+      -- spell repaints and changes nothing worth counting; binding an item
+      -- changes it.
+      build_world({ store_files = war_bindings() })
+      env.items[0] = { { id = 4165, count = 7, slot = 1 } }
+      widget.update()
+      local reads = env.item_reads
+      widget.handle_command({ "bind", "1", "l", "5", "ma", "Cure", "me" })
+      widget.update()
+      assert.are.equal(reads, env.item_reads, "a spell is not something to count")
+      widget.handle_command({ "bind", "1", "l", "6", "item", "Prism Powder", "me" })
+      widget.update()
+      assert.is_true(env.item_reads > reads, "an item is")
+      assert.are.equal("7", text_of("xhb_left", 6, "cost").last.text)
+    end)
+
+    it("re-counts when a slot changes from item to enchanteditem on the same id", function()
+      --[[ The id does not move, but where it is counted FROM does: an
+           `item` counts out of the inventory alone, gear out of every
+           equippable bag. Without the type in the signature the recount
+           never runs, and the slot keeps the count the old type gave it -
+           here a red-crossed 0 on a ring the press uses perfectly. ]]
+      build_world({ store_files = war_bindings() })
+      env.items[0] = { enabled = true }
+      env.items[8] = { enabled = true, { id = 27546, slot = 2, status = 0, count = 1 } }
+      widget.handle_command({ "bind", "1", "l", "6", "item", "Vocation Ring" })
+      widget.update()
+      assert.are.equal("0", text_of("xhb_left", 6, "cost").last.text, "an item is not reachable in a wardrobe")
+      widget.handle_command({ "bind", "1", "l", "6", "enchanteditem", "Vocation Ring" })
+      widget.update()
+      assert.are.equal("1", text_of("xhb_left", 6, "cost").last.text, "gear is")
+    end)
+
+    it("counts a temporary item out of the bag it actually lives in", function()
+      --[[ Records of Eminence rewards - Instant Warp and its siblings -
+           never reach the inventory. Counting bag 0 alone drew a red X and
+           dimmed the icon on a slot whose press works, which is worse than
+           the blank corner these slots had before counts existed. The bag
+           is found by NAME out of the resources, the way travel.lua
+           resolves the resting status, not by a remembered id. ]]
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "item", action = "Instant Warp", target = "me" }
+      build_world({ store_files = files })
+      env.items[0] = { enabled = true }
+      env.items[3] = { enabled = true, { id = 4181, slot = 1, count = 2 } }
+      widget.update()
+      assert.are.equal("2", text_of("xhb_left", 6, "cost").last.text)
+      assert.is_false(image_of("xhb_left", 6, "sweep").visible, "no red X on a working binding")
+    end)
+
+    it("does not cross out an item slot when no temporary bag was found", function()
+      --[[ The bag is matched on a resource name nothing in this repo has
+           read. If the match fails, a plain item's zero might just be a copy
+           we never looked at - so the corner shows the number and withholds
+           the red X. A missing warning beats a false one over a press that
+           works. ]]
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
+      build_world({ store_files = files, no_temporary_bag = true })
+      env.items[0] = { enabled = true }
+      widget.update()
+      assert.are.equal("0", text_of("xhb_left", 6, "cost").last.text, "the count is still honest")
+      assert.is_false(image_of("xhb_left", 6, "sweep").visible, "but it does not claim to know")
+    end)
+
+    it("counts one id bound both ways by each slot's own rule", function()
+      -- The two types count from different places, so one shared number
+      -- would have to be wrong for one of the slots. A cudgel in a wardrobe
+      -- is reachable as gear and not as an item.
+      local files = war_bindings()
+      files.WAR.sets[1].left[5] = { type = "item", action = "Warp Cudgel" }
+      files.WAR.sets[1].left[6] = { type = "enchanteditem", action = "Warp Cudgel" }
+      build_world({ store_files = files })
+      env.items[0] = { enabled = true }
+      env.items[8] = { enabled = true, { id = 17040, slot = 2, status = 0, count = 1 } }
+      widget.update()
+      assert.are.equal("0", text_of("xhb_left", 5, "cost").last.text, "not usable as an item from there")
+      assert.are.equal("1", text_of("xhb_left", 6, "cost").last.text, "but usable as gear")
+    end)
+
+    it("does not count gear in a bag the client has disabled", function()
+      -- The press refuses a copy it cannot reach, so counting it would
+      -- promise exactly the press that cannot fire.
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "enchanteditem", action = "Vocation Ring" }
+      build_world({ store_files = files })
+      env.items[0] = { enabled = true }
+      env.items[8] = { enabled = false, { id = 27546, slot = 2, status = 0, count = 1 } }
+      widget.update()
+      assert.are.equal("0", text_of("xhb_left", 6, "cost").last.text)
+    end)
+
+    it("keeps a consumable's count to the inventory, which is the only bag it can be used from", function()
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
+      build_world({ store_files = files })
+      env.items[0] = { enabled = true }
+      env.items[8] = { enabled = true, { id = 4165, slot = 2, count = 12 } }
+      widget.update()
+      assert.are.equal("0", text_of("xhb_left", 6, "cost").last.text, "a powder in a wardrobe is not usable")
+    end)
+
+    it("re-reads the bag for an item event naming something a slot is bound to", function()
+      -- The tool gate alone would ignore Prism Powder; a bound item id joins
+      -- the tracked set, and an id nothing is bound to still does not.
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
+      build_world({ store_files = files })
+      env.items[0] = { { id = 4165, count = 7, slot = 1 } }
+      widget.update()
+      local reads = env.item_reads
+      widget.update("add item", 999)
+      widget.update()
+      assert.are.equal(reads, env.item_reads, "nothing is bound to 999")
+      env.items[0] = { { id = 4165, count = 2, slot = 1 } }
+      widget.update("remove item", 4165)
+      widget.update()
+      assert.is_true(env.item_reads > reads, "the recount ran")
+      assert.are.equal("2", text_of("xhb_left", 6, "cost").last.text)
     end)
 
     it("extracts an item icon through the cache and repaints", function()
@@ -2486,7 +2692,323 @@ describe("crossbar live widget", function()
     end)
   end)
 
+  describe("enchanted item slots", function()
+    local function vocation_world(status)
+      local files = war_bindings()
+      files.WAR.sets[1].left[1] = { type = "enchanteditem", action = "Vocation Ring" }
+      build_world({ store_files = files })
+      env.items[0] = { enabled = true, { id = 27546, slot = 4, status = status or 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000,
+        usable = false,
+      }
+    end
+
+    local function fire()
+      press(LEFT)
+      press(DIK_SLOT[1])
+    end
+
+    it("uses a ring already worn and charged, with no equip and no GearSwap hold", function()
+      vocation_world(5)
+      fire()
+      assert.are.same({ 'input /item "Vocation Ring" <me>' }, env.commands)
+      assert.are.same({}, env.equips)
+    end)
+
+    it("equips a ring that is not worn, waits it out, then uses and re-enables", function()
+      vocation_world()
+      fire()
+      assert.are.same({ "gs disable ring1" }, env.commands, "ring1, the lowest slot the ring fits")
+      assert.are.same({ { 4, 13, 0 } }, env.equips, "bag slot 4 into equip slot 13 from bag 0")
+      env.ext.activation_time = env.time - 18000 + 10
+      widget.update()
+      assert.are.equal(1, #env.commands, "still warming")
+      env.ext.usable = true
+      env.now = 1.5
+      widget.update()
+      assert.are.same({ "gs disable ring1", 'input /item "Vocation Ring" <me>', "gs enable ring1" }, env.commands)
+    end)
+
+    it("does not fire on the first poll after equipping, on the extdata the client still holds", function()
+      --[[ The regression guard. Every other equip-path test rewrites
+           activation_time between the press and the first update, so none
+           of them sees what the client actually has one frame after
+           set_equip: the timestamp from a PREVIOUS equip, elapsed. Reading
+           that as ready sends the /item before the ring is on. ]]
+      vocation_world()
+      env.ext.activation_time = env.time - 18000 - 600 -- some equip, long ago
+      fire()
+      widget.update()
+      assert.are.same({ "gs disable ring1" }, env.commands, "the wait waits")
+      env.ext.usable = true
+      env.now = 1.5
+      widget.update()
+      assert.are.same({ "gs disable ring1", 'input /item "Vocation Ring" <me>', "gs enable ring1" }, env.commands)
+    end)
+
+    it("never trusts the warmup on a ring it equipped itself, even once the client says it is on", function()
+      --[[ The other half of the regression guard. `status` flips to worn as
+           soon as the client applies the equip, which can be a poll before
+           the server's extdata refresh lands - so a ring worn earlier this
+           session carries an ELAPSED activation_time from that older equip,
+           and reading worn-ness off the live item alone would start
+           trusting it the moment the equip registered. Only a wait armed
+           over a piece that was ALREADY on may trust that timestamp. ]]
+      vocation_world()
+      env.ext.activation_time = env.time - 18000 - 600 -- an equip from earlier
+      fire()
+      env.items[0] = { enabled = true, { id = 27546, slot = 4, status = 5, count = 1 } }
+      env.now = 1.5
+      widget.update()
+      assert.are.same({ "gs disable ring1" }, env.commands, "the equip landed; the enchantment has not")
+      env.ext.usable = true
+      env.now = 3
+      widget.update()
+      assert.are.equal('input /item "Vocation Ring" <me>', env.commands[2], "the flag is what ends this wait")
+    end)
+
+    it("pins a target token at the press, so a deferred use cannot wander", function()
+      --[[ The command is sent when the enchantment goes live, which can be
+           forty seconds after the press. Carrying `<t>` that far means
+           landing on whatever has been tabbed to since - the exact wander
+           the cast retry pins against, and the warp ladder never met it
+           because every rung of that is hardcoded <me>. ]]
+      local files = war_bindings()
+      files.WAR.sets[1].left[1] = { type = "enchanteditem", action = "Vocation Ring", target = "t" }
+      build_world({ store_files = files })
+      env.items[0] = { enabled = true, { id = 27546, slot = 4, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000,
+        usable = false,
+      }
+      env.target = { id = 4242 }
+      fire()
+      env.target = { id = 9999 }
+      env.ext.usable = true
+      env.now = 1.5
+      widget.update()
+      assert.are.equal('input /item "Vocation Ring" 4242', env.commands[2], "the mob from the press, not the new one")
+    end)
+
+    it("stops trusting the warmup if the ring comes off mid-wait", function()
+      --[[ "Worn" is why an elapsed warmup counts for anything, so it has to
+           be read at the poll rather than remembered from the press: a
+           manual equip from the game's own menu takes the ring off whatever
+           GearSwap was told, and the piece is still in its bag slot, so
+           every other check the poll makes still passes. ]]
+      vocation_world(5)
+      env.ext.activation_time = env.time - 18000 + 10
+      fire()
+      -- The warmup elapses, which on a worn ring means ready - but the ring
+      -- has been taken off in the meantime, so that timestamp is once again
+      -- describing an equip that is over.
+      env.ext.activation_time = env.time - 18000
+      env.items[0] = { enabled = true, { id = 27546, slot = 4, status = 0, count = 1 } }
+      env.now = 1.5
+      widget.update()
+      assert.are.same({ "gs disable ring1", "gs disable ring2" }, env.commands, "no /item on a ring not worn")
+      env.ext.usable = true
+      env.now = 3
+      widget.update()
+      assert.are.equal('input /item "Vocation Ring" <me>', env.commands[3], "the flag still speaks for itself")
+    end)
+
+    it("equips a wardrobe ring and polls the bag it actually came from", function()
+      -- The wait polls by bag, so a ring found in wardrobe 8 that was
+      -- polled for in bag 0 would be reported missing a second later.
+      vocation_world()
+      env.items[0] = { enabled = true }
+      env.items[8] = { enabled = true, { id = 27546, slot = 7, status = 0, count = 1 } }
+      fire()
+      assert.are.same({ "gs disable ring1" }, env.commands)
+      assert.are.same({ { 7, 13, 8 } }, env.equips, "bag slot 7 into equip slot 13 from bag 8")
+      env.ext.usable = true
+      env.now = 1.5
+      widget.update()
+      assert.are.same({ "gs disable ring1", 'input /item "Vocation Ring" <me>', "gs enable ring1" }, env.commands)
+    end)
+
+    it("fires at once - an enchanted item is not a trip and takes no travel delay", function()
+      -- CB10 holds mount, mr and warp for five seconds. This is deliberately
+      -- outside that: the warmup already is the wait, and a Vocation Ring is
+      -- not something you press by mistake and want back.
+      --
+      -- A GUARD, not a proof: travel.lua's own type list names only warp,
+      -- mount and mr, so no wiring in the widget could delay this record
+      -- today. What it pins is the decision - adding enchanteditem to that
+      -- list later would fail here, which is the point.
+      vocation_world(5)
+      config.delay = 5
+      fire()
+      assert.are.same({ 'input /item "Vocation Ring" <me>' }, env.commands, "no countdown between press and use")
+    end)
+
+    it("says why nothing happened when the ring is on recast", function()
+      vocation_world(5)
+      env.ext.next_use_time = env.time - 18000 + 42
+      fire()
+      assert.are.same({}, env.commands)
+      assert.is_not_nil(said():find("42 sec recast"), "said: " .. said())
+    end)
+
+    it("refuses to start a second wait while one is already running", function()
+      vocation_world()
+      fire()
+      local after_first = #env.commands
+      release(DIK_SLOT[1])
+      release(LEFT)
+      fire()
+      assert.are.equal(after_first, #env.commands, "no second gs disable, no crossed equips")
+      assert.is_not_nil(said():lower():find("already in progress"), "said: " .. said())
+    end)
+
+    it("is blocked by a warp already in flight, and told so in the warp's own words", function()
+      -- One pair of hands: the two share a scheduler, so whichever armed it
+      -- names itself in the refusal. Pressing the same type twice would not
+      -- show that, since both nouns would read the same.
+      local files = war_bindings()
+      files.WAR.sets[1].left[1] = { type = "enchanteditem", action = "Vocation Ring" }
+      build_world({ store_files = files })
+      -- Both rings present, so the enchanted press is otherwise viable and
+      -- the pending guard is the only thing that can stop it.
+      env.items[0] = {
+        enabled = true,
+        { id = 28540, slot = 5, status = 0, count = 1 },
+        { id = 27546, slot = 6, status = 0, count = 1 },
+      }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000 + 5,
+        usable = false,
+      }
+      widget.handle_command({ "warp" })
+      env.now = 6
+      widget.update()
+      assert.are.same({ "gs disable ring1" }, env.commands, "the warp holds the ring slot")
+      fire()
+      assert.are.same({ "gs disable ring1" }, env.commands, "the enchanted press adds nothing")
+      assert.is_not_nil(said():find("warp already in progress"), "the WARP's noun, not ours: " .. said())
+    end)
+
+    it("drops a wait in flight when the component is re-attached", function()
+      -- `//hud reset crossbar` and the reload after `//hud copy` replace the
+      -- configuration that armed it, so a wait carrying a command from the
+      -- discarded config must not fire - and the GearSwap slot it is
+      -- holding must not stay held.
+      vocation_world()
+      fire()
+      assert.are.same({ "gs disable ring1" }, env.commands)
+      widget.attach(config, function() end, store)
+      assert.are.equal("gs enable ring1", env.commands[#env.commands])
+      env.ext.usable = true
+      env.now = 2
+      widget.update()
+      assert.are.equal(2, #env.commands, "nothing fires from the replaced configuration")
+    end)
+
+    it("gives up the wait and re-enables the slot when the component is suppressed", function()
+      vocation_world()
+      fire()
+      env.suppressed = true
+      widget.update()
+      assert.are.equal("gs enable ring1", env.commands[#env.commands])
+      assert.is_not_nil(
+        said():find("enchanted item abandoned"),
+        "says what was given up, not the warp ladder's word for it: " .. said()
+      )
+      env.ext.usable = true
+      env.suppressed = false
+      env.now = 2
+      widget.update()
+      assert.are.equal(2, #env.commands, "nothing fires after the abort")
+    end)
+
+    it("holds GearSwap off a worn ring that is still warming, without re-equipping it", function()
+      -- Both ring slots are held: the ring is on one of them and nothing
+      -- here can say which, so holding one is a coin flip whose losing side
+      -- is GearSwap swapping the warming ring off and the wait dying at the
+      -- deadline. Every slot held is released on the way out.
+      vocation_world(5)
+      env.ext.activation_time = env.time - 18000 + 10
+      fire()
+      assert.are.same({ "gs disable ring1", "gs disable ring2" }, env.commands)
+      assert.are.same({}, env.equips, "already on - re-equipping could restart the warmup")
+      env.ext.usable = true
+      env.now = 1.5
+      widget.update()
+      assert.are.same({
+        "gs disable ring1",
+        "gs disable ring2",
+        'input /item "Vocation Ring" <me>',
+        "gs enable ring1",
+        "gs enable ring2",
+      }, env.commands)
+    end)
+
+    it("names the GearSwap slot the item is actually worn in, not just rings", function()
+      -- GS_SLOT_NAMES carries all sixteen slots since a binding can name any
+      -- worn piece; ring1 was the only one the warp ladder ever exercised.
+      local files = war_bindings()
+      files.WAR.sets[1].left[1] = { type = "enchanteditem", action = "Warp Cudgel" }
+      build_world({ store_files = files })
+      env.items[0] = { enabled = true, { id = 17040, slot = 6, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000,
+        usable = false,
+      }
+      fire()
+      assert.are.same({ "gs disable main" }, env.commands, "a cudgel is a main-hand weapon")
+      assert.are.same({ { 6, 0, 0 } }, env.equips)
+    end)
+
+    it("says so rather than firing when the extdata cannot be read at all", function()
+      -- Without the extdata library there is no way to know whether the
+      -- ring is charged, or even enchanted. Sending the plain /item anyway
+      -- is refused by the game and tells the player nothing.
+      vocation_world()
+      env.ext = nil
+      fire()
+      assert.are.same({}, env.commands)
+      assert.is_not_nil(said():find("Cannot read Vocation Ring"), "said: " .. said())
+    end)
+
+    it("second-guesses a trailing word against the item resources when binding one", function()
+      --[[ The CLI checks an over-long action name against the client before
+           storing it, and it can only do that for a type it knows which
+           resource table to ask. Without the enchanteditem entry both
+           lookups answer "no idea", the junk name is bound with a mere
+           caution, and the slot can never fire. ]]
+      build_world({ store_files = war_bindings() })
+      local told = widget.handle_command({ "bind", "1", "l", "6", "enchanteditem", "Vocation", "Ring", "Zeid" })
+      assert.is_not_nil(tostring(told):find("is not an action"), "said: " .. tostring(told))
+      assert.is_nil(env.store_files.WAR.sets[1].left[6], "and nothing was written")
+    end)
+
+    it("counts the ring in the slot corner like any other item", function()
+      vocation_world(5)
+      widget.update()
+      assert.are.equal("1", text_of("xhb_left", 1, "cost").last.text)
+    end)
+  end)
+
   describe("auto-warp", function()
+    --[[ A ring off recast and NOT worn: `activation_time` is whatever some
+         previous equip left behind - here, elapsed - which is exactly why
+         an elapsed warmup means nothing until the piece is on. The wait
+         this arms ends when `usable` says so, not when this arithmetic
+         does. ]]
     local RING_EXT_READY = {
       type = "Enchanted Equipment",
       charges_remaining = 1,
@@ -2504,6 +3026,86 @@ describe("crossbar live widget", function()
         env.ext[key] = value
       end
     end
+
+    it("waits out the Tavnazian Ring's long warmup instead of abandoning it", function()
+      --[[ CB13. Its enchantment takes about thirty seconds, and the test
+           is `warm > bound`, so thirty exactly would wait on the default
+           too - which is why this sits at THIRTY-ONE, the first value the
+           default bound rejects and the per-item bound accepts. That is
+           the slop the longer bound exists for: equip latency, a poll
+           landing late, a rounded timestamp.
+
+           Nothing above it is available here, so the ladder falls to it -
+           which also proves the widget passes the resource lookup a named
+           rung needs. ]]
+      build_world()
+      env.items[0] = { enabled = true, { id = 26123, slot = 4, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000 + 31,
+        usable = false,
+      }
+      widget.handle_command({ "warp" })
+      env.now = 6
+      widget.update()
+      assert.are.same({ "gs disable ring1" }, env.commands, "ring1, off the resource's own slots")
+      assert.are.same({ { 4, 13, 0 } }, env.equips)
+      env.now = 7
+      widget.update()
+      assert.are.equal(1, #env.commands, "past the default bound, inside this ring's own")
+      env.ext.usable = true
+      env.now = 8
+      widget.update()
+      assert.are.equal('input /item "Tavnazian Ring" <me>', env.commands[2])
+    end)
+
+    it("lets a long-bound wait outlive the deadline a default one would have had", function()
+      --[[ The load-bearing half of the longer bound. The old ceiling was a
+           flat 45 seconds, measured from the press; a rung granted forty
+           seconds of warmup would have been killed by it at 45 with five
+           seconds still to run, so the bound it was given would have bought
+           nothing. The ceiling is now the PLAN's bound plus a margin. ]]
+      build_world()
+      env.items[0] = { enabled = true, { id = 26123, slot = 4, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000 + 30,
+        usable = false,
+      }
+      widget.handle_command({ "warp" })
+      -- Past 45s, which is where the flat ceiling used to end it.
+      env.time = env.time + 50
+      env.now = 51
+      widget.update()
+      assert.are.equal(1, #env.commands, "still waiting, not abandoned")
+      env.ext.usable = true
+      env.now = 52
+      widget.update()
+      assert.are.equal('input /item "Tavnazian Ring" <me>', env.commands[2])
+    end)
+
+    it("still ends a long-bound wait once its own ceiling passes", function()
+      -- The ceiling moved; it did not go away.
+      build_world()
+      env.items[0] = { enabled = true, { id = 26123, slot = 4, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000 + 30,
+        usable = false,
+      }
+      widget.handle_command({ "warp" })
+      env.time = env.time + 60
+      env.now = 61
+      widget.update()
+      assert.are.equal("gs enable ring1", env.commands[#env.commands])
+      assert.is_not_nil(said():find("took too long"), "said: " .. said())
+    end)
 
     it("fires the spell rung when its countdown runs out", function()
       -- Since CB10 a spell rung waits out the travel delay; the ladder's

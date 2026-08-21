@@ -66,9 +66,10 @@ local CATALOG_WIDTH = 460
 local CATEGORY_WIDTH = 150
 local ENTRY_ROWS = 16
 --[[ The category column is a fixed height: the shipped catalog produces
-     fourteen (eight magic schools, trusts, abilities, weaponskills, items,
-     mounts, open, general), so sixteen rows carries it with headroom. What
-     will not fit is COUNTED and said in the header rather than dropped
+     fifteen (eight magic groups, Trusts among them, then abilities,
+     weaponskills, items, enchanted, mounts, open, general), so sixteen
+     rows still carries it, with one row of headroom now rather than two.
+     What will not fit is COUNTED and said in the header rather than dropped
      silently - the CLI can still reach it. ]]
 local CATEGORY_ROWS = 16
 local TOOLTIP_WIDTH = 240

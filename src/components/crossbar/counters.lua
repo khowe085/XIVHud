@@ -251,6 +251,23 @@ function counters.tool_display(tool_id, counts, main_job)
   }
 end
 
+--- What the count corner shows for a plain `item` binding: how many the bag
+--- holds, the 99+ capped text, and the zero flag that raises the red X.
+--- Deliberately NOT tool_display: no master substitutes (a slot bound to
+--- Shihei counts Shihei), and no colour bands - the >50 thresholds are a
+--- ninja-tool fact, and there is no defined "low" for an arbitrary
+--- consumable, so the caller draws these in plain white.
+--- `item_id` is always a real id: the caller reaches this only through a
+--- meta that carries one, so there is no nil case to answer here.
+function counters.item_display(item_id, counts)
+  local total = (counts or {})[item_id] or 0
+  return {
+    total = total,
+    text = total > 99 and "99+" or tostring(total),
+    zero = total == 0,
+  }
+end
+
 -- Every item id whose count matters: the tools themselves (Jinko included,
 -- which has no master) and the four masters.
 local TRACKED = {}
