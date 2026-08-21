@@ -92,12 +92,15 @@ These bindings are used by every later section — leave them in place.
 | D5 | `//hud crossbar cycle 2 both` | Set 2 is visited again | [ ] | [ ] |  |
 | D6 | `//hud crossbar share 2 on` | Reported as shared | [ ] | [ ] |  |
 | D7 | `//hud crossbar list 2` | Shows set 2's contents and that it is shared | [ ] | [ ] |  |
-| D8 | `//hud crossbar bind sub:1 l 6 ma "Stone" t` | Bound to the subjob layer | [ ] | [ ] |  |
-| D9 | Look at slot 6 in edit mode later (F-section) | It is tagged as a subjob override | [ ] | [ ] |  |
-| D10 | `//hud crossbar context list` | Lists the four Scholar contexts and which are live | [ ] | [ ] |  |
-| D11 | On SCH: `//hud crossbar bind ctx:light-arts:1 l 7 ja "Accession"` | Bound to that context | [ ] | [ ] |  |
-| D12 | On SCH: use Light Arts | Slot 7 changes to Accession by itself | [ ] | [ ] |  |
-| D13 | On SCH: use Dark Arts | Slot 7 changes back | [ ] | [ ] |  |
+| D8 | `//hud crossbar share 2 off`, then `list 2` | Reported as job-specific again | [ ] | [ ] |  |
+| D9 | `//hud crossbar share 2 on` | Back to shared — leave it this way for section M | [ ] | [ ] |  |
+| D10 | `//hud crossbar share 1 on` then `share 1 off` | Set 1 is untouched by set 2's flag either way | [ ] | [ ] |  |
+| D11 | `//hud crossbar bind sub:1 l 6 ma "Stone" t` | Bound to the subjob layer | [ ] | [ ] |  |
+| D12 | Look at slot 6 in edit mode later (F-section) | It is tagged as a subjob override | [ ] | [ ] |  |
+| D13 | `//hud crossbar context list` | Lists the four Scholar contexts and which are live | [ ] | [ ] |  |
+| D14 | On SCH: `//hud crossbar bind ctx:light-arts:1 l 7 ja "Accession"` | Bound to that context | [ ] | [ ] |  |
+| D15 | On SCH: use Light Arts | Slot 7 changes to Accession by itself | [ ] | [ ] |  |
+| D16 | On SCH: use Dark Arts | Slot 7 changes back | [ ] | [ ] |  |
 
 ## E. The other two bars
 
@@ -226,16 +229,20 @@ Leave the job change until here so nothing above has to be redone.
 | M1 | `//lua reload xivhud` | The bar returns with every binding intact | [ ] | [ ] |  |
 | M2 | Check `data/<Character>/crossbar/` | A `<JOB>.lua` file is there, and `SHARED.lua` | [ ] | [ ] |  |
 | M3 | Change job | The bar reloads to that job's own bindings | [ ] | [ ] |  |
-| M4 | Look at set 2 (shared, from D6) | Its contents are the same on this job | [ ] | [ ] |  |
-| M5 | Change back | The first job's bindings return | [ ] | [ ] |  |
-| M6 | `//hud crossbar copy <the other job>` | This job's bindings are replaced wholesale | [ ] | [ ] |  |
-| M7 | Watch a cutscene start | The whole HUD hides | [ ] | [ ] |  |
-| M8 | Press `;` during the cutscene | It does not open a chat line | [ ] | [ ] |  |
-| M9 | Let the cutscene end | The bar comes back, nothing stranded | [ ] | [ ] |  |
-| M10 | Zone | It hides while zoning and returns after | [ ] | [ ] |  |
-| M11 | Log out to character select | Nothing is drawn | [ ] | [ ] |  |
-| M12 | Log back in | The bar returns with this character's bindings | [ ] | [ ] |  |
-| M13 | Log in as a different character | That character's own bindings load | [ ] | [ ] |  |
+| M4 | Look at set 2 (shared, from D9) | Its contents are the same on this job | [ ] | [ ] |  |
+| M5 | On this job: `//hud crossbar bind 2 l 4 ma "Dia" t` | Bound into the shared set from the second job | [ ] | [ ] |  |
+| M6 | Change back to the first job, look at set 2 slot 4 | Dia is there — sharing carries both ways | [ ] | [ ] |  |
+| M7 | Look at set 1 on both jobs | Set 1 still differs per job — only set 2 is shared | [ ] | [ ] |  |
+| M8 | `//hud crossbar share 2 off`, then check both jobs | Each job keeps its own set 2 again | [ ] | [ ] |  |
+| M9 | `//hud crossbar copy SHARED` | Refused — shared sets belong to no job | [ ] | [ ] |  |
+| M10 | `//hud crossbar copy <the other job>` | This job's bindings are replaced wholesale | [ ] | [ ] |  |
+| M11 | Watch a cutscene start | The whole HUD hides | [ ] | [ ] |  |
+| M12 | Press `;` during the cutscene | It does not open a chat line | [ ] | [ ] |  |
+| M13 | Let the cutscene end | The bar comes back, nothing stranded | [ ] | [ ] |  |
+| M14 | Zone | It hides while zoning and returns after | [ ] | [ ] |  |
+| M15 | Log out to character select | Nothing is drawn | [ ] | [ ] |  |
+| M16 | Log back in | The bar returns with this character's bindings | [ ] | [ ] |  |
+| M17 | Log in as a different character | That character's own bindings load, and the shared set is that character's own | [ ] | [ ] |  |
 
 ## N. Last — destructive
 
