@@ -525,6 +525,15 @@ does not send your other characters.
 Unlike `mount`, `mr` and `warp`, an enchanted item takes **no** five-second
 countdown: the warmup already is the wait.
 
+**Its target is settled when you press it**, not when it fires. Gear is
+normally worn by you and needs no target at all, but if you do bind one —
+`enchanteditem "X" t` — the press pins whatever you had targeted and sends
+that, so a wait of half a minute cannot land the item on something you
+tabbed to since. A target the press cannot settle is refused outright
+rather than left to resolve later: pressing with nothing targeted says so,
+and a pick-a-target cursor (`st` and friends) cannot be bound to one of
+these at all.
+
 Both `item` and `enchanteditem` slots show **how many you carry** in the
 corner, and cross themselves out at zero — enchanted gear always, and a plain item once the crossbar has found your temporary items, so that a slot is never crossed out on a guess. Consumables are counted from
 your inventory and your temporary items; enchanted gear is counted

@@ -1478,6 +1478,31 @@ local function new(ctx)
     if plan.type == "spell" or plan.type == "use" then
       send_command(plan.command)
     elseif plan.type == "equip" then
+      --[[ The target is resolved HERE, at the press, or the press does not
+           happen. This command is not sent now - it goes when the
+           enchantment comes up, as much as a minute later - so a token
+           carried that far resolves THEN: `<t>` would land on whatever has
+           been tabbed to since, and `<st>` would open a selection cursor
+           long after the button was let go. Neither is the target the
+           press meant.
+
+           Refused before anything is held, so a press that will not happen
+           leaves no GearSwap slot disabled behind it. A fixed target
+           (`<me>` and friends) needs no pin and passes straight through,
+           and a binding with no target word has nothing to resolve. ]]
+      local deferred = plan.command
+      if plan.target ~= nil then
+        deferred = resend_command(plan.command, plan.target)
+        if deferred == nil then
+          local token = type(plan.target) == "string" and plan.target:lower() or plan.target
+          if PINNED_TARGETS[token] then
+            say("crossbar: " .. noun .. " pressed with nothing targeted - " .. tostring(plan.name))
+          else
+            say("crossbar: cannot pin <" .. tostring(token) .. "> at the press - bind <me> or <t>")
+          end
+          return
+        end
+      end
       -- Deferred: the broadcast travels with the pending machine and goes
       -- when the item does.
       --[[ xivcrossbar's enchanted-item pattern: a running GearSwap would
@@ -1507,26 +1532,8 @@ local function new(ctx)
         -- is what makes its activation_time trustworthy in the poll.
         equipped = plan.equipped == true,
         name = plan.name,
-        --[[ Pinned here, at the press. This command is sent when the
-             enchantment goes live, as much as a minute later, and a
-             `<t>` carried that far lands on whatever has been tabbed to
-             since - the wander the cast retry exists to prevent.
-
-             resend_command answers the command unchanged for a fixed target
-             (`<me>` and friends need no pin) and nil in THREE cases: no
-             target word at all, a token that cannot be pinned (`<st>`), and
-             a pinnable token with nothing selected at the press. The first
-             is fine - there is no target to wander onto. The other two keep
-             the press's own line, so the token resolves when the
-             enchantment goes live rather than when it was pressed: `<st>`
-             opens a selection cursor up to a minute later, and `<t>` lands
-             on whatever has been targeted by then.
-
-             Left as it is rather than solved, because gear is self-targeting
-             in practice and a targeted enchanteditem is a user error rather
-             than a case to build for - but it is not benign, and it is not
-             the promise the retry makes. ]]
-        command = resend_command(plan.command, plan.target) or plan.command,
+        -- Already resolved at the press, above.
+        command = deferred,
         item_id = plan.id,
         bag = plan.bag,
         bag_slot = plan.bag_slot,

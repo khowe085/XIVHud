@@ -2800,6 +2800,50 @@ describe("crossbar live widget", function()
       assert.are.equal('input /item "Vocation Ring" 4242', env.commands[2], "the mob from the press, not the new one")
     end)
 
+    it("refuses a deferred press whose target cannot be pinned at the press", function()
+      --[[ The command is sent when the enchantment goes live, so a token
+           carried that far resolves THEN. `<st>` would open a selection
+           cursor most of a minute after the press; nothing about that is
+           the press's target. Either the press resolves it or the press
+           does not happen - and nothing is held meanwhile, so no GearSwap
+           slot is left disabled over a refusal. ]]
+      local files = war_bindings()
+      files.WAR.sets[1].left[1] = { type = "enchanteditem", action = "Vocation Ring", target = "st" }
+      build_world({ store_files = files })
+      env.items[0] = { enabled = true, { id = 27546, slot = 4, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000,
+        usable = false,
+      }
+      fire()
+      assert.are.same({}, env.commands, "no gs disable over a press that will not happen")
+      assert.are.same({}, env.equips)
+      assert.is_not_nil(said():find("cannot pin"), "said: " .. said())
+    end)
+
+    it("refuses a deferred press aimed at nothing", function()
+      -- `<t>` with no target selected has nothing to pin either: resolving
+      -- it later is the wander, and resolving it now answers nothing.
+      local files = war_bindings()
+      files.WAR.sets[1].left[1] = { type = "enchanteditem", action = "Vocation Ring", target = "t" }
+      build_world({ store_files = files })
+      env.target = nil
+      env.items[0] = { enabled = true, { id = 27546, slot = 4, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000,
+        usable = false,
+      }
+      fire()
+      assert.are.same({}, env.commands)
+      assert.is_not_nil(said():find("nothing targeted"), "said: " .. said())
+    end)
+
     it("stops trusting the warmup if the ring comes off mid-wait", function()
       --[[ "Worn" is why an elapsed warmup counts for anything, so it has to
            be read at the poll rather than remembered from the press: a

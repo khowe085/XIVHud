@@ -2411,6 +2411,17 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   means either polling bag flags or finding an event for them, and neither
   is worth a client read per frame for a corner that self-corrects.
 
+  **The deferred command's target is resolved at the PRESS** (Kevin,
+  2026-08-21), which the first pass only half did. The command goes when the
+  enchantment comes up, as much as a minute later, so a token carried that
+  far resolves then: `<t>` lands on whatever has been tabbed to since and
+  `<st>` opens a selection cursor long after the button was released.
+  Neither is the press's target. So the press either resolves the token to a
+  concrete id or does not happen - refused before anything is held, so no
+  GearSwap slot is left disabled behind a press that will not fire. A fixed
+  target needs no pin, and a binding with no target word has nothing to
+  resolve.
+
   **Known interaction, left as it stands**: pressing an enchanted item while
   a travel countdown is running means the warp, when it fires, meets "already
   in progress" and is swallowed - and `warp all`'s IPC broadcast goes with
