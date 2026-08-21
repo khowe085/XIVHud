@@ -90,6 +90,9 @@ local TP_COST_COLOR = { r = 254, g = 222, b = 0 }
 -- The band of panel art under the slot grid: at the art's native 330x180
 -- and the default pitches, 180 - 35 pad - two 28px rows - a 40px slot.
 local PANEL_BOTTOM = 49
+-- The set label's own line height, for centring it in that bottom band.
+-- parambar's size, which is what Kevin asked the indicator to match.
+local SET_LABEL_HEIGHT = 14
 -- Upstream h2's base sits 300 right of h1's, and its Expanded bars at +150 -
 -- reproduced exactly by centring one side panel across the main footprint.
 -- The centring offset is SIDE_GAP / 2 whatever the side width, because the
@@ -132,6 +135,39 @@ local function new(deps)
   -- Reads the config fresh on every call rather than caching at construction,
   -- and never writes it - upstream's setup_metrics mutated its settings table
   -- (defect 2), which this shape makes impossible.
+  --[[ The set indicator: FFXIV's "Set N", centred across the bar along the
+       bottom, in the band of panel art under the slot grid where nothing
+       else draws.
+
+       Centred by RESERVING a width rather than by measuring one: a prim
+       cannot report its rendered width, and `right_justified` is the only
+       alignment the texts library has. The reservation is honest because
+       the string never changes length - there are eight sets, so it is
+       always "Set " and one digit - which also means the label cannot
+       twitch sideways as the set changes. ]]
+  local SET_LABEL_GLYPH = 7
+  local SET_LABEL_CHARS = 5
+
+  --- The label for a set number, FFXIV's own wording.
+  function self.set_label(set)
+    return "Set " .. tostring(set)
+  end
+
+  --- The width reserved for it, at the drawing scale of 1.
+  function self.set_label_width()
+    return SET_LABEL_GLYPH * SET_LABEL_CHARS
+  end
+
+  --- Its top-left, unscaled and relative to the main anchor's origin.
+  function self.set_label_pos()
+    local metrics = self.metrics()
+    local x = (metrics.side_gap + metrics.panel_width - self.set_label_width()) / 2
+    -- Centred in the band between the last slot row and the panel's foot.
+    local grid_bottom = metrics.pad_y + 2 * metrics.row_pitch + metrics.slot
+    local y = grid_bottom + (metrics.panel_height - grid_bottom - SET_LABEL_HEIGHT) / 2
+    return x, y
+  end
+
   function self.metrics()
     local column_pitch = SLOT + config.slot_spacing
     -- Compact halves the bar spacing at render time, exactly as upstream.

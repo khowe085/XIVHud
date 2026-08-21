@@ -87,6 +87,34 @@ describe("crossbar render", function()
     end)
   end)
 
+  describe("the set label", function()
+    it("centres it across the main footprint, in the band under the slots", function()
+      --[[ FFXIV puts the set number between the two crosses, along the
+           bottom. The main anchor spans both side panels, so the centre of
+           that span is the centre of the bar - and the band under the slot
+           grid is the art's own empty strip, where nothing else draws. ]]
+      local render = make()
+      local x, y = render.set_label_pos()
+      local metrics = render.metrics()
+      assert.are.equal((metrics.side_gap + metrics.panel_width) / 2, x + render.set_label_width() / 2)
+      assert.is_true(y > metrics.pad_y + 2 * metrics.row_pitch + metrics.slot, "below the slots")
+      assert.is_true(y + 14 <= metrics.panel_height, "and inside the panel")
+    end)
+
+    it("moves with the configured grid rather than sitting on a fixed pixel", function()
+      local wide = make({ slot_spacing = 16, bar_spacing = 100 })
+      local x = wide.set_label_pos()
+      local metrics = wide.metrics()
+      assert.are.equal((metrics.side_gap + metrics.panel_width) / 2, x + wide.set_label_width() / 2)
+    end)
+
+    it("names the set the way FFXIV does", function()
+      local render = make()
+      assert.are.equal("Set 1", render.set_label(1))
+      assert.are.equal("Set 8", render.set_label(8))
+    end)
+  end)
+
   describe("panel placement", function()
     it("places the active-side panel around each bar's slot grid", function()
       local render = make()

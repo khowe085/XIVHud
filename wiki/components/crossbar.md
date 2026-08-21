@@ -714,6 +714,10 @@ all the way to the command it sends.
 — in seconds, and **zero turns the wait off** for all three actions. That is
 the off switch, so there is no separate toggle.
 
+The **active set** is written along the bottom of the XHB, between the two
+crosses — `Set 3`, in gold. It is there whether or not a side is held, so a
+set switch is visible even on a bar you have not bound anything to yet.
+
 **Positioning.** In `//hud layout` you place four things independently: the
 XHB, the WXHB's **left and right sides separately**, and the skillchain
 indicator. Splitting the WXHB lets it sit at the edges of the screen, or

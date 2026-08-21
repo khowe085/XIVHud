@@ -139,6 +139,14 @@ local TOOL_COLORS = {
   yellow = { 255, 255, 0 },
   red = { 255, 0, 0 },
 }
+--[[ The set indicator's gold (Kevin, 2026-08-21). FFXIV writes the active
+     set along the bottom of the cross hotbar, between the two halves, and
+     without it an empty bar gives no sign that a switch did anything - which
+     is how it was found. ]]
+local SET_LABEL_COLOR = { 255, 215, 0 }
+-- parambar's size, which is what the indicator was asked to match; its font
+-- is the component's own `font`, already sans-serif as parambar's is.
+local SET_LABEL_SIZE = 14
 -- Counts with no colour meaning of their own - stratagem charges and item
 -- counts - are drawn in explicit white, never left inheriting whatever the
 -- cost prim last showed (the fork sets no colour there at all).
@@ -839,6 +847,8 @@ local function new(ctx)
     -- centre-anchored fill, both the component's own white square tinted at
     -- draw time (fill after bg, so it draws on top).
     prims.indicator = { bg = image("indicator.png"), fill = image("indicator.png") }
+    -- The active set, written along the bottom of the XHB.
+    prims.set_label = text()
   end
 
   -- Per-slot content resolved at repaint time: the record, its meta, the
@@ -972,6 +982,14 @@ local function new(ctx)
       prim.right_justified(right_justified == true)
     end
     prims.panel.alpha(config.button_bg_alpha)
+    --[[ The set label takes the same dressing every other text gets - the
+         stroke, and above all `bg_visible(false)`, without which the texts
+         library draws an opaque box behind it - then overrides the two
+         things that make it the set label: parambar's size, and gold. ]]
+    dress_text(prims.set_label, false)
+    prims.set_label.size(SET_LABEL_SIZE)
+    prims.set_label.color(SET_LABEL_COLOR[1], SET_LABEL_COLOR[2], SET_LABEL_COLOR[3])
+    prims.set_label.alpha(255)
     -- The indicator's backdrop is constant; the fill's colour is state
     -- (waiting/open) and lands from the tick.
     prims.indicator.bg.color(0, 0, 0)
@@ -1249,6 +1267,19 @@ local function new(ctx)
     end
     if not panel_shown then
       prims.panel.hide()
+    end
+    --[[ The set label rides the main anchor, not a panel: it says which set
+         the XHB is on, which is true whether or not a side is held, so it
+         is shown whenever the widget is. ]]
+    local main = placed.main
+    if not hidden and main ~= nil and main.pos ~= nil then
+      local label_x, label_y = render.set_label_pos()
+      prims.set_label.pos(main.pos.x + label_x * main.scale, main.pos.y + label_y * main.scale)
+      prims.set_label.size(math.floor(SET_LABEL_SIZE * main.scale + 0.5))
+      prims.set_label.text(render.set_label(bindings.active_set()))
+      prims.set_label.show()
+    else
+      prims.set_label.hide()
     end
     if hidden then
       -- The indicator follows the widget down; while shown, the tick owns it.
@@ -3171,6 +3202,7 @@ local function new(ctx)
       return
     end
     prims.panel.destroy()
+    prims.set_label.destroy()
     prims.indicator.bg.destroy()
     prims.indicator.fill.destroy()
     for _, group in ipairs(GROUPS) do

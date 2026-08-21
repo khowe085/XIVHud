@@ -1,4 +1,5 @@
 local new_crossbar = require("components/crossbar/crossbar")
+local new_render = require("components/crossbar/render")
 
 -- Default DIKs: `;` is the left side, `1`-`8` sit on DIK 2-9.
 local SIDE = 39
@@ -309,9 +310,9 @@ describe("crossbar widget", function()
     -- bottom to top); the sweep overlay doubles as the red X, upstream's own
     -- prim reuse, and the chain overlay is CB6's per-slot chain-result icon.
     -- The skillchain indicator's bg and fill close the list. Texts: name,
-    -- cost, recast per slot.
+    -- cost, recast per slot, plus the one set label along the bar's foot.
     assert.are.equal(1 + 40 * 6 + 2, #prims.images)
-    assert.are.equal(40 * 3, #prims.texts)
+    assert.are.equal(40 * 3 + 1, #prims.texts)
   end)
 
   it("draws every slot from the render geometry", function()
@@ -332,11 +333,13 @@ describe("crossbar widget", function()
   end)
 
   it("keeps everything hidden until show() and blanks again on hide()", function()
-    assert.are.equal(32, visible_count(), "the panel stays down while nothing is held")
+    -- 32 slot pieces, plus the set label, which says which set the XHB is
+    -- on whether or not a side is held.
+    assert.are.equal(33, visible_count(), "the panel stays down while nothing is held")
     widget.hide()
     assert.are.equal(0, visible_count())
     widget.show()
-    assert.are.equal(32, visible_count())
+    assert.are.equal(33, visible_count())
   end)
 
   it("scales the grid with the main anchor", function()
@@ -391,7 +394,8 @@ describe("crossbar widget", function()
     end
     assert.is_not_nil(panel)
     assert.is_false(panel.visible, "the wxhb anchor was never placed")
-    assert.are.equal(32, visible_count(), "the XHB stays up, inactive")
+    -- 32 slot pieces plus the set label.
+    assert.are.equal(33, visible_count(), "the XHB stays up, inactive")
   end)
 
   it("survives a scale applied before any position", function()
@@ -432,9 +436,25 @@ describe("crossbar widget", function()
     local panel = images_at(100 + 150, 900)[1]
     assert.is_not_nil(panel, "the Expanded panel sits centred on main")
     assert.is_true(panel.visible)
-    assert.are.equal(16 + 1, visible_count(), "eight slots of background+frame plus the panel")
+    -- Eight slots of background+frame, the panel, and the set label -
+    -- which names the XHB's set whether or not Expanded has replaced it.
+    assert.are.equal(16 + 1 + 1, visible_count(), "eight slots, the panel, the set label")
     widget.on_keyboard(RIGHT, false, 0, false)
-    assert.are.equal(32 + 1, visible_count(), "the survivor's XHB side returns, panelled")
+    assert.are.equal(32 + 1 + 1, visible_count(), "the survivor's XHB side returns, panelled, label and all")
+  end)
+
+  it("writes the active set along the bar's foot, in gold", function()
+    --[[ Without this an empty bar gives no sign that a set switch did
+           anything, which is how its absence was found in a live client.
+           FFXIV writes it between the two crosses along the bottom. ]]
+    local label = prims.texts[#prims.texts]
+    assert.are.equal("Set 1", label.last.text)
+    assert.are.same({ 255, 215, 0 }, label.last.color)
+    assert.is_true(label.visible, "shown whether or not a side is held")
+    -- Centred across the main anchor, in the band under the slot grid.
+    local render = new_render({ config = widget.defaults })
+    local x, y = render.set_label_pos()
+    assert.are.same({ 100 + x, 900 + y }, { label.x, label.y })
   end)
 
   it("does not strand the panel across hide and show", function()
@@ -571,7 +591,7 @@ describe("crossbar widget", function()
     widget.detach()
     assert.are.equal(0, visible_count(), "detach blanks every prim")
     widget.attach(widget.defaults)
-    assert.are.equal(32, visible_count(), "re-attach redraws the resting bar")
+    assert.are.equal(33, visible_count(), "re-attach redraws the resting bar")
     assert.is_false(panel.visible, "the old side is forgotten")
     -- A re-attach straight over a live hold forgets it too: the fresh
     -- machine holds nothing, and the widget's memory must not outlive it.
@@ -1693,7 +1713,7 @@ describe("crossbar live widget", function()
     end)
 
     it("touches no prim at all on a settled tick", function()
-      -- 363 prims at sixty frames a second: partylist's written/push gate,
+      -- 364 prims at sixty frames a second: partylist's written/push gate,
       -- pinned the same way partylist_spec pins it - two identical ticks,
       -- zero recorder calls on the second.
       build_world()
@@ -2096,6 +2116,17 @@ describe("crossbar live widget", function()
       widget.handle_command({ "bind", "1", "l", "6", "enchanteditem", "Vocation Ring" })
       widget.update()
       assert.are.equal("1", text_of("xhb_left", 6, "cost").last.text, "gear is")
+    end)
+
+    it("follows the set it names", function()
+      -- The label exists so a set switch is visible on a bar with nothing
+      -- bound to it, which is the state it was found missing in.
+      build_world()
+      local label = prims.texts[#prims.texts]
+      assert.are.equal("Set 1", label.last.text)
+      widget.handle_command({ "set", "5" })
+      widget.update()
+      assert.are.equal("Set 5", label.last.text)
     end)
 
     it("counts a temporary item out of the bag it actually lives in", function()
