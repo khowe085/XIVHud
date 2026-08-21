@@ -15,7 +15,8 @@ describe("crossbar defaults", function()
     assert.same({ 43 }, defaults.input.w_layer)
     assert.same({ 41 }, defaults.input.set_switch)
     assert.same({ 2, 3, 4, 5, 6, 7, 8, 9 }, defaults.input.slot_keys)
-    assert.same({ tap = "open map", chorded = "edit" }, defaults.input.shortcuts[13])
+    -- Chord only: bare Select does nothing, though the key stays ours.
+    assert.same({ chorded = "edit" }, defaults.input.shortcuts[13])
   end)
 
   it("points each view at a set nothing else is showing", function()

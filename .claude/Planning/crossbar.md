@@ -855,8 +855,14 @@ Resolution rules:
   layout anyway: RB is `\` while RT is held, so no switch key is emitted.
 - **Shortcut keys**: dedicated keys, always blocked, that fire
   `//hud crossbar` verbs — one verb on a bare tap, another while a side is
-  held. The first entry is the pad's **Select** button: bare tap → `open map`,
-  tap with a side held → `edit` (toggle the binder); while edit mode is on,
+  held. The first entry is the pad's **Select** button. It carried a bare
+  tap of `open map` until 2026-08-21, when Kevin took it out in a live
+  client: a key the component owns outright should not act on its own, and
+  the map is one keystroke away in the game anyway. The entry now carries
+  only its chord, which is what proves the shortcut mechanism does not need
+  a `tap` - the key stays blocked because the ENTRY exists, not because it
+  has a verb. What remains: tap with a side held → `edit` (toggle the
+  binder); while edit mode is on,
   any press of this key exits it (see the edit mode guard). Default `=` (13).
 - **Blocking**: per-key, **latched at press** — whether a key's press was
   blocked decides its release too (a `3` pressed unblocked whose release
@@ -1079,7 +1085,7 @@ edge detection then re-reads — not the stuck-modifier failure v3 risked.
 | LB | regular press | `R` (19) | not mapped — falls through as autorun |
 | RB | chord while RT held | `\` (43) | `'`+`\` = WXHB Right (release RB → XHB Right) |
 | RB | press, no RT | backtick (41) | tap = cycle, hold + slot button = set jump — **both only with no side held**; tap with LB long-press `\` and no side = draw |
-| Select | press | `=` (13) | bare = open map; with a side held = toggle the binder |
+| Select | press | `=` (13) | bare = nothing (still blocked); with a side held = toggle the binder |
 | Y / B / A / X | chorded with LT, RT, or RB | `1` `2` `3` `4` (2–5) | face cluster, slots 1–4 |
 | D-pad ↑ / → / ↓ / ← | chorded with LT, RT, or RB | `5` `6` `7` `8` (6–9) | D-pad cluster, slots 5–8 |
 | Y/B/A/X, D-pad | no activator held | (base config) | normal game functions — crossbar ignores them |
@@ -1633,7 +1639,7 @@ Bindings live in the per-job files (below), not here.
                                              -- three meanings of that word was
                                              -- two too many
     shortcuts = {                  -- dedicated keys -> //hud crossbar verbs
-      [13] = { tap = "open map", chorded = "edit" },  -- '=' ; pad Select
+      [13] = { chorded = "edit" },  -- '=' ; pad Select, chord only
     },
   },
   always_show_wxhb = false,        -- WXHB on screen at rest, or only while its

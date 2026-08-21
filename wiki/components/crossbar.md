@@ -249,7 +249,7 @@ Six keys drive everything, chosen because the crossbar can take them cleanly
 | `'` | right side |
 | `\` | the W-layer — hold with a side for its WXHB bar |
 | `` ` `` | set switch — tap to cycle, hold and press a button to jump; ignored while a side is held |
-| `=` | Select — opens your map; with a side held, opens the binder |
+| `=` | Select — nothing on its own; with a side held, opens the binder |
 | `1`–`8` | the eight slots — but only while a side or the switch is held; otherwise they reach the game as usual |
 
 You can still type them: once the chat box has focus the crossbar hands every
@@ -273,7 +273,7 @@ A controller layout that produces them:
 | **LB** tapped | `R` | autorun, native game functionality — the crossbar does not read it |
 | **LB** long-pressed | `\` | held for the draw gesture below |
 | **RB** | `` ` `` | tap cycles sets; hold and press any slot button to jump to that set, 1 to 8 (no trigger held) |
-| **Select** | `=` | your map; with a side held, the binder |
+| **Select** | `=` | nothing on its own; with a side held, the binder |
 | **face / D-pad** while LT, RT or RB is held | `1`–`8` | the eight slots |
 
 ### Button chords
@@ -318,8 +318,10 @@ Two more things:
   RT the pad enforces it as well, since RB emits `\` in that chord; from LT
   the key still arrives and the crossbar is what ignores it.
 - **Leave Select alone.** It is `=` in every state, chorded or not — the
-  crossbar reads the chord itself, so the binder and the map stay reachable
-  whatever you are holding.
+  crossbar reads the chord itself, so the binder stays reachable whatever
+  you are holding. On its own the key does nothing: it is still the
+  crossbar's, so the game never sees it, but a key you cannot use for
+  anything else should not fire something you did not ask for either.
 
 **Sheathe / unsheathe** is a gesture: hold `\` and tap `` ` `` with no side
 held — on the pad, hold **LB** and tap **RB**. Mounted, the same gesture

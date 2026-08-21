@@ -1322,8 +1322,24 @@ describe("crossbar live widget", function()
       )
     end)
 
-    it("routes the shortcut tap to its verb", function()
+    it("does nothing on a bare Select, and keeps the key anyway", function()
+      --[[ Select used to open the map bare. A key that is ours outright
+           should not act on its own (Kevin, 2026-08-21) - but it is still
+           ours: the block keys off the shortcut entry existing, not off it
+           carrying a verb, so the game never sees it either. ]]
       build_world()
+      assert.is_true(press(SHORTCUT), "still swallowed")
+      assert.is_true(release(SHORTCUT))
+      assert.are.same({}, env.commands)
+    end)
+
+    it("still routes a tap verb where one is configured", function()
+      -- The mechanism is intact; only the shipped default dropped its tap.
+      build_world({
+        tune_config = function(fresh)
+          fresh.input.shortcuts[13] = { tap = "open map", chorded = "edit" }
+        end,
+      })
       press(SHORTCUT)
       release(SHORTCUT)
       assert.are.same({ "input /map" }, env.commands)
