@@ -1942,12 +1942,11 @@ local function new(ctx)
          bag id is being remembered here; without the resources it simply
          does not apply.
 
-         NOT a claim about which items live there. Whether Instant Warp is
-         a temporary item is an open in-client question, and it matters
-         beyond this count: the warp ladder searches equippable bags only,
-         so if that scroll IS temporary the ladder has never been able to
-         see one. Recorded as question O rather than guessed at from
-         here. ]]
+         NOT a claim about which items live there, and in particular NOT
+         about Instant Warp - which is an ordinary inventory item (Kevin,
+         2026-08-21), so the warp ladder's equippable-bags-only search
+         reaches it and always has. This tally is for whatever the client
+         does put in that bag. ]]
     local function usable_from_here(id)
       return counters.tracked_item(id) or wanted[id] == true
     end

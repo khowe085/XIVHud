@@ -661,8 +661,8 @@ describe("crossbar live widget", function()
       bags = {
         [0] = { id = 0, en = "Inventory", equippable = true },
         [8] = { id = 8, en = "Wardrobe 2", equippable = true },
-        -- Not equippable, and not the inventory: where the Records of
-        -- Eminence rewards live. Named as the resources name it.
+        -- Not equippable, and not the inventory: the temporary bag, named
+        -- as the resources name it.
         [3] = { id = 3, en = temporary_bag_name(), equippable = false },
       },
     }
@@ -2099,17 +2099,20 @@ describe("crossbar live widget", function()
     end)
 
     it("counts a temporary item out of the bag it actually lives in", function()
-      --[[ Records of Eminence rewards - Instant Warp and its siblings -
-           never reach the inventory. Counting bag 0 alone drew a red X and
-           dimmed the icon on a slot whose press works, which is worse than
-           the blank corner these slots had before counts existed. The bag
-           is found by NAME out of the resources, the way travel.lua
-           resolves the resting status, not by a remembered id. ]]
+      --[[ Whatever the client reports in that bag - the item here is one
+           of the fixture's consumables, and the test asserts nothing about
+           which items are really temporary (Instant Warp, the obvious
+           guess, is an ordinary inventory item). Counting bag 0 alone drew
+           a red X and dimmed the icon on a slot whose press works, which is
+           worse than the blank corner these slots had before counts
+           existed. The bag is found by NAME out of the resources, the way
+           travel.lua resolves the resting status, not by a remembered
+           id. ]]
       local files = war_bindings()
-      files.WAR.sets[1].left[6] = { type = "item", action = "Instant Warp", target = "me" }
+      files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
       build_world({ store_files = files })
       env.items[0] = { enabled = true }
-      env.items[3] = { enabled = true, { id = 4181, slot = 1, count = 2 } }
+      env.items[3] = { enabled = true, { id = 4165, slot = 1, count = 2 } }
       widget.update()
       assert.are.equal("2", text_of("xhb_left", 6, "cost").last.text)
       assert.is_false(image_of("xhb_left", 6, "sweep").visible, "no red X on a working binding")

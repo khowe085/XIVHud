@@ -281,7 +281,8 @@ end
      same length of time, or the ring works from one and "randomly refuses"
      from the other.
 
-     The Tavnazian Ring's warmup is about thirty seconds, and the test is
+     The Tavnazian Ring's warmup is thirty seconds (confirmed in client,
+     2026-08-21), and the test is
      `warm > bound`, so thirty exactly still waits. What does not is thirty
      plus anything: equip latency, the poll landing a moment late, a
      timestamp the client rounded up. On the default bound each of those

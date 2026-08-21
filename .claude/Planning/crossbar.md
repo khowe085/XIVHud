@@ -2543,11 +2543,17 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   (`bound + 15`) rather than a fixed 45, or the deadline would end the very
   wait the longer bound was granted for.
 
-  *Open in client*: the ring's real warmup, and its behaviour generally -
-  everything here rests on Kevin's "like a Warp Ring, 30 second cooldown"
-  plus the reading that the thirty seconds is the EQUIP WARMUP rather than a
-  recast between uses. If it is really a recast, the `give_up` is harmless
-  but pointless and the rung needs no bound at all.
+  **Confirmed (Kevin, 2026-08-21): the thirty seconds is the equip warmup,
+  and the ring otherwise behaves like a Warp Ring.** So the reading this was
+  built on holds - it is enchanted equipment with charges, worn in a ring
+  slot, and the wait is the warmup rather than a recast between uses. The
+  40-second bound stands: ten seconds of headroom over a thirty-second
+  warmup, for the slop that `warm > bound` would otherwise turn into "needs
+  more than 30 sec".
+
+  Still open for this rung: only the shape of `res.items[].slots` (question
+  I), which is what resolves the ring's own slot ids - the rung carries no
+  hardcoded `equip_slot`.
 
 - ~~**Follow-up, found at the CB11 review gate: the warp ladder treats
   "worn" as "ready".**~~ **Done as CB12, 2026-08-20** - kept here for the

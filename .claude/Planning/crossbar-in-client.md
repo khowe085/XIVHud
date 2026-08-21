@@ -288,8 +288,9 @@ one piece of gear's resource entry and comparing the two fields while
 answering question I.
 
 **M. What is the Temporary bag actually called in `res.bags`?** A slot bound
-to an Instant Warp counts out of that bag, found by a name match rather than
-by a bag id nobody here has confirmed. The match is a `contains "temporary"`
+to a temporary item counts out of that bag, found by a name match rather
+than by a bag id nobody here has confirmed. (Note the item is NOT Instant
+Warp, which question O settles as an ordinary inventory item.) The match is a `contains "temporary"`
 so a spelling like `Temporary Items` still lands, but the string itself has
 never been read. A miss is NOT harmless: the slot reads 0, crosses
 itself out and dims, over a press that works. That is worse than what these
@@ -308,21 +309,16 @@ Pre-existing on the warp path and apparently fine in a live client, which is
 the only evidence either way - so this is a thing to watch while testing
 question I rather than a defect claim.
 
-**O. Where does Instant Warp actually live, and can the warp ladder see
-it?** Two halves of one question, and the second half is a possible defect.
+**O. ANSWERED (Kevin, 2026-08-21): Instant Warp is an ordinary inventory
+item, not a temporary one.** The suspected defect is therefore not one - the
+warp ladder walks equippable bags, which reaches the inventory, so it has
+always been able to see the scroll.
 
-1. Is Instant Warp (and its Records of Eminence siblings) a **temporary**
-   item, or an ordinary inventory one? The item-count path reads a
-   name-matched Temporary bag on the assumption that an item can be either.
-2. If it IS temporary, **the warp ladder has never been able to reach it**.
-   `enchanted.collect` walks equippable bags only and the temporary bag is
-   not one - so `//hud crossbar warp` would answer "You don't have Instant
-   Warp." while the player is holding one, and while a slot bound
-   `item "Instant Warp"` counts it and fires it perfectly.
-
-Check with one scroll in hand and no ring or cudgel: does `//hud crossbar
-warp` offer it? If not, the fix is the ladder's bag scope - a change to the
-search rather than to the ladder.
+The temporary-bag tally stays: an item held there IS one `/item` can use,
+and a slot can be bound to one from the CLI. What it loses is only its
+motivating example. Note the fixture no longer uses Instant Warp as its
+stand-in for a temporary item, since that would have written the wrong
+classification into the tests.
 
 ---
 
