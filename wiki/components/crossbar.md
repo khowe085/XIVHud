@@ -428,17 +428,31 @@ You can also **drag**: from the action list onto a slot to bind it, from a
 slot onto another slot to swap them entirely, or from a slot onto **genuinely
 empty screen** to clear it — which removes it from the layer you are editing,
 and leaves every other layer alone. Empty means empty: a drop that lands on
-any part of the binder — the stack panel, the action list, the bar itself —
-cancels quietly and changes nothing. Empty screen really is the whole rest of
-the display, so a near miss is the easiest mistake to make, and it must never
-be the one that deletes.
+any part of the binder — the window, the bar itself — cancels quietly and
+changes nothing. Empty screen really is the whole rest of the display, so a
+near miss is the easiest mistake to make, and it must never be the one that
+deletes.
 
-**Where it opens.** Dead centre. The stack panel is centred on its own; once
-you pick a layer the action list joins it on the right and the two centre
-together as one block, so the panel shifts left as it appears. Neither dodges
-the bar — if you have put the bar in the middle of the screen the action list
-will cover it, and slots underneath it cannot be clicked or dropped onto while
-the binder is open.
+**One window, three steps.** Edit mode draws nothing until you click a slot.
+Then a single window opens dead centre and walks you through:
+
+1. **Pick a layer** — base (or shared), your worn subjob, and every context.
+   Picking a context previews the bar as if that buff were up.
+2. **Pick an action** — categories down the left, one page of actions on the
+   right, the wheel to page through them.
+3. **Pick a target** — every FFXI token, with `(no target)` first. Actions
+   that cannot take a target skip this step and bind straight away.
+
+A **details column** on the right shows whatever the cursor is over: name,
+cost, recast, skillchain property, and for a slot the layer its binding comes
+from. **Back**, in the top left, steps back one screen — and closes the window
+from the first, so you never have to click empty space to get out.
+
+Binding lands you back on step one, ready for the next edit on the same slot.
+
+The window does not dodge the bar. If you have put the bar in the middle of
+the screen the window will cover it, and slots underneath cannot be clicked or
+dropped onto while the binder is open.
 
 **Getting out.** While edit mode is on the crossbar itself does nothing — no
 side activates, no slot fires, and the bar holds still under the binder. Leave

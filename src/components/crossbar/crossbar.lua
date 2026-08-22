@@ -2658,11 +2658,11 @@ local function new(ctx)
         spell_recasts = ctx.get_spell_recasts ~= nil and ctx.get_spell_recasts() or {},
         ability_recasts = ctx.get_ability_recasts ~= nil and ctx.get_ability_recasts() or {},
       }
-      -- A hovered tooltip reads its recast from these, so it is rebuilt on
-      -- the same cadence rather than per frame - and only in edit mode,
-      -- where the binder is the only thing that has a tooltip at all.
+      -- The binder's details column reads its recast from these, so it is
+      -- rebuilt on the same cadence rather than per frame - and only in
+      -- edit mode, the only place anything describes an action.
       if editing() then
-        binder.refresh_tooltip()
+        binder.refresh_details()
       end
     end
     --[[ The cast retry, over the reads above. The pending test comes FIRST

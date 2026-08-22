@@ -58,35 +58,102 @@ local contexts = require("components/crossbar/contexts")
 local MOVE, LEFT_DOWN, LEFT_UP, WHEEL = 0, 1, 2, 10
 
 local SLOT_COUNT = 8
-local ROW_HEIGHT = 16
-local PAD = 6
-local GAP = 8
---[[ The stack panel is the catalog's width so the two line up as one
-     block. It opens dead-centre rather than beside its slot (Kevin,
-     2026-08-22): beside the slot it sat under the NEIGHBOURING slots'
-     labels, and no ordering trick could have lifted it clear - Windower
-     draws every `texts` object above every `images` one, so a text will
-     always cover a backdrop. ]]
-local PANEL_WIDTH = 460
-local CATALOG_WIDTH = 460
-local CATEGORY_WIDTH = 150
-local ENTRY_ROWS = 16
---[[ The category column is a fixed height: the shipped catalog produces
-     fifteen (eight magic groups, Trusts among them, then abilities,
-     weaponskills, items, enchanted, mounts, open, general), so sixteen
-     rows still carries it, with one row of headroom now rather than two.
+
+--[[ ONE window, and a wizard inside it (Kevin, 2026-08-22). It replaced a
+     stack panel, a catalog and a floating tooltip drawn beside one another:
+     the panel opened next to its slot and drew UNDER the neighbouring
+     slots' labels, and no ordering trick could have lifted it clear -
+     Windower renders every `texts` object above every `images` one, so a
+     text always covers a backdrop. Centring the window is what actually
+     fixes that, and once everything is centred there is no reason for it to
+     be three surfaces.
+
+     Three steps, each replacing the last in the same frame:
+
+       layer   -> which plane of the stack you are editing
+       catalog -> what to put there
+       target  -> what it aims at, for the types that take one
+
+     `back` in the top left walks the steps in reverse and closes the window
+     from the first, so every dead end has a way out that is not "click
+     somewhere empty and hope". ]]
+local STEP_LAYER, STEP_CATALOG, STEP_TARGET = "layer", "catalog", "target"
+
+local FONT_SIZE = 18
+local ROW_HEIGHT = 26
+local PAD = 10
+local GAP = 12
+local WINDOW_WIDTH = 920
+local WINDOW_HEIGHT = 600
+local CATEGORY_WIDTH = 210
+local DETAILS_WIDTH = 280
+local BACK_WIDTH = 90
+-- The title line and the line under it naming the slot and the choice so far.
+local HEADER_ROWS = 2
+--[[ Rows are derived from the window rather than fixed, so changing its
+     height moves the lists with it instead of leaving them short or
+     overflowing. The entry list gives one row back to the pager; the
+     category column and the details pane use the full body. ]]
+local BODY_ROWS = math.floor((WINDOW_HEIGHT - PAD * 2 - HEADER_ROWS * ROW_HEIGHT) / ROW_HEIGHT)
+local ENTRY_ROWS = BODY_ROWS - 1
+--[[ The shipped catalog produces fifteen categories (eight magic groups,
+     Trusts among them, then abilities, weaponskills, items, enchanted,
+     mounts, open, general), so the body carries them with room to spare.
      What will not fit is COUNTED and said in the header rather than dropped
      silently - the CLI can still reach it. ]]
-local CATEGORY_ROWS = 16
-local TOOLTIP_WIDTH = 240
-local TOOLTIP_ROWS = 8
+local CATEGORY_ROWS = BODY_ROWS
+local DETAIL_ROWS = BODY_ROWS
 -- base/shared + the worn subjob + every roster context, with headroom so a
 -- roster addition needs no prim-count edit here.
 local STACK_ROWS = #contexts + 4
 -- Panel chrome: the component's own white square, tinted and dimmed.
 local PANEL_TEXTURE = "components/crossbar/assets/black-square.png"
 local PANEL_ALPHA = 220
-local ICON_SIZE = 12
+local ICON_SIZE = 16
+
+--[[ The types whose records carry a target, and so the ones that get the
+     third step. `mount` is deliberately absent though `actions.lua` would
+     accept a target on it - there is nothing to aim a chocobo at - and so
+     are `ct`/`ex`, whose action word is a whole command line the catalog
+     does not offer. Everything else the catalog can produce is here. ]]
+local TARGETED_TYPES = {
+  ma = true,
+  ja = true,
+  ws = true,
+  ra = true,
+  item = true,
+  enchanteditem = true,
+  pet = true,
+}
+
+--[[ Every FFXI target token, because a menu that stops at the common few
+     leaves the rest reachable only from the CLI (Kevin, 2026-08-22). The
+     first row binds no target at all, which is what a mouse bind has always
+     produced and stays the default. ]]
+local TARGET_ROWS = {
+  { label = "(no target)" },
+  { token = "t", note = "current target" },
+  { token = "me", note = "myself" },
+  { token = "bt", note = "battle target" },
+  { token = "ft", note = "focus target" },
+  { token = "st", note = "select on use" },
+  { token = "stpc", note = "select a player" },
+  { token = "stnpc", note = "select an NPC" },
+  { token = "pet", note = "my pet" },
+}
+for index = 0, 5 do
+  TARGET_ROWS[#TARGET_ROWS + 1] = { token = "p" .. index, note = "party member " .. index }
+end
+for _, first in ipairs({ 10, 20 }) do
+  for index = first, first + 5 do
+    TARGET_ROWS[#TARGET_ROWS + 1] = { token = "a" .. index, note = "alliance member " .. index }
+  end
+end
+for _, row in ipairs(TARGET_ROWS) do
+  if row.token ~= nil then
+    row.label = "<" .. row.token .. ">"
+  end
+end
 
 -- The marks a slot wears on the bar in edit mode, so "where is this coming
 -- from" is answered before any click: nothing for the job base (the common
@@ -161,24 +228,29 @@ local function new(deps)
 
   local active = false
   local prims = nil
-  -- The clicked slot (with the screen rect it was clicked in), the layer
-  -- cursor, and whether the catalog is unlocked. The cursor deliberately
-  -- outlives a bind: filling one context across several slots is the case
-  -- the drag gestures exist for.
+  --[[ The clicked slot (with the screen rect it was clicked in), which step
+       of the wizard is on screen, the layer cursor, and the action waiting
+       for a target. The cursor deliberately outlives a bind: filling one
+       context across several slots is the case the layer step exists for,
+       and a commit drops back to it rather than closing the window. ]]
   local slot = nil
+  local step = nil
   local cursor = nil
-  local catalog_open = false
+  local pending = nil
   local catalog_groups = nil
   local category_index, page = 1, 1
   local press = nil
-  local tooltip = nil
-  -- The target the tooltip was built from, kept so a cadence rebuild can
-  -- redo it without the cursor moving.
+  -- The details column, and the target it was built from - kept so a
+  -- cadence rebuild can redo it without the cursor moving.
+  local details = nil
   local hovered = nil
   -- The drawn descriptors, rebuilt by redraw() and read by the hit-test, so
-  -- what is clickable is exactly what is on screen.
-  local panel = nil
-  local view = nil
+  -- what is clickable is exactly what is on screen. Exactly one of the
+  -- three views is ever non-nil.
+  local window = nil
+  local layer_view = nil
+  local catalog_view = nil
+  local target_view = nil
 
   local function say(lines)
     if deps.say ~= nil then
@@ -265,7 +337,9 @@ local function new(deps)
     local function text()
       local prim = deps.new_text()
       prim.font(style.font or "sans-serif")
-      prim.size(style.size or 10)
+      -- The FAMILY is the widget's, the SIZE is the window's: the bar's
+      -- 10pt is unreadable at this scale.
+      prim.size(FONT_SIZE)
       prim.color(255, 255, 255)
       prim.stroke_width(1)
       prim.stroke_color(0, 0, 0)
@@ -295,17 +369,20 @@ local function new(deps)
       end
       return list
     end
+    --[[ One backdrop for one window. The row prims are shared across the
+         steps rather than one set each: only one step is on screen at a
+         time, and three sets would be three times the prims for no frame
+         that could ever use them. ]]
     prims = {
-      panel_bg = image(PANEL_TEXTURE),
-      panel_rows = texts(STACK_ROWS + 2),
-      catalog_bg = image(PANEL_TEXTURE),
-      catalog_header = text(),
+      window_bg = image(PANEL_TEXTURE),
+      back = text(),
+      title = text(),
+      subhead = text(),
       categories = texts(CATEGORY_ROWS),
-      entries = texts(ENTRY_ROWS),
+      entries = texts(math.max(ENTRY_ROWS, STACK_ROWS)),
       entry_icons = images(ENTRY_ROWS),
       pager = text(),
-      tip_bg = image(PANEL_TEXTURE),
-      tip_rows = texts(TOOLTIP_ROWS),
+      details = texts(DETAIL_ROWS),
     }
   end
 
@@ -316,12 +393,12 @@ local function new(deps)
     local function kill(prim)
       prim.destroy()
     end
-    kill(prims.panel_bg)
-    kill(prims.catalog_bg)
-    kill(prims.catalog_header)
+    kill(prims.window_bg)
+    kill(prims.back)
+    kill(prims.title)
+    kill(prims.subhead)
     kill(prims.pager)
-    kill(prims.tip_bg)
-    for _, list in ipairs({ prims.panel_rows, prims.categories, prims.entries, prims.entry_icons, prims.tip_rows }) do
+    for _, list in ipairs({ prims.categories, prims.entries, prims.entry_icons, prims.details }) do
       for _, prim in ipairs(list) do
         kill(prim)
       end
@@ -384,21 +461,82 @@ local function new(deps)
     return rects
   end
 
-  --[[ Where a centred piece lands. `block_width` is the whole block's
-       width when more than one piece is on screen, so each piece centres
-       the BLOCK and then takes its own place inside it; on its own a piece
-       passes nothing and is simply dead-centre.
-
-       Nothing here dodges the bar, deliberately (Kevin, 2026-08-22). The
-       catalog used to, because hit() checks it before the slots and so a
-       catalog drawn over a slot makes that slot neither clickable nor
-       droppable. Predictable placement won that trade: a bar in the middle
-       of the screen loses drag-to-slot while the binder is open, and a bar
-       is not put there. ]]
-  local function centred(width, height, block_width)
+  --[[ The window and its regions. Dead centre, and nothing dodges the bar
+       (Kevin, 2026-08-22): `hit()` checks the window before the slots, so a
+       window over a slot makes that slot neither clickable nor droppable.
+       Predictable placement won that trade - a bar in the middle of the
+       screen loses drag-to-slot while the binder is open, and a bar is not
+       put there. ]]
+  local function build_frame()
     local screen_width, screen_height = screen()
-    return math.max(0, math.floor(screen_width / 2 - (block_width or width) / 2)),
-      math.max(0, math.floor(screen_height / 2 - height / 2))
+    local frame = {
+      x = math.max(0, math.floor(screen_width / 2 - WINDOW_WIDTH / 2)),
+      y = math.max(0, math.floor(screen_height / 2 - WINDOW_HEIGHT / 2)),
+      width = WINDOW_WIDTH,
+      height = WINDOW_HEIGHT,
+    }
+    frame.back = { x = frame.x + PAD, y = frame.y + PAD, width = BACK_WIDTH, height = ROW_HEIGHT }
+    frame.title = { x = frame.back.x + BACK_WIDTH + GAP, y = frame.y + PAD }
+    frame.subhead = { x = frame.x + PAD, y = frame.y + PAD + ROW_HEIGHT }
+    local body_y = frame.y + PAD + HEADER_ROWS * ROW_HEIGHT
+    local body_height = BODY_ROWS * ROW_HEIGHT
+    frame.details = {
+      x = frame.x + WINDOW_WIDTH - PAD - DETAILS_WIDTH,
+      y = body_y,
+      width = DETAILS_WIDTH,
+      height = body_height,
+    }
+    -- Everything left of the details column, which every step lists into.
+    frame.list = {
+      x = frame.x + PAD,
+      y = body_y,
+      width = WINDOW_WIDTH - PAD * 2 - DETAILS_WIDTH - GAP,
+      height = body_height,
+    }
+    return frame
+  end
+
+  --- The frame only exists while a slot is being edited: no slot, no window.
+  local function build_frame_for_step()
+    if slot == nil or step == nil then
+      return nil
+    end
+    local frame = build_frame()
+    frame.step = step
+    frame.address = { set = slot.set, side = slot.side, slot = slot.slot }
+    -- Which stacked state the bar is being shown as: a context layer
+    -- previews itself, so the window has to say which one you are looking
+    -- at or the bar's contents are unexplained.
+    local context = cursor ~= nil and context_named((cursor.source:match("^ctx:(.+)$")) or "") or nil
+    frame.viewing = context ~= nil and context.label:upper() or "LIVE"
+    return frame
+  end
+
+  --[[ One page of a list, laid into a column. Shared by the catalog's
+       entries and the target tokens, so the pager, the clamp and the row
+       rects cannot drift apart between two steps that look the same. ]]
+  local function paged(items, column, rows_per_page)
+    local pages = math.max(1, math.ceil(#items / rows_per_page))
+    if page > pages then
+      page = pages
+    end
+    local first = (page - 1) * rows_per_page
+    local built = {}
+    for index = 1, rows_per_page do
+      local item = items[first + index]
+      if item == nil then
+        break
+      end
+      built[index] = {
+        item = item,
+        index = first + index,
+        x = column.x,
+        y = column.y + (index - 1) * ROW_HEIGHT,
+        width = column.width,
+        height = ROW_HEIGHT,
+      }
+    end
+    return built, pages
   end
 
   --[[ The stack ------------------------------------------------------------- ]]
@@ -461,103 +599,99 @@ local function new(deps)
     return rows
   end
 
-  local function build_panel()
-    if slot == nil then
-      return nil
-    end
+  --[[ The three steps ------------------------------------------------------ ]]
+
+  --- Step one: which plane of the stack the edit lands on.
+  local function build_layer_view(frame)
     local rows = stack_rows()
-    local width, height = PANEL_WIDTH, PAD * 2 + (#rows + 2) * ROW_HEIGHT
-    -- The catalog joins it on the right once a layer is picked, so the pair
-    -- is centred as one block; before that the panel is centre-screen on
-    -- its own. The two therefore MOVE when the catalog opens, which is what
-    -- one block means.
-    local block = catalog_open and (width + GAP + CATALOG_WIDTH) or nil
-    local x, y = centred(width, height, block)
-    local built = {
-      x = x,
-      y = y,
-      width = width,
-      height = height,
-      address = { set = slot.set, side = slot.side, slot = slot.slot },
-      rows = rows,
-    }
-    local context = cursor ~= nil and context_named((cursor.source:match("^ctx:(.+)$")) or "") or nil
-    built.viewing = context ~= nil and context.label:upper() or "LIVE"
-    built.cursor = cursor ~= nil and cursor.label or nil
-    local row_y = built.y + PAD + ROW_HEIGHT * 2
     for index, row in ipairs(rows) do
-      row.x, row.width = built.x, width
-      row.y, row.height = row_y + (index - 1) * ROW_HEIGHT, ROW_HEIGHT
+      row.x, row.width = frame.list.x, frame.list.width
+      row.y, row.height = frame.list.y + (index - 1) * ROW_HEIGHT, ROW_HEIGHT
       row.selected = cursor ~= nil and cursor.source == row.source
     end
-    return built
+    return { rows = rows }
   end
 
-  --[[ The catalog ----------------------------------------------------------- ]]
-
-  local function build_view()
-    if not catalog_open or catalog_groups == nil or #catalog_groups == 0 then
+  --- Step two: what goes there. Categories left, one page of entries right.
+  local function build_catalog_view(frame)
+    if catalog_groups == nil or #catalog_groups == 0 then
       return nil
     end
     if category_index > #catalog_groups then
       category_index = 1
     end
     local group = catalog_groups[category_index]
-    local entries = group.entries or {}
-    local pages = math.max(1, math.ceil(#entries / ENTRY_ROWS))
-    if page > pages then
-      page = pages
-    end
-    local width = CATALOG_WIDTH
-    local height = PAD * 2 + (ENTRY_ROWS + 2) * ROW_HEIGHT
-    -- The block's right-hand half: the panel is always up when the catalog
-    -- is, so its width is the offset rather than a condition.
-    local left, y = centred(width, height, PANEL_WIDTH + GAP + width)
+    local column = {
+      x = frame.list.x + CATEGORY_WIDTH + GAP,
+      y = frame.list.y,
+      width = frame.list.width - CATEGORY_WIDTH - GAP,
+    }
+    -- The last row of the column belongs to the pager, so the list itself
+    -- stops one short of the body.
+    local rows, pages = paged(group.entries or {}, column, ENTRY_ROWS)
     local built = {
-      x = left + PANEL_WIDTH + GAP,
-      y = y,
-      width = width,
-      height = height,
       category = group.name,
       page = page,
       pages = pages,
       categories = {},
       categories_hidden = math.max(0, #catalog_groups - CATEGORY_ROWS),
       entries = {},
+      pager = {
+        x = column.x,
+        y = frame.list.y + (BODY_ROWS - 1) * ROW_HEIGHT,
+        width = column.width,
+        height = ROW_HEIGHT,
+      },
     }
-    local first_row = built.y + PAD + ROW_HEIGHT
     for index = 1, math.min(#catalog_groups, CATEGORY_ROWS) do
       built.categories[index] = {
         name = catalog_groups[index].name,
         index = index,
-        x = built.x + PAD,
-        y = first_row + (index - 1) * ROW_HEIGHT,
+        x = frame.list.x,
+        y = frame.list.y + (index - 1) * ROW_HEIGHT,
         width = CATEGORY_WIDTH,
         height = ROW_HEIGHT,
         selected = index == category_index,
       }
     end
-    local entry_x = built.x + PAD * 2 + CATEGORY_WIDTH
-    local entry_width = width - CATEGORY_WIDTH - PAD * 3
-    for index = 1, ENTRY_ROWS do
-      local entry = entries[(page - 1) * ENTRY_ROWS + index]
-      if entry ~= nil then
-        built.entries[#built.entries + 1] = {
-          label = entry.label,
-          record = entry.record,
-          x = entry_x,
-          y = first_row + (index - 1) * ROW_HEIGHT,
-          width = entry_width,
-          height = ROW_HEIGHT,
-        }
-      end
+    for index, row in ipairs(rows) do
+      built.entries[index] = {
+        label = row.item.label,
+        record = row.item.record,
+        x = row.x,
+        y = row.y,
+        width = row.width,
+        height = row.height,
+      }
     end
-    built.pager = {
-      x = entry_x,
-      y = built.y + height - PAD - ROW_HEIGHT,
-      width = entry_width,
-      height = ROW_HEIGHT,
+    return built
+  end
+
+  --- Step three: what it aims at, for a type that takes a target.
+  local function build_target_view(frame)
+    local rows, pages = paged(TARGET_ROWS, frame.list, ENTRY_ROWS)
+    local built = {
+      page = page,
+      pages = pages,
+      targets = {},
+      pager = {
+        x = frame.list.x,
+        y = frame.list.y + (BODY_ROWS - 1) * ROW_HEIGHT,
+        width = frame.list.width,
+        height = ROW_HEIGHT,
+      },
     }
+    for index, row in ipairs(rows) do
+      built.targets[index] = {
+        label = row.item.label,
+        note = row.item.note,
+        token = row.item.token,
+        x = row.x,
+        y = row.y,
+        width = row.width,
+        height = row.height,
+      }
+    end
     return built
   end
 
@@ -643,139 +777,176 @@ local function new(deps)
     return nil
   end
 
-  local function build_tooltip(target)
+  --[[ The details pane. It was a floating tooltip beside the cursor and is
+       now a column inside the window (Kevin, 2026-08-22), so the binder is
+       genuinely one window rather than one window and a follower. It reads
+       the same lines from the same describe, and is still keyed on the
+       hovered target so a resting cursor rebuilds nothing. ]]
+  local function build_details(target)
     if target == nil then
       return nil
     end
-    local lines, rect, key
+    local lines, key
     if target.kind == "slot" then
       local bindings = model()
       local record = bindings ~= nil and bindings.resolve(target.set, target.side, target.slot) or nil
       lines = tooltip_lines(record, target)
-      rect = target.rect
       key = target_key(target)
     elseif target.kind == "entry" then
       lines = tooltip_lines(target.entry.record, nil)
-      rect = target.entry
       key = target_key(target)
     end
     if lines == nil or #lines == 0 then
       return nil
     end
-    local screen_width, screen_height = screen()
-    local width = TOOLTIP_WIDTH
-    local height = PAD * 2 + #lines * ROW_HEIGHT
-    local x = rect.x + rect.width + GAP
-    if x + width > screen_width then
-      x = rect.x - width - GAP
-    end
-    local y = rect.y
-    if y + height > screen_height then
-      y = screen_height - height
-    end
-    return { x = math.max(0, x), y = math.max(0, y), width = width, height = height, lines = lines, key = key }
+    return { lines = lines, key = key }
   end
 
   --[[ Drawing --------------------------------------------------------------- ]]
 
+  --[[ The title and the line under it: what is being edited, and how far
+       through the wizard we are. The subhead carries the choices already
+       made, so a step never leaves you guessing what it applies to. ]]
+  local function header_text(frame)
+    local address = frame.address
+    local where = "set " .. address.set .. " " .. address.side:sub(1, 1) .. " slot " .. address.slot
+    if frame.step == STEP_LAYER then
+      return "pick a layer", where
+    end
+    local layer = cursor ~= nil and cursor.label or "?"
+    local viewing = frame.viewing ~= "LIVE" and ("   viewing: " .. frame.viewing) or ""
+    if frame.step == STEP_CATALOG then
+      return "pick an action", where .. "   layer: " .. layer .. viewing
+    end
+    local action = pending ~= nil and name_of(pending) or "?"
+    return "pick a target", where .. "   layer: " .. layer .. "   action: " .. action
+  end
+
   local function redraw()
-    panel = build_panel()
-    view = build_view()
+    window = build_frame_for_step()
+    layer_view, catalog_view, target_view = nil, nil, nil
+    if window ~= nil then
+      if window.step == STEP_LAYER then
+        layer_view = build_layer_view(window)
+      elseif window.step == STEP_CATALOG then
+        catalog_view = build_catalog_view(window)
+      else
+        target_view = build_target_view(window)
+      end
+    end
     if prims == nil then
       return
     end
-    if panel == nil then
-      prims.panel_bg.hide()
-      draw_rows(prims.panel_rows, {})
-    else
-      draw_backdrop(prims.panel_bg, panel)
-      local lines = {
-        {
-          text = "slot: set " .. panel.address.set .. " " .. panel.address.side:sub(1, 1) .. " " .. panel.address.slot,
-          x = panel.x + PAD,
-          y = panel.y + PAD,
-        },
-        {
-          text = "EDITING -> " .. (panel.cursor or "(pick a layer)") .. "   viewing: " .. panel.viewing,
-          x = panel.x + PAD,
-          y = panel.y + PAD + ROW_HEIGHT,
-        },
-      }
-      for _, row in ipairs(panel.rows) do
-        lines[#lines + 1] = {
-          text = (row.winner and "* " or "  ") .. (row.selected and "> " or "") .. row.label .. ": " .. row.entry,
-          x = row.x + PAD,
-          y = row.y,
-        }
-      end
-      draw_rows(prims.panel_rows, lines)
-    end
-    if view == nil then
-      prims.catalog_bg.hide()
-      prims.catalog_header.hide()
+    if window == nil then
+      prims.window_bg.hide()
+      prims.back.hide()
+      prims.title.hide()
+      prims.subhead.hide()
       prims.pager.hide()
       draw_rows(prims.categories, {})
       draw_rows(prims.entries, {})
+      draw_rows(prims.details, {})
       for _, prim in ipairs(prims.entry_icons) do
         prim.hide()
       end
-    else
-      draw_backdrop(prims.catalog_bg, view)
-      local header = "catalog: " .. view.category
-      if view.categories_hidden > 0 then
-        header = header .. "  (+" .. view.categories_hidden .. " more, use //hud crossbar bind)"
+      return
+    end
+
+    draw_backdrop(prims.window_bg, window)
+    -- The first step's back closes the window, and the label says so rather
+    -- than leaving a dead-looking button on the only screen it cannot
+    -- retreat from.
+    prims.back.text(window.step == STEP_LAYER and "[ close ]" or "[ < back ]")
+    prims.back.pos(window.back.x, window.back.y)
+    prims.back.show()
+    local title, subhead = header_text(window)
+    prims.title.text(title)
+    prims.title.pos(window.title.x, window.title.y)
+    prims.title.show()
+    prims.subhead.text(subhead)
+    prims.subhead.pos(window.subhead.x, window.subhead.y)
+    prims.subhead.show()
+
+    local categories, rows, pager = {}, {}, nil
+    local icons = {}
+    if layer_view ~= nil then
+      for index, row in ipairs(layer_view.rows) do
+        rows[index] = {
+          text = (row.winner and "* " or "  ") .. (row.selected and "> " or "") .. row.label .. ": " .. row.entry,
+          x = row.x,
+          y = row.y,
+        }
       end
-      prims.catalog_header.text(header)
-      prims.catalog_header.pos(view.x + PAD, view.y + PAD)
-      prims.catalog_header.show()
-      local categories = {}
-      for index, category in ipairs(view.categories) do
+    elseif catalog_view ~= nil then
+      for index, category in ipairs(catalog_view.categories) do
         categories[index] = {
           text = (category.selected and "> " or "  ") .. category.name,
           x = category.x,
           y = category.y,
         }
       end
-      draw_rows(prims.categories, categories)
-      local entries = {}
-      for index, entry in ipairs(view.entries) do
-        entries[index] = { text = entry.label, x = entry.x + ICON_SIZE + 4, y = entry.y }
+      for index, entry in ipairs(catalog_view.entries) do
+        rows[index] = { text = entry.label, x = entry.x + ICON_SIZE + 4, y = entry.y }
+        icons[index] = entry
       end
-      draw_rows(prims.entries, entries)
-      for index, prim in ipairs(prims.entry_icons) do
-        local entry = view.entries[index]
-        local path = entry ~= nil and icon_for(entry.record) or nil
-        if path == nil then
-          prim.hide()
-        else
-          prim.path(path)
-          prim.pos(entry.x, entry.y)
-          prim.size(ICON_SIZE, ICON_SIZE)
-          prim.show()
-        end
+      local text = "page " .. catalog_view.page .. "/" .. catalog_view.pages .. " - wheel to scroll"
+      if catalog_view.categories_hidden > 0 then
+        text = text .. "  (+" .. catalog_view.categories_hidden .. " more categories, use //hud crossbar bind)"
       end
-      prims.pager.text("page " .. view.page .. "/" .. view.pages .. " - wheel to scroll")
-      prims.pager.pos(view.pager.x, view.pager.y)
+      pager = { text = text, rect = catalog_view.pager }
+    elseif target_view ~= nil then
+      for index, entry in ipairs(target_view.targets) do
+        rows[index] = {
+          text = entry.note ~= nil and (entry.label .. "   " .. entry.note) or entry.label,
+          x = entry.x,
+          y = entry.y,
+        }
+      end
+      pager = {
+        text = "page " .. target_view.page .. "/" .. target_view.pages .. " - wheel to scroll",
+        rect = target_view.pager,
+      }
+    end
+    draw_rows(prims.categories, categories)
+    draw_rows(prims.entries, rows)
+    for index, prim in ipairs(prims.entry_icons) do
+      local entry = icons[index]
+      local path = entry ~= nil and icon_for(entry.record) or nil
+      if path == nil then
+        prim.hide()
+      else
+        prim.path(path)
+        prim.pos(entry.x, entry.y)
+        prim.size(ICON_SIZE, ICON_SIZE)
+        prim.show()
+      end
+    end
+    if pager == nil then
+      prims.pager.hide()
+    else
+      prims.pager.text(pager.text)
+      prims.pager.pos(pager.rect.x, pager.rect.y)
       prims.pager.show()
     end
-    if tooltip == nil then
-      prims.tip_bg.hide()
-      draw_rows(prims.tip_rows, {})
-    else
-      draw_backdrop(prims.tip_bg, tooltip)
-      local lines = {}
-      for index, line in ipairs(tooltip.lines) do
-        if index <= TOOLTIP_ROWS then
-          lines[index] = { text = line, x = tooltip.x + PAD, y = tooltip.y + PAD + (index - 1) * ROW_HEIGHT }
+
+    local detail_lines = {}
+    if details ~= nil then
+      for index, line in ipairs(details.lines) do
+        if index <= DETAIL_ROWS then
+          detail_lines[index] = {
+            text = line,
+            x = window.details.x,
+            y = window.details.y + (index - 1) * ROW_HEIGHT,
+          }
         end
       end
-      draw_rows(prims.tip_rows, lines)
     end
+    draw_rows(prims.details, detail_lines)
   end
 
   --[[ Hit-testing ----------------------------------------------------------- ]]
 
-  --[[ Panels first: they draw over the bar, so a slot beneath one is not
+  --[[ The window first: it draws over the bar, so a slot beneath it is not
        clickable while it is open.
 
        EVERY target carries the rect it was found in, and the drag threshold
@@ -784,36 +955,46 @@ local function new(deps)
        real click has, and since no drop gesture starts on a row, the click
        would simply vanish. ]]
   local function hit(x, y)
-    --[[ The tooltip first: it draws over everything, and a release inside
-         it must never read as the empty space that unbinds a slot. It is
-         inert - no click does anything through it - which is exactly why
-         it has to be named rather than fallen through. ]]
-    if tooltip ~= nil and inside(x, y, tooltip) then
-      return { kind = "tooltip", rect = tooltip }
-    end
-    if view ~= nil and inside(x, y, view) then
-      for _, entry in ipairs(view.entries) do
-        if inside(x, y, entry) then
-          return { kind = "entry", entry = entry, rect = entry }
+    if window ~= nil and inside(x, y, window) then
+      -- Back is checked before anything else in the window, so no row can
+      -- ever be laid over the one control that gets you out.
+      if inside(x, y, window.back) then
+        return { kind = "back", rect = window.back }
+      end
+      if layer_view ~= nil then
+        for index, row in ipairs(layer_view.rows) do
+          if inside(x, y, row) then
+            return { kind = "row", index = index, row = row, rect = row }
+          end
+        end
+      elseif catalog_view ~= nil then
+        for _, entry in ipairs(catalog_view.entries) do
+          if inside(x, y, entry) then
+            return { kind = "entry", entry = entry, rect = entry }
+          end
+        end
+        for _, category in ipairs(catalog_view.categories) do
+          if inside(x, y, category) then
+            return { kind = "category", index = category.index, rect = category }
+          end
+        end
+        if inside(x, y, catalog_view.pager) then
+          return { kind = "pager", rect = catalog_view.pager }
+        end
+      elseif target_view ~= nil then
+        for _, entry in ipairs(target_view.targets) do
+          if inside(x, y, entry) then
+            return { kind = "target", token = entry.token, rect = entry }
+          end
+        end
+        if inside(x, y, target_view.pager) then
+          return { kind = "pager", rect = target_view.pager }
         end
       end
-      for _, category in ipairs(view.categories) do
-        if inside(x, y, category) then
-          return { kind = "category", index = category.index, rect = category }
-        end
-      end
-      if inside(x, y, view.pager) then
-        return { kind = "pager", rect = view.pager }
-      end
-      return { kind = "panel", rect = view }
-    end
-    if panel ~= nil and inside(x, y, panel) then
-      for index, row in ipairs(panel.rows) do
-        if inside(x, y, row) then
-          return { kind = "row", index = index, row = row, rect = row }
-        end
-      end
-      return { kind = "panel", rect = panel }
+      --[[ Anywhere else inside the window is the window itself: inert, but
+           NAMED rather than fallen through, so a release on the details
+           column never reads as the empty space that clears a slot. ]]
+      return { kind = "panel", rect = window }
     end
     local rects = slot_rects()
     for index = #rects, 1, -1 do
@@ -926,60 +1107,89 @@ local function new(deps)
 
   local function select_slot(target)
     -- Nothing is sticky: a new slot is a new decision, so the layer cursor
-    -- (and its preview) goes with the old one.
+    -- (and its preview) goes with the old one, and the wizard restarts.
     if slot == nil or slot.set ~= target.set or slot.side ~= target.side or slot.slot ~= target.slot then
-      cursor = nil
-      catalog_open = false
+      cursor, pending = nil, nil
       apply_preview()
     end
     slot = { set = target.set, side = target.side, slot = target.slot, rect = target.rect }
+    step, page = STEP_LAYER, 1
   end
 
   local function close_panel()
-    slot, cursor, catalog_open = nil, nil, false
+    slot, cursor, pending, step = nil, nil, nil, nil
     apply_preview()
+  end
+
+  --- Commit, then fall back to the layer step so the next edit on the same
+  --- slot carries on from where this one started.
+  local function commit(record)
+    write_bind(record, window ~= nil and window.address or slot)
+    step, page, pending = STEP_LAYER, 1, nil
+    details, hovered = nil, nil
+  end
+
+  --[[ Back walks the wizard in reverse, and from the first step it closes
+       the window (Kevin, 2026-08-22). Every step therefore has a way out
+       that is not "click empty space and hope" - which on a full screen is
+       also the gesture that clears a slot. ]]
+  local function go_back()
+    if step == STEP_TARGET then
+      step, page, pending = STEP_CATALOG, 1, nil
+    elseif step == STEP_CATALOG then
+      cursor, step, page = nil, STEP_LAYER, 1
+      apply_preview()
+    else
+      close_panel()
+    end
+    details, hovered = nil, nil
   end
 
   local function on_click(target)
     if target == nil then
       close_panel()
+    elseif target.kind == "back" then
+      go_back()
     elseif target.kind == "slot" then
       select_slot(target)
     elseif target.kind == "row" then
       local row = target.row
       if row ~= nil then
         cursor = { source = row.source, label = row.label }
-        catalog_open = true
+        step = STEP_CATALOG
         -- The category the user last picked survives; the page does not,
         -- since the listing itself may have changed under it.
         page = 1
         apply_preview()
       end
     elseif target.kind == "entry" then
-      write_bind(target.entry.record, panel ~= nil and panel.address or slot)
-      -- The catalog closes behind a click-bind and the stack panel refreshes
-      -- in place: unbind, relayer or the next slot all carry on from there.
-      -- The row the cursor is on goes with it, tooltip and all - there is
-      -- nothing left for the cadence to describe.
-      catalog_open = false
-      tooltip, hovered = nil, nil
+      --[[ A type that takes a target gets the third step; the rest bind
+           where they stand. Skipping the step for a `draw` or an `open`
+           would otherwise ask which mob to aim a menu at. ]]
+      if TARGETED_TYPES[target.entry.record.type] then
+        pending = copy_record(target.entry.record)
+        step, page = STEP_TARGET, 1
+        details, hovered = nil, nil
+      else
+        commit(target.entry.record)
+      end
+    elseif target.kind == "target" then
+      if pending ~= nil then
+        local record = copy_record(pending)
+        record.target = target.token
+        commit(record)
+      end
     elseif target.kind == "category" then
       category_index, page = target.index, 1
     elseif target.kind == "pager" then
-      page = view ~= nil and (page % view.pages + 1) or 1
+      local pages = (catalog_view or target_view or {}).pages or 1
+      page = page % pages + 1
     end
     redraw()
   end
 
   local function on_drop(origin, target)
-    if origin.kind == "entry" then
-      -- A catalog drag always has an explicit layer already (the catalog
-      -- does not unlock without one), so the drop inherits it; dropped on
-      -- anything but a slot it is abandoned silently.
-      if target ~= nil and target.kind == "slot" then
-        write_bind(origin.entry.record, target)
-      end
-    elseif origin.kind == "slot" then
+    if origin.kind == "slot" then
       if target == nil then
         --[[ GENUINELY empty space only - the wiki's own words. The stack
              panel opens eight pixels from the slot, so a drop onto one of
@@ -1009,7 +1219,7 @@ local function new(deps)
       return
     end
     active = true
-    slot, cursor, catalog_open, press, tooltip, hovered = nil, nil, false, nil, nil, nil
+    slot, step, cursor, pending, press, details, hovered = nil, nil, nil, nil, nil, nil, nil
     -- Rebuilt every time edit mode opens: the inventory, the known spells
     -- and the job pair all move in play.
     rebuild_catalog()
@@ -1022,8 +1232,8 @@ local function new(deps)
       return
     end
     active = false
-    slot, cursor, catalog_open, press, tooltip, hovered = nil, nil, false, nil, nil, nil
-    panel, view, catalog_groups = nil, nil, nil
+    slot, step, cursor, pending, press, details, hovered = nil, nil, nil, nil, nil, nil, nil
+    window, layer_view, catalog_view, target_view, catalog_groups = nil, nil, nil, nil, nil
     icon_memo = {}
     apply_preview()
     destroy_prims()
@@ -1042,36 +1252,47 @@ local function new(deps)
     redraw()
   end
 
-  --- The layer under the `EDITING ->` cursor, or nil.
+  --- The layer the wizard is editing into, or nil.
   function self.layer()
     return cursor ~= nil and cursor.source or nil
   end
 
-  function self.panel()
-    return panel
+  --- The one window, and the step it is showing. Nil while no slot is
+  --- picked - edit mode itself draws nothing until you click one.
+  function self.window()
+    return window
+  end
+
+  --- Exactly one of the three is non-nil, and only for the live step.
+  function self.layer_view()
+    return layer_view
   end
 
   function self.catalog_view()
-    return view
+    return catalog_view
   end
 
-  function self.tooltip()
-    return tooltip
+  function self.target_view()
+    return target_view
   end
 
-  --- Rebuild the resting tooltip from the target it was already on: a
-  --- recast counts down whether or not the cursor moves. Called on the
+  function self.details()
+    return details
+  end
+
+  --- Rebuild the resting details column from the target it was already on:
+  --- a recast counts down whether or not the cursor moves. Called on the
   --- widget's own read cadence, never per frame.
-  function self.refresh_tooltip()
-    -- Never mid-gesture: a drag owns the cursor, and the tooltip it stood
-    -- down stays down until the drop resolves.
+  function self.refresh_details()
+    -- Never mid-gesture: a drag owns the cursor, and the details it stood
+    -- down stay down until the drop resolves.
     if not active or hovered == nil or (press ~= nil and press.drag) then
       return
     end
-    local rebuilt = build_tooltip(hovered)
-    local before = tooltip ~= nil and table.concat(tooltip.lines, "\n") or nil
+    local rebuilt = build_details(hovered)
+    local before = details ~= nil and table.concat(details.lines, "\n") or nil
     local after = rebuilt ~= nil and table.concat(rebuilt.lines, "\n") or nil
-    tooltip = rebuilt
+    details = rebuilt
     if before ~= after then
       redraw()
     end
@@ -1100,10 +1321,10 @@ local function new(deps)
         if not press.drag and not inside(x, y, press.rect) then
           press.drag = true
           -- The cursor left what it started on: this is a drag, so the
-          -- tooltip that was following it stands down - and the target it
-          -- was built from goes with it, or the cadence rebuild would put
-          -- it back under a cursor that is mid-gesture.
-          tooltip, hovered = nil, nil
+          -- details it was describing stand down - and the target they were
+          -- built from goes with them, or the cadence rebuild would put
+          -- them back under a cursor that is mid-gesture.
+          details, hovered = nil, nil
           redraw()
         end
         -- Motion is the client's until a real drag is live - layout_mode's
@@ -1112,19 +1333,15 @@ local function new(deps)
         return press.drag
       end
       local target = hit(x, y)
-      if target ~= nil and target.kind == "tooltip" then
-        -- Hovering our own tooltip changes nothing: it describes whatever
-        -- it was opened for until the cursor reaches something else.
-        return false
-      end
       -- Keyed on the TARGET, not on the text: edit mode draws every side,
       -- so two slots holding the same action are ordinary, and a text-only
-      -- gate would leave the panel beside the slot the cursor has left.
-      if target_key(target) == (tooltip and tooltip.key) then
+      -- gate would leave the column describing the slot the cursor has
+      -- left.
+      if target_key(target) == (details and details.key) then
         return false
       end
       hovered = target
-      tooltip = build_tooltip(target)
+      details = build_details(target)
       redraw()
       return false
     end
@@ -1158,17 +1375,19 @@ local function new(deps)
       return true
     end
     if kind == WHEEL then
-      if view == nil or not inside(x, y, view) then
-        -- Still ours over the stack panel and the tooltip: the game zooming
-        -- its camera under a panel the player is reading is not wanted.
-        -- There is simply nothing to scroll there.
-        return (panel ~= nil and inside(x, y, panel)) or (tooltip ~= nil and inside(x, y, tooltip))
+      -- Ours anywhere over the window, scrollable or not: the game zooming
+      -- its camera under a window the player is reading is not wanted.
+      if window == nil or not inside(x, y, window) then
+        return false
       end
-      if type(delta) == "number" and delta ~= 0 then
-        -- Wheel down is forward, and both ends wrap: the pager says scroll,
-        -- so it has to keep moving rather than stick at an end.
-        local step = delta < 0 and 1 or -1
-        page = (page - 1 + step) % view.pages + 1
+      local pages = (catalog_view or target_view or {}).pages
+      if pages ~= nil and type(delta) == "number" and delta ~= 0 then
+        --[[ Wheel down is forward, and BOTH ends clamp (Kevin,
+             2026-08-22): they used to wrap, so scrolling off the end of a
+             long list silently threw you back to the top and it read as the
+             list having reset. ]]
+        local move = delta < 0 and 1 or -1
+        page = math.max(1, math.min(pages, page + move))
         redraw()
       end
       return true
@@ -1181,7 +1400,8 @@ local function new(deps)
   --- exit would - there is no second, quieter shutdown path to keep in step.
   function self.destroy()
     self.close()
-    press, tooltip, hovered, panel, view = nil, nil, nil, nil, nil
+    press, details, hovered = nil, nil, nil
+    window, layer_view, catalog_view, target_view = nil, nil, nil, nil
   end
 
   return self

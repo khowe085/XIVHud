@@ -166,7 +166,7 @@ local function drag(binder, from_x, from_y, to_x, to_y)
 end
 
 local function row_named(env, source)
-  for _, row in ipairs(env.binder.panel().rows) do
+  for _, row in ipairs(env.binder.layer_view().rows) do
     if row.source == source then
       return row
     end
@@ -182,6 +182,32 @@ local function entry_named(env, label)
     end
   end
   return nil
+end
+
+local function target_named(env, label)
+  local view = env.binder.target_view()
+  for _, row in ipairs(view and view.targets or {}) do
+    if row.label == label then
+      return row
+    end
+  end
+  return nil
+end
+
+--[[ Click a catalog entry and, when its type asks for a target, take the
+     default `(no target)` - which is exactly what a mouse bind produced
+     before the third step existed. Tests that are not about targeting stay
+     about their own subject. ]]
+local function pick(binder, env, label)
+  click(binder, centre(entry_named(env, label)))
+  if env.binder.target_view() ~= nil then
+    click(binder, centre(target_named(env, "(no target)")))
+  end
+end
+
+--- The back button walks a step in reverse, and closes from the first.
+local function back(binder, env)
+  click(binder, centre(env.binder.window().back))
 end
 
 local function open_stack(binder, env, side, slot)
@@ -265,7 +291,7 @@ describe("crossbar binder", function()
     it("opens on a slot click, listing the whole stack", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      local panel = binder.panel()
+      local panel = binder.layer_view()
       assert.is_not_nil(panel, "the clicked slot opened its stack")
       local sources = {}
       for _, row in ipairs(panel.rows) do
@@ -308,7 +334,7 @@ describe("crossbar binder", function()
     it("reports the address it is editing", function()
       local binder, env = build()
       open_stack(binder, env, "right", 1)
-      assert.are.same({ set = 1, side = "right", slot = 1 }, binder.panel().address)
+      assert.are.same({ set = 1, side = "right", slot = 1 }, binder.window().address)
     end)
 
     it("closes and clears the cursor when a click lands on nothing", function()
@@ -317,7 +343,7 @@ describe("crossbar binder", function()
       click(binder, centre(row_named(env, "base")))
       assert.is_not_nil(binder.layer())
       click(binder, 5, 5)
-      assert.is_nil(binder.panel(), "the panel is gone")
+      assert.is_nil(binder.window(), "the panel is gone")
       assert.is_nil(binder.layer(), "nothing is sticky")
     end)
 
@@ -329,7 +355,7 @@ describe("crossbar binder", function()
       local x, y = slot_point(env, "left", 4)
       click(binder, x, y)
       assert.is_nil(binder.layer(), "a new slot is a new decision")
-      assert.are.same({ set = 1, side = "left", slot = 4 }, binder.panel().address)
+      assert.are.same({ set = 1, side = "left", slot = 4 }, binder.window().address)
     end)
   end)
 
@@ -350,6 +376,9 @@ describe("crossbar binder", function()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "ctx:dark-arts")))
       assert.are.same({ 359 }, last_preview(env), "dark arts alone - light arts drops out")
+      -- Picking a layer moves the window on to the catalog, so choosing a
+      -- different one means stepping back to the layer list first.
+      back(binder, env)
       click(binder, centre(row_named(env, "ctx:addendum-white")))
       assert.are.same({ 401 }, last_preview(env), "which lights light-arts too, through any_of")
     end)
@@ -359,16 +388,17 @@ describe("crossbar binder", function()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
       assert.is_nil(last_preview(env), "the live buff list")
-      assert.are.equal("LIVE", binder.panel().viewing)
+      assert.are.equal("LIVE", binder.window().viewing)
+      back(binder, env)
       click(binder, centre(row_named(env, "ctx:light-arts")))
-      assert.are.equal("LIGHT ARTS", binder.panel().viewing, "the simulated state is unmissable")
+      assert.are.equal("LIGHT ARTS", binder.window().viewing, "the simulated state is unmissable")
     end)
 
     it("binds a clicked catalog entry into the cursor's layer, and says so", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "ctx:light-arts")))
-      click(binder, centre(entry_named(env, "Berserk")))
+      pick(binder, env, "Berserk")
       assert.are.same(
         { type = "ja", action = "Berserk" },
         env.bindings.entry_at("ctx:light-arts:1", "left", 3),
@@ -383,9 +413,9 @@ describe("crossbar binder", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
-      click(binder, centre(entry_named(env, "Berserk")))
+      pick(binder, env, "Berserk")
       assert.is_nil(binder.catalog_view(), "the catalog closes behind the bind")
-      assert.is_not_nil(binder.panel(), "the stack panel stays for the next edit")
+      assert.is_not_nil(binder.window(), "the stack panel stays for the next edit")
       assert.are.equal("ja Berserk", row_named(env, "base").entry, "refreshed in place")
     end)
 
@@ -424,7 +454,7 @@ describe("crossbar binder", function()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
       assert.is_nil(env.repaints, "opening and picking a layer writes nothing")
-      click(binder, centre(entry_named(env, "Berserk")))
+      pick(binder, env, "Berserk")
       assert.are.equal(1, env.repaints, "the bind")
       local x, y = slot_point(env, "left", 3)
       drag(binder, x, y, 4, 4)
@@ -527,8 +557,11 @@ describe("crossbar binder", function()
     end)
 
     it("says so when there are more categories than rows for them", function()
+      -- Enough to overflow the taller window's column, whatever it holds:
+      -- the count is derived from the window height now, so a fixture with
+      -- a fixed number would stop testing anything the day it grew.
       local groups = {}
-      for index = 1, 20 do
+      for index = 1, 60 do
         groups[index] = {
           name = ("Category %02d"):format(index),
           entries = { { label = "Thing", record = { type = "draw" } } },
@@ -538,8 +571,8 @@ describe("crossbar binder", function()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
       local view = binder.catalog_view()
-      assert.is_true(#view.categories < 20, "the column is bounded")
-      assert.are.equal(20 - #view.categories, view.categories_hidden, "and it counts what it cannot show")
+      assert.is_true(#view.categories < 60, "the column is bounded")
+      assert.are.equal(60 - #view.categories, view.categories_hidden, "and it counts what it cannot show")
       local header = nil
       for _, prim in ipairs(env.prims.texts) do
         if prim.visible and type(prim.last.text) == "string" and prim.last.text:find("more", 1, true) then
@@ -580,27 +613,35 @@ describe("crossbar binder", function()
       assert.are.equal(2, built, "and only when the job really moved")
     end)
 
-    it("wraps the wheel round both ends of the catalog", function()
+    it("clamps the wheel at both ends of the catalog rather than wrapping", function()
+      --[[ It used to wrap, so scrolling off the end of a long list threw
+           you silently back to the top and read as the list resetting
+           (Kevin, 2026-08-22). ]]
       local long = {}
-      for index = 1, 20 do
+      for index = 1, 60 do
         long[index] = { label = ("Spell %02d"):format(index), record = { type = "ma", action = "Spell" } }
       end
       local binder, env = build({ catalog = { { name = "White Magic", entries = long } } })
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
-      local view = binder.catalog_view()
-      assert.are.equal(2, view.pages)
-      binder.mouse(WHEEL, view.x + 10, view.y + 10, 1)
-      assert.are.equal(2, binder.catalog_view().page, "wheel up from the first page wraps to the last")
-      binder.mouse(WHEEL, view.x + 10, view.y + 10, -1)
-      assert.are.equal(1, binder.catalog_view().page, "and down from the last wraps to the first")
+      local window = binder.window()
+      local pages = binder.catalog_view().pages
+      assert.is_true(pages > 1, "a list worth scrolling")
+      binder.mouse(WHEEL, window.x + 10, window.y + 10, 1)
+      assert.are.equal(1, binder.catalog_view().page, "up from the first page stays on it")
+      for _ = 1, pages + 3 do
+        binder.mouse(WHEEL, window.x + 10, window.y + 10, -1)
+      end
+      assert.are.equal(pages, binder.catalog_view().page, "and down stops on the last, never round to the top")
+      binder.mouse(WHEEL, window.x + 10, window.y + 10, 1)
+      assert.are.equal(pages - 1, binder.catalog_view().page, "up still steps back")
     end)
 
     it("echoes the bind in the plan's own shape, with no type token", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "ctx:light-arts")))
-      click(binder, centre(entry_named(env, "Berserk")))
+      pick(binder, env, "Berserk")
       assert.is_not_nil(
         env.said[1]:find("bound Berserk -> light-arts / set 1 / left / slot 3", 1, true),
         "said: " .. env.said[1]
@@ -622,7 +663,7 @@ describe("crossbar binder", function()
       })
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
-      click(binder, centre(entry_named(env, "Chocobo")))
+      pick(binder, env, "Chocobo")
       assert.is_not_nil(env.said[1]:find("bound Chocobo ->", 1, true), "said: " .. env.said[1])
     end)
 
@@ -644,7 +685,7 @@ describe("crossbar binder", function()
       })
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
-      click(binder, centre(entry_named(env, "Chocobo")))
+      pick(binder, env, "Chocobo")
       assert.is_not_nil(env.said[1]:find("bound Pull mount ->", 1, true), "said: " .. env.said[1])
     end)
 
@@ -659,7 +700,7 @@ describe("crossbar binder", function()
       click(binder, centre(entry))
       click(binder, slot_point(env, "left", 4))
       click(binder, centre(row_named(env, "base")))
-      click(binder, centre(entry_named(env, "Berserk")))
+      pick(binder, env, "Berserk")
       local first = env.bindings.entry_at("1", "left", 3)
       first.alias = "Rage"
       assert.is_nil(env.bindings.entry_at("1", "left", 4).alias, "the other slot kept its own record")
@@ -674,7 +715,7 @@ describe("crossbar binder", function()
       open_stack(binder, env, "left", 3)
       assert.are.equal("shared", row_named(env, "base").label)
       click(binder, centre(row_named(env, "base")))
-      click(binder, centre(entry_named(env, "Berserk")))
+      pick(binder, env, "Berserk")
       assert.is_not_nil(env.said[1]:find("-> shared /", 1, true), "said: " .. env.said[1])
       assert.are.same(
         { type = "ja", action = "Berserk" },
@@ -703,7 +744,7 @@ describe("crossbar binder", function()
       assert.are.equal("sub:NIN", row.label, "the worn subjob names the row")
       assert.are.equal("ma Utsusemi: Ichi", row.entry, "and a stale subjob's entry is not shown under it")
       click(binder, centre(row))
-      click(binder, centre(entry_named(env, "Berserk")))
+      pick(binder, env, "Berserk")
       assert.are.same({ type = "ja", action = "Berserk" }, env.files.WAR.sub.NIN[1].left[3])
       assert.are.same(
         { type = "ja", action = "Last Resort" },
@@ -723,26 +764,27 @@ describe("crossbar binder", function()
       end
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
-      click(binder, centre(entry_named(env, "Berserk")))
+      pick(binder, env, "Berserk")
       assert.are.equal(1, #writes, "one write, not a clear and an insert")
       assert.are.same({ type = "ja", action = "Berserk" }, writes[1])
     end)
   end)
 
   describe("drag and drop", function()
-    it("binds a catalog entry dropped on a slot, in the cursor's layer", function()
+    it("no longer binds a catalog entry dragged onto a slot", function()
+      --[[ Drag-to-bind is gone with the wizard (Kevin, 2026-08-22): the
+           three steps are the way in, and a drag that half-bound something
+           (no target step, no confirmation) would be a second, quieter path
+           that could disagree with them. Swap and clear survive, because
+           the wizard has no equivalent for either. ]]
       local binder, env = build()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "ctx:light-arts")))
       local from_x, from_y = centre(entry_named(env, "Berserk"))
       local to_x, to_y = slot_point(env, "right", 2)
-      assert.is_true(drag(binder, from_x, from_y, to_x, to_y))
-      assert.are.same(
-        { type = "ja", action = "Berserk" },
-        env.bindings.entry_at("ctx:light-arts:1", "right", 2),
-        "a slot other than the one whose stack is open, in the same named layer"
-      )
-      assert.are.equal("ctx:light-arts", binder.layer(), "the cursor stays put for the next drop")
+      drag(binder, from_x, from_y, to_x, to_y)
+      assert.is_nil(env.bindings.entry_at("ctx:light-arts:1", "right", 2), "nothing was bound")
+      assert.are.equal("ctx:light-arts", binder.layer(), "and the cursor is where it was")
     end)
 
     it("abandons a catalog drag dropped on nothing", function()
@@ -801,19 +843,22 @@ describe("crossbar binder", function()
       )
     end)
 
-    it("cancels a slot drag dropped onto the binder's own surfaces", function()
-      -- The stack panel opens eight pixels from the slot, so a drop onto it
-      -- is the commonest miss there is: only genuinely empty space clears.
+    it("cancels a slot drag dropped onto the binder's own window", function()
+      -- Only genuinely empty space clears; the window fills the middle of
+      -- the screen, so a drop landing on it is the commonest miss there is.
       local binder, env = build()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
       local x, y = slot_point(env, "left", 3)
+      local window = binder.window()
       env.said = {}
-      drag(binder, x, y, centre(binder.panel()))
-      assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "left", 3), "over the panel")
+      drag(binder, x, y, centre(window))
+      assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "left", 3), "over the list")
       assert.are.same({}, env.said, "and quietly - a cancel says nothing")
-      drag(binder, x, y, centre(binder.catalog_view()))
-      assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "left", 3), "over the catalog")
+      -- The details column too: it is part of the window now rather than a
+      -- panel of its own, but a drop there must still not delete.
+      drag(binder, x, y, window.details.x + 10, window.details.y + 10)
+      assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "left", 3), "over the details")
       assert.are.same({}, env.said)
       drag(binder, x, y, 4, 4)
       assert.is_nil(env.bindings.entry_at("1", "left", 3), "and empty space still clears the cursor's layer")
@@ -834,7 +879,7 @@ describe("crossbar binder", function()
       binder.mouse(LEFT_DOWN, x, y, 0)
       binder.mouse(MOVE, x + 2, y + 2, 0)
       binder.mouse(LEFT_UP, x + 2, y + 2, 0)
-      assert.is_not_nil(binder.panel(), "a zero-distance drag is a click, and opens the panel")
+      assert.is_not_nil(binder.window(), "a zero-distance drag is a click, and opens the panel")
       assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "left", 3), "and moves nothing")
     end)
 
@@ -872,7 +917,7 @@ describe("crossbar binder", function()
       binder.open()
       local x, y = slot_point(env, "left", 3)
       binder.mouse(MOVE, x, y, 0)
-      local tooltip = binder.tooltip()
+      local tooltip = binder.details()
       assert.is_not_nil(tooltip, "hovering a slot opens one")
       local text = table.concat(tooltip.lines, "\n")
       for _, wanted in ipairs({ "Provoke", "ja", "me", "8", "30", "Fusion", "base" }) do
@@ -892,7 +937,7 @@ describe("crossbar binder", function()
       binder.open()
       local x, y = slot_point(env, "left", 3)
       binder.mouse(MOVE, x, y, 0)
-      local text = table.concat(binder.tooltip().lines, "\n")
+      local text = table.concat(binder.details().lines, "\n")
       assert.is_not_nil(text:find("covers", 1, true), text)
       assert.is_not_nil(text:find("base", 1, true), text)
     end)
@@ -903,18 +948,21 @@ describe("crossbar binder", function()
       click(binder, centre(row_named(env, "base")))
       local x, y = slot_point(env, "left", 3)
       binder.mouse(MOVE, x, y, 0)
-      assert.is_not_nil(binder.tooltip(), "a slot tooltip")
+      assert.is_not_nil(binder.details(), "a slot tooltip")
       local entry = entry_named(env, "Berserk")
       binder.mouse(MOVE, centre(entry))
-      assert.is_not_nil(table.concat(binder.tooltip().lines, "\n"):find("Berserk", 1, true))
+      assert.is_not_nil(table.concat(binder.details().lines, "\n"):find("Berserk", 1, true))
       binder.mouse(MOVE, 4, 4, 0)
-      assert.is_nil(binder.tooltip(), "off every target, the tooltip goes")
+      assert.is_nil(binder.details(), "off every target, the tooltip goes")
     end)
 
-    it("moves between two slots holding the same action", function()
-      -- Edit mode draws every side, so the same action on two slots is
-      -- ordinary: a repaint gate keyed on the text alone would leave the
-      -- panel drawn beside the slot the cursor has left.
+    it("re-reads between two slots holding the same action", function()
+      --[[ Edit mode draws every side, so the same action on two slots is
+           ordinary. The details column does not move any more - it is a
+           fixed part of the window - so what has to change is the KEY it
+           was built from: a gate on the text alone would leave the column
+           describing the slot the cursor has left, and with two identical
+           actions nothing on screen would give it away. ]]
       local files = {
         WAR = {
           sets = {
@@ -923,13 +971,15 @@ describe("crossbar binder", function()
         },
       }
       local binder, env = build({ files = files })
-      binder.open()
+      -- The details column lives IN the window, so there has to be one: edit
+      -- mode alone draws nothing until a slot is clicked.
+      open_stack(binder, env, "left", 3)
       binder.mouse(MOVE, slot_point(env, "left", 3))
-      local first = binder.tooltip()
+      local first = binder.details()
       binder.mouse(MOVE, slot_point(env, "left", 4))
-      local second = binder.tooltip()
+      local second = binder.details()
       assert.is_not_nil(second)
-      assert.are_not.same({ first.x, first.y }, { second.x, second.y }, "the panel follows the cursor")
+      assert.are_not.equal(first.key, second.key, "a different slot, even reading the same")
       local drawn = nil
       for _, prim in ipairs(env.prims.texts) do
         if prim.visible and prim.last.text == "Provoke" then
@@ -937,7 +987,7 @@ describe("crossbar binder", function()
         end
       end
       assert.is_not_nil(drawn, "and it is really drawn there")
-      assert.are.equal(second.y + 6, drawn.y, "at the new panel's own origin")
+      assert.are.equal(binder.window().details.y, drawn.y, "at the top of the details column")
     end)
 
     it("reads a recast as time left, and zero as ready", function()
@@ -947,20 +997,20 @@ describe("crossbar binder", function()
       end
       binder.open()
       binder.mouse(MOVE, slot_point(env, "left", 3))
-      assert.is_not_nil(table.concat(binder.tooltip().lines, "\n"):find("12s left", 1, true))
+      assert.is_not_nil(table.concat(binder.details().lines, "\n"):find("12s left", 1, true))
       env.describe = function(record)
         return { name = record.action, type = record.type, recast = 0 }
       end
       binder.mouse(MOVE, 4, 4, 0)
       binder.mouse(MOVE, slot_point(env, "left", 3))
-      local text = table.concat(binder.tooltip().lines, "\n")
+      local text = table.concat(binder.details().lines, "\n")
       assert.is_not_nil(text:find("ready", 1, true), text)
       assert.is_nil(text:find("0s", 1, true), "zero is not 'no cooldown': " .. text)
     end)
 
-    it("moves between two catalog entries carrying the same label", function()
-      -- The same tooltip gate as the slots, on the other surface: a text
-      -- comparison would strand the panel beside the row already left.
+    it("re-reads between two catalog entries carrying the same label", function()
+      -- The same gate as the slots, on the other surface: a text comparison
+      -- would leave the column describing the row already left.
       local binder, env = build({
         catalog = {
           {
@@ -976,11 +1026,11 @@ describe("crossbar binder", function()
       click(binder, centre(row_named(env, "base")))
       local entries = binder.catalog_view().entries
       binder.mouse(MOVE, centre(entries[1]))
-      local first = binder.tooltip()
+      local first = binder.details()
       binder.mouse(MOVE, centre(entries[2]))
-      local second = binder.tooltip()
+      local second = binder.details()
       assert.is_not_nil(second)
-      assert.are_not.same({ first.x, first.y }, { second.x, second.y }, "the panel followed the cursor")
+      assert.are_not.equal(first.key, second.key, "a different row, even reading the same")
     end)
 
     it("resolves a hovered target once, not once per mouse move", function()
@@ -1009,15 +1059,15 @@ describe("crossbar binder", function()
       end
       binder.open()
       binder.mouse(MOVE, slot_point(env, "left", 3))
-      assert.is_not_nil(table.concat(binder.tooltip().lines, "\n"):find("30s left", 1, true))
+      assert.is_not_nil(table.concat(binder.details().lines, "\n"):find("30s left", 1, true))
       remaining = 12
-      binder.refresh_tooltip()
-      assert.is_not_nil(table.concat(binder.tooltip().lines, "\n"):find("12s left", 1, true), "the cursor never moved")
+      binder.refresh_details()
+      assert.is_not_nil(table.concat(binder.details().lines, "\n"):find("12s left", 1, true), "the cursor never moved")
       assert.has_no.errors(function()
         binder.mouse(MOVE, 4, 4, 0)
-        binder.refresh_tooltip()
+        binder.refresh_details()
       end, "and with nothing hovered it is a no-op")
-      assert.is_nil(binder.tooltip())
+      assert.is_nil(binder.details())
     end)
 
     it("keeps a tooltip down while a drag is live, cadence or no cadence", function()
@@ -1029,12 +1079,12 @@ describe("crossbar binder", function()
       binder.open()
       local x, y = slot_point(env, "left", 3)
       binder.mouse(MOVE, x, y, 0)
-      assert.is_not_nil(binder.tooltip())
+      assert.is_not_nil(binder.details())
       binder.mouse(LEFT_DOWN, x, y, 0)
       binder.mouse(MOVE, 500, 500, 0)
-      assert.is_nil(binder.tooltip(), "the drag stood it down")
-      binder.refresh_tooltip()
-      assert.is_nil(binder.tooltip(), "and the cadence leaves it down")
+      assert.is_nil(binder.details(), "the drag stood it down")
+      binder.refresh_details()
+      assert.is_nil(binder.details(), "and the cadence leaves it down")
     end)
 
     it("does not float the tooltip of a catalog row the bind closed", function()
@@ -1043,27 +1093,26 @@ describe("crossbar binder", function()
       click(binder, centre(row_named(env, "base")))
       local entry = entry_named(env, "Berserk")
       binder.mouse(MOVE, centre(entry))
-      assert.is_not_nil(binder.tooltip())
+      assert.is_not_nil(binder.details())
       click(binder, centre(entry))
       assert.is_nil(binder.catalog_view(), "the bind closed the catalog")
-      assert.is_nil(binder.tooltip(), "so the row it described is gone too")
-      binder.refresh_tooltip()
-      assert.is_nil(binder.tooltip(), "and the cadence does not bring it back")
+      assert.is_nil(binder.details(), "so the row it described is gone too")
+      binder.refresh_details()
+      assert.is_nil(binder.details(), "and the cadence does not bring it back")
     end)
 
-    it("treats its own tooltip as a surface, never as empty space", function()
+    it("treats its own details column as a surface, never as empty space", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
       binder.mouse(MOVE, slot_point(env, "left", 3))
-      local tip = binder.tooltip()
-      assert.is_not_nil(tip)
-      local x, y = centre(tip)
+      assert.is_not_nil(binder.details())
+      local window = binder.window()
+      local x, y = window.details.x + 10, window.details.y + 10
       assert.is_false(binder.mouse(MOVE, x, y, 0), "moving onto it is not a hover of something else")
-      assert.is_not_nil(binder.tooltip(), "and does not blink it out")
-      assert.is_true(binder.mouse(LEFT_DOWN, x, y, 0), "the tooltip is one of ours")
+      assert.is_true(binder.mouse(LEFT_DOWN, x, y, 0), "the column is one of ours")
       assert.is_true(binder.mouse(LEFT_UP, x, y, 0))
-      assert.is_not_nil(binder.panel(), "so a press on it never reads as a dismissing click")
+      assert.is_not_nil(binder.window(), "so a press on it never reads as a dismissing click")
       assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "left", 3))
       assert.are.same({}, env.said)
     end)
@@ -1073,7 +1122,7 @@ describe("crossbar binder", function()
       binder.open()
       local x, y = slot_point(env, "left", 8)
       binder.mouse(MOVE, x, y, 0)
-      assert.is_nil(binder.tooltip(), "there is nothing known about an unbound slot")
+      assert.is_nil(binder.details(), "there is nothing known about an unbound slot")
     end)
   end)
 
@@ -1123,17 +1172,17 @@ describe("crossbar binder", function()
       })
       binder.open()
       click(binder, slot_point(env, "left", 3))
-      local before = binder.panel().x
-      assert.are.equal(math.floor(1920 / 2 - binder.panel().width / 2), before, "centred to begin with")
+      local before = binder.window().x
+      assert.are.equal(math.floor(1920 / 2 - binder.window().width / 2), before, "centred to begin with")
       origin.x = origin.x + 300
       binder.refresh()
-      assert.are.equal(before, binder.panel().x, "and it does not chase the anchor")
+      assert.are.equal(before, binder.window().x, "and it does not chase the anchor")
     end)
 
     it("claims the wheel over its own panels", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      local x, y = centre(binder.panel())
+      local x, y = centre(binder.window())
       assert.is_true(binder.mouse(WHEEL, x, y, -1), "the game must not zoom under an open panel")
       assert.is_false(binder.mouse(WHEEL, 4, 4, -1), "elsewhere the wheel is the client's")
     end)
@@ -1160,7 +1209,7 @@ describe("crossbar binder", function()
       local x, y = slot_point(env, "left", 3)
       assert.is_false(binder.mouse(RIGHT_DOWN, x, y, 0), "right-click is not the binder's gesture")
       assert.is_false(binder.mouse(99, x, y, 0))
-      assert.is_nil(binder.panel())
+      assert.is_nil(binder.window())
     end)
 
     it("ignores every event once closed, mid-gesture included", function()
@@ -1172,7 +1221,7 @@ describe("crossbar binder", function()
       assert.is_false(binder.mouse(MOVE, x + 400, y, 0))
       assert.is_false(binder.mouse(LEFT_UP, x + 400, y, 0))
       binder.open()
-      assert.is_nil(binder.panel(), "the interrupted press did not survive the close")
+      assert.is_nil(binder.window(), "the interrupted press did not survive the close")
     end)
 
     --[[ Motion is the client's unless a real drag is live - layout_mode's
@@ -1214,11 +1263,11 @@ describe("crossbar binder", function()
       binder.open()
       local x, y = slot_point(env, "left", 3)
       assert.is_false(binder.mouse(LEFT_UP, x, y, 0), "a release we never armed is the game's")
-      assert.is_nil(binder.panel())
+      assert.is_nil(binder.window())
       binder.mouse(LEFT_DOWN, x, y, 0)
       binder.mouse(LEFT_DOWN, x, y, 0)
       assert.is_true(binder.mouse(LEFT_UP, x, y, 0), "the second press replaces the first")
-      assert.is_not_nil(binder.panel())
+      assert.is_not_nil(binder.window())
     end)
 
     it("resolves a drag that leaves the window", function()
@@ -1251,31 +1300,116 @@ describe("crossbar binder", function()
       local x, y = env.render.slot_pos("xhb", "left", 3)
       click(binder, 100 + x + 20, 10 + y + 20)
       click(binder, centre(row_named(env, "base")))
-      local view = binder.catalog_view()
-      assert.are.equal(math.floor(1080 / 2 - view.height / 2), view.y, "vertically centred, bar or no bar")
+      assert.are.equal(
+        math.floor(1080 / 2 - binder.window().height / 2),
+        binder.window().y,
+        "vertically centred, bar or no bar"
+      )
     end)
 
-    it("opens the panel dead-centre, and side by side with the catalog", function()
-      --[[ One centred block, panel left of the catalog: beside-the-slot put
-           it under the neighbouring slots' labels, and Windower draws every
-           text above every image, so no ordering trick could lift a
-           backdrop clear of them. ]]
+    it("opens one window dead-centre and never moves it between steps", function()
+      --[[ Beside-the-slot put it under the neighbouring slots' labels, and
+           Windower draws every text above every image, so no ordering trick
+           could lift a backdrop clear of them. Centring is the fix; the
+           window staying PUT across the steps is the other half, or every
+           choice would shift the thing under the cursor. ]]
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      local panel = binder.panel()
-      assert.is_nil(binder.catalog_view(), "no catalog yet")
-      assert.are.equal(math.floor(1920 / 2 - panel.width / 2), panel.x, "alone, it is dead-centre")
-      assert.are.equal(math.floor(1080 / 2 - panel.height / 2), panel.y)
+      local window = binder.window()
+      assert.are.equal(math.floor(1920 / 2 - window.width / 2), window.x, "dead-centre")
+      assert.are.equal(math.floor(1080 / 2 - window.height / 2), window.y)
+      assert.is_not_nil(binder.layer_view(), "step one")
+      assert.is_nil(binder.catalog_view())
 
       click(binder, centre(row_named(env, "base")))
-      local view = binder.catalog_view()
-      panel = binder.panel()
-      assert.is_not_nil(view)
-      local block = panel.width + 8 + view.width
-      assert.are.equal(math.floor(1920 / 2 - block / 2), panel.x, "panel takes the block's left")
-      assert.are.equal(panel.x + panel.width + 8, view.x, "catalog sits beside it")
-      assert.are.equal(math.floor(1080 / 2 - panel.height / 2), panel.y, "each centred on its own height")
-      assert.are.equal(math.floor(1080 / 2 - view.height / 2), view.y)
+      assert.is_not_nil(binder.catalog_view(), "step two")
+      assert.is_nil(binder.layer_view(), "one step at a time")
+      assert.are.same({ window.x, window.y }, { binder.window().x, binder.window().y }, "same window, same place")
+
+      click(binder, centre(entry_named(env, "Berserk")))
+      assert.is_not_nil(binder.target_view(), "step three, for a type that takes a target")
+      assert.is_nil(binder.catalog_view())
+      assert.are.same({ window.x, window.y }, { binder.window().x, binder.window().y })
+    end)
+
+    it("walks back a step at a time, and closes from the first", function()
+      --[[ Every step needs a way out that is not "click empty space and
+           hope" - which on a screen this full is also the gesture that
+           clears a slot (Kevin, 2026-08-22). ]]
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Berserk")))
+      assert.is_not_nil(binder.target_view(), "three steps in")
+
+      back(binder, env)
+      assert.is_not_nil(binder.catalog_view(), "back to the actions")
+      assert.is_nil(binder.target_view())
+      back(binder, env)
+      assert.is_not_nil(binder.layer_view(), "back to the layers")
+      assert.is_nil(binder.layer(), "and the layer choice is released with it")
+      back(binder, env)
+      assert.is_nil(binder.window(), "and from the first step it closes")
+      assert.are.same({}, env.said, "walking back binds nothing and says nothing")
+    end)
+
+    it("binds the target picked on the third step", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Berserk")))
+      click(binder, centre(target_named(env, "<me>")))
+      assert.are.same({ type = "ja", action = "Berserk", target = "me" }, env.bindings.entry_at("1", "left", 3))
+      -- And it lands back on the layer list, ready for the next edit on the
+      -- same slot rather than closing out from under you.
+      assert.is_not_nil(binder.layer_view(), "back to step one")
+    end)
+
+    it("offers every target token, not just the common few", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Berserk")))
+      local seen = {}
+      local view = binder.target_view()
+      for page = 1, view.pages do
+        for _, row in ipairs(binder.target_view().targets) do
+          seen[row.label] = true
+        end
+        if page < view.pages then
+          local window = binder.window()
+          binder.mouse(WHEEL, window.x + 10, window.y + 10, -1)
+        end
+      end
+      for _, label in ipairs({ "(no target)", "<t>", "<me>", "<bt>", "<st>", "<pet>", "<p5>", "<a15>", "<a25>" }) do
+        assert.is_true(seen[label] == true, "missing " .. label)
+      end
+    end)
+
+    it("skips the target step for a type that cannot take one", function()
+      -- Asking which mob to aim a menu at would be nonsense, so `draw`,
+      -- `open` and the rest bind where they stand.
+      local binder, env = build({
+        catalog = { { name = "General", entries = { { label = "Draw", record = { type = "draw" } } } } },
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Draw")))
+      assert.is_nil(binder.target_view(), "no third step")
+      assert.are.same({ type = "draw" }, env.bindings.entry_at("1", "left", 3), "bound straight away")
+      assert.is_not_nil(binder.layer_view(), "and back to step one")
+    end)
+
+    it("draws at its own point size, not the bar's", function()
+      -- The window is deliberately much larger than the bar, whose 10pt is
+      -- unreadable at this scale - so the FAMILY comes from the widget's
+      -- style and the size does not.
+      local binder, env = build()
+      binder.open()
+      assert.is_true(#env.prims.texts > 0, "there are texts to check")
+      for _, prim in ipairs(env.prims.texts) do
+        assert.are.equal(18, prim.font_size)
+      end
     end)
 
     it("hit-tests through the drawn geometry, so an unplaced bar catches nothing", function()
@@ -1287,7 +1421,7 @@ describe("crossbar binder", function()
       binder.open()
       local x, y = slot_point(env, "left", 3)
       assert.is_false(binder.mouse(LEFT_DOWN, x, y, 0), "nothing is drawn there")
-      assert.is_nil(binder.panel())
+      assert.is_nil(binder.window())
     end)
 
     it("follows a scaled anchor's slots", function()
@@ -1302,7 +1436,7 @@ describe("crossbar binder", function()
       local x, y = env.render.slot_pos("xhb", "left", 3)
       local size = env.render.metrics().slot
       click(binder, ANCHOR_X + x * 2 + size, ANCHOR_Y + y * 2 + size)
-      assert.are.same({ set = 1, side = "left", slot = 3 }, binder.panel().address)
+      assert.are.same({ set = 1, side = "left", slot = 3 }, binder.window().address)
     end)
 
     it("refuses to bind what actions.validate rejects", function()
@@ -1311,7 +1445,7 @@ describe("crossbar binder", function()
       })
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
-      click(binder, centre(entry_named(env, "Broken")))
+      pick(binder, env, "Broken")
       assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "left", 3), "nothing written")
       assert.is_not_nil(env.said[1], "and the refusal is said")
     end)

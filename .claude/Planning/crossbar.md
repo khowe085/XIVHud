@@ -1888,27 +1888,47 @@ Mouse-driven replacement for xivcrossbar's gamepad-navigated `action_binder.lua`
 (2,437 lines — the largest thing we are *not* porting). Its catalog logic is the
 part worth mining; its navigation is not.
 
-- **Flow — three surfaces** (confirmed 2026-08-06): the **bar** (slots
-  clickable, source-tagged), the **stack panel** and the **catalog** (which
-  unlocks once a layer row is clicked). `//hud crossbar edit` toggles edit mode
-  — all sides render, input activators go inert, the mouse takes over. Click a
-  slot → stack panel; click a layer row → preview + catalog unlocks; click an
-  action → bound, chat echo, catalog closes, stack panel refreshes in place
-  (unbind / relayer / next slot from there). Exiting edit mode tears everything
-  down.
-- **Placement: dead centre, one block** (Kevin, live client, 2026-08-22 —
-  the in-client tuning the draft above was waiting for). The panel opened
-  *beside its slot* and drew under the NEIGHBOURING slots' labels: Windower
-  renders every `texts` object above every `images` one, so no creation order
-  could have lifted a backdrop clear of them. It is centred instead, and
-  widened to the catalog's 460 so the two line up; with the catalog open the
-  pair is one centred block, panel on the left, each vertically centred on its
-  own height. The panel therefore *moves* when the catalog opens, which is what
-  one block means. **Neither dodges the bar any more** — the catalog used to,
-  because `hit()` checks it before the slots and so a catalog over a slot makes
-  that slot neither clickable nor droppable. Predictable placement won the
-  trade: a bar in the middle of the screen loses drag-to-slot while the binder
-  is open, and a bar is not put there.
+- **Flow — ONE window, three steps** (Kevin, live client, 2026-08-22; this
+  replaces the three-surface draft of 2026-08-06 and the centred-block revision
+  of the same morning). `//hud crossbar edit` toggles edit mode — all sides
+  render, input activators go inert, the mouse takes over, and slots wear their
+  source marks. **Nothing is drawn until a slot is clicked**; then one window
+  opens dead centre, 920x600 at 18pt, and its contents change step by step:
+
+  | step | shows | picking one |
+  | --- | --- | --- |
+  | `layer` | the stack: base/shared, the worn subjob, every context | previews the context and moves to `catalog` |
+  | `catalog` | categories left, one page of actions right | moves to `target`, or binds outright if the type takes no target |
+  | `target` | every FFXI token, `(no target)` first | binds, and drops back to `layer` for the next edit |
+
+  A **details column** on the right fills in for whatever the cursor is over —
+  the old floating tooltip, moved inside so the binder is genuinely one window.
+  **Back**, top left, walks the steps in reverse and closes the window from the
+  first, so no step depends on clicking empty space to escape — which is also
+  the gesture that clears a slot.
+
+  Why it stopped being three surfaces: the stack panel opened *beside its slot*
+  and drew under the NEIGHBOURING slots' labels. Windower renders every `texts`
+  object above every `images` one, so no creation order could have lifted a
+  backdrop clear of them — centring is the only fix, and once everything is
+  centred there is no reason for it to be three windows.
+- **A target at bind time is new.** Catalog entries carry no target, so a
+  mouse-bound slot was targetless until the CLI touched it; `(no target)` is
+  the first row and keeps that as the default. `mount` is deliberately not
+  offered one (nothing to aim a chocobo at) and neither are `ct`/`ex`, whose
+  action word is a whole command line the catalog does not produce.
+- **Nothing dodges the bar**, deliberately. `hit()` checks the window before
+  the slots, so a window over a slot makes that slot neither clickable nor
+  droppable. Predictable placement won the trade: a bar in the middle of the
+  screen loses drag-to-slot while the binder is open, and a bar is not put
+  there.
+- **Drag-to-bind is gone**; slot-to-slot swap and drag-to-empty clear stay,
+  because the wizard has no equivalent for either. A drag that half-bound
+  something — no target step, no confirmation — would have been a second,
+  quieter path that could disagree with the three steps.
+- **The wheel clamps at both ends.** It used to wrap, so scrolling off the end
+  of a long list threw you silently back to the top and read as the list having
+  reset.
 - **The stack panel is the overlay fix.** Kevin's fork failed because the edit
   target was sticky global state, set elsewhere and invisible at bind time. Here
   the target is chosen at the slot, at bind time, on screen — with these rules

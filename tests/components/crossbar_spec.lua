@@ -4855,11 +4855,16 @@ describe("crossbar live widget", function()
       local rows = widget.handle_command({ "list" })
       assert.is_table(rows, "the CLI still answers with the binder up")
       -- Slot 1 left of set 1 is empty in the fixture; bind Cure into the
-      -- base layer through the panel and the catalog.
-      assert.is_not_nil(binder_line("^slot: set 1 l 1"), "the click opened the stack panel")
+      -- base layer by walking the window's three steps.
+      assert.is_not_nil(binder_line("^set 1 l slot 1"), "the click opened the window on step one")
       click_line("base:")
-      assert.is_not_nil(binder_line("^catalog:"), "the catalog unlocked behind the layer row")
+      assert.is_not_nil(binder_line("^pick an action"), "step two, behind the layer row")
       click_line("^Cure$")
+      -- A spell takes a target, so the third step asks for one; the first
+      -- row binds none, which is what a mouse bind produced before it
+      -- existed.
+      assert.is_not_nil(binder_line("^pick a target"), "step three")
+      click_line("^%(no target%)$")
       assert.are.same(
         { type = "ma", action = "Cure" },
         env.store_files.WAR.sets[1].left[1],
@@ -4925,14 +4930,17 @@ describe("crossbar live widget", function()
       assert.are.equal("Berserk", text_of("xhb_left", 5, "name").last.text, "dark arts really is up now")
     end)
 
-    it("keeps a resting tooltip's recast moving from the tick", function()
-      -- The tooltip is built on a mouse move, but a recast counts down
+    it("keeps a resting details column's recast moving from the tick", function()
+      -- The column is filled on a mouse move, but a recast counts down
       -- whether or not the cursor does anything.
       build_world()
       env.ability_recasts[5] = 30
       widget.handle_command({ "edit" })
+      -- The column lives in the window, so a slot has to be open for there
+      -- to be anywhere to draw it.
+      click(slot_point("left", 1))
       widget.on_mouse(MOUSE_MOVE, slot_point("left", 4))
-      assert.is_not_nil(binder_line("recast: 30s left"), "the tooltip opened on the hover")
+      assert.is_not_nil(binder_line("recast: 30s left"), "the column filled in on the hover")
       env.ability_recasts[5] = 9
       env.now = env.now + 1
       widget.update()
@@ -4953,7 +4961,7 @@ describe("crossbar live widget", function()
       assert.is_false(image_of("expanded", 1, "background").visible, "Expanded never replaces it")
       assert.is_false(prims.images[1].visible, "and no side panel lights")
       click(slot_point("left", 4))
-      assert.is_not_nil(binder_line("^slot: set 1 l 4"), "the slots stayed put under the cursor")
+      assert.is_not_nil(binder_line("^set 1 l slot 4"), "the slots stayed put under the cursor")
     end)
 
     it("resyncs the bar to the keys really held when edit mode ends", function()
