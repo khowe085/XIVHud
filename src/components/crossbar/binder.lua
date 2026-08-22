@@ -809,6 +809,50 @@ local function new(deps)
        genuinely one window rather than one window and a follower. It reads
        the same lines from the same describe, and is still keyed on the
        hovered target so a resting cursor rebuilds nothing. ]]
+  --[[ How many characters fit a details line. Windower's text objects do not
+       measure and our prim wrapper exposes no extents, so this is an
+       ESTIMATE from the point size - deliberately conservative, because a
+       line that stops short looks tidy and one that runs off the backdrop
+       does not. Two chain properties on one SC row found it in a live
+       client (Kevin, 2026-08-22). ]]
+  local DETAIL_CHARS = math.max(8, math.floor(DETAILS_WIDTH / (FONT_SIZE * 0.55)))
+
+  local function wrap_details(lines)
+    local out = {}
+    for _, line in ipairs(lines) do
+      local text = tostring(line)
+      --[[ Bounded by the rows the column HAS, so this cannot spin however
+           the break rule below behaves. It is a mouse handler: a wrap that
+           never finished would freeze the client, and that is not a risk
+           worth carrying on the correctness of an off-by-one. ]]
+      local rows = 0
+      while #text > DETAIL_CHARS and rows < DETAIL_ROWS do
+        rows = rows + 1
+        --[[ The last space that fits, and never before the third column: a
+             break at 2 would leave the continuation as long as the line it
+             came from, so it would eat the budget without shortening
+             anything. A single word longer than the budget has no break at
+             all and is left to overrun - cutting a name in half reads as a
+             different item, which is worse. ]]
+        local cut = nil
+        for index = DETAIL_CHARS + 1, 3, -1 do
+          if text:sub(index, index) == " " then
+            cut = index
+            break
+          end
+        end
+        if cut == nil then
+          break
+        end
+        out[#out + 1] = text:sub(1, cut - 1)
+        -- Indented, so a wrapped line reads as one fact and not two.
+        text = "  " .. text:sub(cut + 1)
+      end
+      out[#out + 1] = text
+    end
+    return out
+  end
+
   local function build_details(target)
     if target == nil then
       return nil
@@ -826,7 +870,7 @@ local function new(deps)
     if lines == nil or #lines == 0 then
       return nil
     end
-    return { lines = lines, key = key }
+    return { lines = wrap_details(lines), key = key }
   end
 
   --[[ Drawing --------------------------------------------------------------- ]]
@@ -1332,6 +1376,12 @@ local function new(deps)
 
   function self.details()
     return details
+  end
+
+  --- The wrap budget, so a spec can assert against the same number the
+  --- wrapping used rather than a copy that could drift from it.
+  function self.detail_columns()
+    return DETAIL_CHARS
   end
 
   --- Rebuild the resting details column from the target it was already on:

@@ -1419,6 +1419,65 @@ describe("crossbar binder", function()
       end
     end)
 
+    it("wraps a details line too long for its column", function()
+      --[[ The SC row found this in a live client: an action with two chain
+           properties ran straight off the backdrop (Kevin, 2026-08-22).
+           Windower's text objects do not measure and our prim wrapper
+           exposes no extents, so the budget is an estimate from the point
+           size - deliberately conservative, because a line that stops short
+           looks tidy and one that overruns does not. ]]
+      local binder, env = build({
+        describe = function(record)
+          return {
+            name = record.action,
+            type = record.type,
+            property = { "Fusion", "Impaction", "Liquefaction", "Detonation" },
+          }
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      binder.mouse(MOVE, centre(entry_named(env, "Berserk")))
+      local lines = binder.details().lines
+      local joined = table.concat(lines, " ")
+      assert.is_not_nil(joined:find("Fusion", 1, true), "all four properties survive the wrap")
+      assert.is_not_nil(joined:find("Detonation", 1, true))
+      for _, line in ipairs(lines) do
+        assert.is_true(#line <= binder.detail_columns(), "over the column: '" .. line .. "'")
+      end
+    end)
+
+    it("does not cut a single long word mid-name", function()
+      -- A name broken in half reads as a different item; better to overrun
+      -- one line than to invent one.
+      local binder, env = build({
+        describe = function(record)
+          return { name = ("W"):rep(80), type = record.type }
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      binder.mouse(MOVE, centre(entry_named(env, "Berserk")))
+      assert.are.equal(("W"):rep(80), binder.details().lines[1])
+    end)
+
+    it("leaves a line whole when the only break in it is too early to help", function()
+      --[[ Breaking at column 2 would leave the continuation as long as the
+           line it came from, so the wrap would eat its row budget without
+           shortening anything and emit a column of fragments. Such a line
+           is emitted whole instead, overrun and all. ]]
+      local awkward = "A " .. ("W"):rep(60)
+      local binder, env = build({
+        describe = function(record)
+          return { name = awkward, type = record.type }
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      binder.mouse(MOVE, centre(entry_named(env, "Berserk")))
+      assert.are.equal(awkward, binder.details().lines[1])
+    end)
+
     it("drags by its title strip and remembers where it was left", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)

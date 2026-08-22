@@ -130,19 +130,19 @@ binder are gone - they were answers about code that no longer exists.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| F1 | Hold `;` and press `=` | Edit mode says so in chat. Nothing is drawn yet - the window appears when you click a slot | [ ] | [ ] |  |
+| F1 | Hold `;` and press `=` | Edit mode says so in chat. Nothing is drawn yet - the window appears when you click a slot | [x] | [ ] |  |
 | F2 | Look at the bar | Slots show `+` for subjob and `*` for context sources | [x] | [ ] | Unchanged by the rewrite; D12 covered here too |
-| F3 | Click an empty slot | One window opens **dead centre**, titled `pick a layer`, listing the whole stack | [ ] | [ ] |  |
-| F4 | Look at the top left of it | A button reading `[ close ]` - on the first step there is nothing to go back to | [ ] | [ ] |  |
-| F5 | Read the line under the title | It names the slot you clicked - `set 1 l slot 3` | [ ] | [ ] |  |
-| F6 | Click a layer row | The **same** window becomes `pick an action`: categories down the left, actions on the right, and the subhead now names the layer | [ ] | [ ] |  |
+| F3 | Click an empty slot | One window opens **dead centre**, titled `pick a layer`, listing the whole stack | [x] | [ ] |  |
+| F4 | Look at the top left of it | A button reading `[ close ]` - on the first step there is nothing to go back to | [x] | [ ] |  |
+| F5 | Read the line under the title | It names the slot you clicked - `set 1 l slot 3` | [x] | [ ] |  |
+| F6 | Click a layer row | The **same** window becomes `pick an action`: categories down the left, actions on the right, and the subhead now names the layer | [x] | [ ] |  |
 | F7 | Go back and click a **context** layer row instead | The bar previews itself as if that buff were up, and the subhead says which | [x] | [ ] | Unchanged by the rewrite |
-| F8 | Click a spell or ability | The window becomes `pick a target`, listing every FFXI token with `(no target)` first | [ ] | [ ] |  |
-| F9 | Click `<t>` | It binds with that target, echoes in chat, and the window returns to `pick a layer` | [ ] | [ ] |  |
-| F10 | `//hud crossbar list` | That slot shows the target you picked - the mouse never wrote one before | [ ] | [ ] |  |
-| F11 | Bind something from the **General** category (`draw`, `warp`, `mr`) | No target step at all - it binds straight away | [ ] | [ ] |  |
-| F12 | Hover an action in the list | The right-hand column fills in: name, type, cost, recast, chain property | [ ] | [ ] |  |
-| F13 | Hover a bound slot on the bar | The same column, plus the layer the entry comes from and what it covers | [ ] | [ ] |  |
+| F8 | Click a spell or ability | The window becomes `pick a target`, listing every FFXI token with `(no target)` first | [x] | [ ] |  |
+| F9 | Click `<t>` | It binds with that target, echoes in chat, and the window returns to `pick a layer` | [x] | [ ] |  |
+| F10 | `//hud crossbar list` | That slot shows the target you picked - the mouse never wrote one before | [x] | [ ] |  |
+| F11 | Bind something from the **General** category (`draw`, `warp`, `mr`) | No target step at all - it binds straight away | [x] | [ ] |  |
+| F12 | Hover an action in the list | The right-hand column fills in: name, type, cost, recast, chain property | [x] | [ ] |  |
+| F13 | Hover a bound slot on the bar | The same column, plus the layer the entry comes from and what it covers | [x] | [ ] | Details text overruns the backdrop - worst on the SC row with two chain properties; fixed by wrapping |
 | F14 | Look for **Refresh III**, or any merit spell you know | It is listed and binds | [x] | [ ] | Unchanged by the rewrite - the catalog content did not move |
 | F15 | Look for an **Enchanted** category | It exists and lists your enchanted gear | [ ] | [ ] |  |
 | F16 | Open a long category and scroll to its last page, then keep scrolling down | It **stops** on the last page. It must not wrap round to the top | [ ] | [ ] |  |
