@@ -1004,6 +1004,42 @@ describe("crossbar live widget", function()
       assert.are.equal("Savage Blade", text_of("xhb_left", 3, "name").last.text)
     end)
 
+    it("redraws the icon when the icon verb overrides it", function()
+      --[[ The icon memo re-runs on record IDENTITY, and the icon verb
+           mutates the stored entry in place - `override` writes the field
+           on the table `entry_at` handed back, which is the live one - so
+           the identity never moved and the slot kept Savage Blade's art
+           (Kevin, live client, test plan C19). The alias verb looked fine
+           beside it only because the label is recomputed every paint. ]]
+      build_world()
+      env.files["addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png"] = true
+      env.files["addon/components/crossbar/assets/icons/map.png"] = true
+      widget.attach(config, function() end, store)
+      widget.set_pos(100, 900, "main")
+      widget.show()
+      assert.are.equal(
+        "addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png",
+        image_of("xhb_left", 3, "icon").last.path
+      )
+      widget.handle_command({ "icon", "1", "l", "3", "map" })
+      widget.update()
+      assert.are.equal("addon/components/crossbar/assets/icons/map.png", image_of("xhb_left", 3, "icon").last.path)
+      -- The memo must still settle on the override, or an re-iconed slot
+      -- stats the disk every frame for the life of the binding.
+      env.stats = {}
+      widget.handle_command({ "set", "1" })
+      for _, path in ipairs(env.stats) do
+        assert.is_nil(path:find("map%.png"), "a settled override must not be re-stat'd: " .. path)
+      end
+      -- And back off again: clearing the override restores the action's own.
+      widget.handle_command({ "icon", "1", "l", "3" })
+      widget.update()
+      assert.are.equal(
+        "addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png",
+        image_of("xhb_left", 3, "icon").last.path
+      )
+    end)
+
     it("labels a type-only record by its type", function()
       local files = war_bindings()
       files.WAR.sets[1].left[2] = { type = "mr" }

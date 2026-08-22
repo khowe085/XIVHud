@@ -65,16 +65,16 @@ These bindings are used by every later section — leave them in place.
 | C6 | `//hud crossbar bind 1 l 2 ja "Provoke" t` | Bound, and it fires on a target | [x] | [ ] |  |
 | C7 | `//hud crossbar bind 1 l 3 ws "Savage Blade" t` | Bound; fires with TP and a target | [x] | [ ] |  |
 | C8 | `//hud crossbar bind 1 l 4 item "Echo Drops" me` | Bound, and the corner shows how many you carry | [x] | [ ] |  |
-| C9 | Use Echo Drops until you have none | The count reaches 0, a red X covers the slot, it dims | [ ] | [x] | Count never ticked down while using them; it did flip to 0 + X when the stack ran out |
-| C10 | `//hud crossbar bind 1 r 1 ra t` | Bound; fires a ranged attack | [ ] | [ ] |  |
-| C11 | `//hud crossbar bind 1 r 2 ct "sea all linkshell"` | Bound; fires the search command | [ ] | [ ] |  |
-| C12 | `//hud crossbar bind 1 r 3 ex "echo hello"` | Bound; the console echoes | [ ] | [ ] |  |
-| C13 | `//hud crossbar bind 1 r 4 open map` | Bound; pressing it opens the map | [ ] | [ ] |  |
-| C14 | `//hud crossbar bind 1 r 5 draw` | Bound; pressing it draws/sheathes | [ ] | [ ] |  |
-| C15 | `//hud crossbar bind 1 r 6 mount "Chocobo"` | Bound; pressing it summons after a countdown | [ ] | [ ] |  |
-| C16 | `//hud crossbar bind 1 l 5 ma "Cure IV" Zeid` | Refused, with advice to quote or use a token | [ ] | [ ] |  |
-| C17 | `//hud crossbar list` | Every slot above is listed, with its layer | [ ] | [ ] |  |
-| C18 | `//hud crossbar alias 1 l 1 "Heal"` | Slot 1's label reads `Heal` | [ ] | [ ] |  |
+| C9 | Use Echo Drops until you have none | The count reaches 0, a red X covers the slot, it dims | [x] | [ ] | Initially failed - count only moved when the stack emptied; fixed by refreshing off the 0x01E inventory packet (a40952f) |
+| C10 | `//hud crossbar bind 1 r 1 ra t` | Bound; fires a ranged attack | [x] | [ ] |  |
+| C11 | `//hud crossbar bind 1 r 2 ct "sea all linkshell"` | Bound; fires the search command | [x] | [ ] |  |
+| C12 | `//hud crossbar bind 1 r 3 ex "echo hello"` | Bound; the console echoes | [x] | [ ] |  |
+| C13 | `//hud crossbar bind 1 r 4 open map` | Bound; pressing it opens the map | [x] | [ ] |  |
+| C14 | `//hud crossbar bind 1 r 5 draw` | Bound; pressing it draws/sheathes | [x] | [ ] |  |
+| C15 | `//hud crossbar bind 1 r 6 mount "Chocobo"` | Bound; pressing it summons after a countdown | [x] | [ ] |  |
+| C16 | `//hud crossbar bind 1 l 5 ma "Cure IV" Zeid` | Refused, with advice to quote or use a token | [x] | [ ] | Refused as designed. Bare player names as targets requested as a feature - filed as #20 |
+| C17 | `//hud crossbar list` | Every slot above is listed, with its layer | [x] | [ ] |  |
+| C18 | `//hud crossbar alias 1 l 1 "Heal"` | Slot 1's label reads `Heal` | [x] | [ ] |  |
 | C19 | `//hud crossbar icon 1 l 1 map` | Slot 1's icon changes | [ ] | [ ] |  |
 | C20 | `//hud crossbar alias 1 l 1` then `icon 1 l 1` | Both revert to Cure's own | [ ] | [ ] |  |
 | C21 | `//hud crossbar swap 1 l 1 1 l 2` | Cure and Provoke exchange slots | [ ] | [ ] |  |

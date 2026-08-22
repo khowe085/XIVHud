@@ -1375,10 +1375,23 @@ local function new(ctx)
            only when its answer could change - a different record (the same
            identity rule the sweep uses), a state-swapped builtin icon
            (draw's attack/disengage/dismount), or an extraction still
-           pending. A settled repaint stats nothing. ]]
+           pending. A settled repaint stats nothing.
+
+           The override is compared BESIDE the identity, not folded into
+           it: `//hud crossbar icon` writes the field on the live entry
+           table, so the record is the same table before and after and the
+           identity alone left the old art on screen. Giving the verb a
+           fresh table instead would clear the sweep and the chain result
+           too, which an icon change has no business resetting. ]]
       local builtin = icon_for(record, state)
       local memo = content.icon_memo
-      if memo == nil or memo.record ~= record or memo.builtin ~= builtin or memo.awaiting then
+      if
+        memo == nil
+        or memo.record ~= record
+        or memo.icon ~= record.icon
+        or memo.builtin ~= builtin
+        or memo.awaiting
+      then
         content.icon_found = false
         content.offset = nil
         content.awaiting_item_icon = false
@@ -1405,6 +1418,7 @@ local function new(ctx)
         end
         content.icon_memo = {
           record = record,
+          icon = record.icon,
           builtin = builtin,
           awaiting = content.awaiting_item_icon,
         }
