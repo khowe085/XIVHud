@@ -1097,9 +1097,13 @@ describe("crossbar binder", function()
       assert.is_false(binder.mouse(LEFT_DOWN, 100000, 100000, 0))
     end)
 
-    it("re-reads its slot's position on every refresh", function()
-      -- `//hud slot <name>` can move the anchor under an open panel; the
-      -- rect captured at click time would strand it at the old coordinates.
+    it("stays centred when the anchor moves under it", function()
+      --[[ The panel used to open beside its slot and be re-read every
+           refresh, so `//hud slot <name>` could not strand it at the old
+           coordinates. It is dead-centre now (Kevin, 2026-08-22), so the
+           anchor moving is not its business at all - and the neighbouring
+           slots' labels, which draw over any backdrop because Windower
+           puts every text above every image, are nowhere near it. ]]
       local origin = { x = ANCHOR_X, y = ANCHOR_Y }
       local binder, env = build({
         groups = function()
@@ -1120,9 +1124,10 @@ describe("crossbar binder", function()
       binder.open()
       click(binder, slot_point(env, "left", 3))
       local before = binder.panel().x
+      assert.are.equal(math.floor(1920 / 2 - binder.panel().width / 2), before, "centred to begin with")
       origin.x = origin.x + 300
       binder.refresh()
-      assert.are.equal(before + 300, binder.panel().x, "the panel travelled with its slot")
+      assert.are.equal(before, binder.panel().x, "and it does not chase the anchor")
     end)
 
     it("claims the wheel over its own panels", function()
@@ -1227,9 +1232,14 @@ describe("crossbar binder", function()
       assert.is_nil(env.bindings.entry_at("1", "left", 3), "off-window is 'anywhere else': the layer is cleared")
     end)
 
-    it("drops the catalog below the bar when there is no room above it", function()
-      -- hit() checks the catalog before the slots, so a catalog covering
-      -- the bar would make the slots under it undroppable.
+    it("centres the catalog wherever the bar happens to be", function()
+      --[[ The catalog used to dodge the bar, because hit() checks it before
+           the slots and so a catalog covering one makes it undroppable.
+           Dead-centre unconditionally is the call (Kevin, 2026-08-22):
+           predictable placement is worth more than drag-to-slot surviving a
+           centred bar, which is not where a bar is put. The bar here is at
+           the very top, exactly where the old rule would have pushed the
+           catalog down. ]]
       local binder, env = build({
         groups = function()
           return {
@@ -1242,8 +1252,30 @@ describe("crossbar binder", function()
       click(binder, 100 + x + 20, 10 + y + 20)
       click(binder, centre(row_named(env, "base")))
       local view = binder.catalog_view()
-      local bar_bottom = 10 + env.render.metrics().panel_height
-      assert.is_true(view.y >= bar_bottom, "below the bar, not over it: " .. view.y .. " vs " .. bar_bottom)
+      assert.are.equal(math.floor(1080 / 2 - view.height / 2), view.y, "vertically centred, bar or no bar")
+    end)
+
+    it("opens the panel dead-centre, and side by side with the catalog", function()
+      --[[ One centred block, panel left of the catalog: beside-the-slot put
+           it under the neighbouring slots' labels, and Windower draws every
+           text above every image, so no ordering trick could lift a
+           backdrop clear of them. ]]
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      local panel = binder.panel()
+      assert.is_nil(binder.catalog_view(), "no catalog yet")
+      assert.are.equal(math.floor(1920 / 2 - panel.width / 2), panel.x, "alone, it is dead-centre")
+      assert.are.equal(math.floor(1080 / 2 - panel.height / 2), panel.y)
+
+      click(binder, centre(row_named(env, "base")))
+      local view = binder.catalog_view()
+      panel = binder.panel()
+      assert.is_not_nil(view)
+      local block = panel.width + 8 + view.width
+      assert.are.equal(math.floor(1920 / 2 - block / 2), panel.x, "panel takes the block's left")
+      assert.are.equal(panel.x + panel.width + 8, view.x, "catalog sits beside it")
+      assert.are.equal(math.floor(1080 / 2 - panel.height / 2), panel.y, "each centred on its own height")
+      assert.are.equal(math.floor(1080 / 2 - view.height / 2), view.y)
     end)
 
     it("hit-tests through the drawn geometry, so an unplaced bar catches nothing", function()

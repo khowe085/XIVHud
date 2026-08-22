@@ -429,9 +429,16 @@ slot onto another slot to swap them entirely, or from a slot onto **genuinely
 empty screen** to clear it — which removes it from the layer you are editing,
 and leaves every other layer alone. Empty means empty: a drop that lands on
 any part of the binder — the stack panel, the action list, the bar itself —
-cancels quietly and changes nothing. The panel opens right beside the slot you
-clicked, so a near miss is the easiest mistake to make, and it must never be
-the one that deletes.
+cancels quietly and changes nothing. Empty screen really is the whole rest of
+the display, so a near miss is the easiest mistake to make, and it must never
+be the one that deletes.
+
+**Where it opens.** Dead centre. The stack panel is centred on its own; once
+you pick a layer the action list joins it on the right and the two centre
+together as one block, so the panel shifts left as it appears. Neither dodges
+the bar — if you have put the bar in the middle of the screen the action list
+will cover it, and slots underneath it cannot be clicked or dropped onto while
+the binder is open.
 
 **Getting out.** While edit mode is on the crossbar itself does nothing — no
 side activates, no slot fires, and the bar holds still under the binder. Leave

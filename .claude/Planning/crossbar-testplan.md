@@ -100,7 +100,7 @@ These bindings are used by every later section — leave them in place.
 | D9 | `//hud crossbar share 2 on` | Back to shared — leave it this way for section M | [x] | [ ] |  |
 | D10 | `//hud crossbar share 1 on` then `share 1 off` | Set 1 is untouched by set 2's flag either way | [x] | [ ] |  |
 | D11 | `//hud crossbar bind sub:1 l 6 ma "Stone" t` | Bound to the subjob layer | [x] | [ ] |  |
-| D12 | Look at slot 6 in edit mode later (F-section) | It is tagged as a subjob override | [ ] | [ ] |  |
+| D12 | Look at slot 6 in edit mode later (F-section) | It is tagged as a subjob override | [x] | [ ] | Verified in F2 - slot 6 carries the subjob mark |
 | D13 | `//hud crossbar context list` | Lists the four Scholar contexts and which are live | [x] | [ ] |  |
 | D14 | On SCH: `//hud crossbar bind ctx:light-arts:1 l 7 ja "Accession"` | Bound to that context | [x] | [ ] |  |
 | D15 | On SCH: use Light Arts | Slot 7 changes to Accession by itself | [x] | [ ] |  |
@@ -125,8 +125,8 @@ These bindings are used by every later section — leave them in place.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| F1 | Hold `;` and press `=` | The binder opens | [ ] | [ ] |  |
-| F2 | Look at the bar | Slots show `+` for subjob and `*` for context sources | [ ] | [ ] |  |
+| F1 | Hold `;` and press `=` | Edit mode is entered and says so in chat. The binder's **panel** is per-slot and appears when you click one (F3) - there is nothing to draw before a slot is picked | [x] | [ ] | Row wording was wrong - the panel is per-slot by design, so nothing draws until a slot is clicked |
+| F2 | Look at the bar | Slots show `+` for subjob and `*` for context sources | [x] | [ ] | D12 covered here too - the subjob override on slot 6 is tagged |
 | F3 | Click an empty slot | Its layer stack opens beside it | [ ] | [ ] |  |
 | F4 | Click the action list before picking a layer | Nothing binds — the list is locked | [ ] | [ ] |  |
 | F5 | Click a layer row | The action list unlocks | [ ] | [ ] |  |

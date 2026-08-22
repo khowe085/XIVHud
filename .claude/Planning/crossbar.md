@@ -1889,14 +1889,26 @@ Mouse-driven replacement for xivcrossbar's gamepad-navigated `action_binder.lua`
 part worth mining; its navigation is not.
 
 - **Flow — three surfaces** (confirmed 2026-08-06): the **bar** (slots
-  clickable, source-tagged), the **stack panel** (opens adjacent to the clicked
-  slot), and the **catalog** (opens centered above the bar once a layer row is
-  clicked). `//hud crossbar edit` toggles edit mode — all sides render, input
-  activators go inert, the mouse takes over. Click a slot → stack panel; click
-  a layer row → preview + catalog unlocks; click an action → bound, chat echo,
-  catalog closes, stack panel refreshes in place (unbind / relayer / next slot
-  from there). Exiting edit mode tears everything down. Panel placement is a
-  draft — tune in-client at CB8.
+  clickable, source-tagged), the **stack panel** and the **catalog** (which
+  unlocks once a layer row is clicked). `//hud crossbar edit` toggles edit mode
+  — all sides render, input activators go inert, the mouse takes over. Click a
+  slot → stack panel; click a layer row → preview + catalog unlocks; click an
+  action → bound, chat echo, catalog closes, stack panel refreshes in place
+  (unbind / relayer / next slot from there). Exiting edit mode tears everything
+  down.
+- **Placement: dead centre, one block** (Kevin, live client, 2026-08-22 —
+  the in-client tuning the draft above was waiting for). The panel opened
+  *beside its slot* and drew under the NEIGHBOURING slots' labels: Windower
+  renders every `texts` object above every `images` one, so no creation order
+  could have lifted a backdrop clear of them. It is centred instead, and
+  widened to the catalog's 460 so the two line up; with the catalog open the
+  pair is one centred block, panel on the left, each vertically centred on its
+  own height. The panel therefore *moves* when the catalog opens, which is what
+  one block means. **Neither dodges the bar any more** — the catalog used to,
+  because `hit()` checks it before the slots and so a catalog over a slot makes
+  that slot neither clickable nor droppable. Predictable placement won the
+  trade: a bar in the middle of the screen loses drag-to-slot while the binder
+  is open, and a bar is not put there.
 - **The stack panel is the overlay fix.** Kevin's fork failed because the edit
   target was sticky global state, set elsewhere and invisible at bind time. Here
   the target is chosen at the slot, at bind time, on screen — with these rules

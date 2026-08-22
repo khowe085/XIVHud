@@ -61,7 +61,13 @@ local SLOT_COUNT = 8
 local ROW_HEIGHT = 16
 local PAD = 6
 local GAP = 8
-local PANEL_WIDTH = 260
+--[[ The stack panel is the catalog's width so the two line up as one
+     block. It opens dead-centre rather than beside its slot (Kevin,
+     2026-08-22): beside the slot it sat under the NEIGHBOURING slots'
+     labels, and no ordering trick could have lifted it clear - Windower
+     draws every `texts` object above every `images` one, so a text will
+     always cover a backdrop. ]]
+local PANEL_WIDTH = 460
 local CATALOG_WIDTH = 460
 local CATEGORY_WIDTH = 150
 local ENTRY_ROWS = 16
@@ -378,33 +384,21 @@ local function new(deps)
     return rects
   end
 
-  local function bars_top()
-    local top = nil
-    for _, group in ipairs((deps.groups ~= nil and deps.groups()) or {}) do
-      if top == nil or group.y < top then
-        top = group.y
-      end
-    end
-    return top
-  end
+  --[[ Where a centred piece lands. `block_width` is the whole block's
+       width when more than one piece is on screen, so each piece centres
+       the BLOCK and then takes its own place inside it; on its own a piece
+       passes nothing and is simply dead-centre.
 
-  -- The lowest edge any drawn bar reaches, for the catalog that must not
-  -- cover one: hit() checks the catalog first, so a slot underneath it
-  -- would be neither clickable nor droppable.
-  local function bars_bottom()
-    local render = renderer()
-    local bottom = nil
-    if render == nil then
-      return nil
-    end
-    local height = render.metrics().panel_height
-    for _, group in ipairs((deps.groups ~= nil and deps.groups()) or {}) do
-      local edge = group.y + height * group.scale
-      if bottom == nil or edge > bottom then
-        bottom = edge
-      end
-    end
-    return bottom
+       Nothing here dodges the bar, deliberately (Kevin, 2026-08-22). The
+       catalog used to, because hit() checks it before the slots and so a
+       catalog drawn over a slot makes that slot neither clickable nor
+       droppable. Predictable placement won that trade: a bar in the middle
+       of the screen loses drag-to-slot while the binder is open, and a bar
+       is not put there. ]]
+  local function centred(width, height, block_width)
+    local screen_width, screen_height = screen()
+    return math.max(0, math.floor(screen_width / 2 - (block_width or width) / 2)),
+      math.max(0, math.floor(screen_height / 2 - height / 2))
   end
 
   --[[ The stack ------------------------------------------------------------- ]]
@@ -467,36 +461,21 @@ local function new(deps)
     return rows
   end
 
-  -- The slot's rect as it is drawn NOW, not as it was when clicked: the
-  -- layout slot can move under an open panel (`//hud slot <name>`).
-  local function current_slot_rect()
-    for _, rect in ipairs(slot_rects()) do
-      if rect.set == slot.set and rect.side == slot.side and rect.slot == slot.slot then
-        return rect
-      end
-    end
-    return slot.rect
-  end
-
   local function build_panel()
     if slot == nil then
       return nil
     end
     local rows = stack_rows()
     local width, height = PANEL_WIDTH, PAD * 2 + (#rows + 2) * ROW_HEIGHT
-    local screen_width, screen_height = screen()
-    local rect = current_slot_rect()
-    local x = rect.x + rect.width + GAP
-    if x + width > screen_width then
-      x = rect.x - width - GAP
-    end
-    local y = rect.y
-    if y + height > screen_height then
-      y = screen_height - height
-    end
+    -- The catalog joins it on the right once a layer is picked, so the pair
+    -- is centred as one block; before that the panel is centre-screen on
+    -- its own. The two therefore MOVE when the catalog opens, which is what
+    -- one block means.
+    local block = catalog_open and (width + GAP + CATALOG_WIDTH) or nil
+    local x, y = centred(width, height, block)
     local built = {
-      x = math.max(0, x),
-      y = math.max(0, y),
+      x = x,
+      y = y,
       width = width,
       height = height,
       address = { set = slot.set, side = slot.side, slot = slot.slot },
@@ -531,17 +510,12 @@ local function new(deps)
     end
     local width = CATALOG_WIDTH
     local height = PAD * 2 + (ENTRY_ROWS + 2) * ROW_HEIGHT
-    local screen_width = screen()
-    local top = bars_top()
-    local y = top ~= nil and (top - height - GAP) or 0
-    if y < 0 then
-      -- No room above: go below the bar rather than over it.
-      local bottom = bars_bottom()
-      y = bottom ~= nil and (bottom + GAP) or 0
-    end
+    -- The block's right-hand half: the panel is always up when the catalog
+    -- is, so its width is the offset rather than a condition.
+    local left, y = centred(width, height, PANEL_WIDTH + GAP + width)
     local built = {
-      x = math.max(0, math.floor(screen_width / 2 - width / 2)),
-      y = math.max(0, y),
+      x = left + PANEL_WIDTH + GAP,
+      y = y,
       width = width,
       height = height,
       category = group.name,
