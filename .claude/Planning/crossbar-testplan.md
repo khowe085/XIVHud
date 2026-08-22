@@ -17,38 +17,39 @@ If **A** fails, stop — nothing after it will mean anything.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| A1 | `//lua load xivhud`, then `//hud` | The command list prints | [ ] | [ ] |  |
-| A2 | Open `<addon>/load.log` | It ends without an error line | [ ] | [ ] |  |
-| A3 | Watch the load for texture warnings | No `missing texture` lines | [ ] | [ ] |  |
-| A4 | `//hud list` | `crossbar` is listed with four anchor lines | [ ] | [ ] |  |
-| A5 | Look at the screen | The bar is drawn, sixteen empty slots | [ ] | [ ] |  |
-| A6 | Look at the bar's bottom edge | Gold `Set 1` sits between the two crosses | [ ] | [ ] |  |
+| A1 | `//lua load xivhud`, then `//hud` | The command list prints | [x] | [ ] |  |
+| A2 | Open `<addon>/load.log` | It ends without an error line | [x] | [ ] |  |
+| A3 | Watch the load for texture warnings | No `missing texture` lines | [x] | [ ] |  |
+| A4 | `//hud list` | `crossbar` is listed with four anchor lines | [x] | [ ] |  |
+| A5 | Look at the screen | The bar is drawn, sixteen empty slots | [x] | [ ] |  |
+| A6 | Look at the bar's bottom edge | Gold `Set 1` sits between the two crosses | [x] | [ ] |  |
 
 ## B. Keys — before anything is bound
 
-Uses the `Set N` label as the only visible proof a key did something.
+Uses the `Set N` label as the only visible proof a key did something —
+with one exception: **cycle deliberately skips empty sets**, so on a bar
+with nothing bound it correctly stays put. Cycling proper is D5a.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| B1 | Press `;` on its own | Nothing happens — no chat line opens | [ ] | [ ] |  |
-| B2 | Press `'` on its own | Nothing happens | [ ] | [ ] |  |
-| B3 | Press `\` on its own | Nothing happens | [ ] | [ ] |  |
-| B4 | Press `=` on its own | Nothing happens, and no map | [ ] | [ ] |  |
-| B5 | Tap `` ` `` | The label advances to `Set 2` | [ ] | [ ] |  |
-| B6 | Tap `` ` `` six more times | It wraps back round to `Set 1` | [ ] | [ ] |  |
-| B7 | Hold `` ` `` and press `3` | The label jumps straight to `Set 3` | [ ] | [ ] |  |
-| B8 | `//hud crossbar set 1` | Back to `Set 1` | [ ] | [ ] |  |
-| B9 | Press `1`–`8` with nothing held | Your game macros fire as usual | [ ] | [ ] |  |
-| B10 | Hold `;` | A panel lights behind the left eight slots | [ ] | [ ] |  |
-| B11 | Hold `'` | A panel lights behind the right eight | [ ] | [ ] |  |
-| B12 | Hold `\` then `;` | The WXHB's left half appears | [ ] | [ ] |  |
-| B13 | Hold `\` then `'` | The WXHB's right half appears | [ ] | [ ] |  |
-| B14 | Hold `;` and `'` together | Expanded Hold replaces both bars | [ ] | [ ] |  |
-| B15 | Release one of the two | It drops to the side still held | [ ] | [ ] |  |
-| B16 | Hold `\` and tap `` ` `` with no side held | Your weapon draws; again and it sheathes | [ ] | [ ] |  |
-| B17 | Press Enter, then type `;` `'` `\` `` ` `` `=` and `1`–`8` | Every character lands in the message | [ ] | [ ] |  |
-| B18 | Close the chat line | The keys go back to doing B1–B16 | [ ] | [ ] |  |
-| B19 | Hold `;`, alt-tab away, come back, release | Nothing is stuck lit or stuck down | [ ] | [ ] |  |
+| B1 | Press `;` on its own | Nothing happens — no chat line opens | [x] | [ ] |  |
+| B2 | Press `'` on its own | Nothing happens | [x] | [ ] |  |
+| B3 | Press `\` on its own | Nothing happens | [x] | [ ] |  |
+| B4 | Press `=` on its own | Nothing happens, and no map | [x] | [ ] |  |
+| B5 | Tap `` ` `` | Nothing moves — cycle skips EMPTY sets, and they all are. Proper cycling is D5a, after things are bound | [x] | [ ] | Test was wrong, not the addon: written before I remembered cycle skips empty sets. Jump (B7) has no such rule, which is why it works here. |
+| B6 | Hold `` ` `` and press `3` | The label jumps straight to `Set 3` | [x] | [ ] |  |
+| B7 | `//hud crossbar set 1` | Back to `Set 1` | [x] | [ ] |  |
+| B8 | Press `1`–`8` with nothing held | Your game macros fire as usual | [ ] | [ ] |  |
+| B9 | Hold `;` | A panel lights behind the left eight slots | [ ] | [ ] |  |
+| B10 | Hold `'` | A panel lights behind the right eight | [ ] | [ ] |  |
+| B11 | Hold `\` then `;` | The WXHB's left half appears | [ ] | [ ] |  |
+| B12 | Hold `\` then `'` | The WXHB's right half appears | [ ] | [ ] |  |
+| B13 | Hold `;` and `'` together | Expanded Hold replaces both bars | [ ] | [ ] |  |
+| B14 | Release one of the two | It drops to the side still held | [ ] | [ ] |  |
+| B15 | Hold `\` and tap `` ` `` with no side held | Your weapon draws; again and it sheathes | [ ] | [ ] |  |
+| B16 | Press Enter, then type `;` `'` `\` `` ` `` `=` and `1`–`8` | Every character lands in the message | [ ] | [ ] |  |
+| B17 | Close the chat line | The keys go back to doing B1–B15 | [ ] | [ ] |  |
+| B18 | Hold `;`, alt-tab away, come back, release | Nothing is stuck lit or stuck down | [ ] | [ ] |  |
 
 ## C. Binding from the console
 
@@ -91,6 +92,8 @@ These bindings are used by every later section — leave them in place.
 | D3 | `//hud crossbar set 1` | Cure is back on slot 1 | [ ] | [ ] |  |
 | D4 | `//hud crossbar cycle 2 none` then tap `` ` `` repeatedly | Set 2 is skipped by the rotation | [ ] | [ ] |  |
 | D5 | `//hud crossbar cycle 2 both` | Set 2 is visited again | [ ] | [ ] |  |
+| D5a | With sets 1 and 2 both bound, tap `` ` `` | The label moves between them — this is B5's real test | [ ] | [ ] |  |
+| D5b | Bind nothing to sets 3–8 and keep tapping `` ` `` | The empty sets are skipped, never landed on | [ ] | [ ] |  |
 | D6 | `//hud crossbar share 2 on` | Reported as shared | [ ] | [ ] |  |
 | D7 | `//hud crossbar list 2` | Shows set 2's contents and that it is shared | [ ] | [ ] |  |
 | D8 | `//hud crossbar share 2 off`, then `list 2` | Reported as job-specific again | [ ] | [ ] |  |
