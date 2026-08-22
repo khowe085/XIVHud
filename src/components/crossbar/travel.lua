@@ -156,6 +156,12 @@ local function new(deps)
       return nil
     end
     if kind == "mount" then
+      -- A mount slot pressed while mounted is a DISMOUNT, and getting out
+      -- is never held - the same exclusion mount roulette gets below, on
+      -- the same flag, so the two cannot drift.
+      if plan.dismount then
+        return nil
+      end
       -- Named, or nothing: resolve() rejects a nameless mount record
       -- outright, and a countdown that cannot say what it is summoning
       -- would be a worse answer than the rejection.

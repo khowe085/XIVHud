@@ -3662,6 +3662,21 @@ describe("crossbar live widget", function()
       assert.are.equal(0, #env.chat, "nothing to count down, nothing to say")
     end)
 
+    it("dismounts at once from a NAMED mount slot too", function()
+      --[[ The countdown is for summoning. A slot bound to a specific mount
+           counted one out and then sent its summon while already mounted,
+           so the same press was instant on an `mr` slot and a five-second
+           wait on the one beside it (Kevin, live client, 2026-08-22). ]]
+      local files = war_bindings()
+      files.WAR.sets[1].left[2] = { type = "mount", action = "chocobo", display = "Chocobo" }
+      build_world({ store_files = files })
+      env.player.buffs = { 252 }
+      press(LEFT)
+      press(DIK_SLOT[2])
+      assert.are.same({ "input /dismount" }, env.commands)
+      assert.are.equal(0, #env.chat, "nothing to count down, nothing to say")
+    end)
+
     it("leaves the draw toggle instant", function()
       -- Instant means no countdown. Entering drawn sends nothing at all
       -- now, so the disengage is what this can watch go straight out.

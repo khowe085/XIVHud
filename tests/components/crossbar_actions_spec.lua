@@ -215,6 +215,39 @@ describe("crossbar actions", function()
     end)
   end)
 
+  describe("a named mount", function()
+    it("dismounts instead of summoning while mounted, and instantly", function()
+      --[[ `mr` dismounts when pressed mounted; a slot bound to a NAMED
+           mount counted down five seconds and then sent a summon (Kevin,
+           live client, 2026-08-22). The same press was instant on one slot
+           and a countdown on the next, for no reason the player could see.
+
+           Getting OUT of something is never held - the rule mount roulette
+           and `draw` already follow - and the `dismount` flag is what says
+           so, rather than anything downstream reading the command back. ]]
+      local actions, state = build()
+      state.mounted = true
+      local plan = actions.resolve({ type = "mount", action = "raptor" }, { mounted = true })
+      assert.equal("input /dismount", plan.command)
+      assert.is_true(plan.dismount)
+    end)
+
+    it("summons when not mounted, and is held for the countdown", function()
+      local actions = build()
+      local plan = actions.resolve({ type = "mount", action = "raptor" }, { mounted = false })
+      assert.equal('input /mount "raptor"', plan.command)
+      assert.is_nil(plan.dismount)
+    end)
+
+    it("summons when the caller passes no state at all", function()
+      -- Nothing known about the player reads as "not mounted": a slot that
+      -- refused to summon without a state would be worse than one that
+      -- sends a summon the game ignores.
+      local actions = build()
+      assert.equal('input /mount "raptor"', command_of(actions, { type = "mount", action = "raptor" }))
+    end)
+  end)
+
   describe("mount roulette", function()
     it("relays the roulette's command", function()
       local actions, state = build()

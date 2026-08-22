@@ -170,26 +170,26 @@ binder are gone - they were answers about code that no longer exists.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| G1 | On NIN, bind `ma "Utsusemi: Ichi"` to a slot | The corner shows your Shihei count | [ ] | [ ] |  |
-| G2 | Spend them all | The count reads 0 and the slot crosses out | [ ] | [ ] |  |
-| G3 | On a job without NIN, view that same slot | No count, no red X | [ ] | [ ] |  |
-| G4 | On SCH, bind `ja "Accession"` | The corner shows your stratagem charges | [ ] | [ ] |  |
-| G5 | Spend one | The number drops and climbs back over time | [ ] | [ ] |  |
-| G6 | Use a weaponskill on a mob | The skillchain indicator appears | [ ] | [ ] |  |
-| G7 | Watch a bound weaponskill during that window | Its icon changes to the chain it would make | [ ] | [ ] |  |
-| G8 | Let the window lapse | The indicator disappears | [ ] | [ ] |  |
+| G1 | On NIN, bind `ma "Utsusemi: Ichi"` to a slot | The corner shows your Shihei count | [x] | [ ] |  |
+| G2 | Spend them all | The count reads 0 and the slot crosses out | [x] | [ ] |  |
+| G3 | On a job without NIN, view that same slot | No count, no red X | [x] | [ ] |  |
+| G4 | On SCH, bind `ja "Accession"` | The corner shows your stratagem charges | [x] | [ ] |  |
+| G5 | Spend one | The number drops and climbs back over time | [x] | [ ] |  |
+| G6 | Use a weaponskill on a mob | The skillchain indicator appears | [x] | [ ] |  |
+| G7 | Watch a bound weaponskill during that window | Its icon changes to the chain it would make | [x] | [ ] |  |
+| G8 | Let the window lapse | The indicator disappears | [x] | [ ] |  |
 
 ## H. Built-ins
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| H1 | `//hud crossbar draw` | Weapon draws; again and it sheathes | [ ] | [ ] |  |
-| H2 | Engage a mob without using `draw` | The bar switches to its drawn rotation | [ ] | [ ] |  |
-| H3 | Let the mob die | It stays on the drawn rotation | [ ] | [ ] |  |
-| H4 | `//hud crossbar mr` | A five-second countdown prints, then you mount | [ ] | [ ] |  |
-| H5 | `//hud crossbar mr` while mounted | You dismount immediately, with no countdown | [ ] | [ ] |  |
-| H6 | `//hud crossbar mr`, then `/heal` during the countdown | It cancels and says so | [ ] | [ ] |  |
-| H7 | `//hud crossbar mr`, then zone during the countdown | It cancels silently | [ ] | [ ] |  |
+| H1 | `//hud crossbar draw` | The sword lights above `Set N` and nothing is said in chat - the state is the addon's, and entering it sends no command; again and it clears, disengaging you | [x] | [ ] |  |
+| H2 | Engage a mob without using `draw` | The bar switches to its drawn rotation | [x] | [ ] |  |
+| H3 | Let the mob die | It stays on the drawn rotation | [x] | [ ] |  |
+| H4 | `//hud crossbar mr` | A five-second countdown prints, then you mount | [x] | [ ] |  |
+| H5 | `//hud crossbar mr` while mounted | You dismount immediately, with no countdown | [x] | [ ] |  |
+| H6 | `//hud crossbar mr`, then `/heal` during the countdown | It cancels and says so | [x] | [ ] |  |
+| H7 | `//hud crossbar mr`, then zone during the countdown | It cancels silently | [x] | [ ] |  |
 | H8 | `//hud crossbar open` | Lists the screens it can open | [ ] | [ ] |  |
 | H9 | `//hud crossbar open equipment` | The equipment window opens | [ ] | [ ] |  |
 | H10 | `//hud crossbar help` | Prints the command list | [ ] | [ ] |  |

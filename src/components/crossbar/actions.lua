@@ -175,6 +175,22 @@ local function new(deps)
     if record.target ~= nil and type(record.target) ~= "string" then
       return nil, "target must be a string when present"
     end
+    --[[ A named mount pressed while mounted DISMOUNTS, exactly as `mr`
+         does. It used to send its summon, after the five-second countdown
+         a summon earns - so the same press was instant on an `mr` slot and
+         a countdown on the one beside it, for no reason the player could
+         see (Kevin, live client, 2026-08-22). Getting out of something is
+         never held, and the flag is what says so rather than anything
+         downstream reading the command string back.
+
+         No state at all reads as not mounted: a slot that refused to
+         summon because the caller told it nothing would be worse than one
+         that sends a summon the game ignores. ]]
+    if kind == "mount" and state ~= nil and state.mounted then
+      local plan = command_plan("input /dismount")
+      plan.dismount = true
+      return plan
+    end
     if GAME_TYPES[kind] then
       if not valid_name(record.action) then
         return nil, "missing action name for /" .. kind

@@ -732,7 +732,9 @@ trip does replace the first**, though: press `warp` while a mount is counting
 down and only the warp goes, on a fresh five seconds.
 
 **Two things deliberately do not wait.** Getting *off* a mount is instant —
-`mr` while you are mounted, and `draw`, which dismounts as its first job. And
+`mr` while you are mounted — and a slot bound to a **named** mount does the
+same, dismounting rather than summoning — and `draw`, which dismounts as its
+first job. And
 `warp` skips the countdown when the warp it picks is one it has to **equip and
 warm up** — a Warp Ring or Warp Cudgel you are not already wearing. Putting it
 on and waiting out its enchantment is the same window this feature exists to
