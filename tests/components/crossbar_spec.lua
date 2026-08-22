@@ -2255,6 +2255,56 @@ describe("crossbar live widget", function()
       assert.are.equal("2", text_of("xhb_left", 6, "cost").last.text)
     end)
 
+    it("recounts a stack the inventory packet shrank without emptying", function()
+      --[[ Using one of five fires no `remove item`: that event is the item
+           leaving the bag, and four are still in it. The count only moved
+           when the stack emptied (Kevin, live client, 2026-08-22). The
+           decrement rides `0x01E` Modify Inventory instead, which carries
+           Count/Bag/Index and NO item id - so the packet cannot be gated on
+           the bound ids the way the events are. ]]
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
+      build_world({ store_files = files })
+      env.items[0] = { { id = 4165, count = 5, slot = 1 } }
+      widget.update()
+      assert.are.equal("5", text_of("xhb_left", 6, "cost").last.text)
+      env.items[0] = { { id = 4165, count = 4, slot = 1 } }
+      widget.update()
+      assert.are.equal("5", text_of("xhb_left", 6, "cost").last.text, "no packet, no re-read")
+      widget.update("chunk", 0x01E, "raw inventory bytes")
+      widget.update()
+      assert.are.equal("4", text_of("xhb_left", 6, "cost").last.text)
+    end)
+
+    it("recounts a tool stack off the same packet", function()
+      -- Casting Utsusemi burns one tool out of a stack, which is the same
+      -- shape: no event, and the count is drawn from the spell rather than
+      -- from a bound item id.
+      local files = { NIN = { sets = { [1] = { left = { [1] = { type = "ma", action = "Utsusemi: Ichi" } } } } } }
+      local player = war_player()
+      player.main_job = "NIN"
+      build_world({ store_files = files, player = player })
+      env.items[0] = { { id = 1179, count = 10, slot = 1 } }
+      widget.update()
+      assert.are.equal("10", text_of("xhb_left", 1, "cost").last.text)
+      env.items[0] = { { id = 1179, count = 9, slot = 1 } }
+      widget.update("chunk", 0x01E, "raw inventory bytes")
+      widget.update()
+      assert.are.equal("9", text_of("xhb_left", 1, "cost").last.text)
+    end)
+
+    it("does not re-read the bag for an inventory packet when nothing is counted", function()
+      --[[ The read budget is the whole reason the events are gated, and the
+           packet arrives far more often than they do - every equip status
+           change is one. A bar drawing no count has nothing to refresh. ]]
+      build_world()
+      widget.update()
+      local reads = env.item_reads
+      widget.update("chunk", 0x01E, "raw inventory bytes")
+      widget.update()
+      assert.are.equal(reads, env.item_reads)
+    end)
+
     it("extracts an item icon through the cache and repaints", function()
       local files = war_bindings()
       files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }

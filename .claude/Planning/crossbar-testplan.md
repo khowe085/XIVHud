@@ -46,10 +46,10 @@ with nothing bound it correctly stays put. Cycling proper is D5a.
 | B12 | Hold `\` then `'` | The WXHB's right half appears | [x] | [ ] |  |
 | B13 | Hold `;` and `'` together | Expanded Hold replaces both bars | [x] | [ ] |  |
 | B14 | Release one of the two | It drops to the side still held | [x] | [ ] |  |
-| B15 | Hold `\` and tap `` ` `` with no side held | Your weapon draws; again and it sheathes | [ ] | [ ] |  |
-| B16 | Press Enter, then type `;` `'` `\` `` ` `` `=` and `1`–`8` | Every character lands in the message | [ ] | [ ] |  |
-| B17 | Close the chat line | The keys go back to doing B1–B15 | [ ] | [ ] |  |
-| B18 | Hold `;`, alt-tab away, come back, release | Nothing is stuck lit or stuck down | [ ] | [ ] |  |
+| B15 | Hold `\` and tap `` ` `` with no side held | A sword lights above `Set N` and nothing is said in chat; again and it clears, disengaging you | [x] | [ ] |  |
+| B16 | Press Enter, then type `;` `'` `\` `` ` `` `=` and `1`–`8` | Every character lands in the message | [x] | [ ] | Game macros require holding ctrl or alt + number row 1-8 |
+| B17 | Close the chat line | The keys go back to doing B1–B15 | [x] | [ ] |  |
+| B18 | Hold `;`, alt-tab away, come back, release | Nothing is stuck lit or stuck down | [x] | [ ] |  |
 
 ## C. Binding from the console
 
@@ -57,15 +57,15 @@ These bindings are used by every later section — leave them in place.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| C1 | `//hud crossbar bind 1 l 1 ma "Cure" me` | Slot 1 shows Cure with its icon | [ ] | [ ] |  |
-| C2 | Hold `;` and press `1` | Cure is cast on you | [ ] | [ ] |  |
-| C3 | Watch slot 1 straight after | A dark sweep wipes round it until the recast is up | [ ] | [ ] |  |
-| C4 | Look at slot 1's corner | Cure's MP cost is written there | [ ] | [ ] |  |
-| C5 | Let your MP drop below that cost | The slot dims | [ ] | [ ] |  |
-| C6 | `//hud crossbar bind 1 l 2 ja "Provoke" t` | Bound, and it fires on a target | [ ] | [ ] |  |
-| C7 | `//hud crossbar bind 1 l 3 ws "Savage Blade" t` | Bound; fires with TP and a target | [ ] | [ ] |  |
-| C8 | `//hud crossbar bind 1 l 4 item "Echo Drops" me` | Bound, and the corner shows how many you carry | [ ] | [ ] |  |
-| C9 | Use Echo Drops until you have none | The count reaches 0, a red X covers the slot, it dims | [ ] | [ ] |  |
+| C1 | `//hud crossbar bind 1 l 1 ma "Cure" me` | Slot 1 shows Cure with its icon | [x] | [ ] |  |
+| C2 | Hold `;` and press `1` | Cure is cast on you | [x] | [ ] |  |
+| C3 | Watch slot 1 straight after | A dark sweep wipes round it until the recast is up | [x] | [ ] |  |
+| C4 | Look at slot 1's corner | Cure's MP cost is written there | [x] | [ ] |  |
+| C5 | Let your MP drop below that cost | The slot dims | [x] | [ ] |  |
+| C6 | `//hud crossbar bind 1 l 2 ja "Provoke" t` | Bound, and it fires on a target | [x] | [ ] |  |
+| C7 | `//hud crossbar bind 1 l 3 ws "Savage Blade" t` | Bound; fires with TP and a target | [x] | [ ] |  |
+| C8 | `//hud crossbar bind 1 l 4 item "Echo Drops" me` | Bound, and the corner shows how many you carry | [x] | [ ] |  |
+| C9 | Use Echo Drops until you have none | The count reaches 0, a red X covers the slot, it dims | [ ] | [x] | Count never ticked down while using them; it did flip to 0 + X when the stack ran out |
 | C10 | `//hud crossbar bind 1 r 1 ra t` | Bound; fires a ranged attack | [ ] | [ ] |  |
 | C11 | `//hud crossbar bind 1 r 2 ct "sea all linkshell"` | Bound; fires the search command | [ ] | [ ] |  |
 | C12 | `//hud crossbar bind 1 r 3 ex "echo hello"` | Bound; the console echoes | [ ] | [ ] |  |

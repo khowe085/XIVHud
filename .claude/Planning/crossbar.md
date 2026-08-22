@@ -542,6 +542,17 @@ using master tools").
   `get_items()` re-read for the affected tool, giltracker's pattern
   (`giltracker.lua:210`). No new touchpoint, but no count in the payload
   either.
+- **...and from `0x01E`, which the events miss entirely** (Kevin, live
+  client, 2026-08-22). Those events fire when a record *enters or leaves a
+  bag*: using one Prism Powder out of five leaves four in the slot and fires
+  nothing, so the corner sat at 5 until the stack emptied. A decrement rides
+  the **Modify Inventory** packet `0x01E` (Count, Bag, Index, Status — read
+  from Windower's `packets/fields.lua`), already reaching the component on
+  the existing `incoming chunk` dispatch. It carries **no item id**, so it
+  cannot be gated the way the events are; it is gated instead on whether any
+  painted slot draws a bag-fed number at all, and coalesced by the same
+  dirty flag, so an equip burst or a zone-in's inventory dump costs one
+  re-read on the next tick rather than one per packet.
 
 ### Open actions (renamed from "menu", 2026-08-06)
 

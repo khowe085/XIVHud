@@ -167,6 +167,14 @@ local SC_DIM_FRAME_ALPHA = 150
 local ACTION_CHUNK = 0x028
 -- Zoning out: every mob id on this side of the line is stale, and so is any
 -- cast the retry is still holding.
+--[[ `0x01E` Modify Inventory (Count, Bag, Index, Status - read from
+     Windower's own packets/fields.lua): the packet a stack DECREMENT rides.
+     `add item`/`remove item` fire when a record enters or leaves a bag, so
+     using one of five never reached the count and only the last one did
+     (Kevin, live client, 2026-08-22). It carries no item id, so unlike the
+     events it cannot be gated on which id moved - only on whether the bar
+     draws a count at all. ]]
+local INVENTORY_CHUNK = 0x01E
 local ZONE_OUT_CHUNK = 0x0B
 local SC_CHUNKS = { [0x29] = true, [0x63] = true, [ZONE_OUT_CHUNK] = true }
 -- The player statuses that mean dead ("Dead" and "Engaged dead"): whatever
@@ -1970,6 +1978,32 @@ local function new(ctx)
     return table.concat(parts, ",")
   end
 
+  --[[ Whether any painted slot draws a number the bag feeds - a bound
+       item or piece of gear, or a spell/ability whose school spends a tool.
+       The inventory packet names no id, so this is the only gate available
+       to it, and it is deliberately coarser than the events': the JOB check
+       the tool count itself applies is left out, because marking a recount
+       on the wrong job costs one bag read and skipping one on the right job
+       costs a wrong number on screen. ]]
+  local function counts_from_inventory()
+    for _, group in ipairs(GROUPS) do
+      for slot = 1, SLOT_COUNT do
+        local content = contents[group.key][slot]
+        local meta, record = content.meta, content.record
+        if meta ~= nil and meta.item_id ~= nil then
+          return true
+        end
+        if meta ~= nil and meta.spell_id ~= nil and counters.tool_for_spell(meta.spell_id) ~= nil then
+          return true
+        end
+        if record ~= nil and record.type == "ja" and counters.tool_for_ability(record.action) ~= nil then
+          return true
+        end
+      end
+    end
+    return false
+  end
+
   local function recount_items()
     counts_dirty = false
     --[[ TWO tallies, because the two bindings do not count the same thing:
@@ -3080,6 +3114,11 @@ local function new(ctx)
     elseif event == "chunk" then
       if roulette ~= nil then
         roulette.on_chunk(a)
+      end
+      -- Coalesced by the flag, so an equip burst or a zone-in's inventory
+      -- dump costs one re-read on the next tick rather than one per packet.
+      if a == INVENTORY_CHUNK and counts_from_inventory() then
+        counts_dirty = true
       end
       -- The skillchain feed, attached only: the action packet, decoded once
       -- by the entry point's dispatch and handed down beside the raw bytes,
