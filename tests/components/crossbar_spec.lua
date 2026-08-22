@@ -4970,6 +4970,36 @@ describe("crossbar live widget", function()
       assert.are.equal(1, active_set(), "and the chord jumped back")
     end)
 
+    it("saves the binder window's position into the component's own config", function()
+      --[[ Edit-mode furniture, so it lives beside the other preferences
+           rather than in a framework layout slot - those are for placed
+           widget anchors, and the binder is not one. ]]
+      build_world()
+      widget.handle_command({ "edit" })
+      click(slot_point("left", 3))
+      -- The title sits in the drag strip, so its own prim is both the
+      -- handle to grab and the marker for where the window ended up.
+      local title = binder_line("^pick a layer")
+      assert.is_not_nil(title)
+      local from_x, from_y = title.x + 10, title.y
+      local before = env.config_saves or 0
+      widget.on_mouse(MOUSE_LEFT_DOWN, from_x, from_y, 0, false)
+      widget.on_mouse(MOUSE_MOVE, from_x - 300, from_y - 100, 0, false)
+      widget.on_mouse(MOUSE_LEFT_UP, from_x - 300, from_y - 100, 0, false)
+      assert.is_table(config.binder_pos, "written to the component's own config")
+      assert.is_true((env.config_saves or 0) > before, "and the config was saved")
+      local moved = binder_line("^pick a layer")
+      assert.are.same({ from_x - 310, from_y - 100 }, { moved.x, moved.y }, "the window went with the cursor")
+
+      -- Closing and reopening edit mode reads it back rather than
+      -- recentring.
+      widget.handle_command({ "edit" })
+      widget.handle_command({ "edit" })
+      click(slot_point("left", 3))
+      local reopened = binder_line("^pick a layer")
+      assert.are.same({ from_x - 310, from_y - 100 }, { reopened.x, reopened.y })
+    end)
+
     it("puts an open binder window away when the set changes under it", function()
       --[[ The window remembers the address it was opened on, so a set
            change with one open would write the next bind into a set the

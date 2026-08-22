@@ -450,6 +450,11 @@ from the first, so you never have to click empty space to get out.
 
 Binding lands you back on step one, ready for the next edit on the same slot.
 
+**Moving it.** Drag the window by its title strip — the top row, to the right
+of the back button. Where you leave it is remembered per character, so it opens
+there next time rather than back in the middle. It is always kept fully on
+screen, including a position saved at a resolution you no longer play at.
+
 The window does not dodge the bar. If you have put the bar in the middle of
 the screen the window will cover it, and slots underneath cannot be clicked or
 dropped onto while the binder is open.

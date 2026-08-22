@@ -240,6 +240,12 @@ local function new(deps)
   local catalog_groups = nil
   local category_index, page = 1, 1
   local press = nil
+  --[[ Where the player dragged the window to, or nil for dead centre. Read
+       from the config on open and written back on the drop, so it survives
+       a reload - the window is a working surface, and having to shove it
+       out of the way every session is exactly the friction the mode
+       exists to remove. ]]
+  local position = nil
   -- The details column, and the target it was built from - kept so a
   -- cadence rebuild can redo it without the cursor moving.
   local details = nil
@@ -467,16 +473,37 @@ local function new(deps)
        Predictable placement won that trade - a bar in the middle of the
        screen loses drag-to-slot while the binder is open, and a bar is not
        put there. ]]
+  --[[ Fully on screen, always. A position saved at one resolution and
+       opened at another would otherwise leave the window unreachable, and
+       there is no keyboard in edit mode to recentre it with. A window
+       larger than the screen pins to the top left rather than inverting
+       the range. ]]
+  local function clamp_to_screen(x, y)
+    local screen_width, screen_height = screen()
+    return math.max(0, math.min(x, screen_width - WINDOW_WIDTH)),
+      math.max(0, math.min(y, screen_height - WINDOW_HEIGHT))
+  end
+
   local function build_frame()
     local screen_width, screen_height = screen()
-    local frame = {
-      x = math.max(0, math.floor(screen_width / 2 - WINDOW_WIDTH / 2)),
-      y = math.max(0, math.floor(screen_height / 2 - WINDOW_HEIGHT / 2)),
-      width = WINDOW_WIDTH,
-      height = WINDOW_HEIGHT,
-    }
+    -- `position` is clamped where it is SET - on the drag and on the read at
+    -- open - so there is one clamp per way in rather than a second one here
+    -- that would make both untestable.
+    local x = position ~= nil and position.x or math.max(0, math.floor(screen_width / 2 - WINDOW_WIDTH / 2))
+    local y = position ~= nil and position.y or math.max(0, math.floor(screen_height / 2 - WINDOW_HEIGHT / 2))
+    local frame = { x = x, y = y, width = WINDOW_WIDTH, height = WINDOW_HEIGHT }
     frame.back = { x = frame.x + PAD, y = frame.y + PAD, width = BACK_WIDTH, height = ROW_HEIGHT }
     frame.title = { x = frame.back.x + BACK_WIDTH + GAP, y = frame.y + PAD }
+    --[[ The drag handle: the top strip, back button excluded, which is
+         checked first so a slip onto it is still back. It spans the rest of
+         the width rather than only the title text, because a handle you
+         have to aim at is worse than no handle. ]]
+    frame.header = {
+      x = frame.back.x + BACK_WIDTH,
+      y = frame.y,
+      width = WINDOW_WIDTH - PAD - BACK_WIDTH,
+      height = PAD + ROW_HEIGHT,
+    }
     frame.subhead = { x = frame.x + PAD, y = frame.y + PAD + ROW_HEIGHT }
     local body_y = frame.y + PAD + HEADER_ROWS * ROW_HEIGHT
     local body_height = BODY_ROWS * ROW_HEIGHT
@@ -961,6 +988,9 @@ local function new(deps)
       if inside(x, y, window.back) then
         return { kind = "back", rect = window.back }
       end
+      if inside(x, y, window.header) then
+        return { kind = "header", rect = window.header }
+      end
       if layer_view ~= nil then
         for index, row in ipairs(layer_view.rows) do
           if inside(x, y, row) then
@@ -1222,6 +1252,16 @@ local function new(deps)
     slot, step, cursor, pending, press, details, hovered = nil, nil, nil, nil, nil, nil, nil
     -- Rebuilt every time edit mode opens: the inventory, the known spells
     -- and the job pair all move in play.
+    --[[ Read once per open rather than per frame: the config is the
+         player's own file and nothing else writes this key. A stored value
+         that is not a pair of numbers is ignored rather than trusted -
+         these files are hand-editable. ]]
+    position = nil
+    local stored = deps.window_pos ~= nil and deps.window_pos() or nil
+    if type(stored) == "table" and type(stored.x) == "number" and type(stored.y) == "number" then
+      position = { x = 0, y = 0 }
+      position.x, position.y = clamp_to_screen(stored.x, stored.y)
+    end
     rebuild_catalog()
     build_prims()
     redraw()
@@ -1332,6 +1372,16 @@ local function new(deps)
     end
     if kind == MOVE then
       if press ~= nil then
+        if press.target.kind == "header" then
+          -- The grab point stays under the cursor, so the window does not
+          -- jump to have its corner there on the first pixel of movement.
+          press.drag = true
+          position = { x = 0, y = 0 }
+          position.x, position.y = clamp_to_screen(x - press.offset.x, y - press.offset.y)
+          details, hovered = nil, nil
+          redraw()
+          return true
+        end
         if not press.drag and not inside(x, y, press.rect) then
           press.drag = true
           -- The cursor left what it started on: this is a drag, so the
@@ -1373,6 +1423,9 @@ local function new(deps)
         return false
       end
       press = { target = target, rect = target.rect, drag = false }
+      if target.kind == "header" and window ~= nil then
+        press.offset = { x = x - window.x, y = y - window.y }
+      end
       return true
     end
     if kind == LEFT_UP then
@@ -1381,7 +1434,13 @@ local function new(deps)
       if armed == nil then
         return false
       end
-      if armed.drag then
+      if armed.target.kind == "header" then
+        -- Saved on the drop, not on every pixel: a drag is a stream of
+        -- moves, and this writes a config file.
+        if armed.drag and position ~= nil and deps.save_window_pos ~= nil then
+          deps.save_window_pos(position.x, position.y)
+        end
+      elseif armed.drag then
         on_drop(armed.target, hit(x, y))
       else
         on_click(armed.target)

@@ -2543,6 +2543,22 @@ local function new(ctx)
          is actually up, and picking an addendum lights its arts too, so the
          bar always shows the true stacked result. nil hands the live buff
          list back. ]]
+    --[[ Where the player dragged the binder window to. It is edit-mode
+         furniture rather than anything the bar draws, so it lives in the
+         component's own config beside the other preferences - not in a
+         framework layout slot, which is for placed widget anchors. ]]
+    window_pos = function()
+      return config ~= nil and config.binder_pos or nil
+    end,
+    save_window_pos = function(x, y)
+      if config == nil then
+        return
+      end
+      config.binder_pos = { x = x, y = y }
+      if save ~= nil then
+        save()
+      end
+    end,
     preview = function(buffs)
       previewing = buffs
       apply_buffs()

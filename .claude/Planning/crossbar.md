@@ -1929,6 +1929,14 @@ part worth mining; its navigation is not.
 - **The wheel clamps at both ends.** It used to wrap, so scrolling off the end
   of a long list threw you silently back to the top and read as the list having
   reset.
+- **The window is movable and remembers where** (Kevin, 2026-08-22). Dragged by
+  its title strip, back button excluded — which `hit()` checks first, so a slip
+  onto it is still back. The position lives in the component's own config
+  (`binder_pos`) rather than a framework layout slot: those are for placed
+  widget anchors, and edit-mode furniture is not one. Clamped fully on screen
+  at both points a value can enter — the drag, and the read at open — because a
+  position saved at one resolution and opened at another would otherwise leave
+  the window unreachable, with no keyboard in edit mode to recentre it.
 - **The stack panel is the overlay fix.** Kevin's fork failed because the edit
   target was sticky global state, set elsewhere and invisible at bind time. Here
   the target is chosen at the slot, at bind time, on screen — with these rules

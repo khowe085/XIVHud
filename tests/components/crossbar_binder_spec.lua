@@ -132,6 +132,13 @@ local function build(opts)
       -- absence, and the specs below tell the two apart.
       env.previews[#env.previews + 1] = { buffs = buffs }
     end,
+    window_pos = function()
+      return env.window_pos
+    end,
+    save_window_pos = function(x, y)
+      env.window_pos = { x = x, y = y }
+      env.window_saves = (env.window_saves or 0) + 1
+    end,
   })
   env.binder = binder
   return binder, env
@@ -1410,6 +1417,69 @@ describe("crossbar binder", function()
       for _, prim in ipairs(env.prims.texts) do
         assert.are.equal(18, prim.font_size)
       end
+    end)
+
+    it("drags by its title strip and remembers where it was left", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      local before = binder.window()
+      -- Grab the strip to the right of the back button and pull it up-left.
+      local grab_x, grab_y = before.header.x + 20, before.header.y + 5
+      binder.mouse(LEFT_DOWN, grab_x, grab_y, 0)
+      binder.mouse(MOVE, grab_x - 200, grab_y - 150, 0)
+      assert.are.same(
+        { before.x - 200, before.y - 150 },
+        { binder.window().x, binder.window().y },
+        "it follows the cursor, keeping the grab point under it"
+      )
+      binder.mouse(LEFT_UP, grab_x - 200, grab_y - 150, 0)
+      assert.are.same({ x = before.x - 200, y = before.y - 150 }, env.window_pos, "and the drop saved it")
+
+      -- A fresh binder over the same config opens where it was left, not
+      -- back in the middle.
+      local again, env2 = build()
+      env2.window_pos = env.window_pos
+      open_stack(again, env2, "left", 3)
+      assert.are.same({ before.x - 200, before.y - 150 }, { again.window().x, again.window().y })
+    end)
+
+    it("does not drag from the back button", function()
+      -- Back is checked first, so a slip on it must still be back rather
+      -- than a grab of the window behind it.
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      local before = binder.window()
+      local x, y = centre(before.back)
+      binder.mouse(LEFT_DOWN, x, y, 0)
+      binder.mouse(MOVE, x - 200, y - 150, 0)
+      assert.is_not_nil(binder.window(), "still open")
+      assert.are.same({ before.x, before.y }, { binder.window().x, binder.window().y }, "and it did not move")
+      assert.is_nil(env.window_pos, "nothing was saved")
+    end)
+
+    it("keeps a dragged window on screen, and clamps a stored one that is not", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      local before = binder.window()
+      local grab_x, grab_y = before.header.x + 20, before.header.y + 5
+      binder.mouse(LEFT_DOWN, grab_x, grab_y, 0)
+      binder.mouse(MOVE, grab_x - 5000, grab_y - 5000, 0)
+      assert.are.same({ 0, 0 }, { binder.window().x, binder.window().y }, "off the top left is pinned to it")
+      binder.mouse(MOVE, grab_x + 5000, grab_y + 5000, 0)
+      assert.are.same(
+        { 1920 - before.width, 1080 - before.height },
+        { binder.window().x, binder.window().y },
+        "and off the bottom right to that corner"
+      )
+      binder.mouse(LEFT_UP, grab_x + 5000, grab_y + 5000, 0)
+
+      --[[ A position saved at one resolution and opened at another would
+           otherwise leave the window unreachable, with no way back to it -
+           there is no keyboard in edit mode to recentre with. ]]
+      local again, env2 = build()
+      env2.window_pos = { x = 9000, y = 9000 }
+      open_stack(again, env2, "left", 3)
+      assert.are.same({ 1920 - before.width, 1080 - before.height }, { again.window().x, again.window().y })
     end)
 
     it("hit-tests through the drawn geometry, so an unplaced bar catches nothing", function()
