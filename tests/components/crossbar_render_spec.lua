@@ -88,24 +88,48 @@ describe("crossbar render", function()
   end)
 
   describe("the set label", function()
-    it("centres it across the main footprint, in the band under the slots", function()
-      --[[ FFXIV puts the set number between the two crosses, along the
-           bottom. The main anchor spans both side panels, so the centre of
-           that span is the centre of the bar - and the band under the slot
-           grid is the art's own empty strip, where nothing else draws. ]]
+    -- The sword, the gap, then the label: what gets centred is the row.
+    local function row_width(render)
+      return render.set_icon_size() + 4 + render.set_label_width()
+    end
+
+    it("centres the sword and label together, level with the crosses", function()
+      --[[ FFXIV puts the set number between the two crosses. The main anchor
+           spans both side panels, so the centre of that span is the centre
+           of the bar - and the row sits level with the slot grid, in the gap
+           the two clusters leave down the middle, rather than under them. ]]
       local render = make()
-      local x, y = render.set_label_pos()
+      local icon_x, icon_y = render.set_icon_pos()
       local metrics = render.metrics()
-      assert.are.equal((metrics.side_gap + metrics.panel_width) / 2, x + render.set_label_width() / 2)
-      assert.is_true(y > metrics.pad_y + 2 * metrics.row_pitch + metrics.slot, "below the slots")
-      assert.is_true(y + 14 <= metrics.panel_height, "and inside the panel")
+      assert.are.equal((metrics.side_gap + metrics.panel_width) / 2, icon_x + row_width(render) / 2)
+      local grid_top = metrics.pad_y
+      local grid_bottom = grid_top + 2 * metrics.row_pitch + metrics.slot
+      assert.is_true(icon_y > grid_top, "below the top row")
+      assert.is_true(icon_y + 14 < grid_bottom, "and above the bottom one")
+    end)
+
+    it("puts the label to the sword's right, on the same line", function()
+      local render = make()
+      local icon_x, icon_y = render.set_icon_pos()
+      local label_x, label_y = render.set_label_pos()
+      assert.are.equal(icon_y, label_y, "one line")
+      assert.is_true(label_x > icon_x + render.set_icon_size(), "clear of the sword")
+    end)
+
+    it("holds the label still whether or not the sword is showing", function()
+      -- The icon's width is reserved either way, so drawing and sheathing
+      -- does not shunt the label sideways.
+      local render = make()
+      local before = render.set_label_pos()
+      local after = render.set_label_pos()
+      assert.are.equal(before, after)
     end)
 
     it("moves with the configured grid rather than sitting on a fixed pixel", function()
       local wide = make({ slot_spacing = 16, bar_spacing = 100 })
-      local x = wide.set_label_pos()
+      local icon_x = wide.set_icon_pos()
       local metrics = wide.metrics()
-      assert.are.equal((metrics.side_gap + metrics.panel_width) / 2, x + wide.set_label_width() / 2)
+      assert.are.equal((metrics.side_gap + metrics.panel_width) / 2, icon_x + row_width(wide) / 2)
     end)
 
     it("names the set the way FFXIV does", function()

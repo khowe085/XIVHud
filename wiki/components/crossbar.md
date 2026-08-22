@@ -716,9 +716,15 @@ all the way to the command it sends.
 — in seconds, and **zero turns the wait off** for all three actions. That is
 the off switch, so there is no separate toggle.
 
-The **active set** is written along the bottom of the XHB, between the two
-crosses — `Set 3`, in gold. It is there whether or not a side is held, so a
-set switch is visible even on a bar you have not bound anything to yet.
+The **active set** is written between the two crosses — `Set 3`, in gold,
+level with the slots. It is there whether or not a side is held, so a set
+switch is visible even on a bar you have not bound anything to yet.
+
+A **sword** appears to its left while your weapon is drawn. That is the
+crossbar's own idea of drawn, the one that picks which set rotation is
+live — so `//hud crossbar draw` lights it even with nothing targeted, which
+is the point: you can put yourself in the combat rotation without picking a
+fight.
 
 **Positioning.** In `//hud layout` you place four things independently: the
 XHB, the WXHB's **left and right sides separately**, and the skillchain

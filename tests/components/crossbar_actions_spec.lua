@@ -196,13 +196,18 @@ describe("crossbar actions", function()
       assert.equal("drawn", plan.weapon_state)
     end)
 
-    it("answers a hint, not a command, with nothing to engage", function()
+    it("enters drawn with nothing targeted, sending no command", function()
+      --[[ The component's weapon state is its OWN, and the player asking
+           for the combat rotation is not asking to attack anything (Kevin,
+           2026-08-22). There is nothing to send `/attack` at, so nothing is
+           sent - but the state flips, which is what the rotation and the
+           bar's sword indicator follow. ]]
       local actions = build()
       local plan = actions.resolve({ type = "draw" }, { weapon_drawn = false, has_target = false })
-      assert.equal("message", plan.kind)
-      assert.is_string(plan.message)
+      assert.equal("none", plan.kind)
+      assert.equal("drawn", plan.weapon_state)
       assert.is_nil(plan.command)
-      assert.is_nil(plan.weapon_state)
+      assert.is_nil(plan.message, "no complaint - the sword on the bar is the feedback")
     end)
   end)
 

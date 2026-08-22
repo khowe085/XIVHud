@@ -309,9 +309,10 @@ describe("crossbar widget", function()
     -- overlay, icon, sweep-overlay, frame, feedback - upstream's layering,
     -- bottom to top); the sweep overlay doubles as the red X, upstream's own
     -- prim reuse, and the chain overlay is CB6's per-slot chain-result icon.
-    -- The skillchain indicator's bg and fill close the list. Texts: name,
-    -- cost, recast per slot, plus the one set label along the bar's foot.
-    assert.are.equal(1 + 40 * 6 + 2, #prims.images)
+    -- Then the sword that marks the drawn weapon state, and the skillchain
+    -- indicator's bg and fill closing the list. Texts: name, cost and
+    -- recast per slot, plus the one set label between the crosses.
+    assert.are.equal(1 + 40 * 6 + 1 + 2, #prims.images)
     assert.are.equal(40 * 3 + 1, #prims.texts)
   end)
 
@@ -443,18 +444,22 @@ describe("crossbar widget", function()
     assert.are.equal(32 + 1 + 1, visible_count(), "the survivor's XHB side returns, panelled, label and all")
   end)
 
-  it("writes the active set along the bar's foot, in gold", function()
+  it("writes the active set between the two crosses, in gold", function()
     --[[ Without this an empty bar gives no sign that a set switch did
-           anything, which is how its absence was found in a live client.
-           FFXIV writes it between the two crosses along the bottom. ]]
+         anything, which is how its absence was found in a live client. ]]
     local label = prims.texts[#prims.texts]
     assert.are.equal("Set 1", label.last.text)
     assert.are.same({ 255, 215, 0 }, label.last.color)
     assert.is_true(label.visible, "shown whether or not a side is held")
-    -- Centred across the main anchor, in the band under the slot grid.
     local render = new_render({ config = widget.defaults })
     local x, y = render.set_label_pos()
     assert.are.same({ 100 + x, 900 + y }, { label.x, label.y })
+  end)
+
+  it("keeps the sword down while the weapon is sheathed", function()
+    -- Sheathed is the state a fresh attach starts in. The sword sits just
+    -- before the indicator pair, which is last in the image list.
+    assert.is_false(prims.images[#prims.images - 2].visible)
   end)
 
   it("does not strand the panel across hide and show", function()
@@ -501,7 +506,7 @@ describe("crossbar widget", function()
     bare_ctx.new_image = fresh.new_image
     bare_ctx.new_text = fresh.new_text
     require("components/crossbar/crossbar")(bare_ctx)
-    assert.are.equal(1 + 40 * 6 + 2, #fresh.images)
+    assert.are.equal(1 + 40 * 6 + 1 + 2, #fresh.images)
     for _, prim in ipairs(fresh.images) do
       assert.is_false(prim.visible)
       assert.are.same({ 1, 1 }, prim.last.repeat_xy)
@@ -919,6 +924,11 @@ describe("crossbar live widget", function()
     return prims.images[#prims.images - 1], prims.images[#prims.images]
   end
 
+  -- The sword sits immediately before the indicator pair, which is last.
+  local function sword_icon()
+    return prims.images[#prims.images - 2]
+  end
+
   local function text_of(group, slot, kind)
     return prims.texts[(GROUP_INDEX[group] * 8 + slot - 1) * 3 + TEXT_KIND[kind]]
   end
@@ -1274,7 +1284,12 @@ describe("crossbar live widget", function()
       assert.are.equal("input /attack off", env.commands[2])
     end)
 
-    it("hints instead of engaging with no target", function()
+    it("enters drawn with no target, quietly and without a command", function()
+      --[[ The rotation is the point, not the attack: wanting the drawn set
+           does not mean wanting to swing at something (Kevin, 2026-08-22).
+           There is nothing to aim `/attack` at, so nothing goes out - and
+           no complaint either, because the bar's sword indicator is the
+           feedback. ]]
       build_world()
       env.target = nil
       press(LAYER)
@@ -1282,7 +1297,8 @@ describe("crossbar live widget", function()
       release(SWITCH)
       release(LAYER)
       assert.are.same({}, env.commands)
-      assert.is_not_nil(said():lower():find("no target"), "said: " .. said())
+      assert.are.same({}, env.chat, "no complaint")
+      assert.is_true(sword_icon().visible, "the sword says the state flipped")
     end)
 
     it("ignores a hand-edited non-string shortcut verb", function()
@@ -1729,7 +1745,7 @@ describe("crossbar live widget", function()
     end)
 
     it("touches no prim at all on a settled tick", function()
-      -- 364 prims at sixty frames a second: partylist's written/push gate,
+      -- 365 prims at sixty frames a second: partylist's written/push gate,
       -- pinned the same way partylist_spec pins it - two identical ticks,
       -- zero recorder calls on the second.
       build_world()

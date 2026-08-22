@@ -776,10 +776,19 @@ on counts and practical detail.
 
   | Event | Effect |
   | --- | --- |
-  | `draw` action (command, slot, or gesture) while sheathed | → **drawn** |
+  | `draw` action (command, slot, or gesture) while sheathed | → **drawn**, whether or not anything is targeted |
   | Player engages in game (status 1 / 3, via the framework's `status` dispatch) | → **drawn** |
   | `draw` action while drawn | → **sheathed** |
   | Player disengages in game (mob dies, zoning, knocked out of engagement) | **no effect — state stays drawn** |
+
+  **No target is not a refusal** (Kevin, 2026-08-22, from a live client). It
+  used to answer "No target to engage." and leave the state alone, on the
+  reasoning that `/attack` needs something to attack. But the state is OURS -
+  it picks which rotation is live - and asking for the combat rotation is not
+  asking to swing at anything. With nothing targeted the flip happens and no
+  command is sent; with a target, `/attack <t>` goes as well. Nothing is said
+  about it either, because the **sword beside the set label** is the feedback,
+  which is why the two landed together.
 
   The asymmetry is the point: engaging by any means should bring the combat
   rotation up, but a mob dying between pulls must not flap the bar back to the

@@ -846,8 +846,13 @@ local function new(ctx)
     -- The skillchain indicator, on its own anchor: a black backdrop and a
     -- centre-anchored fill, both the component's own white square tinted at
     -- draw time (fill after bg, so it draws on top).
+    --[[ Created BEFORE the indicator on purpose: the skillchain pair has to
+         stay last in the image list, which is how the specs address it. ]]
+    prims.set_icon = image("icons/weapons/sword.png")
+    -- The skillchain indicator, last.
     prims.indicator = { bg = image("indicator.png"), fill = image("indicator.png") }
-    -- The active set, written along the bottom of the XHB.
+    -- The active set, written between the two crosses, with the sword that
+    -- marks the drawn weapon state to its left.
     prims.set_label = text()
   end
 
@@ -1278,8 +1283,26 @@ local function new(ctx)
       prims.set_label.size(math.floor(SET_LABEL_SIZE * main.scale + 0.5))
       prims.set_label.text(render.set_label(bindings.active_set()))
       prims.set_label.show()
+      --[[ The sword: shown while the weapon is drawn, hidden while it is
+           sheathed. Its space is reserved either way (render reserves it in
+           the centring), so the label does not shift as it comes and goes.
+
+           This is the component's OWN weapon state, not the client's
+           status - the same state that picks which set rotation is live -
+           so it lights on `draw` even with nothing targeted, which is what
+           makes that press visible at all. ]]
+      local icon_x, icon_y = render.set_icon_pos()
+      local icon_size = render.set_icon_size() * main.scale
+      prims.set_icon.pos(main.pos.x + icon_x * main.scale, main.pos.y + icon_y * main.scale)
+      prims.set_icon.size(icon_size, icon_size)
+      if bindings.weapon_state() == "drawn" then
+        prims.set_icon.show()
+      else
+        prims.set_icon.hide()
+      end
     else
       prims.set_label.hide()
+      prims.set_icon.hide()
     end
     if hidden then
       -- The indicator follows the widget down; while shown, the tick owns it.
@@ -3203,6 +3226,7 @@ local function new(ctx)
     end
     prims.panel.destroy()
     prims.set_label.destroy()
+    prims.set_icon.destroy()
     prims.indicator.bg.destroy()
     prims.indicator.fill.destroy()
     for _, group in ipairs(GROUPS) do

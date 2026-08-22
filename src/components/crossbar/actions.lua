@@ -145,8 +145,14 @@ local function draw_plan(state)
     plan.weapon_state = "sheathed"
     return plan
   end
+  --[[ Nothing targeted: enter drawn anyway (Kevin, 2026-08-22). The
+       component's weapon state is its own - it picks which set rotation is
+       live and lights the bar's sword - and wanting the combat rotation is
+       not the same as wanting to attack something. There is nothing to aim
+       `/attack` at, so nothing is sent, and the state flip is the whole
+       action. It used to refuse with a hint instead. ]]
   if not state.has_target then
-    return { kind = "message", message = "No target to engage." }
+    return { kind = "none", weapon_state = "drawn" }
   end
   local plan = command_plan("input /attack <t>")
   plan.weapon_state = "drawn"

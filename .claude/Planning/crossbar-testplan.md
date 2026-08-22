@@ -39,13 +39,13 @@ with nothing bound it correctly stays put. Cycling proper is D5a.
 | B5 | Tap `` ` `` | Nothing moves — cycle skips EMPTY sets, and they all are. Proper cycling is D5a, after things are bound | [x] | [ ] | Test was wrong, not the addon: written before I remembered cycle skips empty sets. Jump (B7) has no such rule, which is why it works here. |
 | B6 | Hold `` ` `` and press `3` | The label jumps straight to `Set 3` | [x] | [ ] |  |
 | B7 | `//hud crossbar set 1` | Back to `Set 1` | [x] | [ ] |  |
-| B8 | Press `1`–`8` with nothing held | Your game macros fire as usual | [ ] | [ ] |  |
-| B9 | Hold `;` | A panel lights behind the left eight slots | [ ] | [ ] |  |
-| B10 | Hold `'` | A panel lights behind the right eight | [ ] | [ ] |  |
-| B11 | Hold `\` then `;` | The WXHB's left half appears | [ ] | [ ] |  |
-| B12 | Hold `\` then `'` | The WXHB's right half appears | [ ] | [ ] |  |
-| B13 | Hold `;` and `'` together | Expanded Hold replaces both bars | [ ] | [ ] |  |
-| B14 | Release one of the two | It drops to the side still held | [ ] | [ ] |  |
+| B8 | Press `1`–`8` with nothing held | Your game macros fire as usual | [x] | [ ] | Confirmed. Game macros need Ctrl or Alt + 1-8; the bare number row is the game's own hotbar, unaffected either way. |
+| B9 | Hold `;` | A panel lights behind the left eight slots | [x] | [ ] |  |
+| B10 | Hold `'` | A panel lights behind the right eight | [x] | [ ] |  |
+| B11 | Hold `\` then `;` | The WXHB's left half appears | [x] | [ ] |  |
+| B12 | Hold `\` then `'` | The WXHB's right half appears | [x] | [ ] |  |
+| B13 | Hold `;` and `'` together | Expanded Hold replaces both bars | [x] | [ ] |  |
+| B14 | Release one of the two | It drops to the side still held | [x] | [ ] |  |
 | B15 | Hold `\` and tap `` ` `` with no side held | Your weapon draws; again and it sheathes | [ ] | [ ] |  |
 | B16 | Press Enter, then type `;` `'` `\` `` ` `` `=` and `1`–`8` | Every character lands in the message | [ ] | [ ] |  |
 | B17 | Close the chat line | The keys go back to doing B1–B15 | [ ] | [ ] |  |
