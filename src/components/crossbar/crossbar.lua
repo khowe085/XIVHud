@@ -1713,21 +1713,35 @@ local function new(ctx)
          travel.lua's reason. ]]
     if step == "wait" then
       local remaining = math.ceil(enchanted.warmup_remaining(ext, time_now()))
-      if pending_item.said == nil then
-        pending_item.said = remaining + 1
-        say(
-          "crossbar: "
-            .. tostring(pending_item.name)
-            .. " ready in "
-            .. remaining
-            .. (remaining == 1 and " second" or " seconds")
-            .. ". /heal to cancel."
-        )
-      end
-      if remaining < pending_item.said then
-        pending_item.said = remaining
-        if remaining > 0 and remaining <= PENDING_COUNT_FROM then
-          say("crossbar: " .. remaining .. "...")
+      --[[ A POSITIVE reading only. On the equip path the extdata's
+           activation_time still belongs to some earlier equip until the
+           server refreshes it - the same staleness `worn` exists to guard
+           against above - so the first polls read zero remaining while the
+           ring is genuinely warming. Announcing that said "ready in 0
+           seconds" and then latched the counter at 1, so every later real
+           reading was smaller-than-nothing and never spoke (Kevin, live
+           client, 2026-08-22).
+
+           A warm-up whose length the client never admits to therefore gets
+           no countdown at all - the press-time line is what the player
+           gets, and saying nothing beats promising a zero. ]]
+      if remaining > 0 then
+        if pending_item.said == nil then
+          pending_item.said = remaining + 1
+          say(
+            "crossbar: "
+              .. tostring(pending_item.name)
+              .. " ready in "
+              .. remaining
+              .. (remaining == 1 and " second" or " seconds")
+              .. ". /heal to cancel."
+          )
+        end
+        if remaining < pending_item.said then
+          pending_item.said = remaining
+          if remaining <= PENDING_COUNT_FROM then
+            say("crossbar: " .. remaining .. "...")
+          end
         end
       end
     end

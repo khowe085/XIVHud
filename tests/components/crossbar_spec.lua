@@ -3799,6 +3799,51 @@ describe("crossbar live widget", function()
       end
     end)
 
+    it("waits for a warmup it can believe before announcing one", function()
+      --[[ On the EQUIP path the extdata's activation_time still belongs to
+           some earlier equip until the server refreshes it, so the first
+           poll reads zero seconds remaining. Announcing that produced
+           "Warp Ring ready in 0 seconds" and then silence for the ten
+           seconds it actually took (Kevin, live client, 2026-08-22): the
+           zero had latched the counter at 1, so every later real reading
+           was smaller-than-nothing and never spoke. ]]
+      build_world()
+      env.items[0] = { enabled = true, { id = 28540, slot = 5, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        -- Stale: reads as zero remaining, and means nothing.
+        activation_time = env.time - 18000,
+        usable = false,
+      }
+      widget.handle_command({ "warp" })
+      tick_to(1)
+      assert.is_nil(said():find("ready in 0", 1, true), "no zero-second promise: " .. said())
+
+      -- The server refreshes it: ten seconds, and NOW there is something to say.
+      env.ext.activation_time = env.time - 18000 + 10
+      tick_to(2)
+      assert.is_not_nil(said():find("Warp Ring ready in 10 seconds", 1, true), said())
+
+      -- Ten seconds in hand, so the last five are counted and the first
+      -- five pass in silence.
+      --[[ Second by second, on BOTH clocks: `tick_to` moves the frame
+           clock and polls once, while the warmup is measured against the
+           game's own timestamp - so a leap on either alone either skips
+           every second the countdown speaks on, or freezes the warmup. ]]
+      local base = env.time
+      for second = 3, 13 do
+        env.time = base + (second - 2)
+        tick_to(second)
+      end
+      local spoken = said()
+      for _, line in ipairs({ "5...", "4...", "3...", "2...", "1..." }) do
+        assert.is_not_nil(spoken:find(line, 1, true), line .. " missing from: " .. spoken)
+      end
+      assert.is_nil(spoken:find("9...", 1, true), "and the middle stays quiet: " .. spoken)
+    end)
+
     it("fires the rung it announced, not a better one that appeared meanwhile", function()
       --[[ The ladder used to be walked AGAIN when the countdown ended, so
            the freshest rung won. The opening line names the rung now, and a
