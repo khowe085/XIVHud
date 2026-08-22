@@ -75,48 +75,51 @@ These bindings are used by every later section — leave them in place.
 | C16 | `//hud crossbar bind 1 l 5 ma "Cure IV" Zeid` | Refused, with advice to quote or use a token | [x] | [ ] | Refused as designed. Bare player names as targets requested as a feature - filed as #20 |
 | C17 | `//hud crossbar list` | Every slot above is listed, with its layer | [x] | [ ] |  |
 | C18 | `//hud crossbar alias 1 l 1 "Heal"` | Slot 1's label reads `Heal` | [x] | [ ] |  |
-| C19 | `//hud crossbar icon 1 l 1 map` | Slot 1's icon changes | [ ] | [ ] |  |
-| C20 | `//hud crossbar alias 1 l 1` then `icon 1 l 1` | Both revert to Cure's own | [ ] | [ ] |  |
-| C21 | `//hud crossbar swap 1 l 1 1 l 2` | Cure and Provoke exchange slots | [ ] | [ ] |  |
-| C22 | `//hud crossbar swap 1 l 1 1 l 2` again | They swap back | [ ] | [ ] |  |
-| C23 | `//hud crossbar bind 1 l 8 ma "Dia" t` then `unbind 1 l 8` | Bound, then the slot empties | [ ] | [ ] |  |
-| C24 | `//hud crossbar bind 1 l 1 y ma "Cure" me` | The button name `y` works like slot 1 | [ ] | [ ] |  |
-| C25 | Type `/ma "Cure" <YourName>` straight into the game | It casts — a name in angle brackets IS a target | [ ] | [ ] |  |
+| C19 | `//hud crossbar icon 1 l 1 map` | Slot 1's icon changes | [x] | [ ] | Initially failed - accepted but drew the old art; the icon memo keyed on record identity and the verb mutates in place (22f7b23) |
+| C20 | `//hud crossbar alias 1 l 1` then `icon 1 l 1` | Both revert to Cure's own | [x] | [ ] |  |
+| C21 | `//hud crossbar swap 1 l 1 1 l 2` | Cure and Provoke exchange slots | [x] | [ ] |  |
+| C22 | `//hud crossbar swap 1 l 1 1 l 2` again | They swap back | [x] | [ ] |  |
+| C23 | `//hud crossbar bind 1 l 8 ma "Dia" t` then `unbind 1 l 8` | Bound, then the slot empties | [x] | [ ] |  |
+| C24 | `//hud crossbar bind 1 l y ma "Cure" me` | The button name `y` works like slot 1 | [x] | [ ] |  |
+| C25 | Type `/ma "Cure" <YourName>` straight into the game | It casts — a name in angle brackets IS a target | [x] | [ ] | Confirmed - the game accepts a bare player name in angle brackets as a target, so #20 is a parser change and not a non-feature |
 
 ## D. Sets and layers
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| D1 | `//hud crossbar set 2` | Label reads `Set 2` and the slots go empty | [ ] | [ ] |  |
-| D2 | `//hud crossbar bind 2 l 1 ma "Dia" t` | Bound on set 2 only | [ ] | [ ] |  |
-| D3 | `//hud crossbar set 1` | Cure is back on slot 1 | [ ] | [ ] |  |
-| D4 | `//hud crossbar cycle 2 none` then tap `` ` `` repeatedly | Set 2 is skipped by the rotation | [ ] | [ ] |  |
-| D5 | `//hud crossbar cycle 2 both` | Set 2 is visited again | [ ] | [ ] |  |
-| D5a | With sets 1 and 2 both bound, tap `` ` `` | The label moves between them — this is B5's real test | [ ] | [ ] |  |
-| D5b | Bind nothing to sets 3–8 and keep tapping `` ` `` | The empty sets are skipped, never landed on | [ ] | [ ] |  |
-| D6 | `//hud crossbar share 2 on` | Reported as shared | [ ] | [ ] |  |
-| D7 | `//hud crossbar list 2` | Shows set 2's contents and that it is shared | [ ] | [ ] |  |
-| D8 | `//hud crossbar share 2 off`, then `list 2` | Reported as job-specific again | [ ] | [ ] |  |
-| D9 | `//hud crossbar share 2 on` | Back to shared — leave it this way for section M | [ ] | [ ] |  |
-| D10 | `//hud crossbar share 1 on` then `share 1 off` | Set 1 is untouched by set 2's flag either way | [ ] | [ ] |  |
-| D11 | `//hud crossbar bind sub:1 l 6 ma "Stone" t` | Bound to the subjob layer | [ ] | [ ] |  |
+| D1 | `//hud crossbar set 2` | Label reads `Set 2` and the slots go empty | [x] | [ ] |  |
+| D2 | `//hud crossbar bind 2 l 1 ma "Dia" t` | Bound on set 2 only | [x] | [ ] |  |
+| D3 | `//hud crossbar set 1` | Cure is back on slot 1 | [x] | [ ] |  |
+| D4 | `//hud crossbar cycle 2 none` then tap `` ` `` repeatedly | Set 2 is skipped by the rotation | [x] | [ ] |  |
+| D5 | `//hud crossbar cycle 2 both` | Set 2 is visited again | [x] | [ ] |  |
+| D5a | With sets 1 and 2 both bound, tap `` ` `` | The label moves between them — this is B5's real test | [x] | [ ] |  |
+| D5b | Bind nothing to sets 3–8 and keep tapping `` ` `` | The empty sets are skipped, never landed on | [x] | [ ] |  |
+| D6 | `//hud crossbar share 2 on` | Reported as shared, **and** warns that this job's own set-2 bindings are dormant while it is | [x] | [ ] |  |
+| D7 | `//hud crossbar list 2` | Set 2 reads empty - the shared store has nothing in it yet, and Dia is dormant rather than lost. The flag itself is not reported back anywhere (Kevin: leave it that way, 2026-08-22) | [x] | [ ] | Row expectation was wrong, not the code - a shared set reads the empty SHARED store, which is exactly what `share` warns about |
+| D8 | `//hud crossbar share 2 off`, then `list 2` | Reported as job-specific again, **and Dia is back** - the dormancy was reversible | [x] | [ ] |  |
+| D9 | `//hud crossbar share 2 on` | Back to shared — leave it this way for section M | [x] | [ ] |  |
+| D10 | `//hud crossbar share 1 on` then `share 1 off` | Set 1 is untouched by set 2's flag either way | [x] | [ ] |  |
+| D11 | `//hud crossbar bind sub:1 l 6 ma "Stone" t` | Bound to the subjob layer | [x] | [ ] |  |
 | D12 | Look at slot 6 in edit mode later (F-section) | It is tagged as a subjob override | [ ] | [ ] |  |
-| D13 | `//hud crossbar context list` | Lists the four Scholar contexts and which are live | [ ] | [ ] |  |
-| D14 | On SCH: `//hud crossbar bind ctx:light-arts:1 l 7 ja "Accession"` | Bound to that context | [ ] | [ ] |  |
-| D15 | On SCH: use Light Arts | Slot 7 changes to Accession by itself | [ ] | [ ] |  |
-| D16 | On SCH: use Dark Arts | Slot 7 changes back | [ ] | [ ] |  |
+| D13 | `//hud crossbar context list` | Lists the four Scholar contexts and which are live | [x] | [ ] |  |
+| D14 | On SCH: `//hud crossbar bind ctx:light-arts:1 l 7 ja "Accession"` | Bound to that context | [x] | [ ] |  |
+| D15 | On SCH: use Light Arts | Slot 7 changes to Accession by itself | [x] | [ ] |  |
+| D16 | On SCH: use Dark Arts | Slot 7 changes back | [x] | [ ] |  |
 
 ## E. The other two bars
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| E1 | `//hud crossbar` (no arguments) | Reports job, active set, and where each bar points | [ ] | [ ] |  |
-| E2 | `//hud crossbar view wxhb-l 2 l` | Reported as changed | [ ] | [ ] |  |
-| E3 | Hold `\`+`;` | The WXHB's left half now shows set 2's left side | [ ] | [ ] |  |
-| E4 | With it held, press a slot key | It fires what the WXHB shows, not the XHB | [ ] | [ ] |  |
-| E5 | `//hud crossbar wxhb on` | Both WXHB halves stay on screen at rest | [ ] | [ ] |  |
-| E6 | `//hud crossbar wxhb off` | They only appear while held | [ ] | [ ] |  |
-| E7 | Hold both sides, press a slot key | Expanded Hold fires from the set its view points at | [ ] | [ ] |  |
+| E1 | `//hud crossbar` (no arguments) | Reports job, active set, and where each bar points | [x] | [ ] |  |
+| E2 | `//hud crossbar view wxhb-l 1 r` | Reported as changed. **Not** `2 l` - that is already the default, so it would prove nothing (Kevin, 2026-08-22) | [x] | [ ] | Original row set it to its own default and proved nothing - reworked to 1 r |
+| E3 | Hold `\`+`;` | The WXHB's left half now shows set 1's **right** side - the ranged/search/echo/map slots, not set 2's Dia | [x] | [ ] |  |
+| E3a | `//hud crossbar view wxhb-l 2 l`, then hold `\`+`;` again | It goes back to the default view | [x] | [ ] |  |
+| E4 | With it held, press slot key `4` | The map opens - set 1 right slot 4, what the **WXHB** shows, not the XHB's slot 4. Slot 4 rather than a console echo because the map is unmissable (Kevin, 2026-08-22) | [x] | [ ] |  |
+| E5 | `//hud crossbar wxhb on` | Both WXHB halves stay on screen at rest | [x] | [ ] |  |
+| E6 | `//hud crossbar wxhb off` | They only appear while held | [x] | [ ] |  |
+| E7 | Hold both sides, press a slot key | Expanded Hold fires from the set its view points at - set 3, unbound, so nothing fires | [x] | [ ] | Weak on its own - nothing bound to set 3; E8/E9 added as the real test |
+| E8 | `//hud crossbar bind 3 l 1 ma "Cure" me` and `//hud crossbar bind 3 r 1 ja "Provoke" t` | Both bound on set 3 | [x] | [ ] |  |
+| E9 | Hold `;` **then** `'` and press `1`; then hold `'` **then** `;` and press `1` | The first casts Cure (exp-lr, set 3 left), the second fires Provoke (exp-rl, set 3 right) - the hold ORDER picks the side | [x] | [ ] |  |
 
 ## F. The mouse binder
 
