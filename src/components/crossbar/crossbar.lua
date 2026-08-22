@@ -2792,7 +2792,7 @@ local function new(ctx)
     for _, view in ipairs(authoring.views) do
       local target = bindings.view_target(view.key)
       if type(target) == "table" then
-        lines[#lines + 1] = "  " .. view.cli .. " -> set " .. tostring(target.set) .. " " .. tostring(target.side)
+        lines[#lines + 1] = "  " .. view.cli .. " -> " .. tostring(target.set) .. (target.side == "left" and "L" or "R")
       end
     end
     return lines

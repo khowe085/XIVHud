@@ -113,7 +113,7 @@ describe("crossbar commands", function()
   describe("bind", function()
     it("writes a game action into the job base", function()
       local commands, world = build()
-      local reply, save_config, repaint = commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade", "t" })
+      local reply, save_config, repaint = commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "t" })
       assert.are.same(
         { type = "ws", action = "Savage Blade", target = "t" },
         world.files.SCH.sets[1].left[3],
@@ -126,22 +126,22 @@ describe("crossbar commands", function()
 
     it("takes the button names as slots", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "r", "y", "ja", "Provoke" })
-      commands.command({ "bind", "1", "r", "LEFT", "ja", "Berserk" })
+      commands.command({ "bind", "1R1", "ja", "Provoke" })
+      commands.command({ "bind", "1R8", "ja", "Berserk" })
       assert.equal("Provoke", world.files.SCH.sets[1].right[1].action)
       assert.equal("Berserk", world.files.SCH.sets[1].right[8].action)
     end)
 
     it("targets the subjob layer with sub:", function()
       local commands, world = build({ sub = "NIN" })
-      commands.command({ "bind", "sub:2", "l", "4", "ja", "Utsusemi" })
+      commands.command({ "bind", "sub:2L4", "ja", "Utsusemi" })
       assert.equal("Utsusemi", world.files.SCH.sub.NIN[2].left[4].action)
       assert.is_nil(stored(world, "SCH", 2, "left", 4))
     end)
 
     it("targets a context layer with ctx:", function()
       local commands, world = build()
-      commands.command({ "bind", "ctx:light-arts:1", "l", "3", "ja", "Addendum:", "White" })
+      commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Addendum:", "White" })
       assert.equal("Addendum: White", world.files.SCH.contexts["light-arts"][1].left[3].action)
     end)
 
@@ -157,23 +157,23 @@ describe("crossbar commands", function()
 
     it("keeps a quoted action name whole and strips the quotes", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "1", "ma", '"Addendum:', 'White"', "me" })
+      commands.command({ "bind", "1L1", "ma", '"Addendum:', 'White"', "me" })
       assert.are.same({ type = "ma", action = "Addendum: White", target = "me" }, world.files.SCH.sets[1].left[1])
     end)
 
     it("reads a trailing target token and keeps everything else in the name", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "1", "ma", "Cure", "IV", "p1" })
+      commands.command({ "bind", "1L1", "ma", "Cure", "IV", "p1" })
       assert.are.same({ type = "ma", action = "Cure IV", target = "p1" }, world.files.SCH.sets[1].left[1])
-      commands.command({ "bind", "1", "l", "2", "ws", "Ascetic's", "Fury" })
+      commands.command({ "bind", "1L2", "ws", "Ascetic's", "Fury" })
       assert.are.same({ type = "ws", action = "Ascetic's Fury" }, world.files.SCH.sets[1].left[2])
     end)
 
     it("accepts the alliance target tokens", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "1", "ma", "Cure", "a15" })
-      commands.command({ "bind", "1", "l", "2", "ma", "Cure", "a21" })
-      commands.command({ "bind", "1", "l", "3", "ma", "Cure", "p5" })
+      commands.command({ "bind", "1L1", "ma", "Cure", "a15" })
+      commands.command({ "bind", "1L2", "ma", "Cure", "a21" })
+      commands.command({ "bind", "1L3", "ma", "Cure", "p5" })
       assert.equal("a15", stored(world, "SCH", 1, "left", 1).target)
       assert.equal("a21", stored(world, "SCH", 1, "left", 2).target)
       assert.equal("p5", stored(world, "SCH", 1, "left", 3).target)
@@ -183,9 +183,9 @@ describe("crossbar commands", function()
       -- a16-a19 are not targets: the parties are a10-a15 and a20-a25, so
       -- a17 stays part of the action name rather than becoming a target.
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "1", "ma", "Cure", "a17" })
+      commands.command({ "bind", "1L1", "ma", "Cure", "a17" })
       assert.are.same({ type = "ma", action = "Cure a17" }, stored(world, "SCH", 1, "left", 1))
-      local reply, _, repaint = commands.command({ "bind", "1", "l", "2", "ra", "a17" })
+      local reply, _, repaint = commands.command({ "bind", "1L2", "ra", "a17" })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 2))
@@ -195,13 +195,13 @@ describe("crossbar commands", function()
       -- A one-word rest is the action: `ma t` binds a spell called t (odd,
       -- but the user's), never a targetless spell aimed at t.
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "1", "ma", "t" })
+      commands.command({ "bind", "1L1", "ma", "t" })
       assert.are.same({ type = "ma", action = "t" }, stored(world, "SCH", 1, "left", 1))
     end)
 
     it("accepts an angle-bracketed target", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "1", "ma", "Cure", "<stpc>" })
+      commands.command({ "bind", "1L1", "ma", "Cure", "<stpc>" })
       assert.are.same({ type = "ma", action = "Cure", target = "stpc" }, world.files.SCH.sets[1].left[1])
     end)
 
@@ -210,11 +210,11 @@ describe("crossbar commands", function()
       -- is stored as typed; the game's own tokens are case-insensitive
       -- spellings of one thing and fold.
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "1", "ma", '"Cure IV"', "<Kevin>" })
+      commands.command({ "bind", "1L1", "ma", '"Cure IV"', "<Kevin>" })
       assert.equal("Kevin", stored(world, "SCH", 1, "left", 1).target)
-      commands.command({ "bind", "1", "l", "2", "ma", "Cure", "<T>" })
+      commands.command({ "bind", "1L2", "ma", "Cure", "<T>" })
       assert.equal("t", stored(world, "SCH", 1, "left", 2).target)
-      commands.command({ "bind", "1", "l", "3", "ra", "<Kevin>" })
+      commands.command({ "bind", "1L3", "ra", "<Kevin>" })
       assert.equal("Kevin", stored(world, "SCH", 1, "left", 3).target)
     end)
 
@@ -224,8 +224,8 @@ describe("crossbar commands", function()
       -- target: binding it would build a command that silently never fires.
       local commands, world = build()
       for _, words in ipairs({
-        { "bind", "1", "l", "3", "ma", '"Cure IV"', "Kevin" },
-        { "bind", "1", "l", "3", "ra", "Kevin" },
+        { "bind", "1L3", "ma", '"Cure IV"', "Kevin" },
+        { "bind", "1L3", "ra", "Kevin" },
       }) do
         local reply, _, repaint = commands.command(words)
         assert.is_string(reply, words[5])
@@ -245,10 +245,10 @@ describe("crossbar commands", function()
 
     it("binds the no-action types bare, ra with a target", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "5", "ra", "t" })
-      commands.command({ "bind", "1", "l", "6", "draw" })
-      commands.command({ "bind", "1", "l", "7", "mr" })
-      commands.command({ "bind", "1", "l", "8", "warp" })
+      commands.command({ "bind", "1L5", "ra", "t" })
+      commands.command({ "bind", "1L6", "draw" })
+      commands.command({ "bind", "1L7", "mr" })
+      commands.command({ "bind", "1L8", "warp" })
       assert.are.same({ type = "ra", target = "t" }, world.files.SCH.sets[1].left[5])
       assert.are.same({ type = "draw" }, world.files.SCH.sets[1].left[6])
       assert.are.same({ type = "mr" }, world.files.SCH.sets[1].left[7])
@@ -258,7 +258,7 @@ describe("crossbar commands", function()
     it("refuses an unterminated quote on a ct or ex line", function()
       local commands, world = build()
       for _, kind in ipairs({ "ct", "ex" }) do
-        local reply, _, repaint = commands.command({ "bind", "1", "r", "1", kind, '"sea', "all" })
+        local reply, _, repaint = commands.command({ "bind", "1R1", kind, '"sea', "all" })
         assert.is_string(reply, kind)
         assert.is_falsy(repaint, kind)
       end
@@ -267,7 +267,7 @@ describe("crossbar commands", function()
 
     it("refuses a ct or ex line that is nothing but a quote", function()
       local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "1", "r", "1", "ct", '"' })
+      local reply, _, repaint = commands.command({ "bind", "1R1", "ct", '"' })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "right", 1))
@@ -275,39 +275,39 @@ describe("crossbar commands", function()
 
     it("trims a quoted ct or ex line the way it trims a name", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "r", "3", "ct", '" sea all linkshell "' })
+      commands.command({ "bind", "1R3", "ct", '" sea all linkshell "' })
       assert.equal("sea all linkshell", stored(world, "SCH", 1, "right", 3).action)
     end)
 
     it("keeps interior quotes on a ct or ex line", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "r", "2", "ex", "exec", 'say "hi"' })
+      commands.command({ "bind", "1R2", "ex", "exec", 'say "hi"' })
       assert.equal('exec say "hi"', stored(world, "SCH", 1, "right", 2).action)
     end)
 
     it("takes the whole rest of the line for ct and ex", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "r", "1", "ct", "party", "I", "am", "here" })
-      commands.command({ "bind", "1", "r", "2", "ex", "exec", "pull.txt" })
+      commands.command({ "bind", "1R1", "ct", "party", "I", "am", "here" })
+      commands.command({ "bind", "1R2", "ex", "exec", "pull.txt" })
       assert.are.same({ type = "ct", action = "party I am here" }, world.files.SCH.sets[1].right[1])
       assert.are.same({ type = "ex", action = "exec pull.txt" }, world.files.SCH.sets[1].right[2])
     end)
 
     it("points at the opener list when open has no name, and unquotes one", function()
       local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "1", "r", "3", "open" })
+      local reply, _, repaint = commands.command({ "bind", "1R3", "open" })
       assert.is_string(reply)
       assert.is_not_nil(reply:find("//hud crossbar open", 1, true), reply)
       assert.is_falsy(repaint)
-      commands.command({ "bind", "1", "r", "3", "open", '"map"' })
+      commands.command({ "bind", "1R3", "open", '"map"' })
       assert.are.same({ type = "open", action = "map" }, stored(world, "SCH", 1, "right", 3))
     end)
 
     it("validates open targets at bind time", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "r", "3", "open", "map" })
+      commands.command({ "bind", "1R3", "open", "map" })
       assert.are.same({ type = "open", action = "map" }, world.files.SCH.sets[1].right[3])
-      local reply, _, repaint = commands.command({ "bind", "1", "r", "4", "open", "bogus" })
+      local reply, _, repaint = commands.command({ "bind", "1R4", "open", "bogus" })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "right", 4))
@@ -316,9 +316,9 @@ describe("crossbar commands", function()
     it("rejects an unknown type, a bad side and a bad slot", function()
       local commands, world = build()
       local cases = {
-        { "bind", "1", "l", "3", "spell", "Cure" },
+        { "bind", "1L3", "spell", "Cure" },
         { "bind", "1", "x", "3", "ja", "Provoke" },
-        { "bind", "1", "l", "9", "ja", "Provoke" },
+        { "bind", "1L9", "ja", "Provoke" },
         { "bind", "1", "l", "middle", "ja", "Provoke" },
       }
       for _, words in ipairs(cases) do
@@ -331,11 +331,11 @@ describe("crossbar commands", function()
 
     it("trims a quoted name and refuses one that is all whitespace", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "1", "ma", '" Cure IV"' })
+      commands.command({ "bind", "1L1", "ma", '" Cure IV"' })
       assert.equal("Cure IV", stored(world, "SCH", 1, "left", 1).action)
-      commands.command({ "bind", "1", "l", "2", "ma", '"Cure IV "' })
+      commands.command({ "bind", "1L2", "ma", '"Cure IV "' })
       assert.equal("Cure IV", stored(world, "SCH", 1, "left", 2).action)
-      local reply, _, repaint = commands.command({ "bind", "1", "l", "3", "ma", '"  "' })
+      local reply, _, repaint = commands.command({ "bind", "1L3", "ma", '"  "' })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3))
@@ -345,13 +345,13 @@ describe("crossbar commands", function()
       -- The span needs two characters before it can close, or `" Cure IV"`
       -- would read as an empty name plus a target called Cure.
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "1", "ma", '"', "Cure", 'IV"' })
+      commands.command({ "bind", "1L1", "ma", '"', "Cure", 'IV"' })
       assert.are.same({ type = "ma", action = "Cure IV" }, stored(world, "SCH", 1, "left", 1))
     end)
 
     it("refuses an unterminated quote instead of storing it", function()
       local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "1", "l", "3", "ma", '"Cure', "IV" })
+      local reply, _, repaint = commands.command({ "bind", "1L3", "ma", '"Cure', "IV" })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3))
@@ -359,7 +359,7 @@ describe("crossbar commands", function()
 
     it("refuses trailing words after a quoted name and its target", function()
       local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "1", "l", "3", "ma", '"Cure', 'IV"', "t", "please" })
+      local reply, _, repaint = commands.command({ "bind", "1L3", "ma", '"Cure', 'IV"', "t", "please" })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3))
@@ -368,11 +368,11 @@ describe("crossbar commands", function()
     it("refuses extra words on the types that take none", function()
       local commands, world = build()
       for _, kind in ipairs({ "draw", "mr", "warp" }) do
-        local reply, _, repaint = commands.command({ "bind", "1", "l", "3", kind, "Provoke" })
+        local reply, _, repaint = commands.command({ "bind", "1L3", kind, "Provoke" })
         assert.is_string(reply, kind)
         assert.is_falsy(repaint, kind)
       end
-      local reply, _, repaint = commands.command({ "bind", "1", "l", "3", "ra", "t", "please" })
+      local reply, _, repaint = commands.command({ "bind", "1L3", "ra", "t", "please" })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3))
@@ -380,13 +380,13 @@ describe("crossbar commands", function()
 
     it("unquotes a quoted ra target", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "3", "ra", '"t"' })
+      commands.command({ "bind", "1L3", "ra", '"t"' })
       assert.are.same({ type = "ra", target = "t" }, stored(world, "SCH", 1, "left", 3))
     end)
 
     it("hints on wrong arity rather than binding half an address", function()
       local commands, world = build()
-      for _, words in ipairs({ { "bind" }, { "bind", "1" }, { "bind", "1", "l" }, { "bind", "1", "l", "3" } }) do
+      for _, words in ipairs({ { "bind" }, { "bind", "1" }, { "bind", "1", "l" }, { "bind", "1L3" } }) do
         local reply, _, repaint = commands.command(words)
         assert.is_string(reply, #words .. " words")
         assert.is_falsy(repaint, #words .. " words")
@@ -396,7 +396,7 @@ describe("crossbar commands", function()
 
     it("refuses before a job is scoped", function()
       local commands, world = build({ job = false })
-      local reply, _, repaint = commands.command({ "bind", "1", "l", "3", "ja", "Provoke" })
+      local reply, _, repaint = commands.command({ "bind", "1L3", "ja", "Provoke" })
       assert.is_string(reply)
       assert.is_not_nil(reply:find("job"), reply)
       assert.is_falsy(repaint)
@@ -410,7 +410,7 @@ describe("crossbar commands", function()
     -- one outcome worth refusing over.
     it("refuses when the shorter reading is a real action and the longer is not", function()
       local commands, world = build({ known = { ["Savage Blade"] = true } })
-      local reply, _, repaint = commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade", "Kevin" })
+      local reply, _, repaint = commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "Kevin" })
       assert.is_string(reply)
       assert.is_not_nil(reply:find("Savage Blade", 1, true), reply)
       assert.is_not_nil(reply:find("Kevin", 1, true), reply)
@@ -424,8 +424,8 @@ describe("crossbar commands", function()
       -- at all. Both messages must be terminal: they say what is not
       -- supported and name only readings that work.
       local commands = build({ known = { ["Savage Blade"] = true } })
-      local refusal = commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade", "Kevin" })
-      local quoted = commands.command({ "bind", "1", "l", "3", "ws", '"Savage', 'Blade"', "Kevin" })
+      local refusal = commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "Kevin" })
+      local quoted = commands.command({ "bind", "1L3", "ws", '"Savage', 'Blade"', "Kevin" })
       for _, reply in ipairs({ refusal, quoted }) do
         assert.is_string(reply)
         assert.is_not_nil(reply:find("not supported yet", 1, true), reply)
@@ -436,14 +436,14 @@ describe("crossbar commands", function()
 
     it("takes the whole phrase when that is what the client knows", function()
       local commands, world = build({ known = { ["Ascetic's Fury"] = true } })
-      local reply = commands.command({ "bind", "1", "l", "3", "ws", "Ascetic's", "Fury" })
+      local reply = commands.command({ "bind", "1L3", "ws", "Ascetic's", "Fury" })
       assert.is_string(reply, "a name the client knows needs no caution")
       assert.equal("Ascetic's Fury", stored(world, "SCH", 1, "left", 3).action)
     end)
 
     it("takes a quoted name whole without asking the client anything", function()
       local commands, world = build({ known = { ["Savage Blade"] = true } })
-      local reply = commands.command({ "bind", "1", "l", "3", "ws", '"Savage', "Blade", 'Kevin"' })
+      local reply = commands.command({ "bind", "1L3", "ws", '"Savage', "Blade", 'Kevin"' })
       assert.is_string(reply)
       assert.equal("Savage Blade Kevin", stored(world, "SCH", 1, "left", 3).action)
       assert.are.same({}, world.asked, "the quotes settled it")
@@ -451,7 +451,7 @@ describe("crossbar commands", function()
 
     it("keeps both readings out of it when neither resolves", function()
       local commands, world = build({ known = {} })
-      commands.command({ "bind", "1", "l", "3", "ws", "Made", "Up" })
+      commands.command({ "bind", "1L3", "ws", "Made", "Up" })
       assert.equal("Made Up", stored(world, "SCH", 1, "left", 3).action)
     end)
 
@@ -461,7 +461,7 @@ describe("crossbar commands", function()
       -- ask. A nil is "cannot verify", NOT "not an action" - reading it as
       -- the latter is what made this caution unreachable in production.
       local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade", "Kevin" })
+      local reply, _, repaint = commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "Kevin" })
       assert.is_table(reply, "the caution needs its own line")
       assert.is_true(repaint)
       assert.equal("Savage Blade Kevin", stored(world, "SCH", 1, "left", 3).action)
@@ -472,7 +472,7 @@ describe("crossbar commands", function()
 
     it("says nothing extra when the trailing word is a target token", function()
       local commands = build()
-      local reply = commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade", "t" })
+      local reply = commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "t" })
       assert.is_string(reply)
     end)
   end)
@@ -480,9 +480,9 @@ describe("crossbar commands", function()
   describe("unbind", function()
     it("clears the addressed layer only", function()
       local commands, world = build({ sub = "NIN" })
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      commands.command({ "bind", "sub:1", "l", "3", "ja", "Provoke" })
-      local reply, save_config, repaint = commands.command({ "unbind", "sub:1", "l", "3" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      commands.command({ "bind", "sub:1L3", "ja", "Provoke" })
+      local reply, save_config, repaint = commands.command({ "unbind", "sub:1L3" })
       assert.is_string(reply)
       assert.is_falsy(save_config)
       assert.is_true(repaint)
@@ -492,7 +492,7 @@ describe("crossbar commands", function()
 
     it("says so when the address was already empty, and writes nothing", function()
       local commands, world = build()
-      local reply, _, repaint = commands.command({ "unbind", "1", "l", "3" })
+      local reply, _, repaint = commands.command({ "unbind", "1L3" })
       assert.is_string(reply)
       assert.is_not_nil(reply:lower():find("nothing"), reply)
       assert.is_falsy(repaint)
@@ -501,7 +501,7 @@ describe("crossbar commands", function()
 
     it("hints on wrong arity and a bad address", function()
       local commands = build()
-      local cases = { { "unbind" }, { "unbind", "1" }, { "unbind", "1", "l" }, { "unbind", "9", "l", "1" } }
+      local cases = { { "unbind" }, { "unbind", "1" }, { "unbind", "1", "l" }, { "unbind", "9L1" } }
       for _, words in ipairs(cases) do
         local reply, _, repaint = commands.command(words)
         assert.is_string(reply, #words .. " words")
@@ -511,7 +511,7 @@ describe("crossbar commands", function()
 
     it("refuses before a job is scoped", function()
       local commands, world = build({ job = false })
-      local reply, _, repaint = commands.command({ "unbind", "1", "l", "3" })
+      local reply, _, repaint = commands.command({ "unbind", "1L3" })
       assert.is_not_nil(reply:find("job"), reply)
       assert.is_falsy(repaint)
       assert.are.same({}, world.saved)
@@ -521,8 +521,8 @@ describe("crossbar commands", function()
   describe("alias", function()
     it("relabels the addressed entry and nothing else about it", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade", "t" })
-      local reply, save_config, repaint = commands.command({ "alias", "1", "l", "3", "Big", "Hit" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "t" })
+      local reply, save_config, repaint = commands.command({ "alias", "1L3", "Big", "Hit" })
       assert.is_string(reply)
       assert.is_falsy(save_config)
       assert.is_true(repaint)
@@ -535,8 +535,8 @@ describe("crossbar commands", function()
 
     it("refuses an unterminated quote like bind does", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      local reply, _, repaint = commands.command({ "alias", "1", "l", "3", '"Big', "Hit" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      local reply, _, repaint = commands.command({ "alias", "1L3", '"Big', "Hit" })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3).alias)
@@ -544,24 +544,24 @@ describe("crossbar commands", function()
 
     it("clears the override when the name is omitted", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      commands.command({ "alias", "1", "l", "3", "Big", "Hit" })
-      commands.command({ "alias", "1", "l", "3" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      commands.command({ "alias", "1L3", "Big", "Hit" })
+      commands.command({ "alias", "1L3" })
       assert.are.same({ type = "ws", action = "Savage Blade" }, stored(world, "SCH", 1, "left", 3))
     end)
 
     it("follows the layer prefixes", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      commands.command({ "bind", "ctx:light-arts:1", "l", "3", "ja", "Addendum:", "White" })
-      commands.command({ "alias", "ctx:light-arts:1", "l", "3", "AW" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Addendum:", "White" })
+      commands.command({ "alias", "ctx:light-arts:1L3", "AW" })
       assert.equal("AW", world.files.SCH.contexts["light-arts"][1].left[3].alias)
       assert.is_nil(stored(world, "SCH", 1, "left", 3).alias, "the base entry is untouched")
     end)
 
     it("refuses an empty slot rather than carrying the label nowhere", function()
       local commands, world = build()
-      local reply, _, repaint = commands.command({ "alias", "1", "l", "3", "Big", "Hit" })
+      local reply, _, repaint = commands.command({ "alias", "1L3", "Big", "Hit" })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.are.same({}, world.saved)
@@ -569,11 +569,11 @@ describe("crossbar commands", function()
 
     it("hints on wrong arity, a bad address and no job", function()
       local commands = build()
-      for _, words in ipairs({ { "alias" }, { "alias", "1" }, { "alias", "1", "l" }, { "alias", "1", "l", "9" } }) do
+      for _, words in ipairs({ { "alias" }, { "alias", "1" }, { "alias", "1", "l" }, { "alias", "1L9" } }) do
         assert.is_string(commands.command(words), #words .. " words")
       end
       local unscoped = build({ job = false })
-      local reply = unscoped.command({ "alias", "1", "l", "3", "Name" })
+      local reply = unscoped.command({ "alias", "1L3", "Name" })
       assert.is_not_nil(reply:find("job"), reply)
     end)
   end)
@@ -581,8 +581,8 @@ describe("crossbar commands", function()
   describe("icon", function()
     it("resolves the player's own art ahead of the shipped pack", function()
       local commands, world = build({ icons = { ["icons/custom/attack.png"] = true } })
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      local reply, save_config, repaint = commands.command({ "icon", "1", "l", "3", "attack" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      local reply, save_config, repaint = commands.command({ "icon", "1L3", "attack" })
       assert.is_string(reply)
       assert.is_falsy(save_config)
       assert.is_true(repaint)
@@ -593,15 +593,15 @@ describe("crossbar commands", function()
 
     it("accepts a pack-relative name from the shipped pack", function()
       local commands, world = build({ icons = { ["components/crossbar/assets/icons/items/warp-ring.png"] = true } })
-      commands.command({ "bind", "1", "l", "3", "warp" })
-      commands.command({ "icon", "1", "l", "3", "items/warp-ring" })
+      commands.command({ "bind", "1L3", "warp" })
+      commands.command({ "icon", "1L3", "items/warp-ring" })
       assert.equal("items/warp-ring", stored(world, "SCH", 1, "left", 3).icon)
     end)
 
     it("takes a quoted name with a space in it", function()
       local commands, world = build({ icons = { ["icons/custom/my pull.png"] = true } })
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      commands.command({ "icon", "1", "l", "3", '"my', 'pull"' })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      commands.command({ "icon", "1L3", '"my', 'pull"' })
       assert.equal("my pull", stored(world, "SCH", 1, "left", 3).icon)
     end)
 
@@ -610,8 +610,8 @@ describe("crossbar commands", function()
       -- accepting the name here has to use the same flattening or the
       -- verb refuses art the bar would happily draw.
       local commands, world = build({ icons = { ["icons/custom/warp-ring.png"] = true } })
-      commands.command({ "bind", "1", "l", "3", "warp" })
-      local reply, _, repaint = commands.command({ "icon", "1", "l", "3", "items/warp-ring" })
+      commands.command({ "bind", "1L3", "warp" })
+      local reply, _, repaint = commands.command({ "icon", "1L3", "items/warp-ring" })
       assert.is_string(reply)
       assert.is_true(repaint)
       assert.equal("items/warp-ring", stored(world, "SCH", 1, "left", 3).icon)
@@ -619,8 +619,8 @@ describe("crossbar commands", function()
 
     it("names the path it actually probed when it refuses", function()
       local commands = build()
-      commands.command({ "bind", "1", "l", "3", "warp" })
-      local reply = commands.command({ "icon", "1", "l", "3", "items/warp-ring" })
+      commands.command({ "bind", "1L3", "warp" })
+      local reply = commands.command({ "icon", "1L3", "items/warp-ring" })
       assert.is_string(reply)
       assert.is_not_nil(reply:find("icons/custom/warp-ring.png", 1, true), reply)
       assert.is_nil(reply:find("icons/custom/items/", 1, true), "that path is never looked at: " .. reply)
@@ -628,8 +628,8 @@ describe("crossbar commands", function()
 
     it("refuses an icon name with no file name in it", function()
       local commands = build()
-      commands.command({ "bind", "1", "l", "3", "warp" })
-      local reply, _, repaint = commands.command({ "icon", "1", "l", "3", "items/" })
+      commands.command({ "bind", "1L3", "warp" })
+      local reply, _, repaint = commands.command({ "icon", "1L3", "items/" })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(reply:find("//.png", 1, true), "never name a path with an empty file name: " .. reply)
@@ -638,8 +638,8 @@ describe("crossbar commands", function()
 
     it("rejects a name no art answers to", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      local reply, _, repaint = commands.command({ "icon", "1", "l", "3", "nosuchart" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      local reply, _, repaint = commands.command({ "icon", "1L3", "nosuchart" })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3).icon)
@@ -647,28 +647,28 @@ describe("crossbar commands", function()
 
     it("clears the override when the name is omitted", function()
       local commands, world = build({ icons = { ["icons/custom/attack.png"] = true } })
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      commands.command({ "icon", "1", "l", "3", "attack" })
-      commands.command({ "icon", "1", "l", "3" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      commands.command({ "icon", "1L3", "attack" })
+      commands.command({ "icon", "1L3" })
       assert.are.same({ type = "ws", action = "Savage Blade" }, stored(world, "SCH", 1, "left", 3))
     end)
 
     it("refuses an empty slot, a bad address, wrong arity and no job", function()
       local commands, world = build({ icons = { ["icons/custom/attack.png"] = true } })
-      local reply = commands.command({ "icon", "1", "l", "3", "attack" })
+      local reply = commands.command({ "icon", "1L3", "attack" })
       assert.is_string(reply)
       assert.are.same({}, world.saved)
-      for _, words in ipairs({ { "icon" }, { "icon", "1" }, { "icon", "1", "l" }, { "icon", "9", "l", "1" } }) do
+      for _, words in ipairs({ { "icon" }, { "icon", "1" }, { "icon", "1", "l" }, { "icon", "9L1" } }) do
         assert.is_string(commands.command(words), #words .. " words")
       end
       local unscoped = build({ job = false })
-      assert.is_not_nil(unscoped.command({ "icon", "1", "l", "3", "attack" }):find("job"))
+      assert.is_not_nil(unscoped.command({ "icon", "1L3", "attack" }):find("job"))
     end)
 
     it("takes one name, not a phrase", function()
       local commands, world = build({ icons = { ["icons/custom/attack.png"] = true } })
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      local reply, _, repaint = commands.command({ "icon", "1", "l", "3", "attack", "please" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      local reply, _, repaint = commands.command({ "icon", "1L3", "attack", "please" })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3).icon)
@@ -678,10 +678,10 @@ describe("crossbar commands", function()
   describe("swap", function()
     it("exchanges two addresses' entire stacks", function()
       local commands, world = build({ sub = "NIN" })
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      commands.command({ "bind", "sub:1", "l", "3", "ja", "Provoke" })
-      commands.command({ "bind", "2", "r", "5", "ma", "Cure" })
-      local reply, save_config, repaint = commands.command({ "swap", "1", "l", "3", "2", "r", "5" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      commands.command({ "bind", "sub:1L3", "ja", "Provoke" })
+      commands.command({ "bind", "2R5", "ma", "Cure" })
+      local reply, save_config, repaint = commands.command({ "swap", "1L3", "2R5" })
       assert.is_string(reply)
       assert.is_falsy(save_config)
       assert.is_true(repaint)
@@ -693,24 +693,24 @@ describe("crossbar commands", function()
 
     it("takes the button names on both addresses", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "1", "ja", "Provoke" })
-      commands.command({ "swap", "1", "l", "y", "1", "r", "down" })
+      commands.command({ "bind", "1L1", "ja", "Provoke" })
+      commands.command({ "swap", "1L1", "1R7" })
       assert.equal("Provoke", world.bindings.entry_at(1, "r", 7).action)
       assert.is_nil(world.bindings.entry_at(1, "l", 1))
     end)
 
     it("moves a stack onto an empty address", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      commands.command({ "swap", "1", "l", "3", "4", "r", "2" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      commands.command({ "swap", "1L3", "4R2" })
       assert.equal("Savage Blade", world.bindings.entry_at(4, "r", 2).action)
       assert.is_nil(world.bindings.entry_at(1, "l", 3))
     end)
 
     it("refuses a layer prefix - a swap moves every layer at once", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      local reply, _, repaint = commands.command({ "swap", "sub:1", "l", "3", "2", "r", "5" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      local reply, _, repaint = commands.command({ "swap", "sub:1L3", "2R5" })
       assert.is_string(reply)
       assert.is_not_nil(reply:lower():find("layer"), reply)
       assert.is_falsy(repaint)
@@ -721,11 +721,11 @@ describe("crossbar commands", function()
       local commands = build()
       local cases = {
         { "swap" },
-        { "swap", "1", "l", "3" },
-        { "swap", "1", "l", "3", "2", "r" },
-        { "swap", "1", "l", "3", "9", "r", "5" },
-        { "swap", "1", "l", "3", "2", "x", "5" },
-        { "swap", "1", "l", "middle", "2", "r", "5" },
+        { "swap", "1L3" },
+        { "swap", "1L3", "2", "r" },
+        { "swap", "1L3", "9R5" },
+        { "swap", "1L3", "2", "x", "5" },
+        { "swap", "1", "l", "middle", "2R5" },
       }
       for index, words in ipairs(cases) do
         local reply, _, repaint = commands.command(words)
@@ -733,7 +733,7 @@ describe("crossbar commands", function()
         assert.is_falsy(repaint, "case " .. index)
       end
       local unscoped, world = build({ job = false })
-      local reply = unscoped.command({ "swap", "1", "l", "3", "2", "r", "5" })
+      local reply = unscoped.command({ "swap", "1L3", "2R5" })
       assert.is_not_nil(reply:find("job"), reply)
       assert.are.same({}, world.saved)
     end)
@@ -742,9 +742,9 @@ describe("crossbar commands", function()
   describe("list", function()
     it("lists what each set holds, with its layer and the active marker", function()
       local commands, world = build({ sub = "NIN" })
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade", "t" })
-      commands.command({ "bind", "sub:1", "r", "1", "ja", "Provoke" })
-      commands.command({ "bind", "5", "l", "8", "ma", "Cure", "IV", "p1" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "t" })
+      commands.command({ "bind", "sub:1R1", "ja", "Provoke" })
+      commands.command({ "bind", "5L8", "ma", "Cure", "IV", "p1" })
       local reply, save_config, repaint = commands.command({ "list" })
       assert.is_table(reply)
       assert.is_falsy(save_config)
@@ -765,7 +765,7 @@ describe("crossbar commands", function()
       -- no-op: an unbuffed context layer is stored, tagged, and simply not
       -- winning.
       local commands = build()
-      commands.command({ "bind", "ctx:light-arts:1", "l", "3", "ja", "Penury" })
+      commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Penury" })
       local text = text_of(commands.command({ "list" }))
       assert.is_not_nil(text:find("Penury", 1, true), text)
       assert.is_not_nil(text:find("[ctx:light-arts]", 1, true), text)
@@ -773,7 +773,7 @@ describe("crossbar commands", function()
 
     it("shows a subjob layer belonging to a subjob that is not worn", function()
       local commands, world = build({ sub = "NIN" })
-      commands.command({ "bind", "sub:1", "l", "4", "ja", "Utsusemi" })
+      commands.command({ "bind", "sub:1L4", "ja", "Utsusemi" })
       world.bindings.set_job("SCH", "WHM")
       local text = text_of(commands.command({ "list" }))
       assert.is_not_nil(text:find("Utsusemi", 1, true), text)
@@ -782,8 +782,8 @@ describe("crossbar commands", function()
 
     it("marks which layer is live when an address has more than one", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      commands.command({ "bind", "ctx:light-arts:1", "l", "3", "ja", "Penury" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Penury" })
       local lines = commands.command({ "list", "1" })
       local base_row, ctx_row
       for _, line in ipairs(lines) do
@@ -808,14 +808,14 @@ describe("crossbar commands", function()
 
     it("leaves a single-layer address unmarked", function()
       local commands = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
       local text = text_of(commands.command({ "list", "1" }))
       assert.is_nil(text:find("live", 1, true), text)
     end)
 
     it("restricts to one set and says when it is empty", function()
       local commands = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
       local text = text_of(commands.command({ "list", "2" }))
       assert.is_nil(text:find("Savage Blade", 1, true), text)
       assert.is_not_nil(text:lower():find("nothing"), text)
@@ -823,18 +823,24 @@ describe("crossbar commands", function()
 
     it("shows a slot's alias beside its action", function()
       local commands = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      commands.command({ "alias", "1", "l", "3", "Big Hit" })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      commands.command({ "alias", "1L3", "Big Hit" })
       local text = text_of(commands.command({ "list", "1" }))
       assert.is_not_nil(text:find("Big Hit", 1, true), text)
       assert.is_not_nil(text:find("Savage Blade", 1, true), text)
     end)
 
-    it("names the slot by button as well as number", function()
+    it("names each row by its address, and by nothing else", function()
+      --[[ The rows used to read `l 5 up   ja Provoke`, naming the D-pad
+           button the slot would be on a controller. There is no controller
+           - Windower cannot see one - so the name only invited the question
+           of which pad was meant (Kevin, 2026-08-22). One address word now,
+           the same one you would type back. ]]
       local commands = build()
-      commands.command({ "bind", "1", "l", "5", "ja", "Provoke" })
+      commands.command({ "bind", "1L5", "ja", "Provoke" })
       local text = text_of(commands.command({ "list", "1" }))
-      assert.is_not_nil(text:find("up", 1, true), text)
+      assert.is_not_nil(text:find("1L5", 1, true), text)
+      assert.is_nil(text:find("up", 1, true), "no button names: " .. text)
     end)
 
     it("survives a hand-broken entry rather than crashing the handler", function()
@@ -873,7 +879,7 @@ describe("crossbar commands", function()
   describe("view", function()
     it("repoints a view and asks for a config save", function()
       local commands, world = build()
-      local reply, save_config, repaint = commands.command({ "view", "wxhb-l", "5", "r" })
+      local reply, save_config, repaint = commands.command({ "view", "wxhb-L", "5R" })
       assert.is_string(reply)
       assert.is_true(save_config)
       assert.is_true(repaint)
@@ -882,9 +888,11 @@ describe("crossbar commands", function()
 
     it("knows all four views, case-insensitively", function()
       local commands, world = build()
-      commands.command({ "view", "WXHB-R", "4", "l" })
-      commands.command({ "view", "exp-lr", "6", "r" })
-      commands.command({ "view", "exp-rl", "7", "left" })
+      -- The view name and the side both fold: upper case is what the help
+      -- and the echo show, not what the parser demands.
+      commands.command({ "view", "WXHB-R", "4l" })
+      commands.command({ "view", "exp-lr", "6R" })
+      commands.command({ "view", "EXP-RL", "7L" })
       assert.are.same({ set = 4, side = "left" }, world.config.views.wxhb_right)
       assert.are.same({ set = 6, side = "right" }, world.config.views.expanded_lr)
       assert.are.same({ set = 7, side = "left" }, world.config.views.expanded_rl)
@@ -893,7 +901,7 @@ describe("crossbar commands", function()
     it("rebuilds a views table the config lost", function()
       local commands, world = build()
       world.config.views = nil
-      commands.command({ "view", "wxhb-l", "2", "l" })
+      commands.command({ "view", "wxhb-L", "2L" })
       assert.are.same({ set = 2, side = "left" }, world.config.views.wxhb_left)
     end)
 
@@ -901,11 +909,15 @@ describe("crossbar commands", function()
       local commands, world = build()
       local cases = {
         { "view" },
-        { "view", "wxhb-l" },
-        { "view", "wxhb-l", "2" },
-        { "view", "bogus", "2", "l" },
-        { "view", "wxhb-l", "9", "l" },
-        { "view", "wxhb-l", "2", "x" },
+        { "view", "wxhb-L" },
+        -- The side is not optional: a bare set is not an address.
+        { "view", "wxhb-L", "2" },
+        { "view", "bogus", "2L" },
+        { "view", "wxhb-L", "9L" },
+        { "view", "wxhb-L", "2X" },
+        -- And the slot belongs to a bind, not to a view.
+        { "view", "wxhb-L", "2L3" },
+        { "view", "wxhb-L", "2L", "3" },
       }
       for index, words in ipairs(cases) do
         local reply, save_config = commands.command(words)
@@ -937,7 +949,7 @@ describe("crossbar commands", function()
 
     it("says the job's own bindings go dormant when a populated set is shared", function()
       local commands, world = build()
-      commands.command({ "bind", "4", "l", "1", "ja", "Provoke" })
+      commands.command({ "bind", "4L1", "ja", "Provoke" })
       local reply = commands.command({ "share", "4", "on" })
       assert.is_table(reply, "the warning needs its own line")
       local text = text_of(reply)
@@ -961,7 +973,7 @@ describe("crossbar commands", function()
         assert.is_not_nil(reply:lower():find("layer"), words[1] .. ": " .. reply)
         assert.is_falsy(save_config, words[1])
       end
-      local reply = commands.command({ "view", "wxhb-l", "sub:1", "l" })
+      local reply = commands.command({ "view", "wxhb-L", "sub:1L" })
       assert.is_not_nil(reply:lower():find("layer"), reply)
     end)
 
@@ -1204,7 +1216,7 @@ describe("crossbar commands", function()
       local commands, world = build({ job = false })
       local cases = {
         { { "wxhb", "on" }, true },
-        { { "view", "wxhb-l", "4", "r" }, true },
+        { { "view", "wxhb-L", "4R" }, true },
         { { "share", "2", "on" }, true },
         { { "cycle", "2", "drawn" }, true },
         { { "context", "list" }, false },
@@ -1225,12 +1237,12 @@ describe("crossbar commands", function()
     -- quotes one that has none must not get the quotes stored as the label.
     it("strips the quotes off an alias and an icon name", function()
       local commands, world = build({ icons = { ["icons/custom/pull.png"] = true } })
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade" })
-      commands.command({ "alias", "1", "l", "3", '"AW"' })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      commands.command({ "alias", "1L3", '"AW"' })
       assert.equal("AW", stored(world, "SCH", 1, "left", 3).alias)
-      commands.command({ "alias", "1", "l", "3", '"Big', 'Hit"' })
+      commands.command({ "alias", "1L3", '"Big', 'Hit"' })
       assert.equal("Big Hit", stored(world, "SCH", 1, "left", 3).alias)
-      commands.command({ "icon", "1", "l", "3", '"pull"' })
+      commands.command({ "icon", "1L3", '"pull"' })
       assert.equal("pull", stored(world, "SCH", 1, "left", 3).icon)
     end)
   end)
@@ -1238,7 +1250,7 @@ describe("crossbar commands", function()
   describe("the subjob layer with no subjob", function()
     it("hints rather than writing a nil-named layer", function()
       local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "sub:1", "l", "3", "ja", "Provoke" })
+      local reply, _, repaint = commands.command({ "bind", "sub:1L3", "ja", "Provoke" })
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.are.same({}, world.saved)
@@ -1300,48 +1312,54 @@ describe("crossbar commands", function()
   describe("case folding", function()
     it("takes an upper-case layer prefix", function()
       local commands, world = build({ sub = "NIN" })
-      assert.is_true(select(3, commands.command({ "bind", "SUB:1", "l", "3", "ja", "Utsusemi" })), "sub:")
+      assert.is_true(select(3, commands.command({ "bind", "SUB:1L3", "ja", "Utsusemi" })), "sub:")
       assert.equal("Utsusemi", world.files.SCH.sub.NIN[1].left[3].action)
-      assert.is_true(
-        select(3, commands.command({ "bind", "CTX:Light-Arts:1", "l", "3", "ja", "Addendum:", "White" })),
-        "ctx:"
-      )
+      assert.is_true(select(3, commands.command({ "bind", "CTX:Light-Arts:1L3", "ja", "Addendum:", "White" })), "ctx:")
       assert.equal("Addendum: White", world.files.SCH.contexts["light-arts"][1].left[3].action)
-      commands.command({ "bind", "SUB:1", "l", "3", "ja", "Utsusemi" })
-      assert.is_true(select(3, commands.command({ "alias", "SUB:1", "l", "3", "Shadows" })), "alias")
+      commands.command({ "bind", "SUB:1L3", "ja", "Utsusemi" })
+      assert.is_true(select(3, commands.command({ "alias", "SUB:1L3", "Shadows" })), "alias")
       assert.equal("Shadows", world.files.SCH.sub.NIN[1].left[3].alias)
-      assert.is_true(select(3, commands.command({ "unbind", "SUB:1", "l", "3" })), "unbind")
+      assert.is_true(select(3, commands.command({ "unbind", "SUB:1L3" })), "unbind")
     end)
 
     -- The framework folds verbs and names everywhere; the side argument is
     -- a name like any other, and an error saying "side must be l or r" to
     -- someone who typed L is worse than useless.
-    it("takes an upper-case side on every address", function()
+    it("takes either case of side on every address", function()
       local commands, world = build()
-      assert.is_true(select(3, commands.command({ "bind", "1", "L", "3", "ja", "Provoke" })), "bind")
-      assert.is_true(select(3, commands.command({ "alias", "1", "Left", "3", "Poke" })), "alias")
+      assert.is_true(select(3, commands.command({ "bind", "1L3", "ja", "Provoke" })), "bind")
+      -- Upper case is what the help shows, not what the parser demands.
+      assert.is_true(select(3, commands.command({ "alias", "1l3", "Poke" })), "alias")
       assert.equal("Poke", stored(world, "SCH", 1, "left", 3).alias)
-      assert.is_true(select(3, commands.command({ "swap", "1", "L", "3", "2", "R", "5" })), "swap")
+      assert.is_true(select(3, commands.command({ "swap", "1L3", "2R5" })), "swap")
       assert.equal("Provoke", world.bindings.entry_at(2, "r", 5).action)
-      assert.is_true(select(3, commands.command({ "unbind", "2", "R", "5" })), "unbind")
+      assert.is_true(select(3, commands.command({ "unbind", "2R5" })), "unbind")
       assert.is_nil(world.bindings.entry_at(2, "r", 5))
     end)
   end)
 
   describe("what the replies say", function()
-    -- The confirmation is the only thing the user sees, so it is pinned:
-    -- the button name for the slot they gave, and the target they set.
-    it("names the button for the slot, not a neighbour's", function()
+    --[[ The confirmation is the only thing the user sees, so it is pinned.
+         It used to name the controller button the slot would be - `set 1 l
+         3 (a)` - which named a pad the addon cannot see, and spelt the side
+         in the lower case that is the whole reason the address changed
+         (Kevin, 2026-08-22). It echoes the address instead: the same word
+         you would type back. ]]
+    it("echoes the address itself, in the form you would type it", function()
       local commands = build()
-      local reply = commands.command({ "bind", "1", "l", "3", "ja", "Provoke" })
-      assert.is_not_nil(reply:find("set 1 l 3 (a)", 1, true), reply)
-      reply = commands.command({ "bind", "1", "r", "5", "ja", "Berserk" })
-      assert.is_not_nil(reply:find("set 1 r 5 (up)", 1, true), reply)
+      local reply = commands.command({ "bind", "1L3", "ja", "Provoke" })
+      assert.is_not_nil(reply:find("1L3", 1, true), reply)
+      assert.is_nil(reply:find("(a)", 1, true), "no button name: " .. reply)
+      reply = commands.command({ "bind", "1R5", "ja", "Berserk" })
+      assert.is_not_nil(reply:find("1R5", 1, true), reply)
+      -- Either case in, upper case out.
+      reply = commands.command({ "bind", "1r6", "ja", "Berserk" })
+      assert.is_not_nil(reply:find("1R6", 1, true), reply)
     end)
 
     it("shows the target it bound, in the confirmation and in the listing", function()
       local commands = build()
-      local reply = commands.command({ "bind", "1", "l", "3", "ws", "Savage", "Blade", "t" })
+      local reply = commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "t" })
       assert.is_not_nil(reply:find("ws Savage Blade <t>", 1, true), reply)
       local text = text_of(commands.command({ "list", "1" }))
       assert.is_not_nil(text:find("ws Savage Blade <t>", 1, true), text)
@@ -1353,10 +1371,10 @@ describe("crossbar commands", function()
     -- ignoring it: a word the parser drops is a word the user believed in.
     it("refuses extra words on every fixed-arity verb", function()
       local commands, world = build()
-      commands.command({ "bind", "1", "l", "3", "ws", "Savage Blade" })
+      commands.command({ "bind", "1L3", "ws", "Savage Blade" })
       local cases = {
-        { "unbind", "1", "l", "3", "please" },
-        { "swap", "1", "l", "3", "2", "r", "5", "please" },
+        { "unbind", "1L3", "please" },
+        { "swap", "1L3", "2R5", "please" },
         { "list", "1", "please" },
         { "view", "wxhb-l", "2", "l", "please" },
         { "share", "2", "on", "please" },
@@ -1394,7 +1412,7 @@ describe("crossbar commands", function()
         { "cycle", "3.0", "drawn" },
         { "view", "wxhb-l", "1e0", "l" },
         { "list", "0x3" },
-        { "swap", "0x3", "l", "1", "2", "r", "1" },
+        { "swap", "0x3", "l", "1", "2R1" },
       }
       for _, words in ipairs(cases) do
         local reply, save_config, repaint = commands.command(words)
@@ -1407,8 +1425,8 @@ describe("crossbar commands", function()
 
     it("echoes a padded set canonically", function()
       local commands, world = build()
-      local reply = commands.command({ "bind", "007", "l", "3", "ja", "Provoke" })
-      assert.is_not_nil(reply:find("set 7 ", 1, true), reply)
+      local reply = commands.command({ "bind", "007L3", "ja", "Provoke" })
+      assert.is_not_nil(reply:find("7L3", 1, true), reply)
       assert.equal("Provoke", world.bindings.entry_at(7, "l", 3).action)
     end)
   end)

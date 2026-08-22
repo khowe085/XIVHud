@@ -41,18 +41,17 @@ press them yourself.
 ## Commands
 
 All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
-`<slot>` accepts `1`–`8` or button names. `<side>` is `l` or `r`.
 
-Slots are numbered from the face buttons, clockwise from the top of each
-cluster — and the D-pad cluster draws on the **left** of the screen, the face
-cluster on the **right**, matching the controller:
+**An address is one word**: `<set><L|R><slot>`, so `1L1` is set 1, left side,
+slot 1, and `2R8` is set 2, right side, slot 8. Four verbs — `bind`, `unbind`,
+`alias` and `icon` — also take a layer prefix in front: `sub:1L6`,
+`ctx:light-arts:1L3`.
 
-| Slot | Button | | Slot | Button |
-| --- | --- | --- | --- | --- |
-| 1 | `y` | | 5 | `up` |
-| 2 | `b` | | 6 | `right` |
-| 3 | `a` | | 7 | `down` |
-| 4 | `x` | | 8 | `left` |
+The side is written in capitals on purpose: a lower-case `l` next to digits is
+impossible to tell from a `1` in the game's font. You may type either case.
+
+Slots are `1`–`8`, numbered clockwise from the top of each cluster — the
+left-hand cross is slots 1–4 and the right-hand cross 5–8.
 
 ### Everyday
 
@@ -82,20 +81,20 @@ rest of the line means:
 
 | `<type>` | `<action>` is | Example |
 | --- | --- | --- |
-| `ma` | a spell — including trusts and blue magic | `bind 1 l 1 ma "Cure IV" t` |
-| `ja` | a job ability | `bind 1 l 2 ja "Divine Seal"` |
-| `ws` | a weaponskill | `bind 1 r 1 ws "Savage Blade" t` |
-| `item` | a usable item | `bind 2 l 1 item "Echo Drops" me` |
-| `enchanteditem` | enchanted gear — equips it, waits out the warmup, uses it | `bind 2 l 2 enchanteditem "Vocation Ring"` |
-| `pet` | a pet command | `bind 2 r 1 pet "Fight" t` |
-| `mount` | one specific mount — counts down before it summons, like `mr` | `bind 3 l 1 mount "Chocobo"` |
-| `ra` | *nothing* — ranged attack takes a target only | `bind 1 r 4 ra t` |
-| `ct` | a chat command, without its slash | `bind 4 l 1 ct "sea all linkshell"` |
-| `ex` | a Windower command, run as typed | `bind 4 l 2 ex "exec pull.txt"` |
-| `open` | the name of a game screen | `bind 5 l 1 open map` |
-| `draw` | *nothing* — sheathe / unsheathe | `bind 1 l 5 draw` |
-| `mr` | *nothing* — mount roulette | `bind 3 l 2 mr` |
-| `warp` | *nothing* — best available warp | `bind 6 l 1 warp` |
+| `ma` | a spell — including trusts and blue magic | `bind 1L1 ma "Cure IV" t` |
+| `ja` | a job ability | `bind 1L2 ja "Divine Seal"` |
+| `ws` | a weaponskill | `bind 1R1 ws "Savage Blade" t` |
+| `item` | a usable item | `bind 2L1 item "Echo Drops" me` |
+| `enchanteditem` | enchanted gear — equips it, waits out the warmup, uses it | `bind 2L2 enchanteditem "Vocation Ring"` |
+| `pet` | a pet command | `bind 2R1 pet "Fight" t` |
+| `mount` | one specific mount — counts down before it summons, like `mr` | `bind 3L1 mount "Chocobo"` |
+| `ra` | *nothing* — ranged attack takes a target only | `bind 1R4 ra t` |
+| `ct` | a chat command, without its slash | `bind 4L1 ct "sea all linkshell"` |
+| `ex` | a Windower command, run as typed | `bind 4L2 ex "exec pull.txt"` |
+| `open` | the name of a game screen | `bind 5L1 open map` |
+| `draw` | *nothing* — sheathe / unsheathe | `bind 1L5 draw` |
+| `mr` | *nothing* — mount roulette | `bind 3L2 mr` |
+| `warp` | *nothing* — best available warp | `bind 6L1 warp` |
 
 **`<target>`** is optional and takes the game's own target tokens. These are
 the ones that work:
@@ -148,9 +147,9 @@ to read at a glance, or when the slot holds a `ct` or `ex` command that has no
 icon of its own:
 
 ```
-//hud crossbar alias 1 l 3 "AW"           -- Addendum: White, shortened
-//hud crossbar icon 4 l 1 map             -- give a custom command an icon
-//hud crossbar alias 1 l 3                -- back to the action's own name
+//hud crossbar alias 1L3 "AW"           -- Addendum: White, shortened
+//hud crossbar icon 4L1 map             -- give a custom command an icon
+//hud crossbar alias 1L3                -- back to the action's own name
 ```
 
 Both follow the same layer prefixes as `bind`, so aliasing
@@ -171,7 +170,7 @@ whatever you want to type:
 
 ```
 Windower4/addons/XIVHud/icons/custom/pull.png
-    → //hud crossbar icon 4 l 1 pull
+    → //hud crossbar icon 4L1 pull
 ```
 
 Any size works, though 40x40 matches the slots exactly. The folder is yours —
@@ -182,7 +181,7 @@ a file after a built-in one replaces it everywhere: an `icons/custom/attack.png`
 becomes the picture on every Attack slot without you re-pointing anything.
 
 The folder is **flat**, and that is how it is searched: only the last part of a
-name is looked for there. `icon 6 l 1 items/warp-ring` checks
+name is looked for there. `icon 6L1 items/warp-ring` checks
 `icons/custom/warp-ring.png` first and the addon's own `items/warp-ring` after
 — you never make an `items` folder of your own.
 
@@ -192,9 +191,9 @@ context. With no prefix you are editing the job's base layer. See
 [Layers](#layers-how-a-slot-decides-what-to-show).
 
 ```
-//hud crossbar bind 1 l 3 ma "Cure IV" t
-//hud crossbar bind sub:1 l 4 ja "Utsusemi: Ichi"
-//hud crossbar bind ctx:light-arts:1 l 3 ja "Addendum: White"
+//hud crossbar bind 1L3 ma "Cure IV" t
+//hud crossbar bind sub:1L4 ja "Utsusemi: Ichi"
+//hud crossbar bind ctx:light-arts:1L3 ja "Addendum: White"
 ```
 
 Most of this is also bindable by mouse in `//hud crossbar edit`, which is
@@ -681,7 +680,7 @@ at the wrong person. The retry only ever holds a slot aimed at **`<t>`,
 `<lastst>`, `<stal>`) are left alone too. And **a slot bound in the binder**: `//hud crossbar edit`
 writes the action without a target word, and with no target on the press there
 is nothing to pin the re-send to. To get the retry on a slot, bind it from the
-command line with a target — `//hud crossbar bind 1 l 5 ma "Cure IV" t`.
+command line with a target — `//hud crossbar bind 1L5 ma "Cure IV" t`.
 
 It **ships off**: the refusal it listens for has not yet been confirmed in a
 live client, so turn it on with `//hud crossbar retry on`. Switching it off

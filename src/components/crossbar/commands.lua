@@ -51,40 +51,53 @@ local SLOT_COUNT = 8
 
 -- Slots 1-4 are the face cross, 5-8 the D-pad, both clockwise from the top
 -- (the component's own slot map). Nobody should have to memorise the indices.
-local SLOT_LABELS = { "y", "b", "a", "x", "up", "right", "down", "left" }
-local SLOT_ALIASES = {}
-for index, label in ipairs(SLOT_LABELS) do
-  SLOT_ALIASES[label] = index
-end
+--[[ An address is ONE word: `<set><L|R><slot>` - `1L1`, `2R8` - and may
+     carry a layer prefix, `sub:1L1` or `ctx:light-arts:1L1`.
 
--- The four configurable views, CLI spelling -> config key.
+     It was three words (`1 l 1`) until 2026-08-22. The side was the
+     problem: a lower-case `l` beside digits is indistinguishable from a
+     `1` in the game's font, so the side is written upper case and the
+     three words are one, which cannot be miscounted either. Both cases
+     parse - it is a hint about how to READ an address, not a demand about
+     how to type one.
+
+     The slots' controller names went at the same time (`y b a x up right
+     down left`). There is no controller - Windower cannot see one - so
+     naming its buttons in a hint only invited the question of which pad
+     was meant. Slots are 1-8. ]]
+local ADDRESS_FORM = "<set><L|R><slot> - 1L1, 2R8, sub:1L6, ctx:<name>:1L3"
+
+-- The four configurable views, CLI spelling -> config key. Matched
+-- case-insensitively; the upper-case spelling is the one shown, for the
+-- same reason the address carries one.
 local VIEW_KEYS = {
   ["wxhb-l"] = "wxhb_left",
   ["wxhb-r"] = "wxhb_right",
   ["exp-lr"] = "expanded_lr",
   ["exp-rl"] = "expanded_rl",
 }
-local VIEW_ORDER = { "wxhb-l", "wxhb-r", "exp-lr", "exp-rl" }
+local VIEW_ORDER = { "wxhb-L", "wxhb-R", "exp-LR", "exp-RL" }
 -- The same four in the shape the widget's status line wants, derived so the
--- two can never drift.
+-- two can never drift. The keys are lower case and the spellings upper, so
+-- the lookup folds exactly as the verb's own does.
 local VIEW_LIST = {}
 for _, cli in ipairs(VIEW_ORDER) do
-  VIEW_LIST[#VIEW_LIST + 1] = { cli = cli, key = VIEW_KEYS[cli] }
+  VIEW_LIST[#VIEW_LIST + 1] = { cli = cli, key = VIEW_KEYS[cli:lower()] }
 end
 
 local HELP = {
   "crossbar commands:",
   "  //hud crossbar [set <1-8> | cycle | list [<set>] | wxhb [on|off]]",
-  "  //hud crossbar bind <set> <l|r> <slot> <type> [<action>] [<target>]",
-  "  //hud crossbar unbind <set> <l|r> <slot>",
-  "  //hud crossbar alias|icon <set> <l|r> <slot> [<name>] - omit to clear",
-  "  //hud crossbar swap <set> <l|r> <slot> <set> <l|r> <slot>",
-  "  //hud crossbar view <wxhb-l|wxhb-r|exp-lr|exp-rl> <set> <l|r>",
+  "  //hud crossbar bind <address> <type> [<action>] [<target>]",
+  "  //hud crossbar unbind <address>",
+  "  //hud crossbar alias|icon <address> [<name>] - omit to clear",
+  "  //hud crossbar swap <address> <address>",
+  "  //hud crossbar view <wxhb-L|wxhb-R|exp-LR|exp-RL> <set><L|R>",
   "  //hud crossbar share <set> on|off | cycle <set> drawn|sheathed|both|none",
   "  //hud crossbar retry [on|off] - re-send an action the game refused as too soon",
   "  //hud crossbar copy <JOB> | context list | open [<name>]",
   "  //hud crossbar draw | mr | warp [all] | edit",
-  "  <set> takes sub:<set> or ctx:<name>:<set>; <slot> takes 1-8 or y b a x up right down left",
+  "  an address is <set><L|R><slot> - 1L1, 2R8 - and takes sub: or ctx:<name>: in front",
 }
 
 -- Types that carry no action name. `ra` still takes a target (`/ra <t>`);
@@ -279,70 +292,78 @@ local function new(deps)
     return nil, complaint
   end
 
-  --- The set argument, with its optional layer prefix. The case folds --
-  --- the model parses the prefix itself, and it matches lowercase keywords
-  --- and lowercase roster names -- and a plain set is canonicalised to its
-  --- own digits, so `007` is echoed back as the 7 it addressed. A prefixed
-  --- set keeps its own text: the model's patterns already require digits
-  --- there. Answers nil + a complaint for a plain set that is not a
-  --- decimal integer.
-  local function fold_address(word)
-    if type(word) ~= "string" then
-      return nil, hint("a set is 1-" .. SET_COUNT .. ", optionally prefixed sub: or ctx:<name>:")
-    end
-    local folded = word:lower()
-    if folded:find(":", 1, true) then
-      return folded
-    end
-    local set, complaint = parse_set_only(folded)
-    if set == nil then
-      return nil, complaint
-    end
-    return tostring(set)
-  end
-
   -- The model is rebuilt on every attach and detach, so the dep is a getter:
   -- a captured instance would be the one from a previous login.
   local function bindings()
     return deps.bindings()
   end
 
-  --- A slot argument: 1-8, or one of the button names.
-  local function parse_slot(word)
+  --[[ One address word -> the three things the model wants: the set
+       argument (prefix and all, as the model spells it), the side folded to
+       `left`/`right`, and the slot number.
+
+       The prefix ends at the LAST colon, because a context address carries
+       two (`ctx:<name>:1L3`) and a context name may contain none. The set
+       is canonicalised to its own digits only when it stands alone, so
+       `007L1` echoes back as the 7 it addressed while a prefixed set keeps
+       the text the model's own patterns expect. ]]
+  local function parse_address(word, allow_prefix)
     if type(word) ~= "string" then
-      return nil, hint("a slot is 1-" .. SLOT_COUNT .. " or " .. table.concat(SLOT_LABELS, " "))
+      return nil, hint("an address is " .. ADDRESS_FORM)
     end
-    local slot = whole_number(word)
-    if slot == nil then
-      slot = SLOT_ALIASES[word:lower()]
+    local prefix, tail = word:match("^(.*):([^:]*)$")
+    if prefix == nil then
+      prefix, tail = "", word
+    else
+      prefix = prefix:lower() .. ":"
     end
-    -- whole_number and the alias table both answer integers, so a range
-    -- check is the whole test.
+    if prefix ~= "" and not allow_prefix then
+      return nil, hint("a layer prefix belongs on bind, unbind, alias and icon - address this one as " .. ADDRESS_FORM)
+    end
+    local digits, side_word, slot_word = tail:match("^(%d+)([lLrR])(%d+)$")
+    if digits == nil then
+      return nil, hint("no such address: " .. word .. " - an address is " .. ADDRESS_FORM)
+    end
+    local slot = whole_number(slot_word)
     if type(slot) ~= "number" or slot < 1 or slot > SLOT_COUNT then
-      return nil,
-        hint("no such slot: " .. word .. " - use 1-" .. SLOT_COUNT .. " or " .. table.concat(SLOT_LABELS, " "))
+      return nil, hint("no such slot: " .. slot_word .. " - a slot is 1-" .. SLOT_COUNT)
     end
-    return slot
+    local set = whole_number(digits)
+    if type(set) ~= "number" or set < 1 or set > SET_COUNT then
+      return nil, hint("no such set: " .. digits .. " - a set is 1-" .. SET_COUNT)
+    end
+    local side = side_word:lower() == "l" and "left" or "right"
+    -- Prefixed, the model parses the whole string itself and wants the
+    -- text; plain, the canonical digits.
+    return (prefix ~= "" and (prefix .. digits) or tostring(set)), side, slot
   end
 
-  --- A side argument. The model takes lowercase only, and the framework
-  --- folds every other name here, so an "L" must not come back as "side
-  --- must be l or r".
-  local function parse_side(word)
-    local side = type(word) == "string" and word:lower() or ""
-    if side == "l" or side == "left" then
-      return "left"
+  --- `<set><L|R>`, for the views, which address a whole side and no slot.
+  local function parse_view_address(word)
+    if type(word) ~= "string" then
+      return nil, hint("a view points at <set><L|R> - 2L, 3R")
     end
-    if side == "r" or side == "right" then
-      return "right"
+    local digits, side_word = word:match("^(%d+)([lLrR])$")
+    if digits == nil then
+      -- A layer prefix is the likelier mistake than a typo, and deserves
+      -- its own answer: a view shows a whole side, every layer stacked.
+      if word:find(":", 1, true) then
+        return nil,
+          hint("a layer prefix belongs on bind, unbind, alias and icon - a view points at <set><L|R>, e.g. 2L")
+      end
+      return nil, hint("no such view target: " .. word .. " - a view points at <set><L|R>, e.g. 2L")
     end
-    return nil, hint("side must be l or r")
+    local set = whole_number(digits)
+    if type(set) ~= "number" or set < 1 or set > SET_COUNT then
+      return nil, hint("no such set: " .. digits .. " - a set is 1-" .. SET_COUNT)
+    end
+    return set, side_word:lower() == "l" and "left" or "right"
   end
 
-  -- "set 1 l 3 (a)": the layer prefix is kept as the user addressed it,
-  -- and the side arrives already folded to "left"/"right" by parse_side.
+  -- "1L3", or "sub:1L3": the layer prefix is kept as the user addressed it,
+  -- and the side arrives already folded to "left"/"right".
   local function address_label(set_arg, side, slot)
-    return "set " .. tostring(set_arg) .. " " .. side:sub(1, 1) .. " " .. slot .. " (" .. SLOT_LABELS[slot] .. ")"
+    return tostring(set_arg) .. (side == "left" and "L" or "R") .. slot
   end
 
   --[[ The bound action as one readable phrase: type, name, target, and the
@@ -423,25 +444,17 @@ local function new(deps)
     return nil, nil
   end
 
-  --- `bind <set> <l|r> <slot> <type> [<action>] [<target>]`.
+  --- `bind <address> <type> [<action>] [<target>]`.
   local function bind(args)
-    if #args < 5 then
-      return hint("bind <set> <l|r> <slot> <type> [<action>] [<target>]")
+    if #args < 3 then
+      return hint("bind <address> <type> [<action>] [<target>] - an address is " .. ADDRESS_FORM)
     end
-    local address, address_complaint = fold_address(args[2])
+    local address, side, slot = parse_address(args[2], true)
     if address == nil then
-      return address_complaint
+      return side
     end
-    local side, side_complaint = parse_side(args[3])
-    if side == nil then
-      return side_complaint
-    end
-    local slot, complaint = parse_slot(args[4])
-    if slot == nil then
-      return complaint
-    end
-    local kind = args[5]:lower()
-    local rest = slice(args, 6)
+    local kind = args[3]:lower()
+    local rest = slice(args, 4)
     local record = { type = kind }
     local absorbed = nil
     if NO_ACTION_TYPES[kind] then
@@ -497,22 +510,14 @@ local function new(deps)
     return told, false, true
   end
 
-  --- `unbind <set> <l|r> <slot>` -- the addressed layer only.
+  --- `unbind <address>` -- the addressed layer only.
   local function unbind(args)
-    if #args ~= 4 then
-      return hint("unbind <set> <l|r> <slot>")
+    if #args ~= 2 then
+      return hint("unbind <address> - an address is " .. ADDRESS_FORM)
     end
-    local address, address_complaint = fold_address(args[2])
+    local address, side, slot = parse_address(args[2], true)
     if address == nil then
-      return address_complaint
-    end
-    local side, side_complaint = parse_side(args[3])
-    if side == nil then
-      return side_complaint
-    end
-    local slot, complaint = parse_slot(args[4])
-    if slot == nil then
-      return complaint
+      return side
     end
     local entry, err = bindings().entry_at(address, side, slot)
     if entry == nil then
@@ -536,17 +541,9 @@ local function new(deps)
        back through bind, so a layer prefix means the same thing it does
        everywhere else. Omitting the final argument clears the override. ]]
   local function override(args, field, value, check)
-    local address, address_complaint = fold_address(args[2])
+    local address, side, slot = parse_address(args[2], true)
     if address == nil then
-      return address_complaint
-    end
-    local side, side_complaint = parse_side(args[3])
-    if side == nil then
-      return side_complaint
-    end
-    local slot, complaint = parse_slot(args[4])
-    if slot == nil then
-      return complaint
+      return side
     end
     local entry, err = bindings().entry_at(address, side, slot)
     if entry == nil then
@@ -574,10 +571,10 @@ local function new(deps)
   end
 
   local function alias(args)
-    if #args < 4 then
-      return hint("alias <set> <l|r> <slot> [<name>] - omit the name to clear")
+    if #args < 2 then
+      return hint("alias <address> [<name>] - omit the name to clear")
     end
-    local joined = join(args, 5)
+    local joined = join(args, 3)
     local name, complaint = unquote_checked(joined)
     if name == nil then
       return hint(complaint)
@@ -585,21 +582,21 @@ local function new(deps)
     return override(args, "alias", name ~= "" and name or nil)
   end
 
-  --[[ `icon <set> <l|r> <slot> [<icon>]`: resolved exactly the way
+  --[[ `icon <address> [<icon>]`: resolved exactly the way
        render.icon_candidates resolves the stored override -- the player's
        own art at icons/custom/<basename>.png first, then the shipped pack
        at assets/icons/<name>.png with the name taken VERBATIM (no kebab
        pass: the stored override is a path, not an action name). Rejected
        at entry rather than drawing nothing later. ]]
   local function icon(args)
-    if #args < 4 then
-      return hint("icon <set> <l|r> <slot> [<icon>] - omit the icon to clear")
+    if #args < 2 then
+      return hint("icon <address> [<icon>] - omit the icon to clear")
     end
     -- One name, but a quoted one may carry spaces: the folder is the
     -- player's own and the wiki tells them to name files whatever they want
     -- to type. An unquoted phrase simply resolves to no art and is refused
     -- by the check below.
-    local joined = join(args, 5)
+    local joined = join(args, 3)
     local name, quote_complaint = unquote_checked(joined)
     if name == nil then
       return hint(quote_complaint)
@@ -632,28 +629,22 @@ local function new(deps)
     end)
   end
 
-  --[[ `swap <set> <l|r> <slot> <set> <l|r> <slot>` -- both addresses' ENTIRE
+  --[[ `swap <address> <address>` -- both addresses' ENTIRE
        stacks change places, so no layer prefix applies. A move is a swap
        with an empty stack. ]]
   local function swap(args)
-    if #args ~= 7 then
-      return hint("swap <set> <l|r> <slot> <set> <l|r> <slot>")
+    if #args ~= 3 then
+      return hint("swap <address> <address> - an address is " .. ADDRESS_FORM)
     end
     local addresses = {}
-    for index, at in ipairs({ 2, 5 }) do
-      local set, complaint = plain_set(args[at], "a swap moves every layer at once")
+    for index, at in ipairs({ 2, 3 }) do
+      -- No prefix: a swap moves every layer at once, so addressing one
+      -- would promise something it does not do.
+      local set, side, slot = parse_address(args[at], false)
       if set == nil then
-        return complaint
+        return side
       end
-      local side, side_complaint = parse_side(args[at + 1])
-      if side == nil then
-        return side_complaint
-      end
-      local slot, slot_complaint = parse_slot(args[at + 2])
-      if slot == nil then
-        return slot_complaint
-      end
-      addresses[index] = { set = set, side = side, slot = slot }
+      addresses[index] = { set = tonumber(set), side = side, slot = slot }
     end
     local wrote, err = bindings().swap(addresses[1], addresses[2])
     if wrote == nil then
@@ -699,10 +690,8 @@ local function new(deps)
                would be on every row and mean nothing. ]]
           local layers = bindings().layers_at(set, side, slot)
           for _, layer in ipairs(layers) do
-            rows[#rows + 1] = ("  %s %d %-5s %s [%s]%s"):format(
-              side:sub(1, 1),
-              slot,
-              SLOT_LABELS[slot],
+            rows[#rows + 1] = ("  %-4s %s [%s]%s"):format(
+              tostring(set) .. (side == "left" and "L" or "R") .. slot,
               record_label(layer.entry),
               layer.source,
               (#layers > 1 and layer.active) and " live" or ""
@@ -768,25 +757,21 @@ local function new(deps)
     return flags[set]
   end
 
-  --- `view <wxhb-l|wxhb-r|exp-lr|exp-rl> <set> <l|r>`.
+  --- `view <wxhb-L|wxhb-R|exp-LR|exp-RL> <set><L|R>`.
   local function view(args)
-    if #args ~= 4 then
-      return hint("view <" .. table.concat(VIEW_ORDER, "|") .. "> <set> <l|r>")
+    if #args ~= 3 then
+      return hint("view <" .. table.concat(VIEW_ORDER, "|") .. "> <set><L|R> - e.g. view wxhb-L 2L")
     end
     local key = VIEW_KEYS[args[2]:lower()]
     if key == nil then
       return hint("no such view: " .. args[2] .. " - try " .. table.concat(VIEW_ORDER, ", "))
     end
-    local set, complaint = plain_set(args[3], "a view points at a whole set and side")
+    local set, side = parse_view_address(args[3])
     if set == nil then
-      return complaint
-    end
-    local side, side_complaint = parse_side(args[4])
-    if side == nil then
-      return side_complaint
+      return side
     end
     config_table("views")[key] = { set = set, side = side }
-    return hint(args[2]:lower() .. " shows set " .. set .. " " .. side), true, true
+    return hint(args[2]:upper() .. " shows " .. set .. (side == "left" and "L" or "R")), true, true
   end
 
   --- `share <set> on|off` -- shared (every job) vs job-specific.

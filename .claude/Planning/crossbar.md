@@ -698,7 +698,7 @@ rule above.
 `catalog.lua` builds its records as `{ type = 'ma', action = <name> }` with no
 target word, so CB8’s mouse path — the *primary* authoring surface — produces
 exactly the records the pin cannot hold, and the retry ignores them. Only a
-binding made from the CLI with an explicit target (`bind 1 l 5 ma "Cure IV" t`)
+binding made from the CLI with an explicit target (`bind 1L5 ma "Cure IV" t`)
 is watched. This is deliberately **not** patched by having the retry invent
 `<t>` for a targetless record: what a bare `/ma "Cure IV"` does in game is
 unobserved (in-client question F), and the real question it raises — should
@@ -871,7 +871,7 @@ Resolution rules:
   meaning `views`, the CLI and `bindings.resolve(set, side, slot)` all use);
   **views** are only the four configurable (set, side) pointers — config keys
   `wxhb_left`, `wxhb_right`, `expanded_lr`, `expanded_rl`, with
-  `wxhb-l`/`wxhb-r`/`exp-lr`/`exp-rl` as their CLI spellings (normative).
+  `wxhb-L`/`wxhb-R`/`exp-LR`/`exp-RL` as their CLI spellings (normative).
 - **The switch key is ours exclusively**: always blocked, and **inert while
   any side is held** (Kevin, 2026-08-15 — holding a side means you are using
   the crossbar, not changing sets). With no side held: tap alone = `cycle`;
@@ -1811,18 +1811,18 @@ one-line hint, consistent chat prefix.
 //hud crossbar                                     -- job, XHB's active set, view mapping
 //hud crossbar set <1-8>                           -- switch the XHB's active set
 //hud crossbar cycle                               -- bare: advance the rotation (for //bind; the gesture's command twin)
-//hud crossbar bind <set> <l|r> <slot> <type> [<action>] [<target>]
+//hud crossbar bind <address> <type> [<action>] [<target>]
                                                   -- ra/draw/mr/warp take no <action>
-//hud crossbar unbind <set> <l|r> <slot>
-//hud crossbar alias <set> <l|r> <slot> [<name>]   -- relabel a slot; omit <name> to clear
-//hud crossbar icon <set> <l|r> <slot> [<icon>]    -- re-icon a slot; omit <icon> to clear
+//hud crossbar unbind <address>
+//hud crossbar alias <address> [<name>]   -- relabel a slot; omit <name> to clear
+//hud crossbar icon <address> [<icon>]    -- re-icon a slot; omit <icon> to clear
 //hud crossbar list [<set>]                        -- bindings on this job
-//hud crossbar view <wxhb-l|wxhb-r|exp-lr|exp-rl> <set> <l|r>   -- repoint a view
+//hud crossbar view <wxhb-L|wxhb-R|exp-LR|exp-RL> <set><L|R>   -- repoint a view
 //hud crossbar wxhb [on|off]                      -- WXHB on screen at rest; no argument reports
 //hud crossbar retry [on|off]                     -- cast retry (CB9); no argument reports
 //hud crossbar share <set> on|off                  -- shared (all jobs) vs job-specific
 //hud crossbar cycle <set> drawn|sheathed|both|none -- with args: rotation membership per weapon state
-//hud crossbar swap <set> <l|r> <slot> <set> <l|r> <slot>  -- swap two slots' ENTIRE stacks
+//hud crossbar swap <address> <address>  -- swap two slots' ENTIRE stacks
 //hud crossbar open                                -- list open-action names
 //hud crossbar copy <JOB>                          -- seed this job's bindings from another
 //hud crossbar edit                                -- toggle edit mode (mouse binder)
@@ -1877,7 +1877,7 @@ one-line hint, consistent chat prefix.
 - `bind`/`unbind` accept an optional layer prefix on the set argument:
   `sub:<set>` targets the current subjob's layer, `ctx:<name>:<set>` a context's
   overrides; no prefix targets the job base (or the shared store, per the set's
-  flag). `//hud crossbar bind ctx:light-arts:1 l 3 ja "Addendum: White"`.
+  flag). `//hud crossbar bind ctx:light-arts:1L3 ja "Addendum: White"`.
 - Validation rejects unknown types, unknown open targets, unknown layers,
   out-of-range sets/slots; every accepted change persists immediately and
   re-renders.

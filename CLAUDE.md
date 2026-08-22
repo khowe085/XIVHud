@@ -153,17 +153,23 @@ built-in actions itself; `commands.lua` answers the rest):
 //hud crossbar                           -- job, active set, and where each view points
 //hud crossbar help
 //hud crossbar set <1-8> | cycle | list [<set>] | wxhb [on|off] | retry [on|off]
-//hud crossbar bind <set> <l|r> <slot> <type> [<action>] [<target>]
-//hud crossbar unbind|alias|icon <set> <l|r> <slot> [...]
-//hud crossbar swap <set> <l|r> <slot> <set> <l|r> <slot>
-//hud crossbar view <wxhb-l|wxhb-r|exp-lr|exp-rl> <set> <l|r>
+//hud crossbar bind <address> <type> [<action>] [<target>]
+//hud crossbar unbind|alias|icon <address> [...]
+//hud crossbar swap <address> <address>
+//hud crossbar view <wxhb-L|wxhb-R|exp-LR|exp-RL> <set><L|R>
 //hud crossbar share <set> on|off | cycle <set> drawn|sheathed|both|none
 //hud crossbar copy <JOB> | context list | open [<name>]
 //hud crossbar draw | mr | warp [all] | edit
 ```
 
-`<set>` also takes the layer prefixes `sub:<set>` and `ctx:<name>:<set>` on the
-four verbs that write one layer; `<slot>` takes 1-8 or `y b a x up right down left`.
+An **address** is one word, `<set><L|R><slot>` - `1L1`, `2R8` - and takes the
+layer prefixes `sub:` and `ctx:<name>:` in front on the four verbs that write
+one layer. It was three words (`1 l 1`) until 2026-08-22: a lower-case `l`
+beside digits is indistinguishable from a `1` in the game's font, so the side
+is written upper case (either case parses) and the three words are one, which
+cannot be miscounted either. The slots' controller names went at the same time
+- there is no controller for them to name - so a slot is 1-8 and nothing
+else.
 Two verbs are deliberately overloaded: bare `cycle` advances the rotation while
 `cycle <set> <mode>` edits membership, and bare `open` lists the screens while
 `open <name>` opens one.

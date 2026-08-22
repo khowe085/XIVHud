@@ -160,10 +160,10 @@ describe("crossbar stand-in", function()
     -- would write one must say so rather than throw inside the handler.
     attach()
     for _, words in ipairs({
-      { "bind", "1", "l", "3", "ja", "Provoke" },
-      { "unbind", "1", "l", "3" },
-      { "alias", "1", "l", "3", "Name" },
-      { "swap", "1", "l", "3", "2", "r", "1" },
+      { "bind", "1L3", "ja", "Provoke" },
+      { "unbind", "1L3" },
+      { "alias", "1L3", "Name" },
+      { "swap", "1L3", "2R1" },
       { "copy", "WAR" },
       { "list" },
     }) do
@@ -1021,7 +1021,7 @@ describe("crossbar live widget", function()
         "addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png",
         image_of("xhb_left", 3, "icon").last.path
       )
-      widget.handle_command({ "icon", "1", "l", "3", "map" })
+      widget.handle_command({ "icon", "1L3", "map" })
       widget.update()
       assert.are.equal("addon/components/crossbar/assets/icons/map.png", image_of("xhb_left", 3, "icon").last.path)
       -- The memo must still settle on the override, or an re-iconed slot
@@ -1032,7 +1032,7 @@ describe("crossbar live widget", function()
         assert.is_nil(path:find("map%.png"), "a settled override must not be re-stat'd: " .. path)
       end
       -- And back off again: clearing the override restores the action's own.
-      widget.handle_command({ "icon", "1", "l", "3" })
+      widget.handle_command({ "icon", "1L3" })
       widget.update()
       assert.are.equal(
         "addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png",
@@ -2135,7 +2135,7 @@ describe("crossbar live widget", function()
       build_world({ store_files = war_bindings() })
       env.items[0] = { { id = 4165, count = 7, slot = 1 } }
       widget.update()
-      widget.handle_command({ "bind", "1", "l", "6", "item", "Prism Powder", "me" })
+      widget.handle_command({ "bind", "1L6", "item", "Prism Powder", "me" })
       widget.update()
       assert.are.equal("7", text_of("xhb_left", 6, "cost").last.text)
       assert.is_false(image_of("xhb_left", 6, "sweep").visible, "no red X on an item we are holding")
@@ -2163,10 +2163,10 @@ describe("crossbar live widget", function()
       env.items[0] = { { id = 4165, count = 7, slot = 1 } }
       widget.update()
       local reads = env.item_reads
-      widget.handle_command({ "bind", "1", "l", "5", "ma", "Cure", "me" })
+      widget.handle_command({ "bind", "1L5", "ma", "Cure", "me" })
       widget.update()
       assert.are.equal(reads, env.item_reads, "a spell is not something to count")
-      widget.handle_command({ "bind", "1", "l", "6", "item", "Prism Powder", "me" })
+      widget.handle_command({ "bind", "1L6", "item", "Prism Powder", "me" })
       widget.update()
       assert.is_true(env.item_reads > reads, "an item is")
       assert.are.equal("7", text_of("xhb_left", 6, "cost").last.text)
@@ -2181,10 +2181,10 @@ describe("crossbar live widget", function()
       build_world({ store_files = war_bindings() })
       env.items[0] = { enabled = true }
       env.items[8] = { enabled = true, { id = 27546, slot = 2, status = 0, count = 1 } }
-      widget.handle_command({ "bind", "1", "l", "6", "item", "Vocation Ring" })
+      widget.handle_command({ "bind", "1L6", "item", "Vocation Ring" })
       widget.update()
       assert.are.equal("0", text_of("xhb_left", 6, "cost").last.text, "an item is not reachable in a wardrobe")
-      widget.handle_command({ "bind", "1", "l", "6", "enchanteditem", "Vocation Ring" })
+      widget.handle_command({ "bind", "1L6", "enchanteditem", "Vocation Ring" })
       widget.update()
       assert.are.equal("1", text_of("xhb_left", 6, "cost").last.text, "gear is")
     end)
@@ -3190,7 +3190,7 @@ describe("crossbar live widget", function()
            lookups answer "no idea", the junk name is bound with a mere
            caution, and the slot can never fire. ]]
       build_world({ store_files = war_bindings() })
-      local told = widget.handle_command({ "bind", "1", "l", "6", "enchanteditem", "Vocation", "Ring", "Zeid" })
+      local told = widget.handle_command({ "bind", "1L6", "enchanteditem", "Vocation", "Ring", "Zeid" })
       assert.is_not_nil(tostring(told):find("is not an action"), "said: " .. tostring(told))
       assert.is_nil(env.store_files.WAR.sets[1].left[6], "and nothing was written")
     end)
@@ -3641,14 +3641,14 @@ describe("crossbar live widget", function()
       local files = war_bindings()
       files.WAR.sets[1].left[2] = { type = "mount", action = "chocobo", display = "Chocobo" }
       mount_world({ store_files = files })
-      widget.handle_command({ "alias", "1", "l", "2", "Pull mount" })
+      widget.handle_command({ "alias", "1L2", "Pull mount" })
       press(LEFT)
       press(DIK_SLOT[2])
       assert.is_not_nil(last_said():find("Mount Pull mount", 1, true), last_said())
 
       mount_world({ store_files = files })
-      widget.handle_command({ "alias", "1", "l", "2", "Pull mount" })
-      widget.handle_command({ "alias", "1", "l", "2" })
+      widget.handle_command({ "alias", "1L2", "Pull mount" })
+      widget.handle_command({ "alias", "1L2" })
       press(LEFT)
       press(DIK_SLOT[2])
       assert.is_not_nil(last_said():find("Mount Chocobo", 1, true), last_said())
@@ -4119,7 +4119,7 @@ describe("crossbar live widget", function()
     it("watches nothing it has no refusal message for", function()
       -- Items and the built-ins are refused in words nothing here reads.
       live()
-      widget.handle_command({ "bind", "1", "l", "6", "item", "Prism Powder", "me" })
+      widget.handle_command({ "bind", "1L6", "item", "Prism Powder", "me" })
       cast(DIK_SLOT[6])
       for _, message in ipairs({ 17, 71, 72 }) do
         widget.update("chunk", 0x29, refusal(env.player.id, message))
@@ -4135,7 +4135,7 @@ describe("crossbar live widget", function()
       -- has seen which message refuses one. Guessing it is the job
       -- ability's is the one thing this feature must not do.
       live()
-      widget.handle_command({ "bind", "1", "l", "6", "pet", "Eclipse Bite", "t" })
+      widget.handle_command({ "bind", "1L6", "pet", "Eclipse Bite", "t" })
       cast(DIK_SLOT[6])
       for _, message in ipairs({ 17, 18, 71, 72 }) do
         widget.update("chunk", 0x29, refusal(env.player.id, message))
@@ -4150,7 +4150,7 @@ describe("crossbar live widget", function()
       -- roster can move, so there is nothing to pin and the re-send is the
       -- press verbatim - the same treatment `<me>` gets.
       live()
-      widget.handle_command({ "bind", "1", "l", "6", "ma", "Cure", "pet" })
+      widget.handle_command({ "bind", "1L6", "ma", "Cure", "pet" })
       cast(DIK_SLOT[6])
       widget.update("chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
@@ -4166,7 +4166,7 @@ describe("crossbar live widget", function()
       -- it at all.
       live()
       for _, target in ipairs({ "p2", "a13", "a24" }) do
-        widget.handle_command({ "bind", "1", "l", "6", "ma", "Cure", target })
+        widget.handle_command({ "bind", "1L6", "ma", "Cure", target })
         env.commands = {}
         cast(DIK_SLOT[6])
         widget.update("chunk", 0x29, refusal(env.player.id))
@@ -4246,7 +4246,7 @@ describe("crossbar live widget", function()
       -- carry the battle target's id, not the cursor's.
       live()
       env.targets = { t = { id = 7 }, bt = { id = 99 } }
-      widget.handle_command({ "bind", "1", "l", "6", "ma", "Cure", "bt" })
+      widget.handle_command({ "bind", "1L6", "ma", "Cure", "bt" })
       cast(DIK_SLOT[6])
       widget.update("chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
@@ -4258,7 +4258,7 @@ describe("crossbar live widget", function()
       -- `<me>` names somebody the cursor cannot move, so there is nothing
       -- to pin and the re-send is the press verbatim.
       live()
-      widget.handle_command({ "bind", "1", "l", "6", "ma", "Cure", "me" })
+      widget.handle_command({ "bind", "1L6", "ma", "Cure", "me" })
       cast(DIK_SLOT[6])
       widget.update("chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
@@ -4285,7 +4285,7 @@ describe("crossbar live widget", function()
       -- The command carries no target to substitute, and appending one
       -- would send a shape the first press never used.
       live()
-      widget.handle_command({ "bind", "1", "l", "6", "ma", "Cure" })
+      widget.handle_command({ "bind", "1L6", "ma", "Cure" })
       cast(DIK_SLOT[6])
       widget.update("chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
@@ -4298,7 +4298,7 @@ describe("crossbar live widget", function()
       refused()
       -- Rebound out from under the press. The address is what the retry
       -- remembers, so what matters is the record living at it.
-      widget.handle_command({ "bind", "1", "l", "5", "ma", "Dia", "t" })
+      widget.handle_command({ "bind", "1L5", "ma", "Dia", "t" })
       widget.update()
       assert.are.same({ CURE }, env.commands)
     end)
@@ -4435,7 +4435,7 @@ describe("crossbar live widget", function()
       -- cursor the player answers; a re-send would re-open it a second
       -- later. Nothing this widget cannot pin is retried at all.
       live()
-      widget.handle_command({ "bind", "1", "l", "6", "ma", "Cure", "stpc" })
+      widget.handle_command({ "bind", "1L6", "ma", "Cure", "stpc" })
       cast(DIK_SLOT[6])
       widget.update("chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
@@ -4462,7 +4462,7 @@ describe("crossbar live widget", function()
     it("asks the client only for target tokens the repo already uses", function()
       live()
       env.target_tokens = {}
-      widget.handle_command({ "bind", "1", "l", "6", "ma", "Cure", "bt" })
+      widget.handle_command({ "bind", "1L6", "ma", "Cure", "bt" })
       cast(DIK_SLOT[6])
       cast()
       widget.update("chunk", 0x29, refusal(env.player.id))
@@ -4579,7 +4579,7 @@ describe("crossbar live widget", function()
       assert.is_not_nil(text:find("WAR"), text)
       assert.is_not_nil(text:find("set 1"), text)
       assert.is_not_nil(text:find("sheathed"), text)
-      assert.is_not_nil(text:find("wxhb%-l"), text)
+      assert.is_not_nil(text:find("wxhb%-L"), text)
     end)
 
     it("folds verb case like the rest of the framework", function()
@@ -4658,7 +4658,7 @@ describe("crossbar live widget", function()
 
     it("routes an authoring verb to the store and repaints the slot", function()
       build_world()
-      local reply = widget.handle_command({ "bind", "1", "l", "1", "ja", "Berserk", "me" })
+      local reply = widget.handle_command({ "bind", "1L1", "ja", "Berserk", "me" })
       assert.is_string(reply)
       assert.are.same({ type = "ja", action = "Berserk", target = "me" }, env.store_files.WAR.sets[1].left[1], reply)
       assert.are.equal("Berserk", text_of("xhb_left", 1, "name").last.text, "the bar shows the new binding")
@@ -4693,12 +4693,12 @@ describe("crossbar live widget", function()
       -- Blade" is a weaponskill, "Savage Blade Kevin" is not, so the bind
       -- is refused rather than stored as a command that can never fire.
       build_world()
-      local reply = widget.handle_command({ "bind", "1", "l", "1", "ws", "Savage", "Blade", "Kevin" })
+      local reply = widget.handle_command({ "bind", "1L1", "ws", "Savage", "Blade", "Kevin" })
       assert.is_string(reply)
       assert.is_not_nil(reply:find("Kevin", 1, true), reply)
       assert.is_nil(env.store_files.WAR.sets[1].left[1])
       -- And a name it does know binds with no caution at all.
-      reply = widget.handle_command({ "bind", "1", "l", "1", "ws", "Savage", "Blade" })
+      reply = widget.handle_command({ "bind", "1L1", "ws", "Savage", "Blade" })
       assert.is_string(reply, "a known name needs no second line")
       assert.equal("Savage Blade", env.store_files.WAR.sets[1].left[1].action)
     end)
