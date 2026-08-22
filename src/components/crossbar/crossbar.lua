@@ -2705,6 +2705,18 @@ local function new(ctx)
        Layout mode owns the mouse outright while it is on, so the two can
        never contend - core refuses nothing here, the component does. ]]
 
+  --[[ The set moved under the bar. Edit mode lets the switch through, and
+       the binder's window remembers the address it was opened on - so the
+       window is put away rather than left pointing at a set that is no
+       longer on screen. Edit mode itself stays on: changing set is how you
+       bind across several of them without leaving. ]]
+  local function set_changed()
+    if editing() then
+      binder.deselect()
+    end
+    repaint()
+  end
+
   local function close_edit()
     if editing() then
       binder.close()
@@ -3052,11 +3064,11 @@ local function new(ctx)
         fire_slot(intent.slot)
       elseif intent.type == "jump" then
         if bindings.jump(intent.set) ~= nil then
-          repaint()
+          set_changed()
         end
       elseif intent.type == "cycle" then
         if bindings.cycle() ~= nil then
-          repaint()
+          set_changed()
         end
       elseif intent.type == "draw" then
         execute(actions.resolve({ type = "draw" }, draw_state()))

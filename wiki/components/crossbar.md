@@ -454,7 +454,13 @@ The window does not dodge the bar. If you have put the bar in the middle of
 the screen the window will cover it, and slots underneath cannot be clicked or
 dropped onto while the binder is open.
 
-**Getting out.** While edit mode is on the crossbar itself does nothing — no
+**Changing set.** The set switch still works in edit mode — tap `` ` `` to
+cycle, or hold it and press a number to jump — because which set is on screen
+is the thing you are editing. If a window is open when the set changes it is
+put away, since it remembers the slot it was opened on and would otherwise
+bind into a set you are no longer looking at. Edit mode itself stays on.
+
+**Getting out.** While edit mode is on the crossbar otherwise does nothing — no
 side activates, no slot fires, and the bar holds still under the binder. Leave
 it with `//hud crossbar edit` again, with **any press of the Select key**
 (`=`), or by entering `//hud layout`, which takes over from it. Edit mode

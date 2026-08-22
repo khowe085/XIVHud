@@ -1239,6 +1239,20 @@ local function new(deps)
     destroy_prims()
   end
 
+  --[[ Put the window away without leaving edit mode. The set switch is
+       live in edit mode, and the window's address was captured when the
+       slot was clicked - so a set change under an open window would write
+       the next bind into a set the player is no longer looking at. Closing
+       the window is the only reading that cannot do that. ]]
+  function self.deselect()
+    if not active or slot == nil then
+      return
+    end
+    close_panel()
+    details, hovered = nil, nil
+    redraw()
+  end
+
   --- Re-read the model and redraw: a job change, a buff change or the bar's
   --- own repaint can all move what the panel is showing.
   function self.refresh()

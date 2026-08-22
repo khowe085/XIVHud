@@ -760,7 +760,10 @@ describe("crossbar input", function()
   end)
 
   describe("edit mode guard", function()
-    it("fires nothing from sides, layer, switch or slots", function()
+    it("fires nothing from sides, the layer key or a bare slot press", function()
+      --[[ The switch is the exception, and gets its own tests below: which
+           set is on screen is what edit mode is FOR (Kevin, live client,
+           2026-08-22). Everything else stays dead. ]]
       local input, state = build()
       state.edit_mode = true
       press(input, 39)
@@ -768,9 +771,33 @@ describe("crossbar input", function()
       assert.is_nil(intent_of(intents, "fire"))
       release(input, 4)
       release(input, 39)
+      -- A bare slot press, with no switch under it, is nothing at all.
+      intents = press(input, 4)
+      assert.is_nil(intent_of(intents, "fire"))
+      assert.is_nil(intent_of(intents, "jump"))
+      release(input, 4)
+      -- And the layer key over the switch is `draw`, which is an action.
+      press(input, 43)
       press(input, 41)
       intents = release(input, 41)
-      assert.is_nil(intent_of(intents, "cycle"))
+      assert.is_nil(intent_of(intents, "draw"))
+      assert.is_nil(intent_of(intents, "cycle"), "not a cycle either - the layer was down")
+      release(input, 43)
+    end)
+
+    it("still cycles and jumps from the switch", function()
+      local input, state = build()
+      state.edit_mode = true
+      press(input, 41)
+      local intents = release(input, 41)
+      assert.is_not_nil(intent_of(intents, "cycle"), "a clean tap still cycles")
+      press(input, 41)
+      intents = press(input, 4)
+      local jump = intent_of(intents, "jump")
+      assert.is_not_nil(jump, "and the chord still jumps")
+      assert.are.equal(3, jump.set)
+      release(input, 4)
+      release(input, 41)
     end)
 
     it("keeps our five keys blocked while slot keys fall through", function()

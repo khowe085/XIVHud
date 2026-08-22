@@ -258,10 +258,30 @@ local function new(deps)
     local actions_live = not (chat_open or blocked_in or suppressed or disabled or layout_mode)
 
     if actions_live and edit_mode then
-      -- The binder owns the keyboard. The one live input is a press of a
-      -- shortcut key that toggles edit - bare or chorded - which exits.
+      --[[ The binder owns the keyboard, with two exceptions.
+
+           A press of a shortcut key that toggles edit - bare or chorded -
+           exits, as it always did.
+
+           And the SET SWITCH still works (Kevin, live client, 2026-08-22):
+           which set is on screen is the thing edit mode is FOR, and leaving
+           the mode to change it and coming back was the whole friction.
+           Slot keys stay dead on their own - `jump` is a chord over the
+           held switch, which no bare press can be mistaken for - and `draw`
+           is not offered, because it is an action and edit mode fires
+           none. ]]
       if shortcut and press_edge and (shortcut.tap == "edit" or shortcut.chorded == "edit") then
         intents[#intents + 1] = { type = "shortcut", verb = "edit" }
+      elseif slot and press_edge and role_held("switch") then
+        intents[#intents + 1] = { type = "jump", set = slot }
+      elseif
+        switch_released
+        and not switch_chorded
+        and not switch_poisoned
+        and after == "none"
+        and not role_held("layer")
+      then
+        intents[#intents + 1] = { type = "cycle" }
       end
     elseif actions_live then
       if slot and press_edge then

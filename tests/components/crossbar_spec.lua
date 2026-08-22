@@ -4947,6 +4947,46 @@ describe("crossbar live widget", function()
       assert.is_not_nil(binder_line("recast: 9s left"), "and counts down though the cursor never moved")
     end)
 
+    it("still cycles and jumps sets while the binder is up", function()
+      --[[ Edit mode makes the bar inert to SIDES and slots, but the set is
+           what you are choosing to edit (Kevin, live client, 2026-08-22):
+           binding across eight sets without leaving edit mode to change
+           which one is on screen is the whole point of the mode. ]]
+      local files = war_bindings()
+      files.WAR.sets[2] = { left = { [1] = { type = "ja", action = "Berserk" } } }
+      build_world({ store_files = files })
+      widget.handle_command({ "edit" })
+      local function active_set()
+        return tonumber(tostring(widget.handle_command({})[1]):match("set (%d+)"))
+      end
+      assert.are.equal(1, active_set())
+      press(SWITCH)
+      release(SWITCH)
+      assert.are.equal(2, active_set(), "the tap cycled")
+      press(SWITCH)
+      press(DIK_SLOT[1])
+      release(DIK_SLOT[1])
+      release(SWITCH)
+      assert.are.equal(1, active_set(), "and the chord jumped back")
+    end)
+
+    it("puts an open binder window away when the set changes under it", function()
+      --[[ The window remembers the address it was opened on, so a set
+           change with one open would write the next bind into a set the
+           player is no longer looking at. Edit mode itself stays on -
+           changing set is how you bind across several without leaving. ]]
+      local files = war_bindings()
+      files.WAR.sets[2] = { left = { [1] = { type = "ja", action = "Berserk" } } }
+      build_world({ store_files = files })
+      widget.handle_command({ "edit" })
+      click(slot_point("left", 3))
+      assert.is_not_nil(binder_line("^set 1 l slot 3"), "a window is open on set 1")
+      press(SWITCH)
+      release(SWITCH)
+      assert.is_nil(binder_line("^set 1 l slot 3"), "the window went away with the set")
+      assert.is_not_nil(widget.handle_command({ "edit" }), "and edit mode is still on to be turned off")
+    end)
+
     it("holds the bar still while the binder is up", function()
       -- The input machine keeps tracking every key (CB0's contract), but
       -- the widget stops reacting: the wiki's reading is that no side
