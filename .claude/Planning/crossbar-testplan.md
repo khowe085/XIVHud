@@ -142,29 +142,29 @@ binder are gone - they were answers about code that no longer exists.
 | F10 | `//hud crossbar list` | That slot shows the target you picked - the mouse never wrote one before | [x] | [ ] |  |
 | F11 | Bind something from the **General** category (`draw`, `warp`, `mr`) | No target step at all - it binds straight away | [x] | [ ] |  |
 | F12 | Hover an action in the list | The right-hand column fills in: name, type, cost, recast, chain property | [x] | [ ] |  |
-| F13 | Hover a bound slot on the bar | The same column, plus the layer the entry comes from and what it covers | [x] | [ ] | Details text overruns the backdrop - worst on the SC row with two chain properties; fixed by wrapping |
+| F13 | Hover a bound slot on the bar | The same column, plus the layer the entry comes from and what it covers | [ ] | [x] | Details text still overruns the backdrop after the wrap fix - the character budget is an estimate and too generous. Filed as #21 |
 | F14 | Look for **Refresh III**, or any merit spell you know | It is listed and binds | [x] | [ ] | Unchanged by the rewrite - the catalog content did not move |
-| F15 | Look for an **Enchanted** category | It exists and lists your enchanted gear | [ ] | [ ] |  |
-| F16 | Open a long category and scroll to its last page, then keep scrolling down | It **stops** on the last page. It must not wrap round to the top | [ ] | [ ] |  |
-| F17 | Scroll up past the first page | It stops there too | [ ] | [ ] |  |
-| F18 | Get to the target step, then press back | Back to the action list | [ ] | [ ] |  |
-| F19 | Press back again | Back to the layer list, with the layer choice released | [ ] | [ ] |  |
-| F20 | Press back once more | The window closes. **Edit mode is still on** | [ ] | [ ] |  |
-| F21 | Click a slot, then drag the window by its **title strip** | It moves with the cursor, keeping the grab point under it | [ ] | [ ] |  |
-| F22 | Try to push it off each edge of the screen | It stays fully on screen | [ ] | [ ] |  |
-| F23 | Leave it somewhere off-centre, close edit mode, reopen it and click a slot | It opens where you left it, not back in the middle | [ ] | [ ] |  |
-| F24 | Press the back button and drag from it | The window does not move - back is checked first, so a slip onto it is still back | [ ] | [ ] |  |
-| F25 | With no window open, tap `` ` `` | The set changes, in edit mode | [ ] | [ ] |  |
-| F26 | Hold `` ` `` and press a number | It jumps to that set | [ ] | [ ] |  |
-| F27 | Click a slot, then change set | The window is put away - it remembered the old set's address - and edit mode stays on | [ ] | [ ] |  |
-| F28 | Drag one slot onto another | The two swap entirely | [ ] | [ ] |  |
-| F29 | Drag a slot onto genuinely empty screen | It clears that layer only | [ ] | [ ] |  |
-| F30 | Drag a slot and drop it on the window | Nothing changes, and nothing is said | [ ] | [ ] |  |
-| F31 | Drag an action from the list onto a slot | **Nothing happens.** Drag-to-bind went with the wizard | [ ] | [ ] |  |
-| F32 | While the binder is open, hold `;` and press slot keys | The bar does not activate and nothing fires | [ ] | [ ] |  |
-| F33 | Press `=` | Edit mode closes | [ ] | [ ] |  |
-| F34 | Open and close it a few times, watching the frame it opens on | No stutter or hitch as it appears | [ ] | [ ] |  |
-| F35 | Read the window at arm's length | 18pt is comfortably readable, and 920x600 fits your resolution | [ ] | [ ] |  |
+| F15 | Look for an **Enchanted** category | It exists and lists your enchanted gear | [x] | [ ] |  |
+| F16 | Open a long category and scroll to its last page, then keep scrolling down | It **stops** on the last page. It must not wrap round to the top | [x] | [ ] |  |
+| F17 | Scroll up past the first page | It stops there too | [x] | [ ] |  |
+| F18 | Get to the target step, then press back | Back to the action list | [x] | [ ] |  |
+| F19 | Press back again | Back to the layer list, with the layer choice released | [x] | [ ] |  |
+| F20 | Press back once more | The window closes. **Edit mode is still on** | [x] | [ ] |  |
+| F21 | Click a slot, then drag the window by its **title strip** | It moves with the cursor, keeping the grab point under it | [x] | [ ] |  |
+| F22 | Try to push it off each edge of the screen | It stays fully on screen | [x] | [ ] |  |
+| F23 | Leave it somewhere off-centre, close edit mode, reopen it and click a slot | It opens where you left it, not back in the middle | [x] | [ ] |  |
+| F24 | Press the back button and drag from it | The window does not move - back is checked first, so a slip onto it is still back | [x] | [ ] |  |
+| F25 | With no window open, tap `` ` `` | The set changes, in edit mode | [x] | [ ] |  |
+| F26 | Hold `` ` `` and press a number | It jumps to that set | [x] | [ ] |  |
+| F27 | Click a slot, then change set | The window is put away - it remembered the old set's address - and edit mode stays on | [x] | [ ] |  |
+| F28 | Drag one slot onto another | The two swap entirely | [x] | [ ] |  |
+| F29 | Drag a slot onto genuinely empty screen | It clears that layer only | [x] | [ ] |  |
+| F30 | Drag a slot and drop it on the window | Nothing changes, and nothing is said | [x] | [ ] |  |
+| F31 | Drag an action from the list onto a slot | **Nothing happens.** Drag-to-bind went with the wizard | [x] | [ ] |  |
+| F32 | While the binder is open, hold `;` and press slot keys | The bar does not activate and nothing fires | [x] | [ ] | Nothing fires, binder open or closed. Note: the side held to open edit mode stays lit, since the widget freezes the display when the mode opens |
+| F33 | Press `=` | Edit mode closes | [x] | [ ] |  |
+| F34 | Open and close it a few times, watching the frame it opens on | No stutter or hitch as it appears | [x] | [ ] |  |
+| F35 | Read the window at arm's length | 18pt is comfortably readable, and 920x600 fits your resolution | [x] | [ ] |  |
 
 ## G. Counters and the skillchain indicator
 

@@ -5017,6 +5017,21 @@ describe("crossbar live widget", function()
       assert.is_not_nil(widget.handle_command({ "edit" }), "and edit mode is still on to be turned off")
     end)
 
+    it("clears the held side when edit mode opens", function()
+      --[[ Edit mode is entered by holding a side and pressing Select, so
+           the side that opened it was lit at the moment the display froze
+           and stayed lit for as long as the mode was on - long after the
+           key was released (Kevin, live client, 2026-08-22). Sides are
+           inert in edit mode, so a lit one says something untrue. ]]
+      build_world()
+      press(LEFT)
+      assert.is_true(prims.images[1].visible, "the side panel is up before the mode opens")
+      widget.handle_command({ "edit" })
+      assert.is_false(prims.images[1].visible, "and down as it opens, held or not")
+      release(LEFT)
+      assert.is_false(prims.images[1].visible)
+    end)
+
     it("holds the bar still while the binder is up", function()
       -- The input machine keeps tracking every key (CB0's contract), but
       -- the widget stops reacting: the wiki's reading is that no side

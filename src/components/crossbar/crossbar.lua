@@ -2761,6 +2761,15 @@ local function new(ctx)
       return "crossbar: no job scoped yet - log in first"
     end
     binder.open()
+    --[[ No side is active in edit mode. The mode is entered by HOLDING a
+         side and pressing Select, so without this the side that opened it
+         stayed lit for as long as the mode was on - long after the key was
+         released, since activate intents go unheard from here (Kevin, live
+         client, 2026-08-22). Sides are inert in edit mode, so a lit one
+         says something untrue. close_edit() reads the machine on the way
+         out, which is what puts the display back in step with the keys
+         really held. ]]
+    active_state = "none"
     -- The bar repaints into its edit-mode dress: every side drawn, and each
     -- slot wearing the tag of the layer its winner came from.
     repaint()

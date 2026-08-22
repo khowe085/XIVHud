@@ -466,7 +466,9 @@ put away, since it remembers the slot it was opened on and would otherwise
 bind into a set you are no longer looking at. Edit mode itself stays on.
 
 **Getting out.** While edit mode is on the crossbar otherwise does nothing — no
-side activates, no slot fires, and the bar holds still under the binder. Leave
+side activates, no slot fires, and the bar holds still under the binder. The
+side you were holding to open it goes dark as the mode opens, since it is inert
+from that moment; the display picks the real keys back up when you leave. Leave
 it with `//hud crossbar edit` again, with **any press of the Select key**
 (`=`), or by entering `//hud layout`, which takes over from it. Edit mode
 needs the crossbar visible and a job loaded to open at all, and refuses while
