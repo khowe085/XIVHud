@@ -123,27 +123,48 @@ These bindings are used by every later section — leave them in place.
 
 ## F. The mouse binder
 
+**Rewritten 2026-08-22.** The binder was three surfaces drawn beside each
+other; it is now ONE window that walks three steps. Every row below except
+F2, F7 and F14 is new or changed, so the passes recorded against the old
+binder are gone - they were answers about code that no longer exists.
+
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| F1 | Hold `;` and press `=` | Edit mode is entered and says so in chat. The binder's **panel** is per-slot and appears when you click one (F3) - there is nothing to draw before a slot is picked | [x] | [ ] | Row wording was wrong - the panel is per-slot by design, so nothing draws until a slot is clicked |
-| F2 | Look at the bar | Slots show `+` for subjob and `*` for context sources | [x] | [ ] | D12 covered here too - the subjob override on slot 6 is tagged |
-| F3 | Click an empty slot | Its layer stack opens beside it | [ ] | [ ] |  |
-| F4 | Click the action list before picking a layer | Nothing binds — the list is locked | [ ] | [ ] |  |
-| F5 | Click a layer row | The action list unlocks | [ ] | [ ] |  |
-| F6 | Click a context layer row | The bar previews itself as if that buff were up | [ ] | [ ] |  |
-| F7 | Click an action | It binds, echoes, and the panel refreshes in place | [ ] | [ ] |  |
-| F8 | Hover an action in the list | A panel shows name, cost, recast and chain property | [ ] | [ ] |  |
-| F9 | Hover a bound slot | It also says which layer the entry comes from | [ ] | [ ] |  |
-| F10 | Look for **Refresh III** (or any merit spell you know) | It is listed and binds | [ ] | [ ] |  |
-| F11 | Look for an **Enchanted** group | It exists and lists your enchanted gear | [ ] | [ ] |  |
-| F12 | Drag an action onto a slot | It binds there | [ ] | [ ] |  |
-| F13 | Drag one slot onto another | The two swap entirely | [ ] | [ ] |  |
-| F14 | Drag a slot onto empty screen | It clears that layer only | [ ] | [ ] |  |
-| F15 | Drag a slot and drop it on the binder's own panel | Nothing changes | [ ] | [ ] |  |
-| F16 | Click a slot, then click far away | The choice resets, nothing is bound | [ ] | [ ] |  |
-| F17 | While the binder is open, hold `;` | The bar does not activate | [ ] | [ ] |  |
-| F18 | Press `=` | The binder closes | [ ] | [ ] |  |
-| F19 | Open and close it a few times, watching the frame it opens on | No stutter or hitch as it appears | [ ] | [ ] |  |
+| F1 | Hold `;` and press `=` | Edit mode says so in chat. Nothing is drawn yet - the window appears when you click a slot | [ ] | [ ] |  |
+| F2 | Look at the bar | Slots show `+` for subjob and `*` for context sources | [x] | [ ] | Unchanged by the rewrite; D12 covered here too |
+| F3 | Click an empty slot | One window opens **dead centre**, titled `pick a layer`, listing the whole stack | [ ] | [ ] |  |
+| F4 | Look at the top left of it | A button reading `[ close ]` - on the first step there is nothing to go back to | [ ] | [ ] |  |
+| F5 | Read the line under the title | It names the slot you clicked - `set 1 l slot 3` | [ ] | [ ] |  |
+| F6 | Click a layer row | The **same** window becomes `pick an action`: categories down the left, actions on the right, and the subhead now names the layer | [ ] | [ ] |  |
+| F7 | Go back and click a **context** layer row instead | The bar previews itself as if that buff were up, and the subhead says which | [x] | [ ] | Unchanged by the rewrite |
+| F8 | Click a spell or ability | The window becomes `pick a target`, listing every FFXI token with `(no target)` first | [ ] | [ ] |  |
+| F9 | Click `<t>` | It binds with that target, echoes in chat, and the window returns to `pick a layer` | [ ] | [ ] |  |
+| F10 | `//hud crossbar list` | That slot shows the target you picked - the mouse never wrote one before | [ ] | [ ] |  |
+| F11 | Bind something from the **General** category (`draw`, `warp`, `mr`) | No target step at all - it binds straight away | [ ] | [ ] |  |
+| F12 | Hover an action in the list | The right-hand column fills in: name, type, cost, recast, chain property | [ ] | [ ] |  |
+| F13 | Hover a bound slot on the bar | The same column, plus the layer the entry comes from and what it covers | [ ] | [ ] |  |
+| F14 | Look for **Refresh III**, or any merit spell you know | It is listed and binds | [x] | [ ] | Unchanged by the rewrite - the catalog content did not move |
+| F15 | Look for an **Enchanted** category | It exists and lists your enchanted gear | [ ] | [ ] |  |
+| F16 | Open a long category and scroll to its last page, then keep scrolling down | It **stops** on the last page. It must not wrap round to the top | [ ] | [ ] |  |
+| F17 | Scroll up past the first page | It stops there too | [ ] | [ ] |  |
+| F18 | Get to the target step, then press back | Back to the action list | [ ] | [ ] |  |
+| F19 | Press back again | Back to the layer list, with the layer choice released | [ ] | [ ] |  |
+| F20 | Press back once more | The window closes. **Edit mode is still on** | [ ] | [ ] |  |
+| F21 | Click a slot, then drag the window by its **title strip** | It moves with the cursor, keeping the grab point under it | [ ] | [ ] |  |
+| F22 | Try to push it off each edge of the screen | It stays fully on screen | [ ] | [ ] |  |
+| F23 | Leave it somewhere off-centre, close edit mode, reopen it and click a slot | It opens where you left it, not back in the middle | [ ] | [ ] |  |
+| F24 | Press the back button and drag from it | The window does not move - back is checked first, so a slip onto it is still back | [ ] | [ ] |  |
+| F25 | With no window open, tap `` ` `` | The set changes, in edit mode | [ ] | [ ] |  |
+| F26 | Hold `` ` `` and press a number | It jumps to that set | [ ] | [ ] |  |
+| F27 | Click a slot, then change set | The window is put away - it remembered the old set's address - and edit mode stays on | [ ] | [ ] |  |
+| F28 | Drag one slot onto another | The two swap entirely | [ ] | [ ] |  |
+| F29 | Drag a slot onto genuinely empty screen | It clears that layer only | [ ] | [ ] |  |
+| F30 | Drag a slot and drop it on the window | Nothing changes, and nothing is said | [ ] | [ ] |  |
+| F31 | Drag an action from the list onto a slot | **Nothing happens.** Drag-to-bind went with the wizard | [ ] | [ ] |  |
+| F32 | While the binder is open, hold `;` and press slot keys | The bar does not activate and nothing fires | [ ] | [ ] |  |
+| F33 | Press `=` | Edit mode closes | [ ] | [ ] |  |
+| F34 | Open and close it a few times, watching the frame it opens on | No stutter or hitch as it appears | [ ] | [ ] |  |
+| F35 | Read the window at arm's length | 18pt is comfortably readable, and 920x600 fits your resolution | [ ] | [ ] |  |
 
 ## G. Counters and the skillchain indicator
 

@@ -32,7 +32,7 @@ a failure is a defect to fix, not a stop-the-world.
 | 1.3 **BLOCK** | `//lua reload xivhud` while the crossbar is up | Bar comes back, keys still blocked, no orphan prims left behind, no keybind lost | CB2's acceptance. A handler that does not survive a reload means every code change costs a client restart |
 | 1.4 | `//hud list` | `crossbar` listed with a headline plus one line per anchor (`main`, `wxhb_left`, `wxhb_right`, `indicator`) | The multi-anchor path in `core.describe` is not being taken |
 | 1.5 | Log in, check `data/<Character>/crossbar/` | `<MAIN>.lua` written on the first binding; `SHARED.lua` when a shared set is written. `data/<Character>/crossbar.lua` holds the component config | The directory store (touchpoint 5) is not reaching disk. Note `files.new():write()` is **not** what writes here — plain `io.open` is |
-| 1.6 | **Prim budget.** Play normally with the crossbar shown, then `//hud hide crossbar`, and compare frame rate | No measurable difference | The resting inventory is 363 prims (243 images + 120 texts), built in the factory at `core.register` time - before login, not at attach - and merely hidden, so the cost is there from load whether or not the bar is shown. Edit mode adds to it: the binder builds its own prims on open and destroys them on close, so measure with the binder shut. If the resting cost is real, the fallback is destroy-when-off, confined to the widget's build/refresh |
+| 1.6 | **Prim budget.** Play normally with the crossbar shown, then `//hud hide crossbar`, and compare frame rate | No measurable difference | The resting inventory is 365 prims (244 images + 121 texts), built in the factory at `core.register` time - before login, not at attach - and merely hidden, so the cost is there from load whether or not the bar is shown. Edit mode adds to it: the binder builds its own prims on open and destroys them on close, so measure with the binder shut. Its window grew on 2026-08-22 (920x600 at 18pt, ~20 rows a column) and its three steps SHARE one set of row prims rather than holding one each. If the resting cost is real, the fallback is destroy-when-off, confined to the widget's build/refresh |
 | 1.7 | Trigger a cutscene (status 4) and a zone change **while holding a side key** | HUD hides; on the way back nothing is stranded — no side lit, no trigger stuck down, no key still swallowed | The suppression re-enable handshake (`show()` re-reads `hold_state()`) is not firing. A stranded "down" makes the bar unusable until a reload |
 | 1.8 | Log out and back in; log in as a second character | Bindings and layout follow the character; nothing renders while logged out | Character scoping is per name only — the component waits for the rest itself |
 
@@ -80,11 +80,13 @@ unverified is the **wired component** behaving the same way.
 | 4.5 | `//hud crossbar copy <JOB>` | This job's bindings are replaced wholesale, no undo | Destructive by design; confirm it does not touch the shared store |
 | 4.6 | Cycle with `` ` `` after `//hud crossbar cycle <set> drawn\|sheathed\|both\|none` | Empty sets are skipped; engaging in game brings up the drawn rotation; a mob dying does **not** drop it; `draw` returns you to sheathed | Weapon state is the component's own state machine with a one-way game trigger |
 | 4.7 | Fire `draw` from a slot, from `//hud crossbar draw`, and from the `\`+`` ` `` gesture | Identical behaviour: sword on with no command sent, disengage, dismount when mounted | **The disengage spelling is unverified** — `/attack off` is the expected form (~80%); `/attack` bare may also toggle. Type both by hand first. Whichever proves reliable wins |
-| 4.8 **BLOCK** | `//hud crossbar edit`, then build the SCH layout entirely by mouse | Click slot → stack panel; click a layer row → catalog unlocks and the bar previews that context; click an action → bound, echoed, panel refreshes in place | CB8's acceptance: the binder is the primary authoring surface |
+| 4.8 **BLOCK** | `//hud crossbar edit`, then build the SCH layout entirely by mouse | Click a slot → one window opens dead centre on `pick a layer`; click a layer row → `pick an action`, and a context row previews that context; click an action → `pick a target` (or a bind outright, for a type that takes none); click a target → bound, echoed, back to `pick a layer` | CB8's acceptance: the binder is the primary authoring surface. Rewritten as one window over three steps 2026-08-22 |
 | 4.9 **BLOCK** | In the binder, look for **Refresh III** and the other merit spells | They are listed and they bind | The defect that drove Kevin off the reference fork. Merit spells encode their requirement above the level cap; ours admits them on the **main** job |
-| 4.10 | Hover a slot and a catalog entry | Tooltip gives name, type, target, MP/TP cost, recast remaining, SC property; a slot adds its owning layer and what it covers. It follows the cursor and clears when it leaves | Tooltips resolve from known data only — no game description text exists to show |
-| 4.11 | All four drag gestures: catalog→slot, catalog→elsewhere, slot→slot, slot→empty screen | Bind, silent no-op, whole-stack swap, and clear-the-cursor's-layer-only. A drop on any binder surface cancels quietly. With no layer selected, slot→empty does nothing | The asymmetry is deliberate: moving a button takes everything, deleting touches one plane |
-| 4.12 | While the binder is up, hold a side key and press slot keys | Nothing happens — no side lights, no slot fires, the bar holds still under the panel | The machine keeps tracking keys; only the widget's reaction is suppressed |
+| 4.10 | Hover a slot and a catalog entry | The window's right-hand **details column** gives name, type, target, MP/TP cost, recast remaining, SC property; a slot adds its owning layer and what it covers. It re-reads as the cursor moves between them | Resolves from known data only — no game description text exists to show. It was a floating tooltip until 2026-08-22 and is now part of the one window |
+| 4.11 | The two surviving drag gestures: slot→slot, slot→empty screen | Whole-stack swap, and clear-the-cursor's-layer-only. A drop on the window cancels quietly. With no layer selected, slot→empty does nothing. A catalog entry dragged onto a slot does **nothing** - drag-to-bind went with the wizard | The asymmetry is deliberate: moving a button takes everything, deleting touches one plane |
+| 4.11a | Drag the window by its title strip, push it at each screen edge, then reload and reopen | It moves, stays fully on screen, and opens where you left it | Stored per character in the component's own config as `binder_pos`; clamped both when dragged and when read, since a position saved at another resolution would strand it |
+| 4.11b | With the binder open, tap `` ` `` and then hold it over a number | The set cycles and jumps - edit mode lets the switch through - and an open window is put away as the set changes | The window remembers the address it was opened on, so it must not survive a set change |
+| 4.12 | While the binder is up, hold a side key and press slot keys | Nothing happens — no side lights, no slot fires, the bar holds still under the window. The set switch is the one exception (4.11b) | The machine keeps tracking keys; only the widget's reaction is suppressed |
 | 4.13 | Enter `//hud layout` with the binder open | Edit mode closes and layout mode takes the mouse; `//hud crossbar edit` is refused while layout mode is on | The two must never contend for the mouse |
 | 4.14 | Gain Light Arts, then Addendum: White | The overridden slots swap as each context activates, and swap back when it drops | CB7's acceptance, the scenario the layer stack exists for |
 
@@ -189,16 +191,18 @@ cast retry surfaced, not a CB9 one.) Type `/ma "Cure IV"` with a mob selected,
 then with nothing selected, and note each outcome: does it use the current
 target, open a prompt, or fail outright?
 
-This matters because the binder writes its records **without a target word**
-(`catalog.lua:162`, `{ type = "ma", action = <name> }`), which is what the game
-has always been handed for a mouse-bound slot - and it is why the cast retry
-never watches a binder-bound slot: with no target on the press there is nothing
-to pin the re-send to, and inventing `<t>` for it would be a guess about the
-very behaviour this item asks you to observe. If the answer is "it uses the
-current target", the fix is for **the binder** to write that target explicitly
-so every surface produces the same record, and the retry then covers mouse
-bindings for free. If it prompts or fails, the binder's records are worth
-revisiting on their own account. Either way the decision is CB8's.
+**Half answered, 2026-08-22.** This item existed because the binder wrote its
+records **without a target word** (`catalog.lua:162`, `{ type = "ma", action =
+<name> }`), so a mouse-bound slot handed the game a bare command - and that is
+why the cast retry never watched one: with no target on the press there is
+nothing to pin the re-send to.
+
+The binder's third step now asks for a target, so a mouse binding can carry one
+and every surface produces the same record. **The question still stands for the
+default**: `(no target)` is the first row and is what a player who clicks
+straight past it gets, which is the old behaviour exactly. Knowing what a bare
+`/ma "Cure IV"` does decides whether that default is right, and whether a
+targetless record is worth the retry watching at all.
 
 **G. What number is the Resting player status?** (gates CB10's cancel.) Sit
 down with `/heal` and read `windower.ffxi.get_player().status`, then stand and
