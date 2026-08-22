@@ -3741,7 +3741,8 @@ describe("crossbar live widget", function()
       }
       widget.handle_command({ "warp" })
       assert.are.same({}, env.commands, "no instant warp: this one waits like a spell")
-      assert.are.equal("crossbar: Warp in 5 seconds. /heal to cancel.", last_said())
+      -- The RUNG's name, so the line says which way you are going home.
+      assert.are.equal("crossbar: Warp Ring in 5 seconds. /heal to cancel.", last_said())
       tick_to(5)
       assert.are.same({ 'input /item "Warp Ring" <me>' }, env.commands)
     end)
@@ -3758,23 +3759,71 @@ describe("crossbar live widget", function()
       assert.are.equal(0, #env.chat)
     end)
 
-    it("re-computes when the countdown ends, so the later plan is the one that goes", function()
-      -- Five seconds is long enough for the ladder to move under you.
+    it("narrates a ring warm-up, then lets /heal call it off", function()
+      --[[ A warm-up is the longest wait the component ever imposes and was
+           the only one it never spoke about, so it read as nothing having
+           happened - and `/heal`, the way out its siblings all name, did
+           not answer here at all: the ring sat there with a GearSwap slot
+           held until it fired (Kevin, live client, 2026-08-22). ]]
+      build_world()
+      env.items[0] = { enabled = true, { id = 28540, slot = 5, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        -- Ten seconds of warmup still to run: inside the give-up bound, so
+        -- the poll waits it out rather than abandoning at once.
+        activation_time = env.time - 18000 + 10,
+        usable = false,
+      }
+      widget.handle_command({ "warp" })
+      assert.are.equal("crossbar: warping with Warp Ring - equipping it first.", last_said())
+      assert.are.equal("gs disable ring1", env.commands[1])
+
+      -- The first poll can read the warmup, so the length is spoken then.
+      tick_to(1)
+      assert.is_not_nil(said():find("Warp Ring ready in", 1, true), said())
+      assert.is_not_nil(said():find("/heal to cancel", 1, true), said())
+
+      -- Resting calls it off, and lets go of the slot it was holding.
+      widget.update("status", RESTING)
+      assert.is_not_nil(said():find("warp cancelled", 1, true), said())
+      local released = false
+      for _, command in ipairs(env.commands) do
+        released = released or command == "gs enable ring1"
+      end
+      assert.is_true(released, "the GearSwap hold is released with it")
+      tick_to(40)
+      for _, command in ipairs(env.commands) do
+        assert.is_nil(command:find("/item", 1, true), "and nothing fires afterwards")
+      end
+    end)
+
+    it("fires the rung it announced, not a better one that appeared meanwhile", function()
+      --[[ The ladder used to be walked AGAIN when the countdown ended, so
+           the freshest rung won. The opening line names the rung now, and a
+           line that promised one thing while another went is worse than a
+           slightly stale choice (Kevin, 2026-08-22). Five seconds is long
+           enough for the ladder to move under you - and it must not. ]]
       warp_world()
       widget.handle_command({ "warp" })
+      local announced = last_said()
       env.known_spells = { [262] = true }
       env.player.vitals.mp = 150
       tick_to(5)
-      assert.are.same({ 'input /ma "Warp II" <me>' }, env.commands)
+      assert.are.same({ WARP }, env.commands, "the rung that was announced")
+      assert.is_not_nil(announced:find("Warp", 1, true), announced)
     end)
 
-    it("fires nothing when the plan has run out by the time it ends", function()
+    it("still fires its announced rung when a better one has gone by the end", function()
+      -- The other direction of the same rule, and the case that costs
+      -- something: what was promised is attempted, where the re-walk would
+      -- have quietly found something else to do.
       warp_world()
       widget.handle_command({ "warp" })
       env.known_spells = {}
       tick_to(5)
-      assert.are.same({}, env.commands, "nothing left to fire")
-      assert.is_not_nil(said():find("Warp Ring", 1, true), "and it says what is missing: " .. said())
+      assert.are.same({ WARP }, env.commands, "what it promised, whatever the ladder says now")
     end)
 
     it("broadcasts warp all when it goes, not when it is pressed", function()
@@ -3838,7 +3887,10 @@ describe("crossbar live widget", function()
       tick_to(2)
       widget.handle_command({ "warp" })
       assert.are.equal("gs disable ring1", env.commands[1])
-      assert.are.equal("crossbar: Mount roulette cancelled.", last_said())
+      -- The cancel is still said; the warm-up's own opening line follows it,
+      -- so the cancel is no longer the LAST thing spoken.
+      assert.is_not_nil(said():find("Mount roulette cancelled.", 1, true), said())
+      assert.are.equal("crossbar: warping with Warp Ring - equipping it first.", last_said())
       tick_to(6)
       for _, command in ipairs(env.commands) do
         assert.is_nil(command:find("/mount", 1, true), "no mount lands in the middle of the ring's wait")

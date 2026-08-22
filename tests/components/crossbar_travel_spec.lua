@@ -134,11 +134,18 @@ describe("crossbar travel delay", function()
       assert.equal("Warp", travel.label({ type = "warp" }, warp_plan({ type = "spell", command = "x" })))
     end)
 
-    it("names a warp on a plain consumable rung", function()
-      -- Instant Warp has no warmup of its own, so the countdown is the only
-      -- window it ever gets.
+    it("names the RUNG on a plain consumable, not just the trip", function()
+      --[[ Instant Warp has no warmup of its own, so the countdown is the
+           only window it ever gets - and the line has to say which way you
+           are going home, since the ladder has several rungs and the
+           player is about to spend one of them (Kevin, 2026-08-22). ]]
       local travel = world()
-      assert.equal("Warp", travel.label({ type = "warp" }, warp_plan({ type = "use", name = "Instant Warp" })))
+      assert.equal("Instant Warp", travel.label({ type = "warp" }, warp_plan({ type = "use", name = "Instant Warp" })))
+    end)
+
+    it("falls back to the bare word for a rung carrying no name", function()
+      local travel = world()
+      assert.equal("Warp", travel.label({ type = "warp" }, warp_plan({ type = "use" })))
     end)
 
     it("lets a rung whose use entails a wait go at once - that wait is the window", function()
@@ -155,7 +162,7 @@ describe("crossbar travel delay", function()
       -- skipping there would be an instant warp with no window at all - the
       -- rationale inverted.
       local travel = world()
-      assert.equal("Warp", travel.label({ type = "warp" }, warp_plan({ type = "use", name = "Warp Ring" })))
+      assert.equal("Warp Ring", travel.label({ type = "warp" }, warp_plan({ type = "use", name = "Warp Ring" })))
     end)
 
     it("does not hold a warp that has nothing to fire", function()
@@ -416,6 +423,50 @@ describe("crossbar travel delay", function()
     it("has nothing to say about a status while nothing is counting down", function()
       local travel = world({ statuses = RESTING })
       assert.is_nil(travel.on_status(7))
+    end)
+  end)
+
+  describe("how much it says", function()
+    --[[ One line per second for the LAST FIVE only (Kevin, live client,
+         2026-08-22). The countdown used to speak every second of whatever
+         span it was armed for, which is fine at the default five and a wall
+         of text at thirty - and thirty-second waits are exactly what the
+         warp ladder's ring rungs produce. ]]
+    it("stays quiet above five seconds and counts the last five", function()
+      local travel, clock = world({ config = { delay = 30 } })
+      local opening = travel.arm({ label = "Warp Ring" })
+      assert.is_string(opening)
+      assert.is_not_nil(opening:find("30", 1, true), opening)
+
+      local said = {}
+      for elapsed = 1, 30 do
+        clock.now = 100 + elapsed
+        local entry, line = travel.step()
+        if line ~= nil then
+          said[#said + 1] = line
+        end
+        if entry ~= nil then
+          said[#said + 1] = "FIRED"
+        end
+      end
+      assert.are.same({ "5...", "4...", "3...", "2...", "1...", "FIRED" }, said)
+    end)
+
+    it("still counts a whole five-second wait, which is every second of it", function()
+      local travel, clock = world({ config = { delay = 5 } })
+      travel.arm({ label = "Warp" })
+      local said = {}
+      for elapsed = 1, 5 do
+        clock.now = 100 + elapsed
+        local entry, line = travel.step()
+        if line ~= nil then
+          said[#said + 1] = line
+        end
+        if entry ~= nil then
+          said[#said + 1] = "FIRED"
+        end
+      end
+      assert.are.same({ "4...", "3...", "2...", "1...", "FIRED" }, said)
     end)
   end)
 end)

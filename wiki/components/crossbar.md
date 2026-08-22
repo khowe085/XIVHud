@@ -733,7 +733,19 @@ down and only the warp goes, on a fresh five seconds.
 **Two things deliberately do not wait.** Getting *off* a mount is instant —
 `mr` while you are mounted — and a slot bound to a **named** mount does the
 same, dismounting rather than summoning — and `draw`, which dismounts as its
-first job. And
+first job.
+
+The countdown tells you **which** way you are going home — `Warp Ring in 5
+seconds`, not a bare `Warp` — and only the last five seconds are counted out
+loud. A warp that has to put a ring on and wait for it to charge is announced
+the same way: the item at the press, how long once the game will say, then the
+last five seconds. `/heal` calls any of it off, warm-up included.
+
+The ladder is walked **once**, when you press. Whatever it names is what
+fires, even if something better turns up during the countdown — a line that
+promised one thing while another went would be worse.
+
+And
 `warp` skips the countdown when the warp it picks is one it has to **equip and
 warm up** — a Warp Ring or Warp Cudgel you are not already wearing. Putting it
 on and waiting out its enchantment is the same window this feature exists to

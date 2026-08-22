@@ -558,6 +558,9 @@ local function new(ctx)
   -- on every exit path (success, give-up, suppression, detach) for every
   -- slot it held. One at a time, whichever armed it.
   local pending_item = nil
+  -- Seconds of a warm-up spoken one at a time, counting back from the end.
+  -- travel.lua counts its own the same way and for the same reason.
+  local PENDING_COUNT_FROM = 5
 
   local function build_bindings(store)
     local function nothing() end
@@ -1604,6 +1607,13 @@ local function new(ctx)
       if ctx.set_equip ~= nil and not plan.equipped then
         ctx.set_equip(plan.bag_slot, plan.equip_slot, plan.bag)
       end
+      --[[ Said at the press, because the wait that follows can be half a
+         minute and an unannounced one reads as nothing having happened
+         (Kevin, live client, 2026-08-22). How LONG it will be is not
+         knowable yet - the piece is only now going on, and its warmup is
+         read off the extdata the first poll fetches - so the length is
+         spoken by tick_pending as soon as it has a number. ]]
+      say("crossbar: " .. noun .. "ing with " .. tostring(plan.name) .. " - equipping it first.")
       pending_item = {
         broadcast = broadcast,
         noun = noun,
@@ -1688,6 +1698,38 @@ local function new(ctx)
       -- this runs under the shared prerender guard.
       abandon("cannot be read")
       return
+    end
+    --[[ The countdown over the warm-up, spoken from the poll's own clock
+         rather than a second one armed beside it: this is where the
+         remaining time is actually known, and two clocks over one wait
+         would disagree the moment the server's extdata lagged a poll.
+
+         AFTER `step`, which is what vouches for the extdata being
+         enchanted-shaped at all: reading a warmup off a decode that is not
+         would throw, in a handler whose whole contract is to degrade.
+
+         The whole number once, when it is first readable, then silence,
+         then the last few seconds one at a time - travel.lua's shape, for
+         travel.lua's reason. ]]
+    if step == "wait" then
+      local remaining = math.ceil(enchanted.warmup_remaining(ext, time_now()))
+      if pending_item.said == nil then
+        pending_item.said = remaining + 1
+        say(
+          "crossbar: "
+            .. tostring(pending_item.name)
+            .. " ready in "
+            .. remaining
+            .. (remaining == 1 and " second" or " seconds")
+            .. ". /heal to cancel."
+        )
+      end
+      if remaining < pending_item.said then
+        pending_item.said = remaining
+        if remaining > 0 and remaining <= PENDING_COUNT_FROM then
+          say("crossbar: " .. remaining .. "...")
+        end
+      end
     end
     if step == "use" then
       local broadcast = pending_item.broadcast
@@ -2861,12 +2903,19 @@ local function new(ctx)
         end
       end
       local record = { type = "warp" }
+      --[[ Walked ONCE, and the rung it picks is the rung that fires (Kevin,
+           2026-08-22). It used to be walked again when the countdown ended,
+           on the reasoning that the best rung five seconds ago may not be
+           the best one now - but the opening line names the rung, and a
+           line that named one item while another went is worse than a
+           slightly stale choice. The stale case is also narrow: it takes
+           the named item leaving your bags during the countdown, and the
+           press then fails where it would have succeeded, which is at
+           least the outcome you were told about. ]]
       local ladder = warp.plan()
       if
         not delay_travel(record, { kind = "warp", plan = ladder }, function()
-          -- Re-walked here: the rung that was best five seconds ago may
-          -- not be the one to fire now.
-          run_item_plan(warp.plan(), broadcast)
+          run_item_plan(ladder, broadcast)
         end)
       then
         run_item_plan(ladder, broadcast)
@@ -3148,6 +3197,18 @@ local function new(ctx)
       -- Resting calls a countdown off, which is the way out the opening
       -- line names. The status is the trigger, never the command text.
       say_travel(travel.on_status(a))
+      --[[ And it calls off a WARM-UP, which the same opening line offers
+           the same way out of (Kevin, live client, 2026-08-22). Only the
+           countdown answered `/heal` before, so a ring being warmed sat
+           there with a GearSwap slot held until it fired - the one part of
+           a trip the player could not call off. `travel.resting` is the
+           same resolver the countdown's own cancel uses, rather than a
+           second reading of the status that could hold a different
+           opinion - and unlike `on_status` it answers whether or not
+           anything happened to be armed. ]]
+      if travel.resting(a) and pending_item ~= nil then
+        abort_pending("crossbar: " .. pending_item.noun .. " cancelled - " .. tostring(pending_item.name))
+      end
       local before = bindings.weapon_state()
       bindings.on_status(a)
       if bindings.weapon_state() ~= before then

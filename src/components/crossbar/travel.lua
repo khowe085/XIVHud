@@ -54,6 +54,10 @@ local TRAVEL_TYPES = { mount = true, mr = true, warp = true }
      client - see the in-client list. ]]
 local RESTING_STATUS = 33
 
+-- How many seconds of a countdown are spoken out loud, counting back from
+-- the end. The opening line carries the total, whatever the span.
+local COUNT_FROM = 5
+
 local function new(deps)
   local self = {}
 
@@ -148,7 +152,14 @@ local function new(deps)
       if plan.kind ~= "warp" or type(rung) ~= "table" or rung.type == "none" or rung.warmup then
         return nil
       end
-      return "Warp"
+      --[[ The RUNG's own name, so the opening line says which way you are
+           going home (Kevin, live client, 2026-08-22): the ladder has
+           several, and "Warp" alone left the player watching a countdown
+           without knowing whether it was about to burn a scroll or cast a
+           spell. The bare word is the fallback for a rung that carries no
+           name - a spell rung built before the resources loaded. ]]
+      local name = named(rung.name)
+      return name or "Warp"
     end
     -- Everything below fires one command, and a plan of any other shape
     -- (a hint, a no-op, an injected chord) is not a trip worth delaying.
@@ -241,6 +252,14 @@ local function new(deps)
       return nil
     end
     pending.said = remaining
+    --[[ Only the last few seconds are spoken (Kevin, live client,
+         2026-08-22). Every second of the span was fine at the shipped five
+         and a wall of text at thirty, which is what a ring rung's warm-up
+         takes - the opening line already gave the whole number, so the
+         middle of a long wait has nothing to add. ]]
+    if remaining > COUNT_FROM then
+      return nil
+    end
     return nil, remaining .. "..."
   end
 
@@ -301,6 +320,14 @@ local function new(deps)
        this), so it catches resting however the player entered it - the
        command, a macro, or a pad button nobody here can see. Answers the
        cancel line, or nil for a status that means nothing to us. ]]
+  --[[ Is this status the one that means resting? The countdown answers
+       `/heal` by cancelling, and so does a warm-up over in the widget - but
+       a warm-up arms no countdown, so `on_status` has nothing to report and
+       cannot be what the widget keys off. One resolver, two readers. ]]
+  function self.resting(status)
+    return resting ~= nil and status == resting
+  end
+
   function self.on_status(status)
     if status ~= resting then
       return nil
