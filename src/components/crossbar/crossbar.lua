@@ -774,10 +774,13 @@ local function new(ctx)
         break
       end
     end
+    --[[ No `has_target` any more: `draw` stopped sending `/attack <t>`
+         (2026-08-22), and that check was its only reader - so this is one
+         fewer client read on every path that asks for the draw state,
+         including the per-repaint icon walk. ]]
     return {
       mounted = mounted,
       weapon_drawn = bindings.weapon_state() == "drawn",
-      has_target = ctx.get_mob_by_target ~= nil and ctx.get_mob_by_target("t") ~= nil,
     }
   end
 

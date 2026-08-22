@@ -69,7 +69,7 @@ Vocabulary, from SE's guide, used consistently from here on:
   addon as a library and expose it as the `warp` built-in — one button that
   picks the best available warp method.
 - **Sheathe/unsheathe must be bindable** (Kevin, 2026-08-05): a `draw` action type
-  that toggles engagement.
+  that toggles the weapon state.
 - **Built-in actions are dual-frontend** (Kevin, 2026-08-05): every built-in
   action is *both* a slot type *and* an `//hud crossbar <action>` command routed
   through the same execution path — `//hud crossbar draw`, `//hud crossbar mr`
@@ -205,7 +205,7 @@ equivalent here is Windower-side. The bindable types:
 | `ct` | a single chat/text command line | `input /<line> <target>` |
 | `ex` | a raw Windower console command — **including `exec <script>`, which runs a multi-line Windower script; this is the "macro" answer** | sent as-is, no `input` prefix |
 | `open` | a named game-UI opener from the extensible table | its command, or key up/down events (e.g. Ctrl+E) |
-| `draw` | sheathe/unsheathe — state-aware, the XIV draw-weapon button | mounted → dismount; engaged → disengage; idle → engage the current target (see below) |
+| `draw` | sheathe/unsheathe — state-aware, the XIV draw-weapon button | mounted → dismount; drawn → disengage; sheathed → flip to drawn, silently (see below) |
 
 ### The `draw` toggle
 
@@ -216,9 +216,10 @@ and Kevin wants the same gesture to dismount, decided 2026-08-06):
    the weapon-state machine does not advance.
 2. **Weapon state "drawn"** → disengage, and the state machine flips to
    sheathed.
-3. **Weapon state "sheathed"** → `input /attack <t>` and flip to drawn — FFXI
-   has no draw-without-engage, so "unsheathe" means engage; no target → a chat
-   hint, not a command error, and no state flip.
+3. **Weapon state "sheathed"** → flip to drawn and send **nothing at all**
+   (revised 2026-08-22; see "No command on the way in" below). No target is
+   read, no `/attack` goes out, and no hint is printed — the sword beside the
+   set label is the feedback.
 
 Case 2 covers the sticky-exit path: if the game already disengaged you (mob
 died) the state is still drawn, so `draw` sends a disengage the game ignores
@@ -781,14 +782,20 @@ on counts and practical detail.
   | `draw` action while drawn | → **sheathed** |
   | Player disengages in game (mob dies, zoning, knocked out of engagement) | **no effect — state stays drawn** |
 
-  **No target is not a refusal** (Kevin, 2026-08-22, from a live client). It
-  used to answer "No target to engage." and leave the state alone, on the
-  reasoning that `/attack` needs something to attack. But the state is OURS -
-  it picks which rotation is live - and asking for the combat rotation is not
-  asking to swing at anything. With nothing targeted the flip happens and no
-  command is sent; with a target, `/attack <t>` goes as well. Nothing is said
-  about it either, because the **sword beside the set label** is the feedback,
-  which is why the two landed together.
+  **No command on the way in** (Kevin, 2026-08-22, from a live client, in two
+  steps). It used to answer "No target to engage." and leave the state alone,
+  on the reasoning that `/attack` needs something to attack; that refusal went
+  first. Then the `/attack <t>` it sent *with* a target went too, because the
+  state is OURS - it picks which rotation is live and lights the sword - and
+  asking for the combat rotation is not asking to swing at anything. The
+  player engages and picks targets himself, so entering drawn reads no target
+  at all and sends nothing. Nothing is said about it either, because the
+  **sword beside the set label** is the feedback, which is why the two landed
+  together.
+
+  Leaving drawn is deliberately not symmetric: it still sends `/attack off`,
+  because an explicit `draw` while drawn means "I am done fighting" - the rule
+  the one-way machine above is built on.
 
   The asymmetry is the point: engaging by any means should bring the combat
   rotation up, but a mob dying between pulls must not flap the bar back to the

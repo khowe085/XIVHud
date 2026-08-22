@@ -484,6 +484,11 @@ point a WXHB or Expanded view at it.
 back when the mob dies. Only sheathing yourself takes you out of combat mode,
 so a set rotation does not lurch back mid-pull.
 
+Going *in* sends nothing to the game: `draw` while sheathed only flips the
+addon's state and lights the sword, so it never picks a fight for you and
+never needs a target. Going *out* does disengage you — `draw` while drawn
+means "I am done fighting".
+
 ---
 
 ## What you can bind

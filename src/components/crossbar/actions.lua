@@ -133,8 +133,8 @@ local function open_plan(name)
 end
 
 -- Mounted outranks everything: you cannot engage while mounted, and the same
--- gesture should dismount. Only a real disengage/engage flips the component's
--- weapon state; a dismount and the no-target hint leave it alone.
+-- gesture should dismount, which is the one draw press that does NOT touch
+-- the weapon state.
 local function draw_plan(state)
   state = state or {}
   if state.mounted then
@@ -145,18 +145,19 @@ local function draw_plan(state)
     plan.weapon_state = "sheathed"
     return plan
   end
-  --[[ Nothing targeted: enter drawn anyway (Kevin, 2026-08-22). The
-       component's weapon state is its own - it picks which set rotation is
-       live and lights the bar's sword - and wanting the combat rotation is
-       not the same as wanting to attack something. There is nothing to aim
-       `/attack` at, so nothing is sent, and the state flip is the whole
-       action. It used to refuse with a hint instead. ]]
-  if not state.has_target then
-    return { kind = "none", weapon_state = "drawn" }
-  end
-  local plan = command_plan("input /attack <t>")
-  plan.weapon_state = "drawn"
-  return plan
+  --[[ Entering drawn sends NOTHING (Kevin, 2026-08-22). The component's
+       weapon state is its own: it picks which set rotation is live and
+       lights the bar's sword. Wanting the combat rotation is not wanting to
+       swing at something, and the player engages and picks targets himself.
+
+       It used to `/attack <t>` with a target and refuse outright without
+       one. Both are gone, which is why this branch no longer asks whether
+       anything is targeted at all.
+
+       Leaving drawn still sends `/attack off`, and deliberately: an
+       explicit `draw` while drawn means "I am done fighting", which is the
+       rule the whole one-way state machine is built on. ]]
+  return { kind = "none", weapon_state = "drawn" }
 end
 
 local function new(deps)

@@ -177,37 +177,41 @@ describe("crossbar actions", function()
   describe("the draw toggle", function()
     it("dismounts first, even somehow engaged, without flipping the weapon state", function()
       local actions = build()
-      local plan = actions.resolve({ type = "draw" }, { mounted = true, weapon_drawn = true, has_target = true })
+      local plan = actions.resolve({ type = "draw" }, { mounted = true, weapon_drawn = true })
       assert.equal("input /dismount", plan.command)
       assert.is_nil(plan.weapon_state)
     end)
 
     it("disengages while drawn and flips to sheathed", function()
       local actions = build()
-      local plan = actions.resolve({ type = "draw" }, { weapon_drawn = true, has_target = true })
+      local plan = actions.resolve({ type = "draw" }, { weapon_drawn = true })
       assert.equal("input /attack off", plan.command)
       assert.equal("sheathed", plan.weapon_state)
     end)
 
-    it("engages the target while sheathed and flips to drawn", function()
+    it("flips to drawn without attacking, target or no target", function()
+      --[[ The state is the component's own - which rotation is live, and
+           the sword on the bar - not a combat order. It used to send
+           `/attack <t>` here (Kevin, 2026-08-22). `has_target` is a dead
+           field now, deliberately still passed: the widget stopped
+           supplying it, and this pins that nothing reads it if it comes
+           back. ]]
       local actions = build()
-      local plan = actions.resolve({ type = "draw" }, { weapon_drawn = false, has_target = true })
-      assert.equal("input /attack <t>", plan.command)
-      assert.equal("drawn", plan.weapon_state)
+      for _, targeted in ipairs({ true, false }) do
+        local plan = actions.resolve({ type = "draw" }, { weapon_drawn = false, has_target = targeted })
+        assert.equal("none", plan.kind)
+        assert.equal("drawn", plan.weapon_state)
+        assert.is_nil(plan.command)
+      end
     end)
 
-    it("enters drawn with nothing targeted, sending no command", function()
-      --[[ The component's weapon state is its OWN, and the player asking
-           for the combat rotation is not asking to attack anything (Kevin,
-           2026-08-22). There is nothing to send `/attack` at, so nothing is
-           sent - but the state flips, which is what the rotation and the
-           bar's sword indicator follow. ]]
+    it("still disengages on the way out", function()
+      -- Asymmetric on purpose: an explicit `draw` while drawn means "I am
+      -- done fighting", which is the rule the state machine is built on.
       local actions = build()
-      local plan = actions.resolve({ type = "draw" }, { weapon_drawn = false, has_target = false })
-      assert.equal("none", plan.kind)
-      assert.equal("drawn", plan.weapon_state)
-      assert.is_nil(plan.command)
-      assert.is_nil(plan.message, "no complaint - the sword on the bar is the feedback")
+      local plan = actions.resolve({ type = "draw" }, { weapon_drawn = true })
+      assert.equal("input /attack off", plan.command)
+      assert.equal("sheathed", plan.weapon_state)
     end)
   end)
 
@@ -299,7 +303,7 @@ describe("crossbar actions", function()
     it("resolves the command form and the slot form identically", function()
       local actions, state = build()
       state.ride = 'input /mount "crab"'
-      local slot_state = { weapon_drawn = true, has_target = true }
+      local slot_state = { weapon_drawn = true }
       assert.same(actions.resolve({ type = "draw" }, slot_state), actions.resolve_builtin("draw", nil, slot_state))
       assert.same(actions.resolve({ type = "mr" }), actions.resolve_builtin("mr"))
       assert.same(actions.resolve({ type = "warp" }), actions.resolve_builtin("warp"))

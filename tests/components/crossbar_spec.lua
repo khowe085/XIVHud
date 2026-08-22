@@ -1270,26 +1270,29 @@ describe("crossbar live widget", function()
     end)
 
     it("fires the draw toggle from the gesture, flipping the weapon state", function()
+      --[[ Entering drawn sends nothing at all (Kevin, 2026-08-22): the
+           rotation is the point, not the attack, and the sword beside the
+           set label is the feedback. Leaving it still disengages - an
+           explicit `draw` while drawn means "I am done fighting". ]]
       build_world()
       press(LAYER)
       press(SWITCH)
       release(SWITCH)
       release(LAYER)
-      assert.are.same({ "input /attack <t>" }, env.commands)
+      assert.are.same({}, env.commands, "nothing sent on the way in")
+      assert.is_true(sword_icon().visible, "but the sword says the state flipped")
       -- Drawn now; the same gesture disengages.
       press(LAYER)
       press(SWITCH)
       release(SWITCH)
       release(LAYER)
-      assert.are.equal("input /attack off", env.commands[2])
+      assert.are.same({ "input /attack off" }, env.commands)
+      assert.is_false(sword_icon().visible)
     end)
 
-    it("enters drawn with no target, quietly and without a command", function()
-      --[[ The rotation is the point, not the attack: wanting the drawn set
-           does not mean wanting to swing at something (Kevin, 2026-08-22).
-           There is nothing to aim `/attack` at, so nothing goes out - and
-           no complaint either, because the bar's sword indicator is the
-           feedback. ]]
+    it("sends nothing on the way in whether or not anything is targeted", function()
+      -- The target used to decide between `/attack <t>` and a refusal. It
+      -- decides nothing now, which is why draw_state stopped reading it.
       build_world()
       env.target = nil
       press(LAYER)
@@ -1298,7 +1301,7 @@ describe("crossbar live widget", function()
       release(LAYER)
       assert.are.same({}, env.commands)
       assert.are.same({}, env.chat, "no complaint")
-      assert.is_true(sword_icon().visible, "the sword says the state flipped")
+      assert.is_true(sword_icon().visible)
     end)
 
     it("ignores a hand-edited non-string shortcut verb", function()
@@ -3574,9 +3577,13 @@ describe("crossbar live widget", function()
     end)
 
     it("leaves the draw toggle instant", function()
+      -- Instant means no countdown. Entering drawn sends nothing at all
+      -- now, so the disengage is what this can watch go straight out.
       build_world()
       widget.handle_command({ "draw" })
-      assert.are.same({ "input /attack <t>" }, env.commands)
+      widget.handle_command({ "draw" })
+      assert.are.same({ "input /attack off" }, env.commands)
+      assert.are.equal(0, #env.chat, "no countdown either way")
     end)
 
     it("counts a spell-rung warp down before casting it", function()
@@ -4542,7 +4549,10 @@ describe("crossbar live widget", function()
     it("runs the draw toggle as a command", function()
       build_world()
       widget.handle_command({ "draw" })
-      assert.are.same({ "input /attack <t>" }, env.commands)
+      assert.are.same({}, env.commands, "entering drawn sends nothing")
+      assert.is_true(sword_icon().visible, "the sword is what says it worked")
+      widget.handle_command({ "draw" })
+      assert.are.same({ "input /attack off" }, env.commands)
     end)
 
     it("routes an authoring verb to the store and repaints the slot", function()
