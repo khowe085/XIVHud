@@ -88,48 +88,75 @@ describe("crossbar render", function()
   end)
 
   describe("the set label", function()
-    -- The sword, the gap, then the label: what gets centred is the row.
-    local function row_width(render)
-      return render.set_icon_size() + 4 + render.set_label_width()
+    -- Every slot's rect on one side, for the overlap check below.
+    local function slot_rects(render)
+      local rects = {}
+      for _, side in ipairs({ "left", "right" }) do
+        for slot = 1, 8 do
+          local x, y = render.slot_pos("xhb", side, slot)
+          rects[#rects + 1] = { x = x, y = y, size = render.metrics().slot }
+        end
+      end
+      return rects
     end
 
-    it("centres the sword and label together, level with the crosses", function()
-      --[[ FFXIV puts the set number between the two crosses. The main anchor
-           spans both side panels, so the centre of that span is the centre
-           of the bar - and the row sits level with the slot grid, in the gap
-           the two clusters leave down the middle, rather than under them. ]]
+    local function overlaps(rect, x, y, w, h)
+      return x < rect.x + rect.size and x + w > rect.x and y < rect.y + rect.size and y + h > rect.y
+    end
+
+    it("lines the label's foot up with the bottom slot row's foot", function()
+      --[[ The vertical placement is the whole constraint. In the MIDDLE row
+           the two clusters occupy the bar's centre column, so anything drawn
+           level with it lands on the art - which is exactly what happened
+           when this was centred on the grid. The bottom row leaves that
+           column clear. ]]
       local render = make()
-      local icon_x, icon_y = render.set_icon_pos()
       local metrics = render.metrics()
-      assert.are.equal((metrics.side_gap + metrics.panel_width) / 2, icon_x + row_width(render) / 2)
-      local grid_top = metrics.pad_y
-      local grid_bottom = grid_top + 2 * metrics.row_pitch + metrics.slot
-      assert.is_true(icon_y > grid_top, "below the top row")
-      assert.is_true(icon_y + 14 < grid_bottom, "and above the bottom one")
+      local _, label_y = render.set_label_pos()
+      local grid_bottom = metrics.pad_y + 2 * metrics.row_pitch + metrics.slot
+      assert.are.equal(grid_bottom, label_y + 14, "feet aligned")
     end)
 
-    it("puts the label to the sword's right, on the same line", function()
+    it("centres the label and the sword on the bar, each on its own", function()
       local render = make()
-      local icon_x, icon_y = render.set_icon_pos()
+      local metrics = render.metrics()
+      local centre = (metrics.side_gap + metrics.panel_width) / 2
+      local label_x = render.set_label_pos()
+      local icon_x = render.set_icon_pos()
+      assert.are.equal(centre, label_x + render.set_label_width() / 2)
+      assert.are.equal(centre, icon_x + render.set_icon_size() / 2)
+    end)
+
+    it("stacks the sword directly above the label, clear of it", function()
+      local render = make()
+      local _, icon_y = render.set_icon_pos()
+      local _, label_y = render.set_label_pos()
+      assert.is_true(icon_y + render.set_icon_size() <= label_y, "above, not overlapping")
+    end)
+
+    it("never draws either of them over a slot", function()
+      -- The defect this placement exists to fix: at the old height both sat
+      -- on top of the middle row's innermost slots.
+      local render = make()
       local label_x, label_y = render.set_label_pos()
-      assert.are.equal(icon_y, label_y, "one line")
-      assert.is_true(label_x > icon_x + render.set_icon_size(), "clear of the sword")
+      local icon_x, icon_y = render.set_icon_pos()
+      for _, rect in ipairs(slot_rects(render)) do
+        assert.is_false(overlaps(rect, label_x, label_y, render.set_label_width(), 14), "label over a slot")
+        assert.is_false(
+          overlaps(rect, icon_x, icon_y, render.set_icon_size(), render.set_icon_size()),
+          "sword over a slot"
+        )
+      end
     end)
 
-    it("holds the label still whether or not the sword is showing", function()
-      -- The icon's width is reserved either way, so drawing and sheathing
-      -- does not shunt the label sideways.
-      local render = make()
-      local before = render.set_label_pos()
-      local after = render.set_label_pos()
-      assert.are.equal(before, after)
-    end)
-
-    it("moves with the configured grid rather than sitting on a fixed pixel", function()
+    it("keeps clear of the slots on a hand-widened grid too", function()
       local wide = make({ slot_spacing = 16, bar_spacing = 100 })
-      local icon_x = wide.set_icon_pos()
-      local metrics = wide.metrics()
-      assert.are.equal((metrics.side_gap + metrics.panel_width) / 2, icon_x + row_width(wide) / 2)
+      local label_x, label_y = wide.set_label_pos()
+      local icon_x, icon_y = wide.set_icon_pos()
+      for _, rect in ipairs(slot_rects(wide)) do
+        assert.is_false(overlaps(rect, label_x, label_y, wide.set_label_width(), 14))
+        assert.is_false(overlaps(rect, icon_x, icon_y, wide.set_icon_size(), wide.set_icon_size()))
+      end
     end)
 
     it("names the set the way FFXIV does", function()

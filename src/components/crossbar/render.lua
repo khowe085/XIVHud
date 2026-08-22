@@ -93,10 +93,12 @@ local PANEL_BOTTOM = 49
 -- The set label's own line height, for centring it in that bottom band.
 -- parambar's size, which is what the indicator was asked to match.
 local SET_LABEL_HEIGHT = 14
--- The sword that marks the drawn weapon state, drawn to the label's left at
--- the label's own height, with a gap between them.
-local SET_ICON = 14
-local SET_ICON_GAP = 4
+-- The sword that marks the drawn weapon state, stacked ABOVE the label.
+-- 24 and a 2px gap put the pair exactly inside the bottom slot row's own
+-- band (24 + 2 + 14 = the 40px slot), which is what keeps it clear of the
+-- art it sits between.
+local SET_ICON = 24
+local SET_ICON_GAP = 2
 -- Upstream h2's base sits 300 right of h1's, and its Expanded bars at +150 -
 -- reproduced exactly by centring one side panel across the main footprint.
 -- The centring offset is SIDE_GAP / 2 whatever the side width, because the
@@ -167,35 +169,36 @@ local function new(deps)
     return SET_ICON
   end
 
-  --[[ The sword's top-left, and the label's, unscaled and relative to the
-       main anchor's origin.
+  --[[ Where the sword and the label sit, unscaled and relative to the main
+       anchor's origin. Each is centred across the bar on its own, one above
+       the other, so the sword coming and going never moves the label.
 
-       The icon's width is reserved WHETHER OR NOT it is showing, so the
-       label sits in one place and drawing or sheathing does not shunt it
-       sideways. Only the sword appears and disappears. ]]
-  local function set_row_pos(self_)
-    local metrics = self_.metrics()
-    local width = SET_ICON + SET_ICON_GAP + self_.set_label_width()
-    local x = (metrics.side_gap + metrics.panel_width - width) / 2
-    --[[ Centred on the SLOT GRID, not the panel's bottom band: the two
-         clusters leave a gap down the middle of the bar and this sits in
-         it, level with the crosses rather than under them. Derived from the
-         configured pitches, so it follows a widened grid. ]]
-    local grid_top = metrics.pad_y
-    local grid_bottom = grid_top + 2 * metrics.row_pitch + metrics.slot
-    local y = (grid_top + grid_bottom - SET_LABEL_HEIGHT) / 2
-    return x, y
+       The vertical placement is the constraint that matters. The two
+       clusters flank the bar's centre, and in the MIDDLE row they occupy it
+       (a slot ends at the centre-left, another starts at the centre-right),
+       so anything drawn there lands on top of the art. The top and bottom
+       rows leave that column clear. So the label's foot is aligned with the
+       BOTTOM ROW's foot, which puts the pair in that row's own band and
+       clear of every slot. ]]
+  local function set_row_bottom(metrics)
+    return metrics.pad_y + 2 * metrics.row_pitch + metrics.slot
   end
 
-  --- The sword's top-left.
-  function self.set_icon_pos()
-    return set_row_pos(self)
+  local function set_centre(metrics)
+    return (metrics.side_gap + metrics.panel_width) / 2
   end
 
-  --- The label's top-left.
+  --- The label's top-left; its foot lines up with the bottom slot row's.
   function self.set_label_pos()
-    local x, y = set_row_pos(self)
-    return x + SET_ICON + SET_ICON_GAP, y
+    local metrics = self.metrics()
+    return set_centre(metrics) - self.set_label_width() / 2, set_row_bottom(metrics) - SET_LABEL_HEIGHT
+  end
+
+  --- The sword's top-left, stacked directly above the label.
+  function self.set_icon_pos()
+    local metrics = self.metrics()
+    local _, label_y = self.set_label_pos()
+    return set_centre(metrics) - SET_ICON / 2, label_y - SET_ICON_GAP - SET_ICON
   end
 
   function self.metrics()
