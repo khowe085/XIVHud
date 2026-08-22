@@ -850,8 +850,19 @@ describe("crossbar live widget", function()
         env.item_reads = (env.item_reads or 0) + 1
         return env.items[bag]
       end,
-      set_equip = function(...)
-        env.equips[#env.equips + 1] = { ... }
+      --[[ The client puts the piece ON, which is what the widget's poll
+           reads back: a ring that stays flagged in-the-bag is a ring
+           something swapped off, and the fixtures modelled that state for
+           every wait until 2026-08-22 - a thing the real client cannot do,
+           and the reason an equip losing a race with GearSwap went unseen.
+           A test wanting the swapped-off case puts the status back. ]]
+      set_equip = function(bag_slot, equip_slot, bag)
+        env.equips[#env.equips + 1] = { bag_slot, equip_slot, bag }
+        for _, entry in ipairs(env.items[bag] or {}) do
+          if type(entry) == "table" and entry.slot == bag_slot then
+            entry.status = 5
+          end
+        end
       end,
       decode_extdata = function()
         return env.ext
@@ -3405,6 +3416,10 @@ describe("crossbar live widget", function()
     it("refuses a second warp while one is pending", function()
       ring_world()
       widget.handle_command({ "warp" })
+      -- Swapped straight back off, so the wait is still trying to get it on
+      -- when the second press arrives - which is the state the guard is
+      -- about, and no longer the state the first press leaves behind.
+      env.items[0][1].status = 0
       local before = #env.commands
       widget.handle_command({ "warp" })
       assert.are.equal(before, #env.commands, "no second gs disable, no second equip")
@@ -3418,6 +3433,65 @@ describe("crossbar live widget", function()
       widget.handle_command({ "warp" })
       widget.destroy()
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
+    end)
+
+    it("re-equips a ring something else swapped straight back off", function()
+      --[[ `gs disable` stops FUTURE GearSwap swaps; it does not cancel one
+           already in flight. `gs equip sets.engaged; hud crossbar warp`
+           reproduces it exactly: our equip goes out, GearSwap's set lands
+           on top, and the ring never reaches a finger - so the wait sat
+           there for a minute polling the extdata of a ring in the bag
+           (Kevin, live client, 2026-08-22).
+
+           The poll re-read the item every second and never asked the one
+           question that mattered: is it actually ON. It asks now, and puts
+           it back. ]]
+      ring_world()
+      widget.handle_command({ "warp" })
+      local first = #env.equips
+      assert.is_true(first > 0, "the press equipped it once")
+      -- GearSwap takes it straight back off, which is what `gs disable`
+      -- cannot stop once a swap is already in flight.
+      env.items[0][1].status = 0
+      env.now = 2
+      widget.update()
+      assert.is_true(#env.equips > first, "and the poll puts it back on")
+      -- The extdata of a ring that is not worn is never acted on, whatever
+      -- it says - firing /item at a ring in the bag is refused by the game
+      -- and would broadcast a `warp all` on nothing.
+      env.items[0][1].status = 0
+      env.ext.usable = true
+      env.now = 3
+      widget.update()
+      for _, command in ipairs(env.commands) do
+        assert.is_nil(command:find("/item", 1, true), "nothing fires at a ring in the bag")
+      end
+    end)
+
+    it("keeps putting a stolen ring back until the deadline gives up on it", function()
+      --[[ Kevin's call (2026-08-22): retry for as long as the press has,
+           rather than giving up early on a slot being fought over. A
+           GearSwap burst can outlast several seconds, and the deadline is
+           already the one exit that always fires. ]]
+      ring_world()
+      widget.handle_command({ "warp" })
+      local tries = #env.equips
+      env.chat = {}
+      for second = 2, 12 do
+        -- Stolen again every single poll.
+        env.items[0][1].status = 0
+        env.now = second
+        widget.update()
+      end
+      assert.is_true(#env.equips > tries + 5, "it kept trying, once a poll")
+      assert.are.same({}, env.chat, "and said nothing while it was still trying")
+
+      -- The wall clock is what ends it, and it releases the slot.
+      env.time = env.time + 46
+      env.now = 13
+      widget.update()
+      assert.is_not_nil(said():lower():find("abandoned"), "said: " .. said())
+      assert.are.equal("gs enable ring1", env.commands[#env.commands], "and lets the slot go")
     end)
 
     it("gives up on the wall clock when the wait never resolves", function()

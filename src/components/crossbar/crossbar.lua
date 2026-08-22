@@ -1641,6 +1641,9 @@ local function new(ctx)
         item_id = plan.id,
         bag = plan.bag,
         bag_slot = plan.bag_slot,
+        -- Kept so the poll can re-issue the equip: `gs disable` does not
+        -- cancel a GearSwap swap already in flight, and ours can lose.
+        equip_slot = plan.equip_slot,
         gs_slots = gs_slots,
         give_up = plan.give_up,
         deadline = time_now() + (plan.give_up or DEFAULT_GIVE_UP_SECONDS) + PENDING_DEADLINE_MARGIN,
@@ -1688,6 +1691,30 @@ local function new(ctx)
     end
     if item == nil then
       abandon("went missing")
+      return
+    end
+    --[[ Is it actually ON? `gs disable` stops FUTURE GearSwap swaps and
+         does not cancel one already in flight, so a set equipped in the
+         same breath as the press lands on top of ours and the ring never
+         reaches a finger - `gs equip sets.engaged; hud crossbar warp`
+         reproduces it every time (Kevin, live client, 2026-08-22).
+
+         Put it back, once a second until the deadline gives up on the
+         press - long enough to outlast a GearSwap burst, and the honest
+         answer for a slot that is being fought over.
+
+         And read NOTHING off it until it is on. The extdata of a ring in
+         the bag belongs to some earlier equip, so the use branch below
+         would fire `/item` at a ring that is not worn - which the game
+         refuses, and which `warp all` would broadcast on regardless.
+
+         Only on the equip path: a piece that was already worn at the press
+         is left alone, since re-equipping it would restart the warmup this
+         is waiting out. ]]
+    if not pending_item.equipped and item.status ~= EQUIPPED then
+      if ctx.set_equip ~= nil and pending_item.equip_slot ~= nil then
+        ctx.set_equip(pending_item.bag_slot, pending_item.equip_slot, pending_item.bag)
+      end
       return
     end
     local ext = ctx.decode_extdata ~= nil and ctx.decode_extdata(item) or nil
