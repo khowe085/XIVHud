@@ -880,7 +880,9 @@ local function new(deps)
        made, so a step never leaves you guessing what it applies to. ]]
   local function header_text(frame)
     local address = frame.address
-    local where = "set " .. address.set .. " " .. address.side:sub(1, 1) .. " slot " .. address.slot
+    -- The address in the form the CLI takes it, so the window and the
+    -- command line name a slot the same way.
+    local where = address.set .. (address.side == "left" and "L" or "R") .. address.slot
     if frame.step == STEP_LAYER then
       return "pick a layer", where
     end

@@ -17,12 +17,12 @@ If **A** fails, stop — nothing after it will mean anything.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| A1 | `//lua load xivhud`, then `//hud` | The command list prints | [x] | [ ] |  |
-| A2 | Open `<addon>/load.log` | It ends without an error line | [x] | [ ] |  |
-| A3 | Watch the load for texture warnings | No `missing texture` lines | [x] | [ ] |  |
-| A4 | `//hud list` | `crossbar` is listed with four anchor lines | [x] | [ ] |  |
-| A5 | Look at the screen | The bar is drawn, sixteen empty slots | [x] | [ ] |  |
-| A6 | Look at the bar's bottom edge | Gold `Set 1` sits between the two crosses | [x] | [ ] |  |
+| A1 | `//lua load xivhud`, then `//hud` | The command list prints | [ ] | [ ] |  |
+| A2 | Open `<addon>/load.log` | It ends without an error line | [ ] | [ ] |  |
+| A3 | Watch the load for texture warnings | No `missing texture` lines | [ ] | [ ] |  |
+| A4 | `//hud list` | `crossbar` is listed with four anchor lines | [ ] | [ ] |  |
+| A5 | Look at the screen | The bar is drawn, sixteen empty slots | [ ] | [ ] |  |
+| A6 | Look at the bar's bottom edge | Gold `Set 1` sits between the two crosses | [ ] | [ ] |  |
 
 ## B. Keys — before anything is bound
 
@@ -32,24 +32,24 @@ with nothing bound it correctly stays put. Cycling proper is D5a.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| B1 | Press `;` on its own | Nothing happens — no chat line opens | [x] | [ ] |  |
-| B2 | Press `'` on its own | Nothing happens | [x] | [ ] |  |
-| B3 | Press `\` on its own | Nothing happens | [x] | [ ] |  |
-| B4 | Press `=` on its own | Nothing happens, and no map | [x] | [ ] |  |
-| B5 | Tap `` ` `` | Nothing moves — cycle skips EMPTY sets, and they all are. Proper cycling is D5a, after things are bound | [x] | [ ] | Test was wrong, not the addon: written before I remembered cycle skips empty sets. Jump (B7) has no such rule, which is why it works here. |
-| B6 | Hold `` ` `` and press `3` | The label jumps straight to `Set 3` | [x] | [ ] |  |
-| B7 | `//hud crossbar set 1` | Back to `Set 1` | [x] | [ ] |  |
-| B8 | Press `1`–`8` with nothing held | Your game macros fire as usual | [x] | [ ] | Confirmed. Game macros need Ctrl or Alt + 1-8; the bare number row is the game's own hotbar, unaffected either way. |
-| B9 | Hold `;` | A panel lights behind the left eight slots | [x] | [ ] |  |
-| B10 | Hold `'` | A panel lights behind the right eight | [x] | [ ] |  |
-| B11 | Hold `\` then `;` | The WXHB's left half appears | [x] | [ ] |  |
-| B12 | Hold `\` then `'` | The WXHB's right half appears | [x] | [ ] |  |
-| B13 | Hold `;` and `'` together | Expanded Hold replaces both bars | [x] | [ ] |  |
-| B14 | Release one of the two | It drops to the side still held | [x] | [ ] |  |
-| B15 | Hold `\` and tap `` ` `` with no side held | A sword lights above `Set N` and nothing is said in chat; again and it clears, disengaging you | [x] | [ ] |  |
-| B16 | Press Enter, then type `;` `'` `\` `` ` `` `=` and `1`–`8` | Every character lands in the message | [x] | [ ] | Game macros require holding ctrl or alt + number row 1-8 |
-| B17 | Close the chat line | The keys go back to doing B1–B15 | [x] | [ ] |  |
-| B18 | Hold `;`, alt-tab away, come back, release | Nothing is stuck lit or stuck down | [x] | [ ] |  |
+| B1 | Press `;` on its own | Nothing happens — no chat line opens | [ ] | [ ] |  |
+| B2 | Press `'` on its own | Nothing happens | [ ] | [ ] |  |
+| B3 | Press `\` on its own | Nothing happens | [ ] | [ ] |  |
+| B4 | Press `=` on its own | Nothing happens, and no map | [ ] | [ ] |  |
+| B5 | Tap `` ` `` | Nothing moves — cycle skips EMPTY sets, and they all are. Proper cycling is D5a, after things are bound | [ ] | [ ] | Test was wrong, not the addon: written before I remembered cycle skips empty sets. Jump (B7) has no such rule, which is why it works here. |
+| B6 | Hold `` ` `` and press `3` | The label jumps straight to `Set 3` | [ ] | [ ] |  |
+| B7 | `//hud crossbar set 1` | Back to `Set 1` | [ ] | [ ] |  |
+| B8 | Press `1`–`8` with nothing held | Your game macros fire as usual | [ ] | [ ] | Confirmed. Game macros need Ctrl or Alt + 1-8; the bare number row is the game's own hotbar, unaffected either way. |
+| B9 | Hold `;` | A panel lights behind the left eight slots | [ ] | [ ] |  |
+| B10 | Hold `'` | A panel lights behind the right eight | [ ] | [ ] |  |
+| B11 | Hold `\` then `;` | The WXHB's left half appears | [ ] | [ ] |  |
+| B12 | Hold `\` then `'` | The WXHB's right half appears | [ ] | [ ] |  |
+| B13 | Hold `;` and `'` together | Expanded Hold replaces both bars | [ ] | [ ] |  |
+| B14 | Release one of the two | It drops to the side still held | [ ] | [ ] |  |
+| B15 | Hold `\` and tap `` ` `` with no side held | A sword lights above `Set N` and nothing is said in chat; again and it clears, disengaging you | [ ] | [ ] |  |
+| B16 | Press Enter, then type `;` `'` `\` `` ` `` `=` and `1`–`8` | Every character lands in the message | [ ] | [ ] | Game macros require holding ctrl or alt + number row 1-8 |
+| B17 | Close the chat line | The keys go back to doing B1–B15 | [ ] | [ ] |  |
+| B18 | Hold `;`, alt-tab away, come back, release | Nothing is stuck lit or stuck down | [ ] | [ ] |  |
 
 ## C. Binding from the console
 
@@ -57,69 +57,69 @@ These bindings are used by every later section — leave them in place.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| C1 | `//hud crossbar bind 1L1 ma "Cure" me` | Slot 1 shows Cure with its icon | [x] | [ ] |  |
-| C2 | Hold `;` and press `1` | Cure is cast on you | [x] | [ ] |  |
-| C3 | Watch slot 1 straight after | A dark sweep wipes round it until the recast is up | [x] | [ ] |  |
-| C4 | Look at slot 1's corner | Cure's MP cost is written there | [x] | [ ] |  |
-| C5 | Let your MP drop below that cost | The slot dims | [x] | [ ] |  |
-| C6 | `//hud crossbar bind 1L2 ja "Provoke" t` | Bound, and it fires on a target | [x] | [ ] |  |
-| C7 | `//hud crossbar bind 1L3 ws "Savage Blade" t` | Bound; fires with TP and a target | [x] | [ ] |  |
-| C8 | `//hud crossbar bind 1L4 item "Echo Drops" me` | Bound, and the corner shows how many you carry | [x] | [ ] |  |
-| C9 | Use Echo Drops until you have none | The count reaches 0, a red X covers the slot, it dims | [x] | [ ] | Initially failed - count only moved when the stack emptied; fixed by refreshing off the 0x01E inventory packet (a40952f) |
-| C10 | `//hud crossbar bind 1R1 ra t` | Bound; fires a ranged attack | [x] | [ ] |  |
-| C11 | `//hud crossbar bind 1R2 ct "sea all linkshell"` | Bound; fires the search command | [x] | [ ] |  |
-| C12 | `//hud crossbar bind 1R3 ex "echo hello"` | Bound; the console echoes | [x] | [ ] |  |
-| C13 | `//hud crossbar bind 1R4 open map` | Bound; pressing it opens the map | [x] | [ ] |  |
-| C14 | `//hud crossbar bind 1R5 draw` | Bound; pressing it draws/sheathes | [x] | [ ] |  |
-| C15 | `//hud crossbar bind 1R6 mount "Chocobo"` | Bound; pressing it summons after a countdown | [x] | [ ] |  |
-| C16 | `//hud crossbar bind 1L5 ma "Cure IV" Zeid` | Refused, with advice to quote or use a token | [x] | [ ] | Refused as designed. Bare player names as targets requested as a feature - filed as #20 |
-| C17 | `//hud crossbar list` | Every slot above is listed, with its layer | [x] | [ ] |  |
-| C18 | `//hud crossbar alias 1L1 "Heal"` | Slot 1's label reads `Heal` | [x] | [ ] |  |
-| C19 | `//hud crossbar icon 1L1 map` | Slot 1's icon changes | [x] | [ ] | Initially failed - accepted but drew the old art; the icon memo keyed on record identity and the verb mutates in place (22f7b23) |
-| C20 | `//hud crossbar alias 1L1` then `icon 1L1` | Both revert to Cure's own | [x] | [ ] |  |
-| C21 | `//hud crossbar swap 1L1 1L2` | Cure and Provoke exchange slots | [x] | [ ] |  |
-| C22 | `//hud crossbar swap 1L1 1L2` again | They swap back | [x] | [ ] |  |
-| C23 | `//hud crossbar bind 1L8 ma "Dia" t` then `unbind 1L8` | Bound, then the slot empties | [x] | [ ] |  |
+| C1 | `//hud crossbar bind 1L1 ma "Cure" me` | Slot 1 shows Cure with its icon | [ ] | [ ] |  |
+| C2 | Hold `;` and press `1` | Cure is cast on you | [ ] | [ ] |  |
+| C3 | Watch slot 1 straight after | A dark sweep wipes round it until the recast is up | [ ] | [ ] |  |
+| C4 | Look at slot 1's corner | Cure's MP cost is written there | [ ] | [ ] |  |
+| C5 | Let your MP drop below that cost | The slot dims | [ ] | [ ] |  |
+| C6 | `//hud crossbar bind 1L2 ja "Provoke" t` | Bound, and it fires on a target | [ ] | [ ] |  |
+| C7 | `//hud crossbar bind 1L3 ws "Savage Blade" t` | Bound; fires with TP and a target | [ ] | [ ] |  |
+| C8 | `//hud crossbar bind 1L4 item "Echo Drops" me` | Bound, and the corner shows how many you carry | [ ] | [ ] |  |
+| C9 | Use Echo Drops until you have none | The count reaches 0, a red X covers the slot, it dims | [ ] | [ ] | Initially failed - count only moved when the stack emptied; fixed by refreshing off the 0x01E inventory packet (a40952f) |
+| C10 | `//hud crossbar bind 1R1 ra t` | Bound; fires a ranged attack | [ ] | [ ] |  |
+| C11 | `//hud crossbar bind 1R2 ct "sea all linkshell"` | Bound; fires the search command | [ ] | [ ] |  |
+| C12 | `//hud crossbar bind 1R3 ex "echo hello"` | Bound; the console echoes | [ ] | [ ] |  |
+| C13 | `//hud crossbar bind 1R4 open map` | Bound; pressing it opens the map | [ ] | [ ] |  |
+| C14 | `//hud crossbar bind 1R5 draw` | Bound; pressing it lights the sword with nothing said, and clears it on the second press | [ ] | [ ] |  |
+| C15 | `//hud crossbar bind 1R6 mount "Chocobo"` | Bound; pressing it summons after a countdown - and dismounts at once if you are already mounted | [ ] | [ ] |  |
+| C16 | `//hud crossbar bind 1L5 ma "Cure IV" Zeid` | Refused, with advice to quote or use a token | [ ] | [ ] | Refused as designed. Bare player names as targets requested as a feature - filed as #20 |
+| C17 | `//hud crossbar list` | Every slot above is listed, with its layer | [ ] | [ ] |  |
+| C18 | `//hud crossbar alias 1L1 "Heal"` | Slot 1's label reads `Heal` | [ ] | [ ] |  |
+| C19 | `//hud crossbar icon 1L1 map` | Slot 1's icon changes | [ ] | [ ] | Initially failed - accepted but drew the old art; the icon memo keyed on record identity and the verb mutates in place (22f7b23) |
+| C20 | `//hud crossbar alias 1L1` then `icon 1L1` | Both revert to Cure's own | [ ] | [ ] |  |
+| C21 | `//hud crossbar swap 1L1 1L2` | Cure and Provoke exchange slots | [ ] | [ ] |  |
+| C22 | `//hud crossbar swap 1L1 1L2` again | They swap back | [ ] | [ ] |  |
+| C23 | `//hud crossbar bind 1L8 ma "Dia" t` then `unbind 1L8` | Bound, then the slot empties | [ ] | [ ] |  |
 | C24 | `//hud crossbar bind 1Ly ma "Cure" me` | **Refused** - a slot is 1-8. The controller button names went with the address change (2026-08-22): there is no controller for them to name | [ ] | [ ] |  |
-| C25 | Type `/ma "Cure" <YourName>` straight into the game | It casts — a name in angle brackets IS a target | [x] | [ ] | Confirmed - the game accepts a bare player name in angle brackets as a target, so #20 is a parser change and not a non-feature |
+| C25 | Type `/ma "Cure" <YourName>` straight into the game | It casts — a name in angle brackets IS a target | [ ] | [ ] | Confirmed - the game accepts a bare player name in angle brackets as a target, so #20 is a parser change and not a non-feature |
 
 ## D. Sets and layers
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| D1 | `//hud crossbar set 2` | Label reads `Set 2` and the slots go empty | [x] | [ ] |  |
-| D2 | `//hud crossbar bind 2L1 ma "Dia" t` | Bound on set 2 only | [x] | [ ] |  |
-| D3 | `//hud crossbar set 1` | Cure is back on slot 1 | [x] | [ ] |  |
-| D4 | `//hud crossbar cycle 2 none` then tap `` ` `` repeatedly | Set 2 is skipped by the rotation | [x] | [ ] |  |
-| D5 | `//hud crossbar cycle 2 both` | Set 2 is visited again | [x] | [ ] |  |
-| D5a | With sets 1 and 2 both bound, tap `` ` `` | The label moves between them — this is B5's real test | [x] | [ ] |  |
-| D5b | Bind nothing to sets 3–8 and keep tapping `` ` `` | The empty sets are skipped, never landed on | [x] | [ ] |  |
-| D6 | `//hud crossbar share 2 on` | Reported as shared, **and** warns that this job's own set-2 bindings are dormant while it is | [x] | [ ] |  |
-| D7 | `//hud crossbar list 2` | Set 2 reads empty - the shared store has nothing in it yet, and Dia is dormant rather than lost. The flag itself is not reported back anywhere (Kevin: leave it that way, 2026-08-22) | [x] | [ ] | Row expectation was wrong, not the code - a shared set reads the empty SHARED store, which is exactly what `share` warns about |
-| D8 | `//hud crossbar share 2 off`, then `list 2` | Reported as job-specific again, **and Dia is back** - the dormancy was reversible | [x] | [ ] |  |
-| D9 | `//hud crossbar share 2 on` | Back to shared — leave it this way for section M | [x] | [ ] |  |
-| D10 | `//hud crossbar share 1 on` then `share 1 off` | Set 1 is untouched by set 2's flag either way | [x] | [ ] |  |
-| D11 | `//hud crossbar bind sub:1L6 ma "Stone" t` | Bound to the subjob layer | [x] | [ ] |  |
-| D12 | Look at slot 6 in edit mode later (F-section) | It is tagged as a subjob override | [x] | [ ] | Verified in F2 - slot 6 carries the subjob mark |
-| D13 | `//hud crossbar context list` | Lists the four Scholar contexts and which are live | [x] | [ ] |  |
-| D14 | On SCH: `//hud crossbar bind ctx:light-arts:1L7 ja "Accession"` | Bound to that context | [x] | [ ] |  |
-| D15 | On SCH: use Light Arts | Slot 7 changes to Accession by itself | [x] | [ ] |  |
-| D16 | On SCH: use Dark Arts | Slot 7 changes back | [x] | [ ] |  |
+| D1 | `//hud crossbar set 2` | Label reads `Set 2` and the slots go empty | [ ] | [ ] |  |
+| D2 | `//hud crossbar bind 2L1 ma "Dia" t` | Bound on set 2 only | [ ] | [ ] |  |
+| D3 | `//hud crossbar set 1` | Cure is back on slot 1 | [ ] | [ ] |  |
+| D4 | `//hud crossbar cycle 2 none` then tap `` ` `` repeatedly | Set 2 is skipped by the rotation | [ ] | [ ] |  |
+| D5 | `//hud crossbar cycle 2 both` | Set 2 is visited again | [ ] | [ ] |  |
+| D5a | With sets 1 and 2 both bound, tap `` ` `` | The label moves between them — this is B5's real test | [ ] | [ ] |  |
+| D5b | Bind nothing to sets 3–8 and keep tapping `` ` `` | The empty sets are skipped, never landed on | [ ] | [ ] |  |
+| D6 | `//hud crossbar share 2 on` | Reported as shared, **and** warns that this job's own set-2 bindings are dormant while it is | [ ] | [ ] |  |
+| D7 | `//hud crossbar list 2` | Set 2 reads empty - the shared store has nothing in it yet, and Dia is dormant rather than lost. The flag itself is not reported back anywhere (Kevin: leave it that way, 2026-08-22) | [ ] | [ ] | Row expectation was wrong, not the code - a shared set reads the empty SHARED store, which is exactly what `share` warns about |
+| D8 | `//hud crossbar share 2 off`, then `list 2` | Reported as job-specific again, **and Dia is back** - the dormancy was reversible | [ ] | [ ] |  |
+| D9 | `//hud crossbar share 2 on` | Back to shared — leave it this way for section M | [ ] | [ ] |  |
+| D10 | `//hud crossbar share 1 on` then `share 1 off` | Set 1 is untouched by set 2's flag either way | [ ] | [ ] |  |
+| D11 | `//hud crossbar bind sub:1L6 ma "Stone" t` | Bound to the subjob layer | [ ] | [ ] |  |
+| D12 | Look at slot 6 in edit mode later (F-section) | It is tagged as a subjob override | [ ] | [ ] | Verified in F2 - slot 6 carries the subjob mark |
+| D13 | `//hud crossbar context list` | Lists the four Scholar contexts and which are live | [ ] | [ ] |  |
+| D14 | On SCH: `//hud crossbar bind ctx:light-arts:1L7 ja "Accession"` | Bound to that context | [ ] | [ ] |  |
+| D15 | On SCH: use Light Arts | Slot 7 changes to Accession by itself | [ ] | [ ] |  |
+| D16 | On SCH: use Dark Arts | Slot 7 changes back | [ ] | [ ] |  |
 
 ## E. The other two bars
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| E1 | `//hud crossbar` (no arguments) | Reports job, active set, and where each bar points | [x] | [ ] |  |
-| E2 | `//hud crossbar view wxhb-L 1 r` | Reported as changed. **Not** `2 l` - that is already the default, so it would prove nothing (Kevin, 2026-08-22) | [x] | [ ] | Original row set it to its own default and proved nothing - reworked to 1 r |
-| E3 | Hold `\`+`;` | The WXHB's left half now shows set 1's **right** side - the ranged/search/echo/map slots, not set 2's Dia | [x] | [ ] |  |
-| E3a | `//hud crossbar view wxhb-L 2 l`, then hold `\`+`;` again | It goes back to the default view | [x] | [ ] |  |
-| E4 | With it held, press slot key `4` | The map opens - set 1 right slot 4, what the **WXHB** shows, not the XHB's slot 4. Slot 4 rather than a console echo because the map is unmissable (Kevin, 2026-08-22) | [x] | [ ] |  |
-| E5 | `//hud crossbar wxhb on` | Both WXHB halves stay on screen at rest | [x] | [ ] |  |
-| E6 | `//hud crossbar wxhb off` | They only appear while held | [x] | [ ] |  |
-| E7 | Hold both sides, press a slot key | Expanded Hold fires from the set its view points at - set 3, unbound, so nothing fires | [x] | [ ] | Weak on its own - nothing bound to set 3; E8/E9 added as the real test |
-| E8 | `//hud crossbar bind 3L1 ma "Cure" me` and `//hud crossbar bind 3R1 ja "Provoke" t` | Both bound on set 3 | [x] | [ ] |  |
-| E9 | Hold `;` **then** `'` and press `1`; then hold `'` **then** `;` and press `1` | The first casts Cure (exp-lr, set 3 left), the second fires Provoke (exp-rl, set 3 right) - the hold ORDER picks the side | [x] | [ ] |  |
+| E1 | `//hud crossbar` (no arguments) | Reports job, active set, and where each bar points | [ ] | [ ] |  |
+| E2 | `//hud crossbar view wxhb-L 1R` | Reported as changed. **Not** `2L` - that is already the default, so it would prove nothing (Kevin, 2026-08-22) | [ ] | [ ] | Original row set it to its own default and proved nothing - reworked to 1 r |
+| E3 | Hold `\`+`;` | The WXHB's left half now shows set 1's **right** side - the ranged/search/echo/map slots, not set 2's Dia | [ ] | [ ] |  |
+| E3a | `//hud crossbar view wxhb-L 2L`, then hold `\`+`;` again | It goes back to the default view | [ ] | [ ] |  |
+| E4 | With it held, press slot key `4` | The map opens - set 1 right slot 4, what the **WXHB** shows, not the XHB's slot 4. Slot 4 rather than a console echo because the map is unmissable (Kevin, 2026-08-22) | [ ] | [ ] |  |
+| E5 | `//hud crossbar wxhb on` | Both WXHB halves stay on screen at rest | [ ] | [ ] |  |
+| E6 | `//hud crossbar wxhb off` | They only appear while held | [ ] | [ ] |  |
+| E7 | Hold both sides, press a slot key | Expanded Hold fires from the set its view points at - set 3, unbound, so nothing fires | [ ] | [ ] | Weak on its own - nothing bound to set 3; E8/E9 added as the real test |
+| E8 | `//hud crossbar bind 3L1 ma "Cure" me` and `//hud crossbar bind 3R1 ja "Provoke" t` | Both bound on set 3 | [ ] | [ ] |  |
+| E9 | Hold `;` **then** `'` and press `1`; then hold `'` **then** `;` and press `1` | The first casts Cure (exp-lr, set 3 left), the second fires Provoke (exp-rl, set 3 right) - the hold ORDER picks the side | [ ] | [ ] |  |
 
 ## F. The mouse binder
 
@@ -130,66 +130,66 @@ binder are gone - they were answers about code that no longer exists.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| F1 | Hold `;` and press `=` | Edit mode says so in chat. Nothing is drawn yet - the window appears when you click a slot | [x] | [ ] |  |
-| F2 | Look at the bar | Slots show `+` for subjob and `*` for context sources | [x] | [ ] | Unchanged by the rewrite; D12 covered here too |
-| F3 | Click an empty slot | One window opens **dead centre**, titled `pick a layer`, listing the whole stack | [x] | [ ] |  |
-| F4 | Look at the top left of it | A button reading `[ close ]` - on the first step there is nothing to go back to | [x] | [ ] |  |
-| F5 | Read the line under the title | It names the slot you clicked - `set 1 l slot 3` | [x] | [ ] |  |
-| F6 | Click a layer row | The **same** window becomes `pick an action`: categories down the left, actions on the right, and the subhead now names the layer | [x] | [ ] |  |
-| F7 | Go back and click a **context** layer row instead | The bar previews itself as if that buff were up, and the subhead says which | [x] | [ ] | Unchanged by the rewrite |
-| F8 | Click a spell or ability | The window becomes `pick a target`, listing every FFXI token with `(no target)` first | [x] | [ ] |  |
-| F9 | Click `<t>` | It binds with that target, echoes in chat, and the window returns to `pick a layer` | [x] | [ ] |  |
-| F10 | `//hud crossbar list` | That slot shows the target you picked - the mouse never wrote one before | [x] | [ ] |  |
-| F11 | Bind something from the **General** category (`draw`, `warp`, `mr`) | No target step at all - it binds straight away | [x] | [ ] |  |
-| F12 | Hover an action in the list | The right-hand column fills in: name, type, cost, recast, chain property | [x] | [ ] |  |
-| F13 | Hover a bound slot on the bar | The same column, plus the layer the entry comes from and what it covers | [ ] | [x] | Details text still overruns the backdrop after the wrap fix - the character budget is an estimate and too generous. Filed as #21 |
-| F14 | Look for **Refresh III**, or any merit spell you know | It is listed and binds | [x] | [ ] | Unchanged by the rewrite - the catalog content did not move |
-| F15 | Look for an **Enchanted** category | It exists and lists your enchanted gear | [x] | [ ] |  |
-| F16 | Open a long category and scroll to its last page, then keep scrolling down | It **stops** on the last page. It must not wrap round to the top | [x] | [ ] |  |
-| F17 | Scroll up past the first page | It stops there too | [x] | [ ] |  |
-| F18 | Get to the target step, then press back | Back to the action list | [x] | [ ] |  |
-| F19 | Press back again | Back to the layer list, with the layer choice released | [x] | [ ] |  |
-| F20 | Press back once more | The window closes. **Edit mode is still on** | [x] | [ ] |  |
-| F21 | Click a slot, then drag the window by its **title strip** | It moves with the cursor, keeping the grab point under it | [x] | [ ] |  |
-| F22 | Try to push it off each edge of the screen | It stays fully on screen | [x] | [ ] |  |
-| F23 | Leave it somewhere off-centre, close edit mode, reopen it and click a slot | It opens where you left it, not back in the middle | [x] | [ ] |  |
-| F24 | Press the back button and drag from it | The window does not move - back is checked first, so a slip onto it is still back | [x] | [ ] |  |
-| F25 | With no window open, tap `` ` `` | The set changes, in edit mode | [x] | [ ] |  |
-| F26 | Hold `` ` `` and press a number | It jumps to that set | [x] | [ ] |  |
-| F27 | Click a slot, then change set | The window is put away - it remembered the old set's address - and edit mode stays on | [x] | [ ] |  |
-| F28 | Drag one slot onto another | The two swap entirely | [x] | [ ] |  |
-| F29 | Drag a slot onto genuinely empty screen | It clears that layer only | [x] | [ ] |  |
-| F30 | Drag a slot and drop it on the window | Nothing changes, and nothing is said | [x] | [ ] |  |
-| F31 | Drag an action from the list onto a slot | **Nothing happens.** Drag-to-bind went with the wizard | [x] | [ ] |  |
-| F32 | While the binder is open, hold `;` and press slot keys | The bar does not activate and nothing fires | [x] | [ ] | Nothing fires, binder open or closed. Note: the side held to open edit mode stays lit, since the widget freezes the display when the mode opens |
-| F33 | Press `=` | Edit mode closes | [x] | [ ] |  |
-| F34 | Open and close it a few times, watching the frame it opens on | No stutter or hitch as it appears | [x] | [ ] |  |
-| F35 | Read the window at arm's length | 18pt is comfortably readable, and 920x600 fits your resolution | [x] | [ ] |  |
+| F1 | Hold `;` and press `=` | Edit mode says so in chat. Nothing is drawn yet - the window appears when you click a slot | [ ] | [ ] |  |
+| F2 | Look at the bar | Slots show `+` for subjob and `*` for context sources | [ ] | [ ] | Unchanged by the rewrite; D12 covered here too |
+| F3 | Click an empty slot | One window opens **dead centre**, titled `pick a layer`, listing the whole stack | [ ] | [ ] |  |
+| F4 | Look at the top left of it | A button reading `[ close ]` - on the first step there is nothing to go back to | [ ] | [ ] |  |
+| F5 | Read the line under the title | It names the slot you clicked in the form you would type - `1L3` | [ ] | [ ] |  |
+| F6 | Click a layer row | The **same** window becomes `pick an action`: categories down the left, actions on the right, and the subhead now names the layer | [ ] | [ ] |  |
+| F7 | Go back and click a **context** layer row instead | The bar previews itself as if that buff were up, and the subhead says which | [ ] | [ ] | Unchanged by the rewrite |
+| F8 | Click a spell or ability | The window becomes `pick a target`, listing every FFXI token with `(no target)` first | [ ] | [ ] |  |
+| F9 | Click `<t>` | It binds with that target, echoes in chat, and the window returns to `pick a layer` | [ ] | [ ] |  |
+| F10 | `//hud crossbar list` | That slot shows the target you picked - the mouse never wrote one before | [ ] | [ ] |  |
+| F11 | Bind something from the **General** category (`draw`, `warp`, `mr`) | No target step at all - it binds straight away | [ ] | [ ] |  |
+| F12 | Hover an action in the list | The right-hand column fills in: name, type, cost, recast, chain property | [ ] | [ ] |  |
+| F13 | Hover a bound slot on the bar | The same column, plus the layer the entry comes from and what it covers | [ ] | [ ] | Details text still overruns the backdrop after the wrap fix - the character budget is an estimate and too generous. Filed as #21 |
+| F14 | Look for **Refresh III**, or any merit spell you know | It is listed and binds | [ ] | [ ] | Unchanged by the rewrite - the catalog content did not move |
+| F15 | Look for an **Enchanted** category | It exists and lists your enchanted gear | [ ] | [ ] |  |
+| F16 | Open a long category and scroll to its last page, then keep scrolling down | It **stops** on the last page. It must not wrap round to the top | [ ] | [ ] |  |
+| F17 | Scroll up past the first page | It stops there too | [ ] | [ ] |  |
+| F18 | Get to the target step, then press back | Back to the action list | [ ] | [ ] |  |
+| F19 | Press back again | Back to the layer list, with the layer choice released | [ ] | [ ] |  |
+| F20 | Press back once more | The window closes. **Edit mode is still on** | [ ] | [ ] |  |
+| F21 | Click a slot, then drag the window by its **title strip** | It moves with the cursor, keeping the grab point under it | [ ] | [ ] |  |
+| F22 | Try to push it off each edge of the screen | It stays fully on screen | [ ] | [ ] |  |
+| F23 | Leave it somewhere off-centre, close edit mode, reopen it and click a slot | It opens where you left it, not back in the middle | [ ] | [ ] |  |
+| F24 | Press the back button and drag from it | The window does not move - back is checked first, so a slip onto it is still back | [ ] | [ ] |  |
+| F25 | With no window open, tap `` ` `` | The set changes, in edit mode | [ ] | [ ] |  |
+| F26 | Hold `` ` `` and press a number | It jumps to that set | [ ] | [ ] |  |
+| F27 | Click a slot, then change set | The window is put away - it remembered the old set's address - and edit mode stays on | [ ] | [ ] |  |
+| F28 | Drag one slot onto another | The two swap entirely | [ ] | [ ] |  |
+| F29 | Drag a slot onto genuinely empty screen | It clears that layer only | [ ] | [ ] |  |
+| F30 | Drag a slot and drop it on the window | Nothing changes, and nothing is said | [ ] | [ ] |  |
+| F31 | Drag an action from the list onto a slot | **Nothing happens.** Drag-to-bind went with the wizard | [ ] | [ ] |  |
+| F32 | While the binder is open, hold `;` and press slot keys | The bar does not activate and nothing fires | [ ] | [ ] | Nothing fires, binder open or closed. Note: the side held to open edit mode stays lit, since the widget freezes the display when the mode opens |
+| F33 | Press `=` | Edit mode closes | [ ] | [ ] |  |
+| F34 | Open and close it a few times, watching the frame it opens on | No stutter or hitch as it appears | [ ] | [ ] |  |
+| F35 | Read the window at arm's length | 18pt is comfortably readable, and 920x600 fits your resolution | [ ] | [ ] |  |
 
 ## G. Counters and the skillchain indicator
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| G1 | On NIN, bind `ma "Utsusemi: Ichi"` to a slot | The corner shows your Shihei count | [x] | [ ] |  |
-| G2 | Spend them all | The count reads 0 and the slot crosses out | [x] | [ ] |  |
-| G3 | On a job without NIN, view that same slot | No count, no red X | [x] | [ ] |  |
-| G4 | On SCH, bind `ja "Accession"` | The corner shows your stratagem charges | [x] | [ ] |  |
-| G5 | Spend one | The number drops and climbs back over time | [x] | [ ] |  |
-| G6 | Use a weaponskill on a mob | The skillchain indicator appears | [x] | [ ] |  |
-| G7 | Watch a bound weaponskill during that window | Its icon changes to the chain it would make | [x] | [ ] |  |
-| G8 | Let the window lapse | The indicator disappears | [x] | [ ] |  |
+| G1 | On NIN, bind `ma "Utsusemi: Ichi"` to a slot | The corner shows your Shihei count | [ ] | [ ] |  |
+| G2 | Spend them all | The count reads 0 and the slot crosses out | [ ] | [ ] |  |
+| G3 | On a job without NIN, view that same slot | No count, no red X | [ ] | [ ] |  |
+| G4 | On SCH, bind `ja "Accession"` | The corner shows your stratagem charges | [ ] | [ ] |  |
+| G5 | Spend one | The number drops and climbs back over time | [ ] | [ ] |  |
+| G6 | Use a weaponskill on a mob | The skillchain indicator appears | [ ] | [ ] |  |
+| G7 | Watch a bound weaponskill during that window | Its icon changes to the chain it would make | [ ] | [ ] |  |
+| G8 | Let the window lapse | The indicator disappears | [ ] | [ ] |  |
 
 ## H. Built-ins
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| H1 | `//hud crossbar draw` | The sword lights above `Set N` and nothing is said in chat - the state is the addon's, and entering it sends no command; again and it clears, disengaging you | [x] | [ ] |  |
-| H2 | Engage a mob without using `draw` | The bar switches to its drawn rotation | [x] | [ ] |  |
-| H3 | Let the mob die | It stays on the drawn rotation | [x] | [ ] |  |
-| H4 | `//hud crossbar mr` | A five-second countdown prints, then you mount | [x] | [ ] |  |
-| H5 | `//hud crossbar mr` while mounted | You dismount immediately, with no countdown | [x] | [ ] |  |
-| H6 | `//hud crossbar mr`, then `/heal` during the countdown | It cancels and says so | [x] | [ ] |  |
-| H7 | `//hud crossbar mr`, then zone during the countdown | It cancels silently | [x] | [ ] |  |
+| H1 | `//hud crossbar draw` | The sword lights above `Set N` and nothing is said in chat - the state is the addon's, and entering it sends no command; again and it clears, disengaging you | [ ] | [ ] |  |
+| H2 | Engage a mob without using `draw` | The bar switches to its drawn rotation | [ ] | [ ] |  |
+| H3 | Let the mob die | It stays on the drawn rotation | [ ] | [ ] |  |
+| H4 | `//hud crossbar mr` | A five-second countdown prints, then you mount | [ ] | [ ] |  |
+| H5 | `//hud crossbar mr` while mounted | You dismount immediately, with no countdown | [ ] | [ ] |  |
+| H6 | `//hud crossbar mr`, then `/heal` during the countdown | It cancels and says so | [ ] | [ ] |  |
+| H7 | `//hud crossbar mr`, then zone during the countdown | It cancels silently | [ ] | [ ] |  |
 | H8 | `//hud crossbar open` | Lists the screens it can open | [ ] | [ ] |  |
 | H9 | `//hud crossbar open equipment` | The equipment window opens | [ ] | [ ] |  |
 | H10 | `//hud crossbar help` | Prints the command list | [ ] | [ ] |  |
