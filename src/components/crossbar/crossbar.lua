@@ -1501,6 +1501,21 @@ local function new(ctx)
 
   --[[ Execution ----------------------------------------------------------- ]]
 
+  --[[ The line for a wait dropped by a re-attach or a detach. Those two
+       used to go in silence, on the reasoning that a reset is not a
+       cancellation worth reporting - but a warp evaporating is: the ring is
+       on your finger, the GearSwap hold has just been let go, and nothing
+       will ever happen. Every OTHER way a wait can end says something, so
+       silence here read as "still waiting" for as long as the player cared
+       to look, which is what hid an intermittent drop from view (Kevin,
+       live client, 2026-08-22). ]]
+  local function dropped_line()
+    if pending_item == nil then
+      return nil
+    end
+    return "crossbar: " .. pending_item.noun .. " dropped - " .. tostring(pending_item.name)
+  end
+
   local function abort_pending(message)
     if pending_item == nil then
       return
@@ -3017,8 +3032,10 @@ local function new(ctx)
          countdown's own reasoning always covered and this did not do: its
          command comes from the configuration being replaced, and it is
          holding a GearSwap slot disabled meanwhile. abort_pending releases
-         every slot it held; the nil message keeps it silent, as above. ]]
-    abort_pending(nil)
+         every slot it held - and unlike the countdown above it SAYS so,
+         because a warp that evaporates in silence is indistinguishable
+         from one still counting down. ]]
+    abort_pending(dropped_line())
     scoped_main, scoped_sub, rescope_want = nil, nil, nil
     counts_dirty = true
     reset_contents()
@@ -3082,8 +3099,9 @@ local function new(ctx)
     -- every one of them, so it goes down with the scope.
     close_edit()
     -- gs enable on every exit path: a logout mid-warp must not leave the
-    -- slot disabled.
-    abort_pending(nil)
+    -- slot disabled. Named, for the reason above - a logout is a place a
+    -- warp really can evaporate from.
+    abort_pending(dropped_line())
     -- A logout (or a reload) invalidates a held cast with everything else.
     -- Belt and braces: the binding store deep-copies on load, so the record
     -- a re-attach resolves can never be the table the press pinned, and the

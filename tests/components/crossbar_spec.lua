@@ -3844,6 +3844,40 @@ describe("crossbar live widget", function()
       assert.is_nil(spoken:find("9...", 1, true), "and the middle stays quiet: " .. spoken)
     end)
 
+    it("says so when a re-attach drops a wait that was in flight", function()
+      --[[ Attach and detach drop a pending wait deliberately - its command
+           comes from a configuration being replaced - and did it in
+           silence, on the reasoning that a reset is not a cancellation
+           worth reporting.
+
+           That reasoning does not survive a warp evaporating: the ring is
+           on your finger, the GearSwap slot has just been let go, and
+           nothing ever happens. It is also exactly what hid an
+           intermittent one from view (Kevin, live client, 2026-08-22) -
+           every OTHER way a wait can end says something, so silence read
+           as "still waiting" for as long as the player cared to look. ]]
+      build_world()
+      env.items[0] = { enabled = true, { id = 28540, slot = 5, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000 + 10,
+        usable = false,
+      }
+      widget.handle_command({ "warp" })
+      env.chat = {}
+      -- A re-attach: what `//hud reset crossbar` and the reload after
+      -- `//hud copy` both do.
+      widget.detach()
+      assert.is_not_nil(said():find("Warp Ring", 1, true), "it names what it dropped: " .. said())
+      local released = false
+      for _, command in ipairs(env.commands) do
+        released = released or command == "gs enable ring1"
+      end
+      assert.is_true(released, "and still lets go of the slot")
+    end)
+
     it("fires the rung it announced, not a better one that appeared meanwhile", function()
       --[[ The ladder used to be walked AGAIN when the countdown ended, so
            the freshest rung won. The opening line names the rung now, and a
