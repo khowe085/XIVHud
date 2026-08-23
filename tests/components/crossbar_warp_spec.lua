@@ -234,8 +234,8 @@ describe("crossbar warp", function()
         -- In its own words: MyHome's bare "Warp Ring." means out of
         -- charges, which is a different thing to do something about.
         "Warp Ring: warm-up too long.",
-        "You don't have Warp Cudgel.",
         "You don't have Instant Warp.",
+        "You don't have Warp Cudgel.",
       }, plan.notes, "one note for the ring, then the rungs below it")
     end)
 
@@ -247,6 +247,64 @@ describe("crossbar warp", function()
       state.items[0][1].status = 5
       local plan = build(state).plan()
       assert.equal("use", plan.type)
+    end)
+
+    it("puts Instant Warp above the Warp Cudgel", function()
+      --[[ Kevin's order (2026-08-23): a scroll is consumable but INSTANT,
+           while the cudgel wants a weapon slot and a warm-up - so reaching
+           for the cudgel first costs a swap the scroll does not. The
+           by-name rungs below add no note here, having no id to look for
+           without the resources. ]]
+      local plan = build({ items = {} }).plan()
+      assert.are.same({
+        "You don't have Warp Ring.",
+        "You don't have Instant Warp.",
+        "You don't have Warp Cudgel.",
+      }, plan.notes, "the ladder in order, top to bottom")
+    end)
+
+    it("reaches Treat Staff II below the cudgel, into the main-hand slot", function()
+      --[[ A main weapon with a thirty-second warm-up, so the cudgel's
+           shape exactly - and it sits under it (Kevin, 2026-08-23). The
+           rung names its own slot rather than trusting the resource's
+           `slots`, which is still an open in-client question. ]]
+      local staff = 12345
+      local plan = build({
+        resources = { ["treat staff ii"] = { id = staff, en = "Treat Staff II" } },
+        items = { [0] = { enabled = true, { id = staff, status = 0, slot = 3 } } },
+        ext = { [staff] = { type = "Enchanted Equipment", charges_remaining = 1, next_use_time = READY } },
+      }).plan()
+      assert.equal("equip", plan.type)
+      assert.equal("Treat Staff II", plan.name)
+      assert.equal(0, plan.equip_slot, "the main hand")
+    end)
+
+    it("never reaches Treat Staff II while the cudgel can go", function()
+      -- Below it, so a cudgel that can fire is the one that does.
+      local plan = build({
+        resources = { ["treat staff ii"] = { id = 12345, en = "Treat Staff II" } },
+        items = {
+          [0] = {
+            enabled = true,
+            { id = CUDGEL, status = 0, slot = 1 },
+            { id = 12345, status = 0, slot = 3 },
+          },
+        },
+        ext = {
+          [CUDGEL] = { type = "Enchanted Equipment", charges_remaining = 1, next_use_time = READY },
+          [12345] = { type = "Enchanted Equipment", charges_remaining = 1, next_use_time = READY },
+        },
+      }).plan()
+      assert.equal("Warp Cudgel", plan.name)
+    end)
+
+    it("gives Treat Staff II the headroom its warm-up needs", function()
+      -- The test is `warm > bound`, so the default would refuse it on any
+      -- slop at all - equip latency, a poll landing late, a rounded
+      -- timestamp - which is why the Tavnazian Ring carries forty too.
+      local enchanted = require("components/crossbar/enchanted")
+      assert.are.equal(40, enchanted.give_up_for("Treat Staff II"))
+      assert.are.equal(40, enchanted.give_up_for("treat staff ii"), "folded, like every other name here")
     end)
 
     it("falls to the Tavnazian Ring when every rung above it is unavailable", function()
@@ -297,8 +355,8 @@ describe("crossbar warp", function()
       assert.equal("none", plan.type, "no command at all, least of all a doomed one")
       assert.are.same({
         "You don't have Warp Ring.",
-        "You don't have Warp Cudgel.",
         "You don't have Instant Warp.",
+        "You don't have Warp Cudgel.",
         "Cannot tell which slot Tavnazian Ring goes in.",
       }, plan.notes)
     end)
@@ -313,8 +371,8 @@ describe("crossbar warp", function()
       assert.equal("none", plan.type)
       assert.are.same({
         "You don't have Warp Ring.",
-        "You don't have Warp Cudgel.",
         "You don't have Instant Warp.",
+        "You don't have Warp Cudgel.",
       }, plan.notes, "silently: an item we cannot even name is not one to report missing")
     end)
 
@@ -479,8 +537,8 @@ describe("crossbar warp", function()
       assert.equal("none", plan.type)
       assert.same({
         "You don't have Warp Ring.",
-        "You don't have Warp Cudgel.",
         "You don't have Instant Warp.",
+        "You don't have Warp Cudgel.",
       }, plan.notes)
     end)
   end)

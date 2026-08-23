@@ -199,7 +199,7 @@ binder are gone - they were answers about code that no longer exists.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| I1 | With no warp item and no Warp spell, `//hud crossbar warp` | Says what you are missing, one rung at a time - "You don't have Warp Ring.", then Warp Cudgel, Instant Warp, Tavnazian Ring | [ ] | [ ] |  |
+| I1 | With no warp item and no Warp spell, `//hud crossbar warp` | Says what you are missing, one rung at a time, in ladder order: Warp Ring, Instant Warp, Warp Cudgel, Treat Staff II, Tavnazian Ring. A rung it cannot even name is skipped silently rather than reported | [ ] | [ ] |  |
 | I2 | Holding an **Instant Warp** only, `//hud crossbar warp` | Counts down naming the item - `Instant Warp in 5 seconds. /heal to cancel.`, then `4...` down to `1...` - then uses it | [ ] | [ ] |  |
 | I3 | Holding a **Warp Ring** in your bag (not worn), `//hud crossbar warp` | No countdown up front: says `warping with Warp Ring - equipping it first.` and puts it on, then once it can read the warm-up says `Warp Ring ready in N seconds. /heal to cancel.`, counts only the last five (`5...` down to `1...`), then fires | [ ] | [ ] |  |
 | I4 | Straight after I3 | Your gear swapping still works normally | [ ] | [ ] |  |

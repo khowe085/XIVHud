@@ -290,6 +290,9 @@ end
      refuses. Ten seconds of headroom covers the slop, not the warmup. ]]
 local GIVE_UP_BY_NAME = {
   ["tavnazian ring"] = 40,
+  -- Thirty seconds too (Kevin, 2026-08-23), and so the same headroom for
+  -- the same slop - the bound is not the warm-up.
+  ["treat staff ii"] = 40,
 }
 
 --- The give-up bound for a named item: its own where it has one, the module

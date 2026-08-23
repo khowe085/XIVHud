@@ -97,10 +97,20 @@ local EQUIPPED = enchanted.EQUIPPED
      to come up is a fact about the ITEM, so `enchanted.give_up_for` answers
      it and a slot bound `enchanteditem "<the same ring>"` waits exactly as
      long as the rung does. ]]
+--[[ Kevin's order (2026-08-23). A scroll is consumable but INSTANT, while
+     the cudgel wants a weapon slot and a warm-up, so reaching for the
+     cudgel first costs a swap the scroll does not - which is why Instant
+     Warp climbed above it. Treat Staff II is the cudgel's shape exactly, a
+     main weapon with a warm-up, so it sits directly under it. ]]
 local LADDER = {
   { id = 28540, name = "Warp Ring", equip_slot = 13 },
-  { id = 17040, name = "Warp Cudgel", equip_slot = 0 },
   { id = 4181, name = "Instant Warp" },
+  { id = 17040, name = "Warp Cudgel", equip_slot = 0 },
+  --[[ Resolved by name, like the ring below it: the slot is written here
+       because it is a fact about the piece, but its warm-up bound lives
+       with the item in enchanted.lua so a slot bound `enchanteditem "Treat
+       Staff II"` waits exactly as long as this rung does. ]]
+  { name = "Treat Staff II", equip_slot = 0 },
   --[[ The item of last resort (Kevin, 2026-08-20). Its id is not written
        here on purpose, and neither is its warmup bound - that lives with
        the item in enchanted.lua, so a slot bound `enchanteditem "Tavnazian
