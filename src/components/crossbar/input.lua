@@ -330,16 +330,31 @@ local function new(deps)
         -- are using them (the set-jump chord must not leak bare numbers).
         block = true
       else
-        --[[ Slot keys are the game's the moment we are not using them.
+        --[[ Slot keys are the game's the moment we are not using them, and
+             what counts as "using" differs by mode.
 
-             Edit mode is NOT among the states that hand them back any
-             more: the set-jump chord is live in it (Kevin, 2026-08-22), so
-             a slot key pressed over the held switch is one we are using,
-             and letting it through as well would fire FFXI's own macro
-             palette underneath the jump. The switch is the only thing edit
-             mode leaves live, which is exactly the condition on the right. ]]
-        local using = after ~= "none" or role_held("switch")
-        block = not (suppressed or layout_mode) and using and not (edit_mode and after ~= "none")
+             Edit mode fires nothing FROM a hold state - no slot acts - so
+             a side being down leaves the numbers to the game. But the
+             set-jump chord IS live there (Kevin, 2026-08-22), so a slot key
+             over the held switch is one we are using, and letting it
+             through as well fires FFXI's macro palette underneath the jump.
+
+             The switch alone, therefore - never the hold state. Gating this
+             on the hold state instead was wrong in the commonest case
+             there is: edit mode is ENTERED by holding a side and pressing
+             Select, and the machine goes on tracking that side, so the
+             mode's own entry state was the one that leaked. ]]
+        --[[ An if, not `a and b or c`: with the switch up that idiom's
+             first half is false and it falls straight through to the
+             other mode's expression, which is how the side-held case kept
+             the OLD answer. ]]
+        local using
+        if edit_mode then
+          using = role_held("switch")
+        else
+          using = after ~= "none" or role_held("switch")
+        end
+        block = not (suppressed or layout_mode) and using
       end
       latched[dik] = block or nil
     end

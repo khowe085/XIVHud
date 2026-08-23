@@ -3783,7 +3783,13 @@ describe("crossbar live widget", function()
       env.player.vitals.mp = 150
       env.known_spells = { [262] = true }
       tick_to(5)
-      assert.are.same({ 'input /ma "Warp II" <me>' }, env.commands, "the rung is re-picked when it fires")
+      --[[ The rung it ANNOUNCED, not the one the ladder would pick now.
+           A slot bound to `warp` used to re-walk when the countdown ended,
+           while the `//hud crossbar warp` verb had already stopped - so
+           the same trip obeyed two different rules depending on how it was
+           pressed, and only the slot could name one item and fire
+           another. ]]
+      assert.are.same({ 'input /ma "Warp" <me>' }, env.commands, "what the countdown named")
     end)
 
     it("skips the countdown for a rung it has to equip and warm up", function()

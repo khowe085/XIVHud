@@ -751,12 +751,11 @@ give you, so five more seconds on top buys nothing. Everything else counts
 down, including a ring you are already wearing with its charge ready: that one
 fires the moment it is asked, so the countdown is the only window it has.
 
-**The plan is worked out twice** — once when you press, to decide whether to
-wait at all, and again when the five seconds are up, so what fires is the best
-warp you have *then*. Cast Warp with the MP for it and lose that MP in the
-meantime and it will not cast it. The same is true of `mr`: it picks the mount
-when it goes, not when you press, and if something else has put you on a mount
-by then it dismounts you instead.
+**The plan is worked out once, when you press** — and the countdown names it,
+so what you were told is what fires. Lose the MP for Warp during those five
+seconds and it will still try to cast it and fail, rather than quietly
+spending an item you were not offered. `mr` works the same way: the mount is
+picked at the press.
 
 A mount bound from `//hud crossbar edit` reads back lowercase — `Mount chocobo
 in 5 seconds.` — because the mount list the binder is built from is lowercase

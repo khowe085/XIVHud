@@ -26,27 +26,38 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ Edit mode: the mouse-driven binder. Three surfaces - the bar's own
-     slots, the stack panel beside the clicked slot, and the catalog above
-     the bar - and nothing but `(type, x, y, delta)` tuples driving them.
+--[[ Edit mode: the mouse-driven binder. Two surfaces - the bar's own
+     slots and ONE window - and nothing but `(type, x, y, delta)` tuples
+     driving them.
 
-     The stack panel is the fix for the overlay system the reference fork made
+     It was three surfaces until 2026-08-22 (a stack panel beside the
+     clicked slot and a catalog above the bar), which failed in a live
+     client: the panel drew under the NEIGHBOURING slots' labels, and
+     Windower renders every `texts` object above every `images` one, so no
+     creation order could lift a backdrop clear of them. Centring is the
+     only fix, and once everything is centred there is no reason for it to
+     be three.
+
+     The window is the fix for the overlay system the reference fork made
      "cumbersome and hard to wrap my head around": there the edit target was
      sticky global state, set elsewhere and invisible at bind time. Here it
      is chosen at the slot, at bind time, on screen, and nothing is sticky -
-     closing the panel or clicking another slot clears it.
+     closing the window or clicking another slot clears it.
 
      Two rules that look like details and are not:
 
-       * The catalog stays LOCKED until a layer row is clicked. Every bind
-         is an explicit two-step (slot -> layer -> action); nothing is ever
-         inferred. A drag out of the catalog therefore always has a layer
-         already, so drag-to-bind cannot bypass the safeguard either.
+       * Each step is EXPLICIT: slot -> layer -> action -> target, nothing
+         inferred, and the step you are on is the only thing the window
+         shows. Drag-to-bind was removed with the wizard - a drag that
+         half-bound something, with no target step and no confirmation,
+         would be a second and quieter path that could disagree with the
+         three steps.
        * A press becomes a DRAG only after the cursor leaves the thing it
          started on; below that it is a click. The reference has no such
          threshold, which makes a plain click a zero-distance drag whose
          fate depends on its two disagreeing hit-tests. Ours hit-tests once,
-         through the same render.lua geometry the bar is drawn with.
+         through the same render.lua geometry the bar is drawn with. The
+         title strip is the one exception and says so where it is read.
 
      Prims exist only while edit mode is open: they are built by open() and
      destroyed by close(), so nothing here is on the per-frame path when the
@@ -1267,10 +1278,10 @@ local function new(deps)
   local function on_drop(origin, target)
     if origin.kind == "slot" then
       if target == nil then
-        --[[ GENUINELY empty space only - the wiki's own words. The stack
-             panel opens eight pixels from the slot, so a drop onto one of
-             the binder's own surfaces is the commonest miss there is, and
-             it cancels quietly rather than deleting. Deliberately
+        --[[ GENUINELY empty space only - the wiki's own words. The window
+             fills the middle of the screen, so a drop landing on it is the
+             commonest miss there is, and it cancels quietly rather than
+             deleting. Deliberately
              asymmetric with the slot-to-slot swap: moving a button takes
              everything about it, deleting only ever touches the one plane
              being edited. ]]
@@ -1424,9 +1435,12 @@ local function new(deps)
     end
     if kind == MOVE then
       if press ~= nil then
-        if press.target.kind == "header" then
-          -- The grab point stays under the cursor, so the window does not
-          -- jump to have its corner there on the first pixel of movement.
+        if press.target.kind == "header" and (press.drag or not inside(x, y, press.rect)) then
+          --[[ The same threshold every other press here uses: a drag
+               starts once the cursor LEAVES what it started on. Without it
+               a one-pixel slip while clicking the strip wrote the config
+               file. The grab point stays under the cursor either way, so
+               the window does not jump to have its corner there. ]]
           press.drag = true
           position = { x = 0, y = 0 }
           position.x, position.y = clamp_to_screen(x - press.offset.x, y - press.offset.y)

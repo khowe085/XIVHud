@@ -806,6 +806,20 @@ describe("crossbar input", function()
       assert.is_true(blocked, "the bare number must not reach the game")
       release(input, 4)
       release(input, 41)
+
+      --[[ And with a SIDE still down, which is edit mode's own entry
+           state: the mode is opened by holding a side and pressing Select,
+           and the machine goes on tracking that side. The first fix gated
+           the block on the hold state, so the commonest way to be in edit
+           mode was the one way the number still leaked. ]]
+      press(input, 39)
+      press(input, 41)
+      intents, blocked = press(input, 4)
+      assert.is_not_nil(intent_of(intents, "jump"), "the chord still jumps with a side held")
+      assert.is_true(blocked, "and the number is still swallowed")
+      release(input, 4)
+      release(input, 41)
+      release(input, 39)
     end)
 
     it("keeps our five keys blocked while slot keys fall through", function()

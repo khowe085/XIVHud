@@ -1780,7 +1780,10 @@ local function new(ctx)
            gets, and saying nothing beats promising a zero. ]]
       if remaining > 0 then
         if pending_item.said == nil then
-          pending_item.said = remaining + 1
+          -- The opening line has already spoken this second, so the count
+          -- starts below it - travel.arm seeds its own the same way, and
+          -- `remaining + 1` made a short warm-up say the number twice.
+          pending_item.said = remaining
           say(
             "crossbar: "
               .. tostring(pending_item.name)
@@ -1872,9 +1875,13 @@ local function new(ctx)
        `delay` of zero.
 
        `fire` is how the press goes when the countdown ends, and the default
-       RE-RESOLVES rather than closing over the plan computed at the press:
-       five seconds is long enough for the ladder's rung, the mount pick or
-       the mounted state to have moved on, and the later one wins. ]]
+       closes over the plan computed AT THE PRESS. It used to re-resolve,
+       on the reasoning that five seconds is long enough for the ladder's
+       rung or the mounted state to have moved on and the later one should
+       win - but the opening line NAMES the rung now, and a line promising
+       one item while another goes is the worse trade (Kevin, 2026-08-22).
+       The warp verb passes its own `fire` closing over the same walk, so
+       every frontend obeys one rule. ]]
   --[[ The config modes: `//hud layout` and the binder are for arranging
        the HUD, not for playing in. Answers the open one by the name the
        player types, or nil. Layout mode is asked first because entering it
@@ -1914,8 +1921,14 @@ local function new(ctx)
     end
     local message = travel.arm({
       label = label,
+      --[[ The PLAN, not the record: the countdown's opening line names the
+           rung, so re-resolving when it ends could fire something the
+           player was never told about. The warp verb closed over its
+           ladder walk already; this is the same rule for every other
+           frontend, the slot included, which used to re-pick and could
+           therefore name one item and spend another. ]]
       fire = fire or function()
-        execute(actions.resolve(record, draw_state()))
+        execute(plan)
       end,
     })
     if message == nil then
