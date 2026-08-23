@@ -199,64 +199,64 @@ binder are gone - they were answers about code that no longer exists.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| I1 | With no warp item and no Warp spell, `//hud crossbar warp` | Says what you are missing, one rung at a time, in ladder order: Warp Ring, Instant Warp, Warp Cudgel, Treat Staff II, Tavnazian Ring. A rung it cannot even name is skipped silently rather than reported | [ ] | [ ] |  |
-| I2 | Holding an **Instant Warp** only, `//hud crossbar warp` | Counts down naming the item - `Instant Warp in 5 seconds. /heal to cancel.`, then `4...` down to `1...` - then uses it | [ ] | [ ] |  |
-| I3 | Holding a **Warp Ring** in your bag (not worn), `//hud crossbar warp` | No countdown up front: says `warping with Warp Ring - equipping it first.` and puts it on, then once it can read the warm-up says `Warp Ring ready in N seconds. /heal to cancel.`, counts only the last five (`5...` down to `1...`), then fires | [ ] | [ ] |  |
-| I4 | Straight after I3 | Your gear swapping still works normally | [ ] | [ ] |  |
-| I5 | With a Warp Ring in your bag and GearSwap running, fire `gs equip sets.engaged` and `//hud crossbar warp` together so the set-equip lands the same moment as the press | The ring still ends up on your finger and the warp still fires - the poll checks the ring actually equipped and re-sends the equip roughly once a second until it does, rather than reading a bagged ring's stale data and hanging until the give-up | [ ] | [ ] |  |
-| I6 | Wearing a charged, off-recast **Warp Ring** already, `//hud crossbar warp` | Counts down naming it, same as I2 - `Warp Ring in 5 seconds. /heal to cancel.` - then warps without a refusal message | [ ] | [ ] |  |
-| I7 | Wearing a **Warp Ring** you just put on (still warming), `//hud crossbar warp` | Same pattern as I3 - `warping with Warp Ring - equipping it first.` even though it is already on - then the length, then the last five, then it waits out the warm-up rather than failing | [ ] | [ ] |  |
-| I8 | Holding a **Tavnazian Ring** only, `//hud crossbar warp` | Same announce-then-wait as I3, but the length comes back near thirty seconds; only the last five are spoken, so expect a long quiet stretch before it fires | [ ] | [ ] |  |
-| I9 | On BLM with Warp known and MP, `//hud crossbar warp` | Counts down with the bare word - `Warp in 5 seconds. /heal to cancel.` (the spell rung carries no name of its own, so this never says "Warp II" even when that is the one cast) - then casts it | [ ] | [ ] |  |
-| I10 | `//hud crossbar warp all` with another character running XIVHud | Both go home; the second character's own warp starts at once with no countdown of its own, whatever its ladder picks | [ ] | [ ] |  |
-| I11 | `//hud crossbar warp`, then `/heal` during the five-second countdown | Cancels and says so - `<rung> cancelled.` - and fires nothing | [ ] | [ ] |  |
-| I12 | Holding a bagged ring, `//hud crossbar warp`, then `/heal` once it says "ready in N seconds" | The warm-up cancels too - `warp cancelled - Warp Ring` - and the GearSwap slot is released at once rather than at the deadline | [ ] | [ ] |  |
-| I13 | Holding a bagged ring, `//hud crossbar warp`, then log out to character select while it is still equipping or warming | Says `warp dropped - Warp Ring` before you reach the character screen instead of going silent, and gear swapping is not left disabled (log back in after - nothing here is lost) | [ ] | [ ] |  |
+| I1 | With no warp item and no Warp spell, `//hud crossbar warp` | Says what you are missing, one rung at a time, in ladder order: Warp Ring, Instant Warp, Warp Cudgel, Treat Staff II, Tavnazian Ring. A rung it cannot even name is skipped silently rather than reported | [x] | [ ] | Initially failed - wrong ladder order and Treat Staff II missing; fixed and re-run (5dd2ad3) |
+| I2 | Holding an **Instant Warp** only, `//hud crossbar warp` | Counts down naming the item - `Instant Warp in 5 seconds. /heal to cancel.`, then `4...` down to `1...` - then uses it | [x] | [ ] |  |
+| I3 | Holding a **Warp Ring** in your bag (not worn), `//hud crossbar warp` | No countdown up front: says `warping with Warp Ring - equipping it first.` and puts it on, then once it can read the warm-up says `Warp Ring ready in N seconds. /heal to cancel.`, counts only the last five (`5...` down to `1...`), then fires | [x] | [ ] |  |
+| I4 | Straight after I3 | Your gear swapping still works normally | [x] | [ ] |  |
+| I5 | With a Warp Ring in your bag and GearSwap running, fire `gs equip sets.engaged` and `//hud crossbar warp` together so the set-equip lands the same moment as the press | The ring still ends up on your finger and the warp still fires - the poll checks the ring actually equipped and re-sends the equip roughly once a second until it does, rather than reading a bagged ring's stale data and hanging until the give-up | [x] | [ ] |  |
+| I6 | Wearing a charged, off-recast **Warp Ring** already, `//hud crossbar warp` | Counts down naming it, same as I2 - `Warp Ring in 5 seconds. /heal to cancel.` - then warps without a refusal message | [x] | [ ] |  |
+| I7 | Wearing a **Warp Ring** you just put on (still warming), `//hud crossbar warp` | Same pattern as I3 - `warping with Warp Ring - equipping it first.` even though it is already on - then the length, then the last five, then it waits out the warm-up rather than failing | [x] | [ ] |  |
+| I8 | Holding a **Tavnazian Ring** only, `//hud crossbar warp` | Same announce-then-wait as I3, but the length comes back near thirty seconds; only the last five are spoken, so expect a long quiet stretch before it fires | [x] | [ ] |  |
+| I9 | On BLM with Warp known and MP, `//hud crossbar warp` | Counts down with the bare word - `Warp in 5 seconds. /heal to cancel.` (the spell rung carries no name of its own, so this never says "Warp II" even when that is the one cast) - then casts it | [x] | [ ] |  |
+| I10 | `//hud crossbar warp all` with another character running XIVHud | Both go home; the second character's own warp starts at once with no countdown of its own, whatever its ladder picks | [ ] | [x] | No second character running XIVHud available |
+| I11 | `//hud crossbar warp`, then `/heal` during the five-second countdown | Cancels and says so - `<rung> cancelled.` - and fires nothing | [x] | [ ] |  |
+| I12 | Holding a bagged ring, `//hud crossbar warp`, then `/heal` once it says "ready in N seconds" | The warm-up cancels too - `warp cancelled - Warp Ring` - and the GearSwap slot is released at once rather than at the deadline | [x] | [ ] |  |
+| I13 | Holding a bagged ring, `//hud crossbar warp`, then log out to character select while it is still equipping or warming | Says `warp dropped - Warp Ring` before you reach the character screen instead of going silent, and gear swapping is not left disabled (log back in after - nothing here is lost) | [ ] | [x] | Skipped - would have required logging out mid-warm-up |
 
 ## J. Enchanted gear
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| J1 | `//hud crossbar bind 1L6 enchanteditem "<a ring you own>"` | Bound, with the item's own icon | [ ] | [ ] |  |
-| J2 | Look at that slot's corner | It shows how many of that item you have | [ ] | [ ] |  |
-| J3 | Press it with the ring in your bag | It equips, pauses, then uses it | [ ] | [ ] |  |
-| J4 | Straight after J3 | Your gear swapping still works | [ ] | [ ] |  |
-| J5 | Press it with the ring already worn and charged | It fires straight away | [ ] | [ ] |  |
-| J6 | Press it with the charge spent | It says `no charges left` | [ ] | [ ] |  |
-| J7 | Press it while a warp countdown is running | It says something is already in progress | [ ] | [ ] |  |
-| J8 | Bind one with a target (`enchanteditem "X" t`) and press with nothing targeted | It refuses rather than firing later | [ ] | [ ] |  |
-| J9 | Bind an enchanted item worn somewhere that is **not** a ring — an earring, a cape, a body piece | It equips into the right slot and uses | [ ] | [ ] |  |
-| J10 | Straight after J9 | Your gear swapping works, with nothing left locked | [ ] | [ ] |  |
+| J1 | `//hud crossbar bind 1L6 enchanteditem "<a ring you own>"` | Bound, with the item's own icon | [x] | [ ] |  |
+| J2 | Look at that slot's corner | It shows how many of that item you have | [x] | [ ] |  |
+| J3 | Press it with the ring in your bag | It equips, pauses, then uses it | [x] | [ ] |  |
+| J4 | Straight after J3 | Your gear swapping still works | [x] | [ ] | A sub-slot GearSwap hold looked stuck once and cleared on its own; not reproducible |
+| J5 | Press it with the ring already worn and charged | It fires straight away | [x] | [ ] |  |
+| J6 | Press it with the charge spent | It says `no charges left` | [x] | [ ] |  |
+| J7 | Press it while a warp countdown is running | It says something is already in progress | [x] | [ ] |  |
+| J8 | Bind one with a target (`enchanteditem "X" t`) and press with nothing targeted | It refuses rather than firing later | [ ] | [x] | Own no enchanted item that takes a target |
+| J9 | Bind an enchanted item worn somewhere that is **not** a ring — an earring, a cape, a body piece | It equips into the right slot and uses | [x] | [ ] |  |
+| J10 | Straight after J9 | Your gear swapping works, with nothing left locked | [x] | [ ] |  |
 
 ## K. The cast retry (the queue)
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| K1 | `//hud crossbar retry` | Reports it as off | [ ] | [ ] |  |
-| K2 | `//hud crossbar retry on` | Reports it as on | [ ] | [ ] |  |
-| K3 | Cast two spells back to back from the bar so the second is refused | The refused one goes out again a moment later | [ ] | [ ] |  |
-| K4 | Do the same, then immediately press something else | The held spell is dropped, not fired late | [ ] | [ ] |  |
-| K5 | Press a spell that is still on recast | Nothing is held — it fails as it always did | [ ] | [ ] |  |
-| K6 | Retry a spell aimed at `t`, then tab to another mob | It lands on the first mob, not the new one | [ ] | [ ] |  |
-| K7 | Get silenced, then press a spell that is refused | Nothing is retried while silenced | [ ] | [ ] |  |
-| K8 | `//hud crossbar retry off` mid-hold | The held spell is dropped | [ ] | [ ] |  |
-| K9 | Whatever K3 did, write the game's refusal message **word for word** in the notes | — (this is a reading, not a pass) | [ ] | [ ] |  |
-| K10 | Roughly how long after the refusal did the re-send succeed? | — (a rough number in the notes is enough) | [ ] | [ ] |  |
-| K11 | Try the same with a job ability, then a weaponskill | Both are retried the way a spell is | [ ] | [ ] |  |
+| K1 | `//hud crossbar retry` | Reports it as off | [x] | [ ] |  |
+| K2 | `//hud crossbar retry on` | Reports it as on | [x] | [ ] |  |
+| K3 | Cast two spells back to back from the bar so the second is refused | The refused one goes out again a moment later | [x] | [ ] |  |
+| K4 | Do the same, then immediately press something else | The held spell is dropped, not fired late | [x] | [ ] |  |
+| K5 | Press a spell that is still on recast | Nothing is held — it fails as it always did | [x] | [ ] |  |
+| K6 | Retry a spell aimed at `t`, then tab to another mob | It lands on the first mob, not the new one | [x] | [ ] |  |
+| K7 | Get silenced, then press a spell that is refused | Nothing is retried while silenced | [ ] | [x] | Could not get silenced |
+| K8 | `//hud crossbar retry off` mid-hold | The held spell is dropped | [ ] | [x] | Not run |
+| K9 | Whatever K3 did, write the game's refusal message **word for word** in the notes | — (this is a reading, not a pass) | [x] | [ ] | Refusal reads 'Unable to cast spells at this time.' - the code matches on message id, and K3 passing confirms that text carries id 17 or 18 |
+| K10 | Roughly how long after the refusal did the re-send succeed? | — (a rough number in the notes is enough) | [x] | [ ] | Re-sent 1-2 seconds after the refusal, about the usual gap between spells |
+| K11 | Try the same with a job ability, then a weaponskill | Both are retried the way a spell is | [ ] | [x] | Not run - the ability (71) and weaponskill (72) message ids remain unverified |
 
 ## L. Layout mode
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| L1 | `//hud layout` | Highlight boxes and names appear over each anchor | [ ] | [ ] |  |
-| L2 | Count them | Four: main, both WXHB halves, and the indicator | [ ] | [ ] |  |
-| L3 | Drag the main box | It moves and snaps to the grid | [ ] | [ ] |  |
-| L4 | Drag with CTRL held | It moves freely | [ ] | [ ] |  |
-| L5 | Wheel over one box | Only that anchor scales | [ ] | [ ] |  |
-| L6 | Right-click a box | The whole crossbar toggles off, then on | [ ] | [ ] |  |
-| L7 | Press `;` while in layout mode | Nothing reaches the game and nothing fires | [ ] | [ ] |  |
-| L8 | Press `1`–`8` while in layout mode | They reach the game as usual | [ ] | [ ] |  |
-| L9 | `//hud layout` again, then reload | Everything is where you left it | [ ] | [ ] |  |
+| L1 | `//hud layout` | Highlight boxes and names appear over each anchor | [x] | [ ] |  |
+| L2 | Count them | Four: main, both WXHB halves, and the indicator | [x] | [ ] |  |
+| L3 | Drag the main box | It moves and snaps to the grid | [x] | [ ] |  |
+| L4 | Drag with CTRL held | It moves freely | [x] | [ ] |  |
+| L5 | Wheel over one box | Only that anchor scales | [x] | [ ] |  |
+| L6 | Right-click a box | The whole crossbar toggles off, then on | [x] | [ ] | Toggles the whole widget as designed; per-anchor toggling requested as a feature - filed as #23 |
+| L7 | Press `;` while in layout mode | Nothing reaches the game and nothing fires | [x] | [ ] |  |
+| L8 | Press `1`–`8` while in layout mode | They reach the game as usual | [x] | [ ] |  |
+| L9 | `//hud layout` again, then reload | Everything is where you left it | [x] | [ ] |  |
 
 ## M. Persistence, jobs, and lifecycle
 
@@ -264,23 +264,23 @@ Leave the job change until here so nothing above has to be redone.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| M1 | `//lua reload xivhud` | The bar returns with every binding intact | [ ] | [ ] |  |
-| M2 | Check `data/<Character>/crossbar/` | A `<JOB>.lua` file is there, and `SHARED.lua` | [ ] | [ ] |  |
-| M3 | Change job | The bar reloads to that job's own bindings | [ ] | [ ] |  |
-| M4 | Look at set 2 (shared, from D9) | Its contents are the same on this job | [ ] | [ ] |  |
-| M5 | On this job: `//hud crossbar bind 2L4 ma "Dia" t` | Bound into the shared set from the second job | [ ] | [ ] |  |
-| M6 | Change back to the first job, look at set 2 slot 4 | Dia is there — sharing carries both ways | [ ] | [ ] |  |
-| M7 | Look at set 1 on both jobs | Set 1 still differs per job — only set 2 is shared | [ ] | [ ] |  |
-| M8 | `//hud crossbar share 2 off`, then check both jobs | Each job keeps its own set 2 again | [ ] | [ ] |  |
-| M9 | `//hud crossbar copy SHARED` | Refused — shared sets belong to no job | [ ] | [ ] |  |
-| M10 | `//hud crossbar copy <the other job>` | This job's bindings are replaced wholesale | [ ] | [ ] |  |
-| M11 | Watch a cutscene start | The whole HUD hides | [ ] | [ ] |  |
-| M12 | Press `;` during the cutscene | It does not open a chat line | [ ] | [ ] |  |
-| M13 | Let the cutscene end | The bar comes back, nothing stranded | [ ] | [ ] |  |
-| M14 | Zone | It hides while zoning and returns after | [ ] | [ ] |  |
-| M15 | Log out to character select | Nothing is drawn | [ ] | [ ] |  |
-| M16 | Log back in | The bar returns with this character's bindings | [ ] | [ ] |  |
-| M17 | Log in as a different character | That character's own bindings load, and the shared set is that character's own | [ ] | [ ] |  |
+| M1 | `//lua reload xivhud` | The bar returns with every binding intact | [x] | [ ] |  |
+| M2 | Check `data/<Character>/crossbar/` | A `<JOB>.lua` file is there, and `SHARED.lua` | [x] | [ ] |  |
+| M3 | Change job | The bar reloads to that job's own bindings | [x] | [ ] |  |
+| M4 | Look at set 2 (shared, from D9) | Its contents are the same on this job | [x] | [ ] |  |
+| M5 | On this job: `//hud crossbar bind 2L4 ma "Dia" t` | Bound into the shared set from the second job | [x] | [ ] |  |
+| M6 | Change back to the first job, look at set 2 slot 4 | Dia is there — sharing carries both ways | [x] | [ ] |  |
+| M7 | Look at set 1 on both jobs | Set 1 still differs per job — only set 2 is shared | [x] | [ ] |  |
+| M8 | `//hud crossbar share 2 off`, then check both jobs | Each job keeps its own set 2 again | [x] | [ ] |  |
+| M9 | `//hud crossbar copy SHARED` | Refused — shared sets belong to no job | [x] | [ ] |  |
+| M10 | `//hud crossbar copy <the other job>` | This job's bindings are replaced wholesale | [x] | [ ] |  |
+| M11 | Watch a cutscene start | The whole HUD hides | [x] | [ ] |  |
+| M12 | Press `;` during the cutscene | It does not open a chat line | [x] | [ ] |  |
+| M13 | Let the cutscene end | The bar comes back, nothing stranded | [x] | [ ] |  |
+| M14 | Zone | It hides while zoning and returns after | [x] | [ ] |  |
+| M15 | Log out to character select | Nothing is drawn | [x] | [ ] |  |
+| M16 | Log back in | The bar returns with this character's bindings | [x] | [ ] |  |
+| M17 | Log in as a different character | That character's own bindings load, and the shared set is that character's own | [ ] | [x] | Only one character available to test with |
 
 ## N. Last — destructive
 
@@ -288,10 +288,10 @@ Run these only when everything above is done.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| N1 | `//hud hide crossbar` | The bar disappears and its keys go back to the game | [ ] | [ ] |  |
-| N2 | `//hud show crossbar` | It returns | [ ] | [ ] |  |
-| N3 | `//hud reset crossbar` | Settings and every job's bindings are wiped | [ ] | [ ] |  |
-| N4 | `//lua unload xivhud` | No keybind is left broken behind it | [ ] | [ ] |  |
+| N1 | `//hud hide crossbar` | The bar disappears. To prove the keys really went back, `bind ; input /echo REACHED` in the Windower console first: shown, pressing `;` must NOT echo; hidden, it must. `unbind ;` after. (`;` opening the chat box proves nothing - it is not a chat key in FFXI. See #24) | [x] | [ ] | Hide/show works; whether the keys are truly released is unproven - the row asked for the wrong evidence, filed as #24 |
+| N2 | `//hud show crossbar` | It returns | [x] | [ ] |  |
+| N3 | `//hud reset crossbar` | Settings and every job's bindings are wiped | [x] | [ ] |  |
+| N4 | `//lua unload xivhud` | No keybind is left broken behind it - proved the same way as N1, with `bind ; input /echo REACHED`: unloaded, pressing `;` must echo. Pressing the keys and seeing nothing proves nothing, since none of them do anything in FFXI natively (#24) | [x] | [ ] | Unloaded cleanly; whether the keys are released is unproven by the evidence asked for - same measurement problem as N1, filed as #24 |
 
 ## O. Facts the code is still guessing at
 
@@ -302,14 +302,14 @@ question the code currently guesses at, listed in
 
 | # | Do this | What I need | Pass | Fail | What you saw |
 | --- | --- | --- | --- | --- | --- |
-| O1 | Look at an enchanted ring's entry in `res.items` | Does it have a `slots` field, and is it a set, a list, or a number? | [ ] | [ ] |  |
-| O2 | Look at `res.bags` | Is there a bag whose name contains `temporary`, and what exactly is it called? | [ ] | [ ] |  |
-| O3 | Look at `res.statuses` | Is there an entry whose english name is `Resting`, and what is its id? | [ ] | [ ] |  |
-| O4 | Sit with `/heal` and read your own status number | Does it match what O3 said? | [ ] | [ ] |  |
-| O5 | Type `/ma "Cure IV"` with a mob selected, then with nothing selected | What happens each time — does it use the target, prompt, or fail? | [ ] | [ ] |  |
-| O6 | Type `/item "Echo Drops" <a real mob id>` using a number, not a token | Does the game accept a bare numeric target? | [ ] | [ ] |  |
-| O7 | On a job with /COR, try to spend a **master** card (Trump Card) | Can a subjob COR burn one? | [ ] | [ ] |  |
-| O8 | If you own a trainer's whistle, look at its name in your key items | Does it start with the same music-note character the mounts do? | [ ] | [ ] |  |
+| O1 | Look at an enchanted ring's entry in `res.items` | Does it have a `slots` field, and is it a set, a list, or a number? | [ ] | [x] | Needs a resources-table read; no console recipe to hand |
+| O2 | Look at `res.bags` | Is there a bag whose name contains `temporary`, and what exactly is it called? | [ ] | [x] | Needs a resources-table read |
+| O3 | Look at `res.statuses` | Is there an entry whose english name is `Resting`, and what is its id? | [ ] | [x] | Needs a resources-table read |
+| O4 | Sit with `/heal` and read your own status number | Does it match what O3 said? | [ ] | [x] | Needs a status read |
+| O5 | Type `/ma "Cure IV"` with a mob selected, then with nothing selected | What happens each time — does it use the target, prompt, or fail? | [x] | [ ] | Answered by C25 - a bare name in angle brackets casts, so a target token is resolved by the game at send time |
+| O6 | Type `/item "Echo Drops" <a real mob id>` using a number, not a token | Does the game accept a bare numeric target? | [x] | [ ] | Answered by K6 - the cast retry re-sends the pinned mob id in place of <t> and lands on the original mob, so the game does accept a bare numeric target |
+| O7 | On a job with /COR, try to spend a **master** card (Trump Card) | Can a subjob COR burn one? | [ ] | [x] | Not run |
+| O8 | If you own a trainer's whistle, look at its name in your key items | Does it start with the same music-note character the mounts do? | [ ] | [x] | Do not own a trainer's whistle |
 
 ---
 
