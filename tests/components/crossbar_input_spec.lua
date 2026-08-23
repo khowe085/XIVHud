@@ -792,10 +792,18 @@ describe("crossbar input", function()
       local intents = release(input, 41)
       assert.is_not_nil(intent_of(intents, "cycle"), "a clean tap still cycles")
       press(input, 41)
-      intents = press(input, 4)
+      local blocked
+      intents, blocked = press(input, 4)
       local jump = intent_of(intents, "jump")
       assert.is_not_nil(jump, "and the chord still jumps")
       assert.are.equal(3, jump.set)
+      --[[ And the number is SWALLOWED, which the intent alone does not
+           say. A slot key that both jumps the set and reaches the game
+           fires FFXI's own macro palette underneath the jump - the very
+           leak the block verdict's own comment forbids. Edit mode used to
+           hand every slot key back, which was right until the jump chord
+           became live in it. ]]
+      assert.is_true(blocked, "the bare number must not reach the game")
       release(input, 4)
       release(input, 41)
     end)

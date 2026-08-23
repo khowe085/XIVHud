@@ -3851,7 +3851,7 @@ describe("crossbar live widget", function()
         usable = false,
       }
       widget.handle_command({ "warp" })
-      assert.are.equal("crossbar: warping with Warp Ring - equipping it first.", last_said())
+      assert.are.equal("crossbar: warp with Warp Ring - equipping it first.", last_said())
       assert.are.equal("gs disable ring1", env.commands[1])
 
       -- The first poll can read the warmup, so the length is spoken then.
@@ -3952,6 +3952,36 @@ describe("crossbar live widget", function()
       assert.is_true(released, "and still lets go of the slot")
     end)
 
+    it("reads as English on the enchanteditem path, and tells the truth about equipping", function()
+      --[[ Two faults in one line. `noun` is a NOUN everywhere else it is
+           used (" already in progress", " abandoned", " dropped"), and
+           inflecting it here produced "enchanted iteming with Vocation
+           Ring". And it promised "equipping it first" on the one plan
+           where nothing is equipped - a ring already on your finger and
+           still warming, which `set_equip` deliberately skips. ]]
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "enchanteditem", action = "Vocation Ring" }
+      build_world({ store_files = files })
+      -- Worn already, still warming: the equipped path, where `set_equip`
+      -- is deliberately skipped.
+      env.items[0] = { enabled = true, { id = 27546, slot = 5, status = 5, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000 + 10,
+        usable = false,
+      }
+      press(LEFT)
+      press(DIK_SLOT[6])
+      release(DIK_SLOT[6])
+      release(LEFT)
+      local spoken = said()
+      assert.is_nil(spoken:find("iteming", 1, true), "not inflected: " .. spoken)
+      assert.is_nil(spoken:find("equipping it first", 1, true), "nothing is being equipped: " .. spoken)
+      assert.is_not_nil(spoken:find("Vocation Ring", 1, true), "but it still names the piece: " .. spoken)
+    end)
+
     it("fires the rung it announced, not a better one that appeared meanwhile", function()
       --[[ The ladder used to be walked AGAIN when the countdown ended, so
            the freshest rung won. The opening line names the rung now, and a
@@ -4043,7 +4073,7 @@ describe("crossbar live widget", function()
       -- The cancel is still said; the warm-up's own opening line follows it,
       -- so the cancel is no longer the LAST thing spoken.
       assert.is_not_nil(said():find("Mount roulette cancelled.", 1, true), said())
-      assert.are.equal("crossbar: warping with Warp Ring - equipping it first.", last_said())
+      assert.are.equal("crossbar: warp with Warp Ring - equipping it first.", last_said())
       tick_to(6)
       for _, command in ipairs(env.commands) do
         assert.is_nil(command:find("/mount", 1, true), "no mount lands in the middle of the ring's wait")
@@ -5218,6 +5248,29 @@ describe("crossbar live widget", function()
       click(slot_point("left", 3))
       local reopened = binder_line("^pick a layer")
       assert.are.same({ from_x - 310, from_y - 100 }, { reopened.x, reopened.y })
+    end)
+
+    it("puts the window away when the set changes from the COMMAND LINE too", function()
+      --[[ The CLI stays live in edit mode, and `set`/`cycle` repainted
+           without deselecting - so the window went on showing the address
+           it was opened on while the bar showed another set, and the next
+           bind wrote where the player was no longer looking. Exactly the
+           failure the keyboard path's deselect was added for; only the
+           keyboard path had it. ]]
+      local files = war_bindings()
+      files.WAR.sets[2] = { left = { [1] = { type = "ja", action = "Berserk" } } }
+      build_world({ store_files = files })
+      widget.handle_command({ "edit" })
+      click(slot_point("left", 3))
+      assert.is_not_nil(binder_line("^1L3"), "a window is open on set 1")
+      widget.handle_command({ "set", "2" })
+      assert.is_nil(binder_line("^1L3"), "the window went away with the set")
+
+      -- And the same for the bare `cycle` overload.
+      click(slot_point("left", 3))
+      assert.is_not_nil(binder_line("^2L3"), "reopened on the new set")
+      widget.handle_command({ "cycle" })
+      assert.is_nil(binder_line("^2L3"), "cycle deselects as well")
     end)
 
     it("puts an open binder window away when the set changes under it", function()

@@ -69,11 +69,11 @@ left-hand cross is slots 1–4 and the right-hand cross 5–8.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar bind <set> <l\|r> <slot> <type> [<action>] [<target>]` | bind a slot |
-| `//hud crossbar unbind <set> <l\|r> <slot>` | clear a slot in one layer — the one you addressed |
-| `//hud crossbar alias <set> <l\|r> <slot> [<name>]` | change the label under a slot — omit `<name>` to clear it |
-| `//hud crossbar icon <set> <l\|r> <slot> [<icon>]` | change a slot's icon — omit `<icon>` to clear it |
-| `//hud crossbar swap <set> <l\|r> <slot> <set> <l\|r> <slot>` | swap two slots, everything about them — every layer at once, so no layer prefix applies |
+| `//hud crossbar bind <address> <type> [<action>] [<target>]` | bind a slot |
+| `//hud crossbar unbind <address>` | clear a slot in one layer — the one you addressed |
+| `//hud crossbar alias <address> [<name>]` | change the label under a slot — omit `<name>` to clear it |
+| `//hud crossbar icon <address> [<icon>]` | change a slot's icon — omit `<icon>` to clear it |
+| `//hud crossbar swap <address> <address>` | swap two slots, everything about them — every layer at once, so no layer prefix applies |
 | `//hud crossbar copy <JOB>` | replace this job's bindings with another job's |
 
 **`<type>`** says what kind of thing you are binding, and decides what the
@@ -209,7 +209,7 @@ reads your wardrobes as well as your inventory to find it. See
 | --- | --- |
 | `//hud crossbar share <set> on\|off` | share a set across every job, or keep it to this one |
 | `//hud crossbar cycle <set> drawn\|sheathed\|both\|none` | choose which rotations a set belongs to |
-| `//hud crossbar view <wxhb-l\|wxhb-r\|exp-lr\|exp-rl> <set> <l\|r>` | point a view at a set and side |
+| `//hud crossbar view <wxhb-L\|wxhb-R\|exp-LR\|exp-RL> <set><L\|R>` | point a view at a set and side |
 | `//hud crossbar wxhb [on\|off]` | keep the WXHB on screen at rest, or show it only while held — omit the argument to report the setting |
 
 ### Inspection
@@ -409,28 +409,26 @@ In edit mode:
   for the job base or a shared set. The tags leave with edit mode.
 - Clicking a slot opens its **whole stack** — every layer, what each holds,
   and which one is currently winning.
-- **You must pick a layer before the action list unlocks.** Nothing is
-  assumed, and the layer you are editing is on screen the whole time.
-- Clicking a layer row also **previews the crossbar as if that buff were up**, so
+- **You must pick a layer before the action list appears.** Nothing is
+  assumed, and the layer you are editing is named on screen the whole time.
+- Picking a layer row also **previews the crossbar as if that buff were up**, so
   you can build your Addendum side while looking at your Addendum side.
-- **Hovering** describes what is under the cursor: a slot or an entry in the
-  action list gives you its name, type and target, its MP or TP cost, how much
-  of its recast is left, and the skillchain property it carries. A slot adds
-  the layer its content is coming from and which layers that is covering. It
-  is only what the addon already knows — there is no game description text.
-- Nothing is remembered between slots. Click elsewhere and the choice resets
-  — though a **drag** carries the layer you had chosen onto whatever slot you
-  drop it on, which is what makes filling a context across several slots
-  quick. With no layer chosen, dragging a slot to empty space does nothing.
+- **Hovering** describes what is under the cursor in the window's own details
+  column: a slot or an entry in the action list gives you its name, type and
+  target, its MP or TP cost, how much of its recast is left, and the
+  skillchain property it carries. A slot adds the layer its content is coming
+  from and which layers that is covering. It is only what the addon already
+  knows — there is no game description text.
 
-You can also **drag**: from the action list onto a slot to bind it, from a
-slot onto another slot to swap them entirely, or from a slot onto **genuinely
-empty screen** to clear it — which removes it from the layer you are editing,
-and leaves every other layer alone. Empty means empty: a drop that lands on
-any part of the binder — the window, the bar itself — cancels quietly and
-changes nothing. Empty screen really is the whole rest of the display, so a
-near miss is the easiest mistake to make, and it must never be the one that
-deletes.
+**Dragging** does two things, both of them on the bar rather than in the
+window: drag a slot onto another slot to swap them entirely, or drag a slot
+onto **genuinely empty screen** to clear it — which removes it from the layer
+you are editing, and leaves every other layer alone. Dragging an action out
+of the list does nothing; the three steps are the way to bind. Empty means
+empty: a drop that lands on any part of the binder — the window, the bar
+itself — cancels quietly and changes nothing. Empty screen really is the
+whole rest of the display, so a near miss is the easiest mistake to make, and
+it must never be the one that deletes.
 
 **One window, three steps.** Edit mode draws nothing until you click a slot.
 Then a single window opens dead centre and walks you through:

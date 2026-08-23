@@ -1623,12 +1623,23 @@ local function new(ctx)
         ctx.set_equip(plan.bag_slot, plan.equip_slot, plan.bag)
       end
       --[[ Said at the press, because the wait that follows can be half a
-         minute and an unannounced one reads as nothing having happened
-         (Kevin, live client, 2026-08-22). How LONG it will be is not
-         knowable yet - the piece is only now going on, and its warmup is
-         read off the extdata the first poll fetches - so the length is
-         spoken by tick_pending as soon as it has a number. ]]
-      say("crossbar: " .. noun .. "ing with " .. tostring(plan.name) .. " - equipping it first.")
+           minute and an unannounced one reads as nothing having happened
+           (Kevin, live client, 2026-08-22). How LONG it will be is not
+           knowable yet - the piece may only now be going on, and its
+           warmup is read off the extdata the first poll fetches - so the
+           length is spoken by tick_pending once it has a number.
+
+           `noun` is used AS a noun, the way every other reader does
+           (" already in progress", " abandoned", " dropped"): inflecting
+           it produced "enchanted iteming with Vocation Ring", that path's
+           own noun being two words.
+
+           And the piece is only being equipped on the branch that equips
+           it. `equipped` means it is already on with the enchantment still
+           warming - `set_equip` is skipped just above - so promising to
+           put it on would describe the one case that does not. ]]
+      local doing = plan.equipped and " - waiting for it to charge." or " - equipping it first."
+      say("crossbar: " .. noun .. " with " .. tostring(plan.name) .. doing)
       pending_item = {
         broadcast = broadcast,
         noun = noun,
@@ -2927,7 +2938,11 @@ local function new(ctx)
       if landed == nil then
         return "crossbar: " .. err
       end
-      repaint()
+      -- Through set_changed, not a bare repaint: the CLI is live in edit
+      -- mode, so a set moved from here has to put an open binder window
+      -- away exactly as the switch key does. It did not, and the window
+      -- went on naming the address it was opened on.
+      set_changed()
       return "crossbar: set " .. landed
     end
     if verb == "cycle" and args[2] == nil then
@@ -2938,7 +2953,7 @@ local function new(ctx)
       if landed == nil then
         return "crossbar: " .. err
       end
-      repaint()
+      set_changed()
       return "crossbar: set " .. landed
     end
     if verb == "open" and args[2] == nil then

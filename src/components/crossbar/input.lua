@@ -330,8 +330,16 @@ local function new(deps)
         -- are using them (the set-jump chord must not leak bare numbers).
         block = true
       else
-        -- Slot keys are the game's the moment we are not using them.
-        block = not (suppressed or edit_mode or layout_mode) and (after ~= "none" or role_held("switch"))
+        --[[ Slot keys are the game's the moment we are not using them.
+
+             Edit mode is NOT among the states that hand them back any
+             more: the set-jump chord is live in it (Kevin, 2026-08-22), so
+             a slot key pressed over the held switch is one we are using,
+             and letting it through as well would fire FFXI's own macro
+             palette underneath the jump. The switch is the only thing edit
+             mode leaves live, which is exactly the condition on the right. ]]
+        local using = after ~= "none" or role_held("switch")
+        block = not (suppressed or layout_mode) and using and not (edit_mode and after ~= "none")
       end
       latched[dik] = block or nil
     end
