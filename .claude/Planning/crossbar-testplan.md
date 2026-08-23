@@ -199,16 +199,19 @@ binder are gone - they were answers about code that no longer exists.
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| I1 | With no warp item and no Warp spell, `//hud crossbar warp` | Says what you are missing, rung by rung | [x] | [ ] |  |
-| I2 | Holding an **Instant Warp** only, `//hud crossbar warp` | It is used | [ ] | [ ] |  |
-| I3 | Holding a **Warp Ring** in your bag, `//hud crossbar warp` | It equips the ring, waits, then warps | [ ] | [ ] |  |
+| I1 | With no warp item and no Warp spell, `//hud crossbar warp` | Says what you are missing, one rung at a time - "You don't have Warp Ring.", then Warp Cudgel, Instant Warp, Tavnazian Ring | [ ] | [ ] |  |
+| I2 | Holding an **Instant Warp** only, `//hud crossbar warp` | Counts down naming the item - `Instant Warp in 5 seconds. /heal to cancel.`, then `4...` down to `1...` - then uses it | [ ] | [ ] |  |
+| I3 | Holding a **Warp Ring** in your bag (not worn), `//hud crossbar warp` | No countdown up front: says `warping with Warp Ring - equipping it first.` and puts it on, then once it can read the warm-up says `Warp Ring ready in N seconds. /heal to cancel.`, counts only the last five (`5...` down to `1...`), then fires | [ ] | [ ] |  |
 | I4 | Straight after I3 | Your gear swapping still works normally | [ ] | [ ] |  |
-| I5 | Wearing a charged **Warp Ring** already, `//hud crossbar warp` | It warps without a refusal message | [ ] | [ ] |  |
-| I6 | Wearing one you just put on, `//hud crossbar warp` | It waits out the warm-up rather than failing | [ ] | [ ] |  |
-| I7 | Holding a **Tavnazian Ring** only, `//hud crossbar warp` | It warps after about thirty seconds | [ ] | [ ] |  |
-| I8 | On BLM with Warp known and MP, `//hud crossbar warp` | It casts Warp instead of using an item | [ ] | [ ] |  |
-| I9 | `//hud crossbar warp all` with another character running XIVHud | Both go home | [ ] | [ ] |  |
-| I10 | `//hud crossbar warp`, then `/heal` during the countdown | It cancels, and no alt is sent | [ ] | [ ] |  |
+| I5 | With a Warp Ring in your bag and GearSwap running, fire `gs equip sets.engaged` and `//hud crossbar warp` together so the set-equip lands the same moment as the press | The ring still ends up on your finger and the warp still fires - the poll checks the ring actually equipped and re-sends the equip roughly once a second until it does, rather than reading a bagged ring's stale data and hanging until the give-up | [ ] | [ ] |  |
+| I6 | Wearing a charged, off-recast **Warp Ring** already, `//hud crossbar warp` | Counts down naming it, same as I2 - `Warp Ring in 5 seconds. /heal to cancel.` - then warps without a refusal message | [ ] | [ ] |  |
+| I7 | Wearing a **Warp Ring** you just put on (still warming), `//hud crossbar warp` | Same pattern as I3 - `warping with Warp Ring - equipping it first.` even though it is already on - then the length, then the last five, then it waits out the warm-up rather than failing | [ ] | [ ] |  |
+| I8 | Holding a **Tavnazian Ring** only, `//hud crossbar warp` | Same announce-then-wait as I3, but the length comes back near thirty seconds; only the last five are spoken, so expect a long quiet stretch before it fires | [ ] | [ ] |  |
+| I9 | On BLM with Warp known and MP, `//hud crossbar warp` | Counts down with the bare word - `Warp in 5 seconds. /heal to cancel.` (the spell rung carries no name of its own, so this never says "Warp II" even when that is the one cast) - then casts it | [ ] | [ ] |  |
+| I10 | `//hud crossbar warp all` with another character running XIVHud | Both go home; the second character's own warp starts at once with no countdown of its own, whatever its ladder picks | [ ] | [ ] |  |
+| I11 | `//hud crossbar warp`, then `/heal` during the five-second countdown | Cancels and says so - `<rung> cancelled.` - and fires nothing | [ ] | [ ] |  |
+| I12 | Holding a bagged ring, `//hud crossbar warp`, then `/heal` once it says "ready in N seconds" | The warm-up cancels too - `warp cancelled - Warp Ring` - and the GearSwap slot is released at once rather than at the deadline | [ ] | [ ] |  |
+| I13 | Holding a bagged ring, `//hud crossbar warp`, then log out to character select while it is still equipping or warming | Says `warp dropped - Warp Ring` before you reach the character screen instead of going silent, and gear swapping is not left disabled (log back in after - nothing here is lost) | [ ] | [ ] |  |
 
 ## J. Enchanted gear
 

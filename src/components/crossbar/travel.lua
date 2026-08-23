@@ -131,9 +131,12 @@ local function new(deps)
          * a press with nothing to fire: a rejected record (no plan), a
            roulette no-op, a warp ladder that found nothing.
 
-       Called with the plan computed AT THE PRESS. The widget re-computes
-       when the countdown ends, so a ladder that has moved on in the
-       meantime fires whatever it says then - the later one wins. ]]
+       Called with the plan computed AT THE PRESS, which is also the plan
+       that fires: the warp verb walks its ladder once and hands the same
+       one to both branches, so the rung this line NAMES is the rung that
+       goes. It used to be re-walked when the countdown ended, and a line
+       promising one item while another went was the worse trade (Kevin,
+       2026-08-22). ]]
   -- A label a record actually carries: a non-empty string, or nothing.
   local function named(value)
     if type(value) ~= "string" or value == "" then
