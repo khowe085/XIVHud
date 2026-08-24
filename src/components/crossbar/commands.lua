@@ -771,7 +771,15 @@ local function new(deps)
       return side
     end
     config_table("views")[key] = { set = set, side = side }
-    return hint(args[2]:upper() .. " shows " .. set .. (side == "left" and "L" or "R")), true, true
+    -- The canonical spelling, not the whole token upper-cased: the help,
+    -- the hints and the status line all say `wxhb-L`.
+    local shown = VIEW_ORDER[1]
+    for _, name in ipairs(VIEW_ORDER) do
+      if name:lower() == args[2]:lower() then
+        shown = name
+      end
+    end
+    return hint(shown .. " shows " .. set .. (side == "left" and "L" or "R")), true, true
   end
 
   --- `share <set> on|off` -- shared (every job) vs job-specific.

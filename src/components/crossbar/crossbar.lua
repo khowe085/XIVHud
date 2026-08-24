@@ -2060,8 +2060,18 @@ local function new(ctx)
     if not force and not wanted and player.main_job == scoped_main and player.sub_job == scoped_sub then
       return
     end
+    --[[ The FOURTH producer of an active-set change, after the two key
+         intents and the two CLI verbs: `set_job` reloads `active_set` from
+         the incoming job's own file, so a job change usually lands
+         somewhere else entirely. An open binder window kept the address it
+         was opened on, and the next bind would have written into that set
+         of the NEW job's file. ]]
+    local set_before = bindings.active_set()
     bindings.set_job(player.main_job, player.sub_job)
     scoped_main, scoped_sub = player.main_job, player.sub_job
+    if editing() and set_before ~= bindings.active_set() then
+      binder.deselect()
+    end
     counts_dirty = true
     -- Through the one writer: set_job clears the active contexts, and a
     -- job change landing mid-preview must re-assert the simulated list
@@ -2855,11 +2865,6 @@ local function new(ctx)
        Layout mode owns the mouse outright while it is on, so the two can
        never contend - core refuses nothing here, the component does. ]]
 
-  --[[ The set moved under the bar. Edit mode lets the switch through, and
-       the binder's window remembers the address it was opened on - so the
-       window is put away rather than left pointing at a set that is no
-       longer on screen. Edit mode itself stays on: changing set is how you
-       bind across several of them without leaving. ]]
   --[[ A transition that ends whatever trip was in flight - a countdown
        AND a warm-up. Resting learned the second half first and the others
        were left behind, so dying or zoning mid-warm-up kept a GearSwap
@@ -2873,6 +2878,11 @@ local function new(ctx)
     end
   end
 
+  --[[ The set moved under the bar. Edit mode lets the switch through, and
+       the binder's window remembers the address it was opened on - so the
+       window is put away rather than left pointing at a set that is no
+       longer on screen. Edit mode itself stays on: changing set is how you
+       bind across several of them without leaving. ]]
   local function set_changed(before)
     -- Only a set that actually MOVED puts the window away: `jump` answers
     -- the set it was given whether or not that was already the one on

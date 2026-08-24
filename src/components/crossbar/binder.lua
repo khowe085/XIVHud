@@ -1269,6 +1269,12 @@ local function new(deps)
     elseif target.kind == "category" then
       category_index, page = target.index, 1
     elseif target.kind == "pager" then
+      --[[ The pager CLICK still wraps, deliberately, where the wheel now
+           clamps: its own label says "wheel to scroll", so it reads as a
+           button that keeps moving rather than a position on the list. The
+           spec argues the same. The two are inconsistent and a reviewer
+           has said so - left alone because the wrap is what the existing
+           test pins, and that is Kevin's call rather than a review's. ]]
       local pages = (catalog_view or target_view or {}).pages or 1
       page = page % pages + 1
     end

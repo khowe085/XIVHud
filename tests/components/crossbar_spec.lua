@@ -5292,6 +5292,30 @@ describe("crossbar live widget", function()
       assert.are.same({ from_x - 310, from_y - 100 }, { reopened.x, reopened.y })
     end)
 
+    it("puts the window away when a JOB CHANGE moves the set under it", function()
+      --[[ The fourth producer of an active-set change, and the one that
+           was missed: `set_job` reloads `active_set` from the incoming
+           job's own file, so a job change usually lands on a different
+           set. The window kept the address it was opened on, and the next
+           bind would have written into that set of the NEW job's file. ]]
+      local files = {
+        WAR = { active_set = 3, sets = { [3] = { left = { [4] = { type = "ja", action = "Berserk" } } } } },
+        NIN = { active_set = 1, sets = { [1] = { left = { [4] = { type = "ma", action = "Utsusemi: Ichi" } } } } },
+      }
+      build_world({ store_files = files })
+      widget.handle_command({ "edit" })
+      click(slot_point("left", 4))
+      assert.is_not_nil(binder_line("^3L4"), "open on the job's own set")
+
+      env.player = war_player()
+      env.player.main_job = "NIN"
+      env.player.main_job_id = 13
+      env.player.sub_job_id = 49
+      widget.update("job change", 13, 99, 49, 49)
+      widget.update()
+      assert.is_nil(binder_line("^3L4"), "the window went with the set")
+    end)
+
     it("leaves the window alone when the set did not actually move", function()
       -- `jump` answers the set it was given whether or not that was already
       -- the one on screen, so "it answered" is not "it changed" - and

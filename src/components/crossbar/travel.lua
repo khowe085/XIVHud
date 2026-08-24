@@ -160,7 +160,8 @@ local function new(deps)
            several, and "Warp" alone left the player watching a countdown
            without knowing whether it was about to burn a scroll or cast a
            spell. The bare word is the fallback for a rung that carries no
-           name - a spell rung built before the resources loaded. ]]
+           name at all - which is every SPELL rung, those being built from
+           a command string and nothing else. ]]
       local name = named(rung.name)
       return name or "Warp"
     end
@@ -318,11 +319,6 @@ local function new(deps)
     end
   end
 
-  --[[ A status change: resting calls the countdown off. The trigger is the
-       STATUS and not the `/heal` text (Sel-Include.lua:2313 does exactly
-       this), so it catches resting however the player entered it - the
-       command, a macro, or a pad button nobody here can see. Answers the
-       cancel line, or nil for a status that means nothing to us. ]]
   --[[ Is this status the one that means resting? A boolean, and nothing
        else: the countdown answers `/heal` by cancelling, and so does a
        warm-up over in the widget - but a warm-up arms no countdown, so
@@ -332,6 +328,11 @@ local function new(deps)
     return resting ~= nil and status == resting
   end
 
+  --[[ A status change: resting calls the countdown off. The trigger is the
+       STATUS and not the `/heal` text (Sel-Include.lua:2313 does exactly
+       this), so it catches resting however the player entered it - the
+       command, a macro, or a pad button nobody here can see. Answers the
+       cancel line, or nil for a status that means nothing to us. ]]
   function self.on_status(status)
     if status ~= resting then
       return nil
