@@ -2860,8 +2860,25 @@ local function new(ctx)
        window is put away rather than left pointing at a set that is no
        longer on screen. Edit mode itself stays on: changing set is how you
        bind across several of them without leaving. ]]
-  local function set_changed()
-    if editing() then
+  --[[ A transition that ends whatever trip was in flight - a countdown
+       AND a warm-up. Resting learned the second half first and the others
+       were left behind, so dying or zoning mid-warm-up kept a GearSwap
+       slot disabled for the best part of a minute and then had `/item`
+       fired on the far side, with `warp all` broadcasting on it. One
+       helper, so the endings cannot drift apart again. ]]
+  local function end_trip(reason)
+    say_travel(travel.cancel())
+    if pending_item ~= nil then
+      abort_pending("crossbar: " .. pending_item.noun .. " " .. reason .. " - " .. tostring(pending_item.name))
+    end
+  end
+
+  local function set_changed(before)
+    -- Only a set that actually MOVED puts the window away: `jump` answers
+    -- the set it was given whether or not that was already the one on
+    -- screen, and `cycle` answers where it started when nothing else
+    -- qualifies, so both can report a change that did not happen.
+    if editing() and before ~= bindings.active_set() then
       binder.deselect()
     end
     repaint()
@@ -2959,6 +2976,7 @@ local function new(ctx)
       if set == nil then
         return "crossbar: set takes a number - //hud crossbar set <1-8>"
       end
+      local before = bindings.active_set()
       local landed, err = bindings.jump(set)
       if landed == nil then
         return "crossbar: " .. err
@@ -2967,18 +2985,19 @@ local function new(ctx)
       -- mode, so a set moved from here has to put an open binder window
       -- away exactly as the switch key does. It did not, and the window
       -- went on naming the address it was opened on.
-      set_changed()
+      set_changed(before)
       return "crossbar: set " .. landed
     end
     if verb == "cycle" and args[2] == nil then
       -- The bare/args overload: bare advances the rotation, with args it
       -- edits rotation membership (the authoring half, below) - never a
       -- silent advance either way.
+      local before = bindings.active_set()
       local landed, err = bindings.cycle()
       if landed == nil then
         return "crossbar: " .. err
       end
-      set_changed()
+      set_changed(before)
       return "crossbar: set " .. landed
     end
     if verb == "open" and args[2] == nil then
@@ -3241,12 +3260,14 @@ local function new(ctx)
       elseif intent.type == "fire" then
         fire_slot(intent.slot)
       elseif intent.type == "jump" then
+        local before = bindings.active_set()
         if bindings.jump(intent.set) ~= nil then
-          set_changed()
+          set_changed(before)
         end
       elseif intent.type == "cycle" then
+        local before = bindings.active_set()
         if bindings.cycle() ~= nil then
-          set_changed()
+          set_changed(before)
         end
       elseif intent.type == "draw" then
         execute(actions.resolve({ type = "draw" }, draw_state()))
@@ -3296,7 +3317,7 @@ local function new(ctx)
       if DEAD_STATUSES[a] then
         retry.clear()
         -- Whatever you were travelling towards, you are not going now.
-        say_travel(travel.cancel())
+        end_trip("cancelled")
       end
       -- Resting calls a countdown off, which is the way out the opening
       -- line names. The status is the trigger, never the command text.
@@ -3313,6 +3334,8 @@ local function new(ctx)
       if travel.resting(a) and pending_item ~= nil then
         abort_pending("crossbar: " .. pending_item.noun .. " cancelled - " .. tostring(pending_item.name))
       end
+      -- (Resting keeps its own line above rather than end_trip's, because
+      -- travel.on_status has already spoken the countdown's half of it.)
       local before = bindings.weapon_state()
       bindings.on_status(a)
       if bindings.weapon_state() ~= before then
@@ -3350,9 +3373,10 @@ local function new(ctx)
         retry.on_chunk(a, original)
         if a == ZONE_OUT_CHUNK then
           retry.clear()
-          -- A zone ends the moment a countdown belonged to as surely as it
-          -- ends a held cast.
-          say_travel(travel.cancel())
+          -- A zone ends the moment a trip belonged to as surely as it ends
+          -- a held cast - the warm-up included, since the ring is coming
+          -- with you and the enchantment is not.
+          end_trip("cancelled")
         end
         if a == ACTION_CHUNK then
           -- nil when the parse failed, which reads as nothing having landed.

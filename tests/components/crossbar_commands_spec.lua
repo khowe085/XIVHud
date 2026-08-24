@@ -1402,17 +1402,26 @@ describe("crossbar commands", function()
     -- binding the user cannot find again.
     it("refuses hex, exponent and fractional sets and slots", function()
       local commands, world = build()
+      --[[ Through the ONE-WORD grammar, or these prove nothing: a
+           three-word address now fails on its shape and a four-word `view`
+           on its arity, both long before any number is read. The block
+           went vacuous when the grammar changed and still carried the
+           comment above, which described a check it had stopped
+           making. ]]
       local cases = {
-        { "bind", "0x3", "l", "3", "ja", "Provoke" },
-        { "bind", "3.0", "l", "3", "ja", "Provoke" },
-        { "bind", "1e0", "l", "3", "ja", "Provoke" },
-        { "bind", "1", "l", "0x3", "ja", "Provoke" },
-        { "bind", "1", "l", "3.0", "ja", "Provoke" },
+        { "bind", "0x3L1", "ja", "Provoke" },
+        { "bind", "3.0L1", "ja", "Provoke" },
+        { "bind", "1e0L1", "ja", "Provoke" },
+        { "bind", "1L0x3", "ja", "Provoke" },
+        { "bind", "1L3.0", "ja", "Provoke" },
         { "share", "0x3", "on" },
         { "cycle", "3.0", "drawn" },
-        { "view", "wxhb-l", "1e0", "l" },
+        { "view", "wxhb-L", "1e0L" },
         { "list", "0x3" },
-        { "swap", "0x3", "l", "1", "2R1" },
+        { "swap", "0x3L1", "2R1" },
+        -- And the set half of an address, which has its own range check.
+        { "bind", "9L1", "ja", "Provoke" },
+        { "bind", "1L9", "ja", "Provoke" },
       }
       for _, words in ipairs(cases) do
         local reply, save_config, repaint = commands.command(words)

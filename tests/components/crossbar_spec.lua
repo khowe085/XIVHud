@@ -3988,6 +3988,42 @@ describe("crossbar live widget", function()
       assert.is_not_nil(spoken:find("Vocation Ring", 1, true), "but it still names the piece: " .. spoken)
     end)
 
+    it("drops a warm-up when you die or zone, not just when you rest", function()
+      --[[ Resting learned to cancel a warm-up; death and zoning did not,
+           though both already end a travel countdown. A player who died
+           mid-warm-up kept a GearSwap slot disabled for the best part of a
+           minute and then had `/item` fired for them on the other side -
+           with `warp all` broadcasting on it. ]]
+      for _, ending in ipairs({ "death", "zone" }) do
+        build_world()
+        env.items[0] = { enabled = true, { id = 28540, slot = 5, status = 0, count = 1 } }
+        env.ext = {
+          type = "Enchanted Equipment",
+          charges_remaining = 1,
+          next_use_time = env.time - 18000,
+          activation_time = env.time - 18000 + 10,
+          usable = false,
+        }
+        widget.handle_command({ "warp" })
+        env.chat = {}
+        if ending == "death" then
+          widget.update("status", DEAD)
+        else
+          widget.update("chunk", 0x0B, "HDRX")
+        end
+        local released = false
+        for _, command in ipairs(env.commands) do
+          released = released or command == "gs enable ring1"
+        end
+        assert.is_true(released, ending .. ": the GearSwap hold is released")
+        env.ext.usable = true
+        tick_to(30)
+        for _, command in ipairs(env.commands) do
+          assert.is_nil(command:find("/item", 1, true), ending .. ": and nothing fires afterwards")
+        end
+      end
+    end)
+
     it("fires the rung it announced, not a better one that appeared meanwhile", function()
       --[[ The ladder used to be walked AGAIN when the countdown ended, so
            the freshest rung won. The opening line names the rung now, and a
@@ -5254,6 +5290,19 @@ describe("crossbar live widget", function()
       click(slot_point("left", 3))
       local reopened = binder_line("^pick a layer")
       assert.are.same({ from_x - 310, from_y - 100 }, { reopened.x, reopened.y })
+    end)
+
+    it("leaves the window alone when the set did not actually move", function()
+      -- `jump` answers the set it was given whether or not that was already
+      -- the one on screen, so "it answered" is not "it changed" - and
+      -- dismissing the window for a no-op is a click the player has to
+      -- redo for nothing.
+      build_world()
+      widget.handle_command({ "edit" })
+      click(slot_point("left", 3))
+      assert.is_not_nil(binder_line("^1L3"))
+      widget.handle_command({ "set", "1" })
+      assert.is_not_nil(binder_line("^1L3"), "already on set 1, so nothing moved")
     end)
 
     it("puts the window away when the set changes from the COMMAND LINE too", function()
