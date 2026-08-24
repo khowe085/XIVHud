@@ -165,8 +165,6 @@ local SC_DIM_FRAME_ALPHA = 150
 -- The chunks the skillchain engine feeds on beyond the action packet: the
 -- action message (buff wear-off), the buff-list refresh, and zone-out.
 local ACTION_CHUNK = 0x028
--- Zoning out: every mob id on this side of the line is stale, and so is any
--- cast the retry is still holding.
 --[[ `0x01E` Modify Inventory (Count, Bag, Index, Status - read from
      Windower's own packets/fields.lua): the packet a stack DECREMENT rides.
      `add item`/`remove item` fire when a record enters or leaves a bag, so
@@ -175,6 +173,8 @@ local ACTION_CHUNK = 0x028
      events it cannot be gated on which id moved - only on whether the bar
      draws a count at all. ]]
 local INVENTORY_CHUNK = 0x01E
+-- Zoning out: every mob id on this side of the line is stale, and so is any
+-- cast the retry is still holding.
 local ZONE_OUT_CHUNK = 0x0B
 local SC_CHUNKS = { [0x29] = true, [0x63] = true, [ZONE_OUT_CHUNK] = true }
 -- The player statuses that mean dead ("Dead" and "Engaged dead"): whatever
@@ -1779,6 +1779,14 @@ local function new(ctx)
            no countdown at all - the press-time line is what the player
            gets, and saying nothing beats promising a zero. ]]
       if remaining > 0 then
+        --[[ A warm-up that RESTARTED, which the re-equip loop above causes
+             every time it wins a slot back: the fresh activation_time
+             pushes `remaining` up, and a counter left at the old low value
+             would never see a smaller number again and go silent for the
+             rest of the wait. Re-seed and let it count the new one down. ]]
+        if pending_item.said ~= nil and remaining > pending_item.said then
+          pending_item.said = remaining
+        end
         if pending_item.said == nil then
           -- The opening line has already spoken this second, so the count
           -- starts below it - travel.arm seeds its own the same way, and
@@ -1796,7 +1804,11 @@ local function new(ctx)
         if remaining < pending_item.said then
           pending_item.said = remaining
           if remaining <= PENDING_COUNT_FROM then
-            say("crossbar: " .. remaining .. "...")
+            -- BARE, like the travel countdown's own counts: they read as a
+            -- continuation of the line that named them, and five prefixed
+            -- lines per wait is the chat spam this repo treats as a defect
+            -- (say_travel's rule, a few hundred lines up).
+            say(remaining .. "...")
           end
         end
       end
@@ -2660,11 +2672,6 @@ local function new(ctx)
     -- A binder write lands in the same store the CLI writes through, so the
     -- bar has to be repainted from it exactly as an authoring verb would.
     changed = repaint,
-    --[[ Preview = a SIMULATED buff list through the live resolver, never a
-         hand-toggled layer: picking dark-arts drops light-arts even if it
-         is actually up, and picking an addendum lights its arts too, so the
-         bar always shows the true stacked result. nil hands the live buff
-         list back. ]]
     --[[ Where the player dragged the binder window to. It is edit-mode
          furniture rather than anything the bar draws, so it lives in the
          component's own config beside the other preferences - not in a
@@ -2681,6 +2688,11 @@ local function new(ctx)
         save()
       end
     end,
+    --[[ Preview = a SIMULATED buff list through the live resolver, never a
+         hand-toggled layer: picking dark-arts drops light-arts even if it
+         is actually up, and picking an addendum lights its arts too, so the
+         bar always shows the true stacked result. nil hands the live buff
+         list back. ]]
     preview = function(buffs)
       previewing = buffs
       apply_buffs()
@@ -2895,7 +2907,7 @@ local function new(ctx)
     -- The bar repaints into its edit-mode dress: every side drawn, and each
     -- slot wearing the tag of the layer its winner came from.
     repaint()
-    return "crossbar: edit mode on - click a slot, then a layer, then an action"
+    return "crossbar: edit mode on - click a slot, then a layer, an action, and a target"
   end
 
   --[[ Commands ------------------------------------------------------------ ]]
@@ -3102,9 +3114,12 @@ local function new(ctx)
       chat_open = ctx.chat_open,
       suppressed = ctx.suppressed,
       layout_mode = ctx.layout_active,
-      -- The sixth guard, live from CB8: while the binder is up the
-      -- crossbar's own keys fire nothing though they stay blocked and keep
-      -- tracking, and the one live input is the shortcut key that exits.
+      --[[ The sixth guard, live from CB8: while the binder is up the
+           crossbar's own keys fire nothing and keep tracking. TWO live
+           inputs now, not one - the shortcut key that exits, and the set
+           SWITCH, because which set is on screen is what edit mode is for
+           (2026-08-22). Slot keys stay the game's there unless the switch
+           is held, which is the jump chord and is blocked. ]]
       edit_mode = editing,
       disabled = function()
         --[[ Disabled means the USER-hidden case only, and it outranks
@@ -3205,10 +3220,12 @@ local function new(ctx)
 
              Edit mode is the one state that ignores them outright: the
              machine keeps tracking every key (CB0's contract is untouched),
-             but the widget stops reacting, so no side lights, Expanded
-             never replaces the XHB, and the slots cannot move out from
-             under an open stack panel. close_edit() reads hold_state() on
-             the way out - the same handshake show() uses. ]]
+             but the widget stops reacting, so no side lights and Expanded
+             never replaces the XHB. The slots CAN move under an open binder
+             window, though - the set switch is live in edit mode - which is
+             why a set change puts that window away (see set_changed).
+             close_edit() reads hold_state() on the way out, the same
+             handshake show() uses. ]]
         if not editing() then
           local was_expanded = active_state == "expanded_lr" or active_state == "expanded_rl"
           active_state = intent.state

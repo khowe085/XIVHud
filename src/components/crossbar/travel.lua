@@ -323,10 +323,11 @@ local function new(deps)
        this), so it catches resting however the player entered it - the
        command, a macro, or a pad button nobody here can see. Answers the
        cancel line, or nil for a status that means nothing to us. ]]
-  --[[ Is this status the one that means resting? The countdown answers
-       `/heal` by cancelling, and so does a warm-up over in the widget - but
-       a warm-up arms no countdown, so `on_status` has nothing to report and
-       cannot be what the widget keys off. One resolver, two readers. ]]
+  --[[ Is this status the one that means resting? A boolean, and nothing
+       else: the countdown answers `/heal` by cancelling, and so does a
+       warm-up over in the widget - but a warm-up arms no countdown, so
+       `on_status` below has nothing to report and cannot be what the widget
+       keys off. One resolver, two readers. ]]
   function self.resting(status)
     return resting ~= nil and status == resting
   end
