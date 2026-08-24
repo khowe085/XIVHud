@@ -3988,6 +3988,38 @@ describe("crossbar live widget", function()
       assert.is_not_nil(spoken:find("Vocation Ring", 1, true), "but it still names the piece: " .. spoken)
     end)
 
+    it("drops a warm-up when a config mode opens, before it can fire", function()
+      --[[ The gate ended only the countdown half, and ran AFTER the poll -
+           so a ring armed before `//hud layout` opened went on warming and
+           then warped anyway, `warp all`'s broadcast with it. A late trip
+           goes only where a fresh press would, and a fresh press is
+           refused outright while a mode is open. ]]
+      build_world()
+      env.items[0] = { enabled = true, { id = 28540, slot = 5, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000,
+        activation_time = env.time - 18000 + 10,
+        usable = false,
+      }
+      widget.handle_command({ "warp", "all" })
+      env.chat, env.ipc = {}, {}
+      env.layout = true
+      -- The enchantment comes up in the same breath the mode opens.
+      env.ext.usable = true
+      tick_to(2)
+      for _, command in ipairs(env.commands) do
+        assert.is_nil(command:find("/item", 1, true), "no warp fires behind an open mode")
+      end
+      assert.are.same({}, env.ipc, "and no alt is sent home")
+      local released = false
+      for _, command in ipairs(env.commands) do
+        released = released or command == "gs enable ring1"
+      end
+      assert.is_true(released, "the GearSwap hold is let go")
+    end)
+
     it("drops a warm-up when you die or zone, not just when you rest", function()
       --[[ Resting learned to cancel a warm-up; death and zoning did not,
            though both already end a travel countdown. A player who died

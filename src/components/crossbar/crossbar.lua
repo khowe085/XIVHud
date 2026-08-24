@@ -552,6 +552,9 @@ local function new(ctx)
        because repaint sits well above the counting code that builds it. ]]
   local counted_signature = nil
   local bound_item_signature
+  -- Forward-declared: the tick's config-mode gate calls it well above the
+  -- status handlers it sits with.
+  local end_trip
 
   -- The pending equip -> wait -> use machine, shared by the warp ladder and
   -- an enchanteditem binding: gs disable, equip, wait, use, with `gs enable`
@@ -2610,8 +2613,9 @@ local function new(ctx)
     -- Only the groups actually on screen, with the anchor placement they
     -- are drawn at, so the hit-test can never claim a bar that is not
     -- there. Expanded Hold cannot appear here: the widget ignores every
-    -- activate intent while the binder is up, so the displayed state is
-    -- whatever it was when edit mode opened.
+    -- activate intent while the binder is up - and the displayed state is
+    -- `none`, which toggle_edit forces on the way in, so no side is drawn
+    -- as active either.
     groups = function()
       local list = {}
       for _, group in ipairs(GROUPS) do
@@ -2749,6 +2753,13 @@ local function new(ctx)
     elseif scoped_main == nil or rescope_want ~= nil then
       try_scope(rescope_want ~= nil)
     end
+    --[[ The config-mode gate runs BEFORE the poll, or the poll fires the
+         very trip the gate is there to call off: `tick_pending` has no
+         mode check of its own, so a ring whose enchantment came up while
+         `//hud layout` was open used to warp anyway. ]]
+    if (travel.armed() or pending_item ~= nil) and config_mode() ~= nil then
+      end_trip("cancelled")
+    end
     -- The warp poll keeps its own 1s cadence and must run even while the
     -- bar is hidden - a warp mid-wait does not stop for a cutscene's hide.
     tick_pending()
@@ -2767,9 +2778,6 @@ local function new(ctx)
          neither entry point needs a cancel of its own. Chat is deliberately
          NOT here, unlike the retry: typing a line is not a config mode, and
          answering a tell while you wait to warp should not strand you. ]]
-    if travel.armed() and config_mode() ~= nil then
-      say_travel(travel.cancel())
-    end
     local travelling, count = travel.step()
     if count ~= nil then
       say(count)
@@ -2871,7 +2879,7 @@ local function new(ctx)
        slot disabled for the best part of a minute and then had `/item`
        fired on the far side, with `warp all` broadcasting on it. One
        helper, so the endings cannot drift apart again. ]]
-  local function end_trip(reason)
+  function end_trip(reason)
     say_travel(travel.cancel())
     if pending_item ~= nil then
       abort_pending("crossbar: " .. pending_item.noun .. " " .. reason .. " - " .. tostring(pending_item.name))
@@ -3307,7 +3315,10 @@ local function new(ctx)
       -- A cast held across a job change belongs to the job that pressed it,
       -- and so does a trip counting down.
       retry.clear()
-      say_travel(travel.cancel())
+      -- The whole trip, not just its countdown: CLAUDE.md lists a job
+      -- change among the transitions that end one, and a ring warming for
+      -- the job you just left is not a warp you still want.
+      end_trip("cancelled")
       rescope_want = nil
       if type(a) == "number" then
         rescope_want = {
