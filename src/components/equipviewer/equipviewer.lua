@@ -41,25 +41,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
      Icons are not shipped. The first time an item is seen its icon is pulled
      out of the client's own DAT files and cached under icons/ beside the
-     addon; from then on the file is simply there. That work is queued rather
-     than done where the packet arrives - see drain_queue. ]]
+     addon; from then on the file is simply there. That pipeline - the
+     one-icon-per-frame queue, the give-up rule, the shared cache directory -
+     lives in lib/icon_cache, promoted from this file so the crossbar can use
+     it too. ]]
 
 local new_logic = require("components/equipviewer/logic")
 local build_defaults = require("components/equipviewer/defaults")
-local icons = require("components/equipviewer/icons")
+local new_icon_cache = require("lib/icon_cache")
 
-local ASSET_DIR = "components/equipviewer/assets/"
-local ENCUMBRANCE_TEXTURE = "encumbrance.png"
+-- Two homes now, not one: the panel is XIVHud's own white square and the
+-- encumbrance X is Rubenator's, and each sits with the licence that
+-- covers it.
+local ENCUMBRANCE_TEXTURE = "assets/encumbrance/encumbrance.png"
 -- A white square, tinted to the configured colour: a prim with no texture is
 -- not something this repo draws with, and the framework's highlight box is the
 -- same trick.
-local PANEL_TEXTURE = "panel.png"
---[[ Deliberately not under data/: `//hud copy` enumerates every directory
-     there as a character, so an icon cache alongside them would be offered as
-     one - and `//hud copy icons <character>` would then wipe that character's
-     configuration and fill it with bitmaps. The cache is not per-character
-     anyway; item art is the same for everyone. ]]
-local ICON_CACHE_DIR = "icons/"
+local PANEL_TEXTURE = "assets/own/panel.png"
 
 local function new(ctx)
   local self = { name = "equipviewer" }
@@ -77,16 +75,26 @@ local function new(ctx)
 
   local save = nil
 
-  --[[ Item ids waiting to be pulled out of a DAT, and the ones already spoken
-       for: `queued` stops an item being asked for twice, `abandoned` stops a
-       failure being retried every frame for the rest of the session, and
-       `resolved` remembers the icons already on disk so a redraw costs no
-       file lookups. ]]
-  local pending = {}
-  local queued = {}
-  local abandoned = {}
-  local abandoned_count = 0
-  local resolved = {}
+  -- Where the client is installed. The setting wins when the player has one,
+  -- because Windower's own answer is a registry lookup that can be wrong for a
+  -- second install.
+  local function game_path()
+    local configured = config.game_path
+    if type(configured) == "string" and configured ~= "" then
+      return configured
+    end
+    return ctx.game_path()
+  end
+
+  -- The extraction pipeline: request on the packet path, one DAT read per
+  -- frame off it, results cached at <addon>/icons/ for every component.
+  local cache = new_icon_cache({
+    asset = ctx.asset,
+    file_exists = ctx.file_exists,
+    read_dat = ctx.read_dat,
+    write_binary = ctx.write_binary,
+    game_path = game_path,
+  })
 
   -- The whole equipment table is worth re-reading, on the next frame rather
   -- than here: the packets that ask for it arrive one per bag.
@@ -112,51 +120,19 @@ local function new(ctx)
   end
 
   prepare(panel)
-  panel.path(ctx.asset(ASSET_DIR .. PANEL_TEXTURE))
+  panel.path(ctx.asset(PANEL_TEXTURE))
   for _, slot in ipairs(logic.slots()) do
     slot_icons[slot] = prepare(ctx.new_image())
   end
   for _, slot in ipairs(logic.slots()) do
     markers[slot] = prepare(ctx.new_image())
-    markers[slot].path(ctx.asset(ASSET_DIR .. ENCUMBRANCE_TEXTURE))
+    markers[slot].path(ctx.asset(ENCUMBRANCE_TEXTURE))
   end
 
   ammo.draggable(false)
   -- Deliberately not right-justified: texts.pos adds the screen width to x
   -- when the right flag is set, which would draw the count off screen.
   ammo.hide()
-
-  local function icon_file(item_id)
-    return ICON_CACHE_DIR .. item_id .. ".bmp"
-  end
-
-  -- The icon on disk for an item, or nil if it has not been extracted yet.
-  -- An item already given up on is not looked for again: a redraw runs on the
-  -- packet path, and the file is not going to appear.
-  local function cached_icon(item_id)
-    if resolved[item_id] then
-      return resolved[item_id]
-    end
-    if abandoned[item_id] then
-      return nil
-    end
-    local path = ctx.asset(icon_file(item_id))
-    if not ctx.file_exists(path) then
-      return nil
-    end
-    resolved[item_id] = path
-    return path
-  end
-
-  -- An icon the cache does not have is asked for once. Nothing is read here:
-  -- this runs on the packet path.
-  local function request_icon(item_id)
-    if queued[item_id] or abandoned[item_id] then
-      return
-    end
-    queued[item_id] = true
-    pending[#pending + 1] = item_id
-  end
 
   local function apply_visibility()
     if not visible then
@@ -177,7 +153,7 @@ local function new(ctx)
 
     for _, slot in ipairs(logic.slots()) do
       local item_id = logic.item(slot)
-      local path = item_id ~= 0 and cached_icon(item_id) or nil
+      local path = item_id ~= 0 and cache.cached_icon(item_id) or nil
       if path then
         if drawn[slot] ~= path then
           slot_icons[slot].path(path)
@@ -210,8 +186,8 @@ local function new(ctx)
   local function render()
     for _, slot in ipairs(logic.slots()) do
       local item_id = logic.item(slot)
-      if item_id ~= 0 and not cached_icon(item_id) then
-        request_icon(item_id)
+      if item_id ~= 0 and not cache.cached_icon(item_id) then
+        cache.request_icon(item_id)
       end
     end
     apply_visibility()
@@ -283,52 +259,6 @@ local function new(ctx)
     render()
   end
 
-  -- Where the client is installed. The setting wins when the player has one,
-  -- because Windower's own answer is a registry lookup that can be wrong for a
-  -- second install.
-  local function game_path()
-    local configured = config.game_path
-    if type(configured) == "string" and configured ~= "" then
-      return configured
-    end
-    return ctx.game_path()
-  end
-
-  --[[ One icon per frame, and only while something is waiting.
-
-       The reference extracted inside the packet handler, so a first login with
-       nothing cached meant sixteen DAT opens, decodes and file writes in a
-       single frame. Spreading them costs a few frames before the grid is full
-       and keeps the disk off the packet path entirely. ]]
-  local function drain_queue()
-    local item_id = table.remove(pending, 1)
-    if not item_id then
-      return false
-    end
-    queued[item_id] = nil
-
-    -- Whatever the reason, it will be the same reason next frame: an item is
-    -- given exactly one attempt.
-    abandoned[item_id] = true
-    abandoned_count = abandoned_count + 1
-
-    local located = icons.locate(item_id)
-    local path = located and icons.dat_path(game_path(), located.dat)
-    if not path then
-      return false
-    end
-
-    local bmp = icons.to_bmp(ctx.read_dat(path, located.offset, located.length))
-    if not bmp or not ctx.write_binary(icon_file(item_id), bmp) then
-      return false
-    end
-
-    abandoned[item_id] = nil
-    abandoned_count = abandoned_count - 1
-    resolved[item_id] = ctx.asset(icon_file(item_id))
-    return true
-  end
-
   function self.attach(loaded_config, persist)
     config = loaded_config
     attached = true
@@ -344,15 +274,9 @@ local function new(ctx)
   function self.detach()
     attached = false
     logic.on_logout()
-    --[[ The queue goes with the character, and so does everything abandoned:
-         the likeliest reason an icon could not be read is a game path pointing
-         at the wrong install, and correcting that setting has to be worth
-         something. `resolved` stays - a file already on disk is still there
-         whoever logs in next. ]]
-    pending = {}
-    queued = {}
-    abandoned = {}
-    abandoned_count = 0
+    -- The queue and the give-ups go with the character (see icon_cache.reset);
+    -- what is already on disk stays for whoever logs in next.
+    cache.reset()
     self.hide()
   end
 
@@ -403,7 +327,7 @@ local function new(ctx)
         refresh()
         return
       end
-      if drain_queue() then
+      if cache.drain_queue() then
         render()
       end
       return
@@ -439,15 +363,16 @@ local function new(ctx)
       end
     end
 
-    if abandoned_count == 0 then
+    local abandoned = cache.abandoned_count()
+    if abandoned == 0 then
       return message
     end
 
     return {
       message,
       ("  %d icon%s could not be read from the game's DAT files - check the game_path setting"):format(
-        abandoned_count,
-        abandoned_count == 1 and "" or "s"
+        abandoned,
+        abandoned == 1 and "" or "s"
       ),
     }
   end

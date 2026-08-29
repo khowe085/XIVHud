@@ -144,7 +144,7 @@ describe("equipviewer widget", function()
     -- the framework's own highlight box is a white square tinted to colour,
     -- and the panel is the same trick.
     it("draws the panel from art rather than trusting a bare colour", function()
-      assert.equal("addons/XIVHud/components/equipviewer/assets/panel.png", panel().last.path)
+      assert.equal("addons/XIVHud/assets/own/panel.png", panel().last.path)
     end)
 
     it("draws nothing before it is attached", function()

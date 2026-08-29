@@ -1,0 +1,91 @@
+Third-party notices for the image files in this directory.
+
+This directory holds XIVHud's own framework art alongside the UI chrome
+imported from the xivcrossbar addon. Every imported image is a verbatim,
+byte-for-byte copy of its source file - no image was re-encoded, resized, or
+otherwise transformed.
+
+XIVHud's own art
+--------------------------------------------------------------------------------
+
+    indicator.png    the skillchain indicator's bar: a white square, tinted at
+                     draw time
+    panel.png        an 8x8 white square, tinted at runtime to draw the panel
+                     behind the equip viewer's grid
+    overlay.png      the framework's own square, tinted for layout mode's
+                     highlight box
+
+All three are XIVHud's own work. They are covered by no upstream notice, and
+nothing below applies to them.
+
+Imported chrome, and where it came from
+--------------------------------------------------------------------------------
+
+From xivcrossbar (https://github.com/AliekberFFXI/xivcrossbar, MIT (c) 2020
+AliekberFFXI; per-file BSD headers (c) 2017 SirEdeonX inherited from
+xivhotbar). Both notices are reproduced in full below.
+
+    slot.png, frame.png                  themes/ffxiv/
+    bar_bg_compact.png, feedback.png,    images/icons/iconpacks/default/ui/
+      black-square.png, red-x.png,       (bar_bg_compact.png is the panel
+      frame_step1.png - frame_step8.png   behind the active side; red-x.png
+                                          crosses out a slot whose ninja tool
+                                          count is zero; feedback.png is the
+                                          press flash; black-square.png and
+                                          the frame_step frames back the
+                                          recast overlay and the skillchain
+                                          frame animation)
+
+MIT License (xivcrossbar)
+--------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2020 AliekberFFXI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+BSD 3-clause (xivhotbar, per-file headers throughout xivcrossbar)
+--------------------------------------------------------------------------------
+
+Copyright © 2017, SirEdeonX
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of xivhotbar nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL SirEdeonX BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

@@ -32,6 +32,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
        slots = { default = { pos = { x = , y = }, scale = , visible = } }
 
+     A multi-anchor component (touchpoint 2) declares `anchors` in its default
+     slot state instead, and pos/scale move under the anchor names; `visible`
+     stays at the top level, because the right-click toggle is per widget:
+
+       slots = { default = { anchors = { main = { pos = , scale = } }, visible = } }
+
      `default` always exists and is the seed for any slot the user creates
      later. Positions are snapped to a grid (CTRL frees them) and clamped so a
      widget can never be dragged off screen. ]]
@@ -95,6 +101,19 @@ local function new(deps)
     return math.max(MIN_SCALE, scale)
   end
 
+  -- Repairs one pos/scale-bearing entry in place: `entry` is the slot state
+  -- itself for a single-anchor component, or one anchor's table otherwise.
+  local function repair_placement(entry, defaults)
+    if type(entry.pos) ~= "table" then
+      entry.pos = copy(defaults.pos) or { x = 0, y = 0 }
+    end
+    entry.pos.x = tonumber(entry.pos.x) or 0
+    entry.pos.y = tonumber(entry.pos.y) or 0
+    if type(entry.scale) ~= "number" then
+      entry.scale = tonumber(defaults.scale) or 1
+    end
+  end
+
   -- The state table for `slot_name`, created on first use: seeded from the
   -- `default` slot when there is one, otherwise from the component's defaults.
   -- Individual missing keys are repaired the same way.
@@ -113,13 +132,31 @@ local function new(deps)
     end
 
     defaults = defaults or {}
-    if type(state.pos) ~= "table" then
-      state.pos = copy(defaults.pos) or { x = 0, y = 0 }
-    end
-    state.pos.x = tonumber(state.pos.x) or 0
-    state.pos.y = tonumber(state.pos.y) or 0
-    if type(state.scale) ~= "number" then
-      state.scale = tonumber(defaults.scale) or 1
+    if type(defaults.anchors) == "table" then
+      -- Multi-anchor entry: pos/scale live per anchor. A stray top-level
+      -- pos/scale is shed here - the CB2 stand-in registered the anchored
+      -- schema before this repair understood it, so this path fabricated and
+      -- persisted exactly that pair; dropping it in place means the next save
+      -- no longer carries it. Only slots this repair visits shed it: a
+      -- residue in a non-active slot stays until that slot is next read.
+      -- Anchors the defaults do not mention are preserved untouched, like any
+      -- other user-created key.
+      state.pos, state.scale = nil, nil
+      if type(state.anchors) ~= "table" then
+        state.anchors = {}
+      end
+      for name, anchor_defaults in pairs(defaults.anchors) do
+        -- A default that is not a table is a component authoring bug; skip
+        -- the anchor rather than index into it.
+        if type(anchor_defaults) == "table" then
+          if type(state.anchors[name]) ~= "table" then
+            state.anchors[name] = copy(anchor_defaults)
+          end
+          repair_placement(state.anchors[name], anchor_defaults)
+        end
+      end
+    else
+      repair_placement(state, defaults)
     end
     -- `visible` is deliberately left as stored: anything that is not `true`
     -- reads as hidden everywhere, rather than being quietly turned back on.

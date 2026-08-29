@@ -45,6 +45,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        right-click  toggle the widget on or off; disabled widgets stay visible
                     and draggable in layout mode so they can be re-enabled
 
+     A widget exposing `anchors() -> {names}` (touchpoint 2) is hit-tested per
+     anchor: dragging and wheel-scaling address the one anchor under the
+     cursor, whose state is fetched as deps.state(component, anchor). Only the
+     right-click toggle stays whole-widget - `visible` is per component.
+
      A drag captures the mouse: once a grab is live every mouse event belongs to
      the mode, so a stray right-click or wheel cannot reach the game mid-drag. ]]
 
@@ -67,14 +72,27 @@ local function new(deps)
     end
   end
 
+  local function inside(x, y, bx, by, width, height)
+    return bx ~= nil and x >= bx and x < bx + width and y >= by and y < by + height
+  end
+
   -- Topmost wins: later registrations draw over earlier ones, so search back to
-  -- front. Bounds are half-open, so abutting widgets cannot both claim a pixel.
+  -- front - and within a multi-anchor widget, later anchors over earlier ones.
+  -- Bounds are half-open, so abutting widgets cannot both claim a pixel.
   local function hit_test(x, y)
     local components = deps.components()
     for index = #components, 1, -1 do
       local component = components[index]
-      local bx, by, width, height = component.get_bounds()
-      if bx and x >= bx and x < bx + width and y >= by and y < by + height then
+      -- A non-table anchors() answer reads as no anchors, matching core.
+      local names = component.anchors and component.anchors()
+      if type(names) == "table" then
+        for position = #names, 1, -1 do
+          local anchor = names[position]
+          if inside(x, y, component.get_bounds(anchor)) then
+            return component, anchor
+          end
+        end
+      elseif inside(x, y, component.get_bounds()) then
         return component
       end
     end
@@ -82,8 +100,14 @@ local function new(deps)
   end
 
   local function move_to(x, y)
-    local state = deps.state(drag.component)
-    local _, _, width, height = drag.component.get_bounds()
+    local state = deps.state(drag.component, drag.anchor)
+    -- The grab was live when it started; a state that has since gone (the
+    -- policy everywhere here: nil kills the interaction) ends the move, not
+    -- the mouse capture.
+    if not state then
+      return
+    end
+    local _, _, width, height = drag.component.get_bounds(drag.anchor)
     state.pos.x, state.pos.y = layout.resolve(x - drag.offset_x, y - drag.offset_y, width, height, control_held)
     deps.apply(drag.component)
   end
@@ -112,8 +136,12 @@ local function new(deps)
     active = true
     drag = nil
     swallow_right_up = false
-    -- The keyboard handler only exists while the mode is on, so a CTRL release
-    -- that lands after the last exit was never seen. Start from released.
+    -- CTRL tracking only runs while the keyboard handler is registered, and
+    -- that is guaranteed only while some component consumes keys; with none,
+    -- the handler comes and goes with the mode and a release outside it is
+    -- never seen. Entering from a known-released state is the safe reading
+    -- either way: a CTRL still physically down re-asserts itself on its next
+    -- auto-repeat.
     control_held = false
     apply_all()
     return true
@@ -156,30 +184,34 @@ local function new(deps)
       return true
     end
 
+    -- deps.state(component, anchor) is the pos/scale-bearing state the hit
+    -- addresses: one anchor's entry, or the whole slot state when anchor is
+    -- nil. Its nil kills the interaction - an anchor with bounds but no state
+    -- entry is a component authoring bug, not worth crashing the mouse over.
     if mouse_type == LEFT_DOWN then
-      local component = hit_test(x, y)
-      if not component then
+      local component, anchor = hit_test(x, y)
+      local state = component and deps.state(component, anchor)
+      if not state then
         return false
       end
-      local state = deps.state(component)
-      drag = { component = component, offset_x = x - state.pos.x, offset_y = y - state.pos.y }
+      drag = { component = component, anchor = anchor, offset_x = x - state.pos.x, offset_y = y - state.pos.y }
       return true
     elseif mouse_type == WHEEL then
-      local component = hit_test(x, y)
-      if not component then
+      local component, anchor = hit_test(x, y)
+      local state = component and deps.state(component, anchor)
+      if not state then
         return false
       end
-      local state = deps.state(component)
       state.scale = layout.clamp_scale(state.scale + (delta or 0) / WHEEL_SCALE_STEP)
       deps.apply(component)
       deps.persist(component)
       return true
     elseif mouse_type == RIGHT_DOWN then
       local component = hit_test(x, y)
-      if not component then
+      local state = component and deps.state(component)
+      if not state then
         return false
       end
-      local state = deps.state(component)
       state.visible = not state.visible
       swallow_right_up = true
       deps.apply(component)

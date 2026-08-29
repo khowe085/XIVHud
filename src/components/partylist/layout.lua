@@ -77,12 +77,12 @@ local function job_icon(pos, scale)
   return {
     pos = pos,
     scale = scale,
-    path = "assets/jobIcons/",
-    highlight = image("assets/jobIcons/highlight.png", { -13, -13 }, { 62, 62 }),
-    bg = image("assets/jobIcons/bg.png", { 0, 0 }, { 36, 36 }),
-    gradient = image("assets/jobIcons/gradient.png", { 0, 0 }, { 36, 36 }),
+    path = "assets/xiv/jobIcons/",
+    highlight = image("assets/xiv/jobIcons/highlight.png", { -13, -13 }, { 62, 62 }),
+    bg = image("assets/xiv/jobIcons/bg.png", { 0, 0 }, { 36, 36 }),
+    gradient = image("assets/xiv/jobIcons/gradient.png", { 0, 0 }, { 36, 36 }),
     icon = { pos = { 0, 0 }, size = { 36, 36 } },
-    frame = image("assets/jobIcons/frame.png", { 0, 0 }, { 36, 36 }),
+    frame = image("assets/xiv/jobIcons/frame.png", { 0, 0 }, { 36, 36 }),
     colors = {
       dd = { r = 102, g = 53, b = 53, a = 255 },
       healer = { r = 59, g = 101, b = 41, a = 255 },
@@ -235,7 +235,7 @@ return {
         icons_by_row = { 8, 8 },
         -- Both rows left-aligned, unlike XIVParty's indented second row.
         offset_by_row = { 0, 0 },
-        path = "assets/buffIcons/",
+        path = "assets/xiv/buffIcons/",
       },
       -- Width reaches past the buff icon grid's own right edge (x=460): a
       -- targeted member's buffs have to sit inside their own highlight.

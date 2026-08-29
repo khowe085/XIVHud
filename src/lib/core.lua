@@ -107,6 +107,9 @@ local function new(deps)
   local settings = new_settings({
     read_file = deps.read_file,
     write_file = deps.write_file,
+    -- So reset can clear a component's directory store, not just its file.
+    list_dir = deps.list_dir,
+    delete_file = deps.delete_file,
     notify = say,
   })
 
@@ -151,6 +154,18 @@ local function new(deps)
     return defaults.slots and defaults.slots.default
   end
 
+  -- The anchor names of a multi-anchor component (touchpoint 2), or nil for
+  -- the single-anchor majority - the pinned detection: an optional `anchors()`
+  -- member, never an implicit convention.
+  local function anchor_names(component)
+    local names = component.anchors and component.anchors()
+    -- A non-table answer reads as no anchors, matching layout_mode.
+    if type(names) ~= "table" then
+      return nil
+    end
+    return names
+  end
+
   -- The component's layout state in the active slot, or nil while logged out.
   local function state_of(component)
     local handle = handles[component.name]
@@ -161,7 +176,28 @@ local function new(deps)
     local state = layout.slot(config, active_slot(), default_state_of(component))
     -- Repair in place rather than only on the way to the prims, so `//hud list`
     -- and the next wheel step work from the same number that is on screen.
-    state.scale = layout.clamp_scale(state.scale)
+    local names = anchor_names(component)
+    if names then
+      for _, name in ipairs(names) do
+        local anchor = state.anchors and state.anchors[name]
+        if anchor then
+          anchor.scale = layout.clamp_scale(anchor.scale)
+        end
+      end
+    else
+      state.scale = layout.clamp_scale(state.scale)
+    end
+    return state
+  end
+
+  -- One anchor's pos/scale-bearing state, or the whole slot state when
+  -- `anchor` is nil. nil for an anchor the component lists but its defaults
+  -- never seeded - a component authoring bug the callers skip over.
+  local function placement_of(component, anchor)
+    local state = state_of(component)
+    if state and anchor then
+      return state.anchors and state.anchors[anchor] or nil
+    end
     return state
   end
 
@@ -181,20 +217,91 @@ local function new(deps)
     end
   end
 
+  --[[ The directory store, for a component declaring `wants_store = true`:
+       named files under `data/<Character>/<component>/`, the shape per-job
+       configuration needs. The closures re-read the handle on every call
+       rather than capturing its state, so one accessor stays valid across
+       re-attaches and reloads. Everyone else keeps the two-argument attach
+       they always had. ]]
+  local function store_for(component)
+    if not component.wants_store then
+      return nil
+    end
+    local handle = handles[component.name]
+    return {
+      load = function(name)
+        return handle.store_load(name)
+      end,
+      save = function(name, value)
+        return handle.store_save(name, value)
+      end,
+    }
+  end
+
+  local function attach(component)
+    local handle = handles[component.name]
+    component.attach(handle.get(), saver_for(component), store_for(component))
+  end
+
   -- Bounds are read after the position and scale have been pushed, so the
-  -- highlight tracks the widget through a drag or a wheel-scale.
-  local function apply_overlay(component, state)
+  -- highlight tracks the widget through a drag or a wheel-scale. A
+  -- multi-anchor component gets one highlight per anchor, under a per-anchor
+  -- key that doubles as the label naming the anchor.
+  local function overlay_key(component, anchor)
+    return anchor and (component.name .. ":" .. anchor) or component.name
+  end
+
+  local function apply_anchor_overlay(component, state, anchor)
+    local key = overlay_key(component, anchor)
     if not self.layout_active() or visibility.suppressed() then
-      overlay.hide(component.name)
+      overlay.hide(key)
       return
     end
 
-    local x, y, width, height = component.get_bounds()
+    local x, y, width, height = component.get_bounds(anchor)
     if not x then
-      overlay.hide(component.name)
+      overlay.hide(key)
       return
     end
-    overlay.show(component.name, x, y, width, height, state.visible == true)
+    overlay.show(key, x, y, width, height, state.visible == true)
+  end
+
+  local function apply_overlay(component, state)
+    local names = anchor_names(component)
+    if names then
+      for _, name in ipairs(names) do
+        apply_anchor_overlay(component, state, name)
+      end
+    else
+      apply_anchor_overlay(component, state, nil)
+    end
+  end
+
+  -- Pushes one placement - an anchor's, or the whole widget's when `anchor`
+  -- is nil - and repairs it back on screen. A position can arrive off screen
+  -- from a hand-edited file, a resolution change or `//hud copy`; left alone,
+  -- layout mode's hit test could never reach the widget again. Bounds are
+  -- only known once the position and scale are on the component, hence the
+  -- second set_pos.
+  local function apply_placement(component, placement, anchor)
+    -- Anchored defaults on a widget with no anchors() member (the CB2
+    -- stand-in's shape): layout.slot keys off the defaults and strips the
+    -- top-level pos, while detection here keys off the member - skip the
+    -- mismatch rather than crash the apply.
+    if type(placement.pos) ~= "table" then
+      return
+    end
+    component.set_scale(placement.scale, anchor)
+    component.set_pos(placement.pos.x, placement.pos.y, anchor)
+
+    local bounds_x, bounds_y, width, height = component.get_bounds(anchor)
+    if bounds_x then
+      local x, y = layout.clamp(bounds_x, bounds_y, width, height)
+      if x ~= placement.pos.x or y ~= placement.pos.y then
+        placement.pos.x, placement.pos.y = x, y
+        component.set_pos(x, y, anchor)
+      end
+    end
   end
 
   -- The one decision about whether a component is on screen. Layout mode
@@ -207,20 +314,16 @@ local function new(deps)
       return
     end
 
-    component.set_scale(state.scale)
-    component.set_pos(state.pos.x, state.pos.y)
-
-    -- A position can arrive off screen from a hand-edited file, a resolution
-    -- change or `//hud copy`. Left alone, layout mode's hit test could never
-    -- reach the widget again. Bounds are only known once the position and
-    -- scale are on the component, hence the second set_pos.
-    local bounds_x, bounds_y, width, height = component.get_bounds()
-    if bounds_x then
-      local x, y = layout.clamp(bounds_x, bounds_y, width, height)
-      if x ~= state.pos.x or y ~= state.pos.y then
-        state.pos.x, state.pos.y = x, y
-        component.set_pos(x, y)
+    local names = anchor_names(component)
+    if names then
+      for _, name in ipairs(names) do
+        local anchor = state.anchors and state.anchors[name]
+        if anchor then
+          apply_placement(component, anchor, name)
+        end
       end
+    else
+      apply_placement(component, state, nil)
     end
     if component.set_preview then
       component.set_preview(self.layout_active())
@@ -250,13 +353,33 @@ local function new(deps)
     components = function()
       return registry.all()
     end,
-    state = state_of,
+    state = placement_of,
     apply = apply,
     persist = persist,
   })
 
   function self.layout_active()
     return layout_mode.active()
+  end
+
+  -- For an input-consuming component's guards: whether the auto-hide resolver
+  -- is currently hiding the HUD (cutscene, zoning, logged out).
+  function self.suppressed()
+    return visibility.suppressed()
+  end
+
+  -- The other half of suppressed() for the same guards: the USER's visible
+  -- flag for one component. Suppression and a user hide both reach a widget
+  -- as hide(), and only core can say which is which - the flag is what
+  -- `//hud show|hide` and layout mode's right-click write, untouched by
+  -- suppression, so a guard ranking disabled above suppressed reads it.
+  function self.component_visible(name)
+    local component = registry.get(name)
+    if component == nil then
+      return false
+    end
+    local state = state_of(component)
+    return state ~= nil and state.visible == true
   end
 
   function self.character()
@@ -273,7 +396,7 @@ local function new(deps)
     registry.register(component)
     handles[component.name] = settings.register(component.name, component.defaults)
     if settings.character() then
-      component.attach(handles[component.name].get(), saver_for(component))
+      attach(component)
     end
     apply(component)
     return component
@@ -300,9 +423,8 @@ local function new(deps)
     visibility.set_status(player and player.status or nil)
 
     for _, component in ipairs(registry.all()) do
-      local handle = handles[component.name]
       if name then
-        component.attach(handle.get(), saver_for(component))
+        attach(component)
       else
         component.detach()
       end
@@ -454,16 +576,66 @@ local function new(deps)
     end
   end
 
+  --[[ An event a prior addon already took is answered here and never reaches
+       a component, so the component signature carries no `blocked`: it would
+       be false on every call the dispatch can make. ]]
   function self.on_mouse(mouse_type, x, y, delta, blocked)
     -- Suppression outranks layout mode, so nothing is on screen to grab.
     if blocked or visibility.suppressed() then
       return false
     end
-    return layout_mode.mouse(mouse_type, x, y, delta)
+    -- Layout mode owns the mouse outright while it is on; entering it exits a
+    -- component's edit mode, so the two never contend (touchpoint 3).
+    if layout_mode.active() then
+      return layout_mode.mouse(mouse_type, x, y, delta)
+    end
+    local block = false
+    for _, component in ipairs(registry.all()) do
+      if component.on_mouse then
+        block = component.on_mouse(mouse_type, x, y, delta) == true or block
+      end
+    end
+    return block
   end
 
-  function self.on_keyboard(key, down)
+  function self.wants_mouse()
+    for _, component in ipairs(registry.all()) do
+      if component.on_mouse then
+        return true
+      end
+    end
+    return false
+  end
+
+  --[[ Keyboard events flow whenever the handler is registered: to layout mode
+       for its CTRL tracking, and to every component that declares an
+       `on_keyboard` member. A component's `true` propagates out to Windower as
+       the block. Deliberately NOT gated on layout mode, suppression or login
+       (pinned 2026-08-16): a consumer's dedicated keys must stay blocked and
+       its key state must keep tracking through all three - the inertness lives
+       in the component's own input module, not in dispatch going quiet. The
+       full signature is forwarded; `blocked` in particular feeds the
+       inbound-blocked guard. ]]
+  function self.on_keyboard(key, down, flags, blocked)
     layout_mode.key(key, down)
+    local block = false
+    for _, component in ipairs(registry.all()) do
+      if component.on_keyboard then
+        block = component.on_keyboard(key, down, flags, blocked) == true or block
+      end
+    end
+    return block
+  end
+
+  -- Whether the keyboard handler is worth registering at all: the entry point
+  -- keeps it always-on when some component consumes keys, and layout-mode-only
+  -- otherwise.
+  function self.wants_keyboard()
+    for _, component in ipairs(registry.all()) do
+      if component.on_keyboard then
+        return true
+      end
+    end
     return false
   end
 
@@ -475,19 +647,34 @@ local function new(deps)
     return false
   end
 
+  -- One line for a single-anchor component; a headline plus one indented line
+  -- per anchor otherwise, since four placements do not fit one chat line.
   local function describe(component)
     local state = state_of(component)
     if not state then
-      return "  " .. component.name .. " - not loaded"
+      return { "  " .. component.name .. " - not loaded" }
     end
-    return string.format(
-      "  %s - %s, pos %d,%d, scale %.2f",
-      component.name,
-      state.visible == true and "shown" or "hidden",
-      state.pos.x,
-      state.pos.y,
-      state.scale
-    )
+    local shown = state.visible == true and "shown" or "hidden"
+    local names = anchor_names(component)
+    -- A placement apply skipped (anchored defaults, no anchors() member) has
+    -- no pos to format; the headline still names the component and its state.
+    if not names and type(state.pos) ~= "table" then
+      return { string.format("  %s - %s", component.name, shown) }
+    end
+    if not names then
+      return {
+        string.format("  %s - %s, pos %d,%d, scale %.2f", component.name, shown, state.pos.x, state.pos.y, state.scale),
+      }
+    end
+    local lines = { string.format("  %s - %s", component.name, shown) }
+    for _, name in ipairs(names) do
+      local anchor = state.anchors and state.anchors[name]
+      if anchor then
+        lines[#lines + 1] =
+          string.format("    %s - pos %d,%d, scale %.2f", name, anchor.pos.x, anchor.pos.y, anchor.scale)
+      end
+    end
+    return lines
   end
 
   local function set_visible(component, visible)
@@ -498,9 +685,8 @@ local function new(deps)
   end
 
   local function reset(component)
-    local handle = handles[component.name]
-    handle.reset()
-    component.attach(handle.get(), saver_for(component))
+    handles[component.name].reset()
+    attach(component)
     apply(component)
   end
 
@@ -772,7 +958,9 @@ local function new(deps)
       end
       say("XIVHud components:")
       for _, component in ipairs(components) do
-        say(describe(component))
+        for _, line in ipairs(describe(component)) do
+          say(line)
+        end
       end
     elseif action.action == "show" or action.action == "hide" then
       if require_character() then

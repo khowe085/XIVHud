@@ -116,14 +116,32 @@ Factory style per CLAUDE.md: `new(ctx) -> widget` where `ctx` bundles injected d
 | --- | --- |
 | `name` | stable key used in settings + commands |
 | `defaults` | defaults for the widget's own config file |
+| `attach(config, save, store)` / `detach()` | login/logout lifecycle; `store` is the directory accessor, passed only to a widget declaring `wants_store` |
 | `show()` / `hide()` | visibility (layout mode forces show) |
-| `set_pos(x, y)` | move all owned prims as a group |
-| `set_scale(s)` | apply scale factor to owned prims (fonts, sizes, offsets) |
+| `set_pos(x, y, anchor)` | move all owned prims as a group — or one anchor's, when named |
+| `set_scale(s, anchor)` | apply scale factor to owned prims (fonts, sizes, offsets); per anchor when named |
 | `set_preview(on)` | render sample data for layout mode (FFXIV-style full preview) |
-| `get_bounds() -> x, y, w, h` | bounding box for layout-mode hit testing |
+| `get_bounds(anchor) -> x, y, w, h` | bounding box for layout-mode hit testing; per anchor when named |
 | `update(...)` | data refresh (event-driven and/or prerender-throttled) |
-| `handle_command(args)` | *optional*: receives `//hud <name> ...` passthrough args |
+| `handle_command(args)` | *optional*: receives `//hud <name> ...` passthrough args (a string, or a list of lines) |
+| `anchors() -> {names}` | *optional*: declares a multi-anchor widget (crossbar touchpoint 2) |
+| `wants_store` | *optional* flag: asks for `attach`'s third argument (touchpoint 5) |
+| `on_keyboard(key, down, flags, blocked)` | *optional*: `true` blocks the key (touchpoint 1) |
+| `on_mouse(type, x, y, delta)` | *optional*: `true` blocks the event (touchpoint 3). No `blocked` argument - core answers an event another addon already took before any component is asked |
 | `destroy()` | dispose prims (unload/reload safety) |
+
+The last four are opt-in, and a widget declaring none of them sees the original
+contract unchanged: `store` and the trailing `anchor` argument are nil and no
+input is dispatched to it. Multi-anchor detection is the `anchors()` member
+itself, never an implicit convention — absent it, core, `layout`, `layout_mode`
+and `overlay` all take the single-anchor path. A multi-anchor widget moves
+`pos`/`scale` under `slots.<slot>.anchors.<name>`; `visible` stays per widget,
+so the right-click toggle is still whole-widget. Keyboard dispatch is *not*
+gated on layout mode, suppression or login — a consumer's dedicated keys must
+stay blocked and its key tracking must survive all three, so the inertness
+lives in the component; the mouse is the opposite, layout mode owning it
+outright. Core exposes `suppressed()` and `component_visible(name)` for those
+component-side guards.
 
 ### Entry point & data flow
 

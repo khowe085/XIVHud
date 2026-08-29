@@ -173,4 +173,121 @@ describe("layout", function()
       assert.are.same({}, layout.slot_names({}))
     end)
   end)
+
+  -- Touchpoint 2: a component whose default slot state carries `anchors`
+  -- stores pos/scale per anchor; `visible` stays at the top level.
+  describe("multi-anchor slot state", function()
+    local function anchored_defaults()
+      return {
+        anchors = {
+          main = { pos = { x = 100, y = 900 }, scale = 1 },
+          indicator = { pos = { x = 600, y = 700 }, scale = 1 },
+        },
+        visible = true,
+      }
+    end
+
+    it("fills a missing slot in from the per-anchor defaults", function()
+      local config = {}
+      local state = layout.slot(config, "default", anchored_defaults())
+      assert.are.same(anchored_defaults(), state)
+      assert.are.same(state, config.slots.default)
+    end)
+
+    it("does not fabricate top-level pos or scale on an anchored entry", function()
+      local state = layout.slot({}, "default", anchored_defaults())
+      assert.is_nil(state.pos)
+      assert.is_nil(state.scale)
+    end)
+
+    -- The CB2 stand-in registered with the anchored schema before the
+    -- framework understood it, so layout.slot persisted a spurious top-level
+    -- pos/scale into crossbar config. Tolerate the residue and shed it, so
+    -- the first write after this repair no longer carries it.
+    it("drops a stray top-level pos and scale left by the CB2 stand-in", function()
+      local config = {
+        slots = {
+          default = {
+            pos = { x = 0, y = 0 },
+            scale = 1,
+            visible = true,
+            anchors = { main = { pos = { x = 5, y = 6 }, scale = 2 } },
+          },
+        },
+      }
+      local state = layout.slot(config, "default", anchored_defaults())
+      assert.is_nil(state.pos)
+      assert.is_nil(state.scale)
+      assert.are.same({ pos = { x = 5, y = 6 }, scale = 2 }, state.anchors.main)
+    end)
+
+    it("repairs a missing anchor from its default without touching the others", function()
+      local config = {
+        slots = { default = { anchors = { main = { pos = { x = 1, y = 2 }, scale = 3 } }, visible = true } },
+      }
+      local state = layout.slot(config, "default", anchored_defaults())
+      assert.are.same({ pos = { x = 600, y = 700 }, scale = 1 }, state.anchors.indicator)
+      assert.are.same({ pos = { x = 1, y = 2 }, scale = 3 }, state.anchors.main)
+    end)
+
+    it("repairs an anchor entry that is the wrong shape throughout", function()
+      local config = {
+        slots = {
+          default = {
+            anchors = { main = "nonsense", indicator = { pos = { x = "abc", y = {} }, scale = "big" } },
+          },
+        },
+      }
+      local state = layout.slot(config, "default", anchored_defaults())
+      assert.are.same({ pos = { x = 100, y = 900 }, scale = 1 }, state.anchors.main)
+      assert.are.same({ x = 0, y = 0 }, state.anchors.indicator.pos)
+      assert.are.equal(1, state.anchors.indicator.scale)
+    end)
+
+    it("seeds a repaired anchor with a copy, not a reference to the defaults", function()
+      local defaults = anchored_defaults()
+      local state = layout.slot({}, "default", defaults)
+      defaults.anchors.main.pos.x = 999
+      assert.are.equal(100, state.anchors.main.pos.x, "the seed must be a copy")
+    end)
+
+    it("skips an anchor whose default is not a table", function()
+      local config = {
+        slots = { default = { anchors = { indicator = { pos = { x = 9, y = 9 }, scale = 2 } } } },
+      }
+      local state
+      assert.has_no.errors(function()
+        state = layout.slot(config, "default", {
+          anchors = { main = 5, indicator = { pos = { x = 600, y = 700 }, scale = 1 } },
+          visible = true,
+        })
+      end)
+      assert.is_nil(state.anchors.main, "a malformed default must not seed an anchor")
+      assert.are.same({ pos = { x = 9, y = 9 }, scale = 2 }, state.anchors.indicator)
+    end)
+
+    it("preserves an anchor the defaults do not mention", function()
+      local config = {
+        slots = { default = { anchors = { extra = { pos = { x = 7, y = 8 }, scale = 2 } } } },
+      }
+      local state = layout.slot(config, "default", anchored_defaults())
+      assert.are.same({ pos = { x = 7, y = 8 }, scale = 2 }, state.anchors.extra)
+    end)
+
+    it("keeps visible at the top level and repairs it there", function()
+      local state = layout.slot({}, "default", anchored_defaults())
+      assert.is_true(state.visible)
+      local hidden = layout.slot({}, "default", { anchors = {}, visible = false })
+      assert.is_false(hidden.visible)
+    end)
+
+    it("creates a new slot as a deep copy of the anchored source", function()
+      local config = {}
+      layout.slot(config, "default", anchored_defaults())
+      local created = layout.create_slot(config, "raid", "default", anchored_defaults())
+      assert.are.same(config.slots.default, created)
+      config.slots.default.anchors.main.pos.x = 999
+      assert.are.equal(100, config.slots.raid.anchors.main.pos.x, "the seed must be a copy")
+    end)
+  end)
 end)

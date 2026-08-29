@@ -40,7 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local new_logic = require("components/parambar/logic")
 local build_defaults = require("components/parambar/defaults")
 
-local ASSET_DIR = "components/parambar/assets/"
+local ASSET_DIR = "assets/ffxiv/"
 local BARS = { "hp", "mp", "tp" }
 local FILL_TEXTURES = { "hp_fg.png", "mp_fg.png", "tp_fg.png" }
 

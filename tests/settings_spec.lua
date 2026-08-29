@@ -179,6 +179,156 @@ describe("settings", function()
     end)
   end)
 
+  -- Touchpoint 5: a component that claims its directory (`handle.dir()`) can
+  -- read and write named files inside it - `data/<Character>/<component>/
+  -- <name>.lua` - through the same sandboxed-load/serialize machinery as the
+  -- component file itself.
+  describe("directory store", function()
+    it("round-trips a named file under the component's own directory", function()
+      local handle = service.register("crossbar", {})
+      service.set_character("Azureblood")
+      assert.is_true(handle.store_save("WAR", { active_set = 3 }))
+      assert.are.equal("return {\n  active_set = 3,\n}\n", fs.files["data/Azureblood/crossbar/WAR.lua"])
+      assert.are.same({ active_set = 3 }, handle.store_load("WAR"))
+    end)
+
+    it("reads a file already on disk", function()
+      fs.put("data/Azureblood/crossbar/SHARED.lua", "return { sets = { [6] = { left = {} } } }")
+      local handle = service.register("crossbar", {})
+      service.set_character("Azureblood")
+      assert.are.same({ sets = { [6] = { left = {} } } }, handle.store_load("SHARED"))
+    end)
+
+    it("answers nil for a file that does not exist", function()
+      local handle = service.register("crossbar", {})
+      service.set_character("Azureblood")
+      assert.is_nil(handle.store_load("WAR"))
+    end)
+
+    it("neither reads nor writes while logged out", function()
+      local handle = service.register("crossbar", {})
+      assert.is_nil(handle.store_load("WAR"))
+      assert.is_false(handle.store_save("WAR", { active_set = 1 }))
+      assert.are.same({}, fs.files)
+    end)
+
+    it("degrades a broken file to nil plus a warning, like the component file", function()
+      fs.put("data/Azureblood/crossbar/WAR.lua", "return { this is not lua")
+      local handle = service.register("crossbar", {})
+      service.set_character("Azureblood")
+      assert.is_nil(handle.store_load("WAR"))
+      assert.are.equal(1, #notices)
+    end)
+
+    -- The refusal is quiet on purpose: a non-table value is the calling
+    -- component's bug, and serialize would otherwise turn it into a chat
+    -- notice on every attempt.
+    it("refuses a non-table value without writing or complaining", function()
+      local handle = service.register("crossbar", {})
+      service.set_character("Azureblood")
+      assert.is_false(handle.store_save("WAR", "return {}"))
+      assert.is_false(handle.store_save("WAR", nil))
+      assert.are.same({}, fs.files)
+      assert.are.equal(0, #notices)
+    end)
+
+    it("refuses a name that is not a plain word, rather than composing a path from it", function()
+      local handle = service.register("crossbar", {})
+      service.set_character("Azureblood")
+      assert.is_false(handle.store_save("../core", { snap = 1 }))
+      assert.is_nil(handle.store_load("../core"))
+      assert.is_nil(fs.files["data/Azureblood/core.lua"])
+    end)
+
+    it("re-reads from disk after reload, so a copied file is not shadowed by a stale cache", function()
+      local handle = service.register("crossbar", {})
+      service.set_character("Azureblood")
+      handle.store_save("WAR", { active_set = 1 })
+      fs.put("data/Azureblood/crossbar/WAR.lua", "return { active_set = 7 }")
+      service.reload()
+      assert.are.equal(7, handle.store_load("WAR").active_set)
+    end)
+
+    it("switches directories with the character", function()
+      fs.put("data/Alpha/crossbar/WAR.lua", "return { active_set = 1 }")
+      fs.put("data/Bravo/crossbar/WAR.lua", "return { active_set = 2 }")
+      local handle = service.register("crossbar", {})
+      service.set_character("Alpha")
+      assert.are.equal(1, handle.store_load("WAR").active_set)
+      service.set_character("Bravo")
+      assert.are.equal(2, handle.store_load("WAR").active_set)
+    end)
+
+    it("keeps one component out of another's directory", function()
+      local crossbar = service.register("crossbar", {})
+      local other = service.register("other", {})
+      service.set_character("Azureblood")
+      crossbar.store_save("WAR", { active_set = 1 })
+      assert.is_nil(other.store_load("WAR"))
+      assert.is_not_nil(fs.files["data/Azureblood/crossbar/WAR.lua"])
+    end)
+
+    -- `//hud reset` rewrites the single component file; the per-job files
+    -- would silently survive it without this (touchpoint 5, round 3).
+    it("clears the directory store on reset when it can delete files", function()
+      local cleaner = new_settings({
+        read_file = fs.read_file,
+        write_file = fs.write_file,
+        list_dir = fs.list_dir,
+        delete_file = fs.delete_file,
+        notify = function(msg)
+          notices[#notices + 1] = msg
+        end,
+      })
+      local handle = cleaner.register("crossbar", { snap = 1 })
+      cleaner.set_character("Azureblood")
+      handle.store_save("WAR", { active_set = 5 })
+      handle.reset()
+      assert.is_nil(fs.files["data/Azureblood/crossbar/WAR.lua"])
+      assert.is_nil(handle.store_load("WAR"), "the cache must go with the files")
+      -- The emptied directory is attempted too (best effort - os.remove on a
+      -- directory is a no-op on Windows, so only the attempt is observable).
+      assert.are.equal("data/Azureblood/crossbar", fs.deletes[#fs.deletes])
+    end)
+
+    it("never asks the file system to delete a dot entry", function()
+      -- `windower.get_dir` returns `.` and `..` among the real entries, and
+      -- deleting `data/<Character>/crossbar/..` would aim the delete at the
+      -- character's whole config directory. core.delete_tree is pinned the
+      -- same way; this is the store's own copy of that guard.
+      local cleaner = new_settings({
+        read_file = fs.read_file,
+        write_file = fs.write_file,
+        list_dir = function()
+          return { ".", "..", "WAR.lua" }
+        end,
+        delete_file = fs.delete_file,
+        notify = function(msg)
+          notices[#notices + 1] = msg
+        end,
+      })
+      local handle = cleaner.register("crossbar", { snap = 1 })
+      cleaner.set_character("Azureblood")
+      handle.store_save("WAR", { active_set = 5 })
+      handle.reset()
+      for _, path in ipairs(fs.deletes) do
+        assert.is_nil(path:find(".", #path, true) and path:match("%.%.?$"), "aimed at a dot entry: " .. path)
+      end
+      assert.is_true(#fs.deletes > 0, "the real entry is still deleted")
+      assert.is_nil(fs.files["data/Azureblood/crossbar/WAR.lua"])
+    end)
+
+    it("still resets the component file when it cannot list directories", function()
+      local handle = service.register("crossbar", { snap = 1 })
+      service.set_character("Azureblood")
+      handle.store_save("WAR", { active_set = 5 })
+      assert.has_no.errors(function()
+        handle.reset()
+      end)
+      assert.is_not_nil(fs.files["data/Azureblood/crossbar.lua"])
+    end)
+  end)
+
   describe("sandboxed loading", function()
     it("falls back to defaults and warns on a malformed file", function()
       fs.put("data/Alpha/parambar.lua", "return { this is not lua")

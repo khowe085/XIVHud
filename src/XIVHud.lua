@@ -52,12 +52,25 @@ _addon.commands = { "hud", "xivhud" }
 
 local CHAT_COLOR = 207
 -- Plain white square, tinted and stretched for the layout-mode highlight.
-local OVERLAY_TEXTURE = "assets/overlay.png"
+local OVERLAY_TEXTURE = "assets/own/overlay.png"
 
 local core
 
 local function chat(message)
   windower.add_to_chat(CHAT_COLOR, "[XIVHud] " .. message)
+end
+
+-- Component-initiated chat, one line or a list, with the standard prefix.
+-- Command replies already ride core's reply path; this is for the messages no
+-- command is in flight for - a keypress hint, a binder echo.
+local function say(lines)
+  if type(lines) == "table" then
+    for _, line in ipairs(lines) do
+      chat(line)
+    end
+  else
+    chat(lines)
+  end
 end
 
 --[[ Load trace, written straight to <addon>/load.log with raw io.
@@ -150,6 +163,19 @@ do
   end
 end
 
+-- The enchanted-item decoder, for the crossbar's auto-warp (CB5). Optional for
+-- the same reason as above: without it the warp ladder loses its item rungs,
+-- not the addon. Kept local - nothing else reads it, so no global convention.
+local extdata = nil
+do
+  local ok, lib = pcall(require, "extdata")
+  if ok then
+    extdata = lib
+  else
+    trace("extdata unavailable: " .. tostring(lib))
+  end
+end
+
 local new_guard = step("loading lib/guard", function()
   return require("lib/guard")
 end)
@@ -177,35 +203,65 @@ end)
 local new_targetbar = step("loading the targetbar component", function()
   return require("components/targetbar/targetbar")
 end)
+local new_crossbar = step("loading the crossbar component", function()
+  return require("components/crossbar/crossbar")
+end)
 
 -- Every Windower handler goes through this, so a bug degrades to a message and
 -- a dead handler rather than an unexplained freeze.
 local guard = new_guard and new_guard({ notify = chat }) or nil
 
--- Registered only while layout mode is on, so normal play carries no
--- input-handling cost at all.
+--[[ Mouse and keyboard handlers. Historically these existed only while layout
+     mode was on; a component that consumes input (the crossbar) needs its
+     handler for as long as the addon runs, so each is registered on demand
+     and marked permanent when a component asked for it - layout mode then
+     registers whatever is not already there and releases only that. Both fall
+     back to false: a handler that dies must never keep swallowing the
+     player's mouse and keyboard, which is indistinguishable from a hang. ]]
 local mouse_event_id, keyboard_event_id
+local mouse_permanent, keyboard_permanent = false, false
 
-local function set_input_capture(on)
-  if on and not mouse_event_id then
-    -- These fall back to false: a handler that dies must never keep swallowing
-    -- the player's mouse and keyboard, which is indistinguishable from a hang.
+local function register_mouse()
+  if not mouse_event_id then
     mouse_event_id = windower.register_event(
       "mouse",
       guard.wrap("mouse", function(mouse_type, x, y, delta, blocked)
         return core.on_mouse(mouse_type, x, y, delta, blocked)
       end, false)
     )
+  end
+end
+
+local function register_keyboard()
+  if not keyboard_event_id then
+    -- The full signature. `flags` and the inbound `blocked` used to be
+    -- dropped here, and a component's inbound-blocked guard needs them.
     keyboard_event_id = windower.register_event(
       "keyboard",
-      guard.wrap("keyboard", function(key, down)
-        return core.on_keyboard(key, down)
+      guard.wrap("keyboard", function(key, down, flags, blocked)
+        return core.on_keyboard(key, down, flags, blocked)
       end, false)
     )
-  elseif not on and mouse_event_id then
+  end
+end
+
+local function release_input(everything)
+  if mouse_event_id and (everything or not mouse_permanent) then
     windower.unregister_event(mouse_event_id)
+    mouse_event_id = nil
+  end
+  if keyboard_event_id and (everything or not keyboard_permanent) then
     windower.unregister_event(keyboard_event_id)
-    mouse_event_id, keyboard_event_id = nil, nil
+    keyboard_event_id = nil
+  end
+end
+
+local function set_input_capture(on)
+  if on then
+    register_mouse()
+    register_keyboard()
+  else
+    release_input(false)
   end
 end
 
@@ -484,8 +540,11 @@ end
 -- Module level because two components read them now: the party list, which
 -- builds a row per member, and the target bar, which needs the same roster to
 -- decide whether a claim is the player's own.
-local function get_mob_by_target(kind)
-  return windower.ffxi.get_mob_by_target(kind)
+-- Argument-agnostic: the skillchain engine reads the fallback pair
+-- ('t', 'bt'), the other consumers a single kind - a wrapper must not
+-- narrow the API's arity.
+local function get_mob_by_target(...)
+  return windower.ffxi.get_mob_by_target(...)
 end
 
 local function get_party()
@@ -553,6 +612,16 @@ local function parse_action(data)
     return windower.packets.parse_action(data)
   end)
   return ok and act or nil
+end
+
+-- Whether the chat box has focus, for the crossbar's chat guard. Runs on
+-- every key event inside a guarded handler, so it must be nil-tolerant by
+-- construction - an input spike once died on exactly this call unguarded.
+local function chat_open()
+  local ok, info = pcall(function()
+    return windower.ffxi.get_info()
+  end)
+  return ok and info ~= nil and info.chat_open == true
 end
 
 -- Everything from here on can fail on a broken install, so each part is a step
@@ -656,7 +725,6 @@ step("building the targetbar component", function()
     get_player = get_player,
     get_mob_by_target = get_mob_by_target,
     get_party = get_party,
-    parse_action = parse_action,
     -- nil when the resource library failed to load: the cast bar then never
     -- shows, and the health bar, name and distance carry on without it.
     resources = libraries_error == nil and res or nil,
@@ -693,13 +761,132 @@ step("building the party list components", function()
   end
 end)
 
+--[[ The crossbar, live since CB5: all three bars drawn, slot presses
+     executing their bound actions through the ctx below (recasts, key
+     items, extdata, IPC...). Every windower call here is wrapped in a
+     closure, so an API this container cannot verify is not touched until
+     the component actually asks. ]]
+step("building the crossbar component", function()
+  if safe_mode then
+    return
+  end
+  -- The ctx's `random` feeds mount roulette; unseeded, Lua's generator would
+  -- deal the same mount sequence every client start.
+  math.randomseed(os.time())
+  core.register(new_crossbar({
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
+    now = os.clock,
+    -- Wall clock for the warp machine: extdata timestamps are os.time
+    -- offsets, which the monotonic os.clock cannot answer.
+    time = os.time,
+    say = say,
+    chat_open = chat_open,
+    -- The zone id, for the crossbar's mount rule (res.zones carries
+    -- `can_mount`). Nil-tolerant like chat_open: it is read while drawing.
+    zone = function()
+      local ok, info = pcall(function()
+        return windower.ffxi.get_info()
+      end)
+      return ok and info ~= nil and info.zone or nil
+    end,
+    suppressed = function()
+      return core.suppressed()
+    end,
+    -- The user's own show/hide flag, which suppression never touches: the
+    -- input guards rank disabled (user-hidden) above suppressed.
+    component_visible = function()
+      return core.component_visible("crossbar")
+    end,
+    layout_active = function()
+      return core.layout_active()
+    end,
+    -- Action execution (CB5).
+    send_command = function(command)
+      windower.send_command(command)
+    end,
+    send_ipc = function(message)
+      windower.send_ipc_message(message)
+    end,
+    -- Client state (CB5); each returns nil-tolerantly like the rest of the
+    -- entry point's accessors.
+    get_player = get_player,
+    get_mob_by_target = get_mob_by_target,
+    get_spell_recasts = function()
+      return windower.ffxi.get_spell_recasts()
+    end,
+    get_ability_recasts = function()
+      return windower.ffxi.get_ability_recasts()
+    end,
+    get_key_items = function()
+      return windower.ffxi.get_key_items()
+    end,
+    get_spells = function()
+      return windower.ffxi.get_spells()
+    end,
+    -- The binder's catalog (CB8): the client's own lists of job abilities
+    -- and weaponskills, which is what "known" means for those.
+    get_abilities = function()
+      return windower.ffxi.get_abilities()
+    end,
+    -- Argument-agnostic: the widget reads whole bags and, through the warp
+    -- machine, could grow an index argument - a wrapper must not narrow the
+    -- API's arity.
+    get_items = function(...)
+      return windower.ffxi.get_items(...)
+    end,
+    -- Argument-agnostic on purpose: set_equip's exact arity is a CB5,
+    -- in-client question, and a wrapper must not encode a guess.
+    set_equip = function(...)
+      return windower.ffxi.set_equip(...)
+    end,
+    -- Behind a pcall because this runs on the prerender warp poll and the
+    -- keyboard press path: extdata.decode raises (a nil item, an unknown
+    -- id, a non-24-byte extdata field), and a throw there would hand guard
+    -- a repeating failure until it disables the shared handler - the same
+    -- posture as parse_packet and parse_action above.
+    decode_extdata = function(item)
+      if extdata == nil then
+        return nil
+      end
+      local ok, ext = pcall(extdata.decode, item)
+      return ok and ext or nil
+    end,
+    random = math.random,
+    file_exists = file_exists,
+    read_dat = read_dat,
+    write_binary = write_binary,
+    game_path = game_path,
+    -- nil when the resource library failed to load: mount roulette and the
+    -- catalog then sit out, the bar itself carries on.
+    resources = libraries_error == nil and res or nil,
+  }))
+end)
+
+-- A component that consumes input needs its handler for as long as it is
+-- registered, not just during layout mode. Decided from the registry rather
+-- than hardcoded, so a component dropping out (safe mode, a failed step)
+-- releases the keyboard with it.
+step("registering component input handlers", function()
+  keyboard_permanent = core.wants_keyboard()
+  mouse_permanent = core.wants_mouse()
+  if keyboard_permanent then
+    register_keyboard()
+  end
+  if mouse_permanent then
+    register_mouse()
+  end
+end)
+
 -- Textures fail silently: a prim with a bad path simply draws nothing, so an
 -- incomplete install looks like a broken addon. Say so at load instead.
 local function check_assets()
   local missing = {}
   local expected = { OVERLAY_TEXTURE }
   for _, texture in ipairs({ "bar_bg.png", "bar_compact.png", "hp_fg.png", "mp_fg.png", "tp_fg.png" }) do
-    expected[#expected + 1] = "components/parambar/assets/" .. texture
+    expected[#expected + 1] = "assets/ffxiv/" .. texture
   end
   -- The party list ships some 680 textures; checking every one at load would
   -- cost 680 file opens to learn what a handful already tells us.
@@ -708,18 +895,75 @@ local function check_assets()
     "assets/xiv/BarBG.png",
     "assets/xiv/Cursor.png",
     "assets/xiv/AllyBarBG.png",
-    "assets/jobIcons/frame.png",
-    "assets/jobIcons/whm.png",
-    "assets/buffIcons/33.png",
+    "assets/xiv/jobIcons/frame.png",
+    "assets/xiv/jobIcons/whm.png",
+    "assets/xiv/buffIcons/33.png",
   }) do
-    expected[#expected + 1] = "components/partylist/" .. texture
+    expected[#expected + 1] = texture
   end
-  expected[#expected + 1] = "components/giltracker/assets/gil.png"
-  for _, texture in ipairs({ "encumbrance.png", "panel.png" }) do
-    expected[#expected + 1] = "components/equipviewer/assets/" .. texture
-  end
+  expected[#expected + 1] = "assets/gil/gil.png"
+  expected[#expected + 1] = "assets/encumbrance/encumbrance.png"
+  expected[#expected + 1] = "assets/own/panel.png"
   for _, texture in ipairs({ "BarBG.png", "Bar.png", "BarFG.png", "CastBG.png", "CastBar.png", "CastFG.png" }) do
-    expected[#expected + 1] = "components/targetbar/assets/xiv/" .. texture
+    expected[#expected + 1] = "assets/xiv/wide/" .. texture
+  end
+  -- The crossbar ships ~1,300 icons; same sampling rule as the party list -
+  -- a few from each imported category, plus every icon a CB1 table
+  -- (openers.lua, contexts.lua, actions.lua's built-ins) names outright.
+  for _, texture in ipairs({
+    -- Every entry here is root-relative, chrome and icons alike, because
+    -- the two live under different folders and a shared prefix can only
+    -- be right for one of them.
+    "own/slot.png",
+    "own/frame.png",
+    "own/bar_bg_compact.png",
+    "own/feedback.png",
+    "own/red-x.png",
+    "own/black-square.png",
+    "own/frame_step1.png",
+    "own/frame_step8.png",
+    "own/indicator.png",
+    "cooldown/frame_01.png",
+    "cooldown/frame_16.png",
+    "cooldown/frame_32.png",
+    "icons/spells/00001.png",
+    "icons/abilities/00005.png",
+    "icons/weaponskills/sword/expiacion.png",
+    "icons/weapons/sword.png",
+    "icons/skillchain/light.png",
+    -- elements/ is the one capitalised directory in the import.
+    "icons/elements/Fire.png",
+    "icons/mounts/crab.png",
+    "icons/trust/kupipi.png",
+    "icons/ninjutsu/utsusemi-ichi.png",
+    "icons/blue-magic/cocoon.png",
+    "icons/usable-item.png",
+    -- The generic opener glyph and ra's art, both resolved by render.lua.
+    "icons/check.png",
+    "icons/ranged.png",
+    -- openers.lua: every icon its entries carry.
+    "icons/item.png",
+    "icons/map.png",
+    -- contexts.lua: the arts/addendum book icons.
+    "icons/abilities/book_white.png",
+    "icons/abilities/book_black.png",
+    -- actions.lua built-ins: mr, warp, and draw's three states.
+    "icons/mounts/mount-roulette.png",
+    "icons/spells/00261.png",
+    "icons/spells/00137.png",
+    "icons/spells/00136.png",
+    "icons/attack.png",
+    "icons/disengage.png",
+    "icons/dismount.png",
+    -- The sword beside the set label, which drew a bare square when its
+    -- path went wrong and said nothing about it.
+    "icons/weapons/sword.png",
+  }) do
+    -- The asset ROOT: these are icons, and `own/` is the chrome beside
+    -- them. Prefixing the folder here sent every one of them to
+    -- `assets/own/icons/...`, which exists nowhere, so the load check
+    -- reported the addon folder incomplete (Kevin, live client).
+    expected[#expected + 1] = "assets/" .. texture
   end
 
   for _, relative_path in ipairs(expected) do
@@ -782,6 +1026,8 @@ windower.register_event(
   "unload",
   guard.wrap("unload", function()
     core.on_unload()
+    -- The permanent handlers too: nothing may stay hooked on the way out.
+    release_input(true)
   end)
 )
 
@@ -830,19 +1076,39 @@ windower.register_event(
      blocked packet. guard.wrap falls back to nil with no fallback argument,
      so the error path is safe too.
 
-     The three party-list ids Windower has a field definition for are the one
-     exception: they are parsed once here rather than once per sibling --
-     three party lists (`partylist`, `alliancelist1`, `alliancelist2`) would
-     otherwise each redo the same `packets.parse` call on every packet.
-     `PARTY_BUFFS` has no such definition (see packets.lua) and is decoded by
-     the component itself from the raw bytes.
+     The ids with a shared decode are the exception: they are parsed once
+     here rather than once per consumer, and the result rides the fourth
+     argument.
 
-     Guarded on `libraries_error`, not just `safe_mode`: both the pre-parse
-     below and giltracker's `parse_packet` call into the `packets` library,
-     which failed to load in that case. Components receive the event as
-     `update('chunk', id, original, parsed)` and are free to ignore it --
-     parambar does. ]]
+       - the three party-list ids Windower has a field definition for, since
+         `partylist`, `alliancelist1` and `alliancelist2` would otherwise each
+         redo the same `packets.parse` call on every packet. `PARTY_BUFFS` has
+         no such definition (see packets.lua) and is decoded by the component
+         itself from the raw bytes.
+       - the action packet 0x028, wanted by targetbar's cast bar and by the
+         crossbar's skillchain engine, which parsed it independently until
+         CB6 -- two decodes of the same packet on every action in a fight.
+         `windower.packets.parse_action` decodes it, not `packets.parse`:
+         it is core API rather than a library, and the only thing that reads
+         0x028's shape.
+
+     A component still decides from the id alone whether the packet is worth
+     reading; `parsed` is nil for every other id, and nil for these too when
+     the parse failed (parse_action is pcall'd above, and a component already
+     has to treat a nil packet as a real case).
+
+     Guarded on `libraries_error`, not just `safe_mode`: the party-list
+     pre-parse and giltracker's `parse_packet` both call into the `packets`
+     library, which failed to load in that case. Components receive the event
+     as `update('chunk', id, original, parsed)` and are free to ignore it --
+     parambar does.
+
+     That gate is too wide, and knowingly so (issue #14): the cast bar and the
+     skillchain engine need no library -- parse_action is core API -- yet a
+     missing `packets` takes the whole handler down and leaves both silent.
+     Pre-existing, and not this change's to fix. ]]
 if not safe_mode and not libraries_error then
+  local ACTION_CHUNK = 0x028
   local structured = partylist_packets
       and {
         [partylist_packets.ALLIANCE] = true,
@@ -853,7 +1119,13 @@ if not safe_mode and not libraries_error then
   windower.register_event(
     "incoming chunk",
     guard.wrap("incoming chunk", function(id, original)
-      core.dispatch("chunk", id, original, structured[id] and packets.parse("incoming", original) or nil)
+      local parsed = nil
+      if id == ACTION_CHUNK then
+        parsed = parse_action(original)
+      elseif structured[id] then
+        parsed = packets.parse("incoming", original)
+      end
+      core.dispatch("chunk", id, original, parsed)
     end)
   )
 
@@ -876,6 +1148,20 @@ for _, vital in ipairs({ "hp", "hpp", "mp", "mpp", "tp" }) do
     vital .. " change",
     guard.wrap(vital .. " change", function(new_value, old_value)
       core.dispatch(vital, new_value, old_value)
+    end)
+  )
+end
+
+--[[ Forwarded whole, under the event's own name: focus for the input reset
+     (alt-tab mid-hold must not strand an activator), buffs for the context
+     layers, `job change` for the per-job binding reload, `ipc message` for
+     `warp all`. The crossbar consumes them from CB5; dispatch to components
+     that ignore them costs a table walk. ]]
+for _, event in ipairs({ "gain focus", "lose focus", "gain buff", "lose buff", "job change", "ipc message" }) do
+  windower.register_event(
+    event,
+    guard.wrap(event, function(...)
+      core.dispatch(event, ...)
     end)
   )
 end

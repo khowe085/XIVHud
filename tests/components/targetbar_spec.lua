@@ -4,7 +4,6 @@ local fakes = require("tests/support/fakes")
 describe("targetbar widget", function()
   local prims, assets, widget
   local target, party, player, me, clock, saves, target_reads
-  local parsed, next_action
 
   -- The prims are built in draw order: the hp layers, then the cast's.
   local function background()
@@ -93,8 +92,6 @@ describe("targetbar widget", function()
     clock = 0
     saves = 0
     target_reads = 0
-    parsed = {}
-    next_action = nil
     widget = new_targetbar({
       new_text = prims.new_text,
       new_image = prims.new_image,
@@ -124,10 +121,6 @@ describe("targetbar widget", function()
         assets[#assets + 1] = file
         return "addons/XIVHud/" .. file
       end,
-      parse_action = function(data)
-        parsed[#parsed + 1] = data
-        return next_action
-      end,
       resources = {
         spells = { [144] = { en = "Fire IV", cast_time = 8 } },
         monster_abilities = { [672] = { en = "Blood Drain" } },
@@ -135,16 +128,16 @@ describe("targetbar widget", function()
     })
   end)
 
-  -- The target winds up Fire IV: the raw chunk arrives, the fake parser hands
-  -- back the parsed action, and the widget forwards it to the tracker.
+  -- The target winds up Fire IV: the raw chunk arrives with the action the
+  -- entry point's dispatch already parsed out of it, and the widget forwards
+  -- that to the tracker.
   local function begin_cast()
-    next_action = {
+    widget.update("chunk", 0x028, "raw action bytes", {
       actor_id = 100,
       category = 8,
       param = 0,
       targets = { { id = 1, actions = { { param = 144, message = 327 } } } },
-    }
-    widget.update("chunk", 0x028, "raw action bytes")
+    })
   end
 
   describe("construction", function()
@@ -165,12 +158,12 @@ describe("targetbar widget", function()
 
     it("points every layer at its own copy of the art", function()
       assert.are.same({
-        "components/targetbar/assets/xiv/BarBG.png",
-        "components/targetbar/assets/xiv/Bar.png",
-        "components/targetbar/assets/xiv/BarFG.png",
-        "components/targetbar/assets/xiv/CastBG.png",
-        "components/targetbar/assets/xiv/CastBar.png",
-        "components/targetbar/assets/xiv/CastFG.png",
+        "assets/xiv/wide/BarBG.png",
+        "assets/xiv/wide/Bar.png",
+        "assets/xiv/wide/BarFG.png",
+        "assets/xiv/wide/CastBG.png",
+        "assets/xiv/wide/CastBar.png",
+        "assets/xiv/wide/CastFG.png",
       }, assets)
     end)
 
@@ -689,6 +682,23 @@ describe("targetbar widget", function()
       assert.is_true(cast_fill().visible)
     end)
 
+    --[[ The action packet is decoded once, in the entry point's chunk
+         dispatch, and handed down as the fourth argument -- targetbar's cast
+         bar and the crossbar's skillchain engine used to parse it one apiece.
+         So the widget is given an action, never a parser: this drives it with
+         a ctx that has no way to decode anything. ]]
+    it("raises the bar from the action the dispatch already parsed", function()
+      widget.update("chunk", 0x028, "raw action bytes", {
+        actor_id = 100,
+        category = 8,
+        param = 0,
+        targets = { { id = 1, actions = { { param = 144, message = 327 } } } },
+      })
+      widget.update()
+      assert.is_true(cast_frame().visible)
+      assert.are.equal("Fire IV", cast_name().last.text)
+    end)
+
     it("fills with the cast's progress, not the target's health", function()
       begin_cast()
       widget.update()
@@ -700,18 +710,31 @@ describe("targetbar widget", function()
       assert.is_true(cast_fill().width > at_start)
     end)
 
-    it("parses only the action chunk, nothing else", function()
-      widget.update("chunk", 0x00A, "zone bytes")
-      widget.update("chunk", 0x0D2, "treasure bytes")
-      assert.are.equal(0, #parsed)
+    --[[ This counted the widget's own parse calls until CB6, when the entry
+         point took the decode over (see tests/entry_point_spec.lua). What is
+         left to prove here is the filter it was really about: an action
+         handed to this widget under any other id is not its business. ]]
+    it("reads the action chunk, nothing else", function()
+      local elsewhere = {
+        actor_id = 100,
+        category = 8,
+        param = 0,
+        targets = { { id = 1, actions = { { param = 144, message = 327 } } } },
+      }
+      widget.update("chunk", 0x00A, "zone bytes", elsewhere)
+      widget.update("chunk", 0x0D2, "treasure bytes", elsewhere)
+      widget.update()
+      assert.is_false(cast_frame().visible)
       begin_cast()
-      assert.are.equal(1, #parsed)
+      widget.update()
+      assert.is_true(cast_frame().visible)
     end)
 
     it("shrugs off a chunk the parser cannot read", function()
-      next_action = nil
       assert.has_no.errors(function()
-        widget.update("chunk", 0x028, "garbage")
+        -- A packet parse_action could not decode: the raw bytes still come
+        -- through, with nothing parsed beside them.
+        widget.update("chunk", 0x028, "garbage", nil)
       end)
       widget.update()
       assert.is_false(cast_frame().visible)
@@ -720,8 +743,7 @@ describe("targetbar widget", function()
     it("lowers the bar when the cast completes", function()
       begin_cast()
       widget.update()
-      next_action = { actor_id = 100, category = 4, param = 144, targets = {} }
-      widget.update("chunk", 0x028, "finish bytes")
+      widget.update("chunk", 0x028, "finish bytes", { actor_id = 100, category = 4, param = 144, targets = {} })
       widget.update()
       assert.is_false(cast_frame().visible)
       assert.is_false(cast_name().visible)
@@ -856,7 +878,7 @@ describe("targetbar widget", function()
       widget.update("status", 4, 0)
       widget.update("hp", 100, 90)
       -- The action chunk is wanted, but even it must not trigger a render.
-      widget.update("chunk", 0x028, "raw action bytes")
+      begin_cast()
       assert.are.equal(before, target_reads)
     end)
   end)

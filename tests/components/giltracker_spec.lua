@@ -95,7 +95,7 @@ describe("giltracker widget", function()
     end)
 
     it("points the icon at the packaged asset", function()
-      assert.are.equal("addons/XIVHud/components/giltracker/assets/gil.png", icon().last.path)
+      assert.are.equal("addons/XIVHud/assets/gil/gil.png", icon().last.path)
     end)
 
     it("starts hidden, because the framework decides what is on screen", function()
