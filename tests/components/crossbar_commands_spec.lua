@@ -1450,6 +1450,28 @@ describe("crossbar commands", function()
       end
     end)
 
+    it("gives cycle's two meanings a line each", function()
+      --[[ `cycle` is two commands sharing a word: bare it advances the
+           rotation, with arguments it edits which rotations a set belongs
+           to. Sharing a line with `share` read as though they were one
+           command with an `|` in it (Kevin, 2026-08-24). ]]
+      local commands = build()
+      local lines = commands.command({ "help" })
+      local share, cycle = nil, nil
+      for _, line in ipairs(lines) do
+        if line:find("share", 1, true) then
+          share = line
+        end
+        if line:find("cycle <set>", 1, true) then
+          cycle = line
+        end
+      end
+      assert.is_not_nil(share, "a line for share")
+      assert.is_not_nil(cycle, "and its own for cycle")
+      assert.are_not.equal(share, cycle, "not the same line")
+      assert.is_nil(share:find("cycle", 1, true), "share's line is only share's: " .. share)
+    end)
+
     it("changes nothing", function()
       local commands, world = build()
       local _, save_config, repaint = commands.command({ "help" })

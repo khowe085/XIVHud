@@ -157,7 +157,8 @@ built-in actions itself; `commands.lua` answers the rest):
 //hud crossbar unbind|alias|icon <address> [...]
 //hud crossbar swap <address> <address>
 //hud crossbar view <wxhb-L|wxhb-R|exp-LR|exp-RL> <set><L|R>
-//hud crossbar share <set> on|off | cycle <set> drawn|sheathed|both|none
+//hud crossbar share <set> on|off
+//hud crossbar cycle <set> drawn|sheathed|both|none
 //hud crossbar copy <JOB> | context list | open [<name>]
 //hud crossbar draw | mr | warp [all] | edit
 ```

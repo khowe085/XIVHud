@@ -93,7 +93,12 @@ local HELP = {
   "  //hud crossbar alias|icon <address> [<name>] - omit to clear",
   "  //hud crossbar swap <address> <address>",
   "  //hud crossbar view <wxhb-L|wxhb-R|exp-LR|exp-RL> <set><L|R>",
-  "  //hud crossbar share <set> on|off | cycle <set> drawn|sheathed|both|none",
+  "  //hud crossbar share <set> on|off",
+  -- Its own line: `cycle <set> <mode>` edits which rotations a set belongs
+  -- to, which has nothing to do with sharing. Sharing a line read as one
+  -- command with an `|` in the middle (Kevin, 2026-08-24). The bare `cycle`
+  -- that advances the rotation is the one on the first line.
+  "  //hud crossbar cycle <set> drawn|sheathed|both|none",
   "  //hud crossbar retry [on|off] - re-send an action the game refused as too soon",
   "  //hud crossbar copy <JOB> | context list | open [<name>]",
   "  //hud crossbar draw | mr | warp [all] | edit",
