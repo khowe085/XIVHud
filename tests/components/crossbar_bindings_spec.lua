@@ -632,6 +632,59 @@ describe("crossbar bindings", function()
       assert.are.equal(2, bindings.active_set(), "and a redundant draw is no transition either")
     end)
 
+    it("lands on the first set of the current state when a job is loaded", function()
+      --[[ Kevin's own config (2026-08-29): set 8 shared and sheathed-only,
+           the rest job-specific and drawn-only. A job change sheathes you,
+           so the bar must land on 8. It landed on 1 - a set the sheathed
+           rotation does not contain at all - because set_job ASSIGNS
+           `weapon` rather than entering it, and only a transition moved
+           the set. ]]
+      local flags = default_flags()
+      for set = 1, 7 do
+        flags[set] = { shared = false, cycle = { drawn = true, sheathed = false } }
+      end
+      flags[8] = { shared = true, cycle = { drawn = false, sheathed = true } }
+      local bindings = build({
+        files = {
+          WAR = { active_set = 1, sets = { [1] = { left = { [1] = record("Vorpal Blade") } } } },
+          SHARED = { sets = { [8] = { left = { [1] = ja("Berserk") } } } },
+        },
+        set_flags = flags,
+      })
+
+      bindings.set_job("WAR", "NIN")
+      assert.are.equal("sheathed", bindings.weapon_state())
+      assert.are.equal(8, bindings.active_set())
+    end)
+
+    it("lands there even when the stored set was already in the rotation", function()
+      -- Kevin chose the jump over a reconcile (2026-08-29): the landing is
+      -- the FIRST set of the mode, so where the job was left does not
+      -- decide where it resumes. Two sheathed sets tell the two apart.
+      local flags = default_flags()
+      for set = 1, 5 do
+        flags[set] = { shared = false, cycle = { drawn = true, sheathed = false } }
+      end
+      for set = 6, 8 do
+        flags[set] = { shared = false, cycle = { drawn = false, sheathed = true } }
+      end
+      local bindings = build({
+        files = {
+          WAR = {
+            active_set = 7,
+            sets = {
+              [6] = { left = { [1] = ja("Berserk") } },
+              [7] = { left = { [1] = ja("Defender") } },
+            },
+          },
+        },
+        set_flags = flags,
+      })
+
+      bindings.set_job("WAR", "NIN")
+      assert.are.equal(6, bindings.active_set(), "the first sheathed set, not the stored 7")
+    end)
+
     it("leaves the set alone when the new mode has no set to offer", function()
       -- Every set out of both rotations: there is nowhere to land, and
       -- stranding the bar on nothing would be worse than staying.
@@ -680,7 +733,9 @@ describe("crossbar bindings", function()
     it("walks the sheathed rotation across the shared sets", function()
       local bindings = kevins()
       bindings.set_job("WAR")
-      assert.equal(6, bindings.cycle())
+      -- Loading a job lands on the rotation's first set (2026-08-29), so
+      -- the walk resumes from there rather than stepping onto it.
+      assert.equal(6, bindings.active_set())
       assert.equal(7, bindings.cycle())
       assert.equal(8, bindings.cycle())
       assert.equal(6, bindings.cycle())
@@ -744,8 +799,9 @@ describe("crossbar bindings", function()
     it("persists the set the cycle lands on", function()
       local bindings, world = kevins()
       bindings.set_job("WAR")
+      -- 6 is where the load landed; 7 is where the cycle took it.
       bindings.cycle()
-      assert.equal(6, world.files.WAR.active_set)
+      assert.equal(7, world.files.WAR.active_set)
     end)
 
     it("treats cycle = false as excluded from both rotations", function()
@@ -766,8 +822,9 @@ describe("crossbar bindings", function()
         set_flags = flags,
       })
       bindings.set_job("WAR")
+      assert.equal(2, bindings.active_set(), "landed on the first sheathed set")
+      assert.equal(4, bindings.cycle(), "the shared 3 is skipped")
       assert.equal(2, bindings.cycle())
-      assert.equal(4, bindings.cycle())
       -- Drawing now LANDS on the first drawn set (2026-08-24), so the
       -- rotation resumes from there rather than from where it was.
       bindings.set_weapon_state("drawn")

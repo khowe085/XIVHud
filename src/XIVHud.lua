@@ -903,15 +903,18 @@ local function check_assets()
   -- a few from each imported category, plus every icon a CB1 table
   -- (openers.lua, contexts.lua, actions.lua's built-ins) names outright.
   for _, texture in ipairs({
-    "slot.png",
-    "frame.png",
-    "bar_bg_compact.png",
-    "feedback.png",
-    "red-x.png",
-    "black-square.png",
-    "frame_step1.png",
-    "frame_step8.png",
-    "indicator.png",
+    -- Every entry here is root-relative, chrome and icons alike, because
+    -- the two live under different folders and a shared prefix can only
+    -- be right for one of them.
+    "own/slot.png",
+    "own/frame.png",
+    "own/bar_bg_compact.png",
+    "own/feedback.png",
+    "own/red-x.png",
+    "own/black-square.png",
+    "own/frame_step1.png",
+    "own/frame_step8.png",
+    "own/indicator.png",
     "cooldown/frame_01.png",
     "cooldown/frame_16.png",
     "cooldown/frame_32.png",
@@ -937,13 +940,20 @@ local function check_assets()
     "icons/abilities/book_white.png",
     "icons/abilities/book_black.png",
     -- actions.lua built-ins: mr, warp, and draw's three states.
-    "icons/mount.png",
-    "icons/items/warp-ring.png",
+    "icons/mounts/mount-roulette.png",
+    "icons/spells/00261.png",
     "icons/attack.png",
     "icons/disengage.png",
     "icons/dismount.png",
+    -- The sword beside the set label, which drew a bare square when its
+    -- path went wrong and said nothing about it.
+    "icons/weapons/sword.png",
   }) do
-    expected[#expected + 1] = "assets/own/" .. texture
+    -- The asset ROOT: these are icons, and `own/` is the chrome beside
+    -- them. Prefixing the folder here sent every one of them to
+    -- `assets/own/icons/...`, which exists nowhere, so the load check
+    -- reported the addon folder incomplete (Kevin, live client).
+    expected[#expected + 1] = "assets/" .. texture
   end
 
   for _, relative_path in ipairs(expected) do

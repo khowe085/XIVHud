@@ -1472,6 +1472,24 @@ describe("crossbar commands", function()
       assert.is_nil(share:find("cycle", 1, true), "share's line is only share's: " .. share)
     end)
 
+    it("gives every command its own line", function()
+      --[[ Two ways a line crammed several commands together, both found by
+           a player reading the help (Kevin, 2026-08-29): a spaced ` | `
+           between whole commands (`draw | mr | warp [all] | edit`), and a
+           pipe inside the VERB itself (`alias|icon <address>`). An
+           argument's own alternatives keep their unspaced pipe - `on|off`,
+           `drawn|sheathed` - so the test judges the verb, not the line. ]]
+      local commands = build()
+      local crammed = {}
+      for _, line in ipairs(commands.command({ "help" })) do
+        local verb = line:match("^%s*//hud crossbar (%S+)")
+        if line:find(" | ", 1, true) or (verb ~= nil and verb:find("|", 1, true)) then
+          crammed[#crammed + 1] = line
+        end
+      end
+      assert.are.same({}, crammed)
+    end)
+
     it("changes nothing", function()
       local commands, world = build()
       local _, save_config, repaint = commands.command({ "help" })

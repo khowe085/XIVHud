@@ -291,6 +291,8 @@ local function new(deps)
   -- Session-only, never persisted: sheathed on attach, job change and
   -- reload, self-correcting on the next engagement.
   local weapon = "sheathed"
+  -- Defined below set_is_empty, declared here because set_job needs it.
+  local land_on_first_set
 
   --- Scope to a main job (subjob may be nil): loads that job's file and the
   --- shared store. Everything job-scoped -- base, subjob overrides, context
@@ -323,6 +325,13 @@ local function new(deps)
     -- A job change strips buffs in game; until the next full-list re-sync
     -- arrives, the old job's contexts must not colour the new job's slots.
     active = {}
+    --[[ The line above SHEATHES you without entering the state, so nothing
+         reconciled the set the store just handed back: on a config whose
+         low sets are drawn-only, a job change landed on a set the sheathed
+         rotation does not contain (Kevin, 2026-08-29). Landing here means
+         the stored active_set no longer decides where a job resumes - his
+         call, made knowing that. ]]
+    land_on_first_set()
   end
 
   --- Re-sync context activation from the AUTHORITATIVE buff list -- never
@@ -519,19 +528,17 @@ local function new(deps)
     return true
   end
 
-  --- Advance to the next set that is non-empty AND flagged for the current
-  --- weapon state's rotation. Wraps; when nothing qualifies it stays put and
-  --- answers the unchanged active set (the no-op).
-  function enter_weapon_state(state)
-    if weapon == state then
-      return
-    end
-    weapon = state
+  --- Lands the bar on the FIRST set of the weapon state now in force - the
+  --- lowest-numbered non-empty one flagged for it. A set flagged for
+  --- neither rotation is never landed on, and a state with nothing to
+  --- offer leaves the set where it is: stranding the bar on nothing would
+  --- be worse than staying.
+  function land_on_first_set()
     if job_data == nil then
       return
     end
     for set = 1, SET_COUNT do
-      if cycle_flags(set)[state] and not set_is_empty(set) then
+      if cycle_flags(set)[weapon] and not set_is_empty(set) then
         if set ~= job_data.active_set then
           job_data.active_set = set
           save_job()
@@ -541,6 +548,17 @@ local function new(deps)
     end
   end
 
+  function enter_weapon_state(state)
+    if weapon == state then
+      return
+    end
+    weapon = state
+    land_on_first_set()
+  end
+
+  --- Advance to the next set that is non-empty AND flagged for the current
+  --- weapon state's rotation. Wraps; when nothing qualifies it stays put and
+  --- answers the unchanged active set (the no-op).
   function self.cycle()
     local ok, err = require_job()
     if ok == nil then

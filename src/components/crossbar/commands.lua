@@ -90,21 +90,34 @@ end
 
 local HELP = {
   "crossbar commands:",
-  "  //hud crossbar [set <1-8> | cycle | list [<set>] | wxhb [on|off]]",
+  -- One command per line throughout (Kevin, 2026-08-29). A spaced ` | `
+  -- crammed several unrelated commands onto a shared line, which reads as
+  -- one command with alternatives; an argument's own alternatives keep
+  -- their unspaced pipe, `on|off`, because that is what they are.
+  "  //hud crossbar - the job, the active set, and where each view points",
+  "  //hud crossbar set <1-8>",
+  "  //hud crossbar cycle - advance the rotation",
+  "  //hud crossbar list [<set>]",
+  "  //hud crossbar wxhb [on|off]",
   "  //hud crossbar bind <address> <type> [<action>] [<target>]",
   "  //hud crossbar unbind <address>",
-  "  //hud crossbar alias|icon <address> [<name>] - omit to clear",
+  "  //hud crossbar alias <address> [<name>] - omit to clear",
+  "  //hud crossbar icon <address> [<name>] - omit to clear",
   "  //hud crossbar swap <address> <address>",
   "  //hud crossbar view <wxhb-L|wxhb-R|exp-LR|exp-RL> <set><L|R>",
   "  //hud crossbar share <set> on|off",
-  -- Its own line: `cycle <set> <mode>` edits which rotations a set belongs
-  -- to, which has nothing to do with sharing. Sharing a line read as one
-  -- command with an `|` in the middle (Kevin, 2026-08-24). The bare `cycle`
-  -- that advances the rotation is the one on the first line.
+  -- `cycle <set> <mode>` edits which rotations a set belongs to, which has
+  -- nothing to do with sharing (Kevin, 2026-08-24). The bare `cycle` that
+  -- advances the rotation is a different command again, listed above.
   "  //hud crossbar cycle <set> drawn|sheathed|both|none",
   "  //hud crossbar retry [on|off] - re-send an action the game refused as too soon",
-  "  //hud crossbar copy <JOB> | context list | open [<name>]",
-  "  //hud crossbar draw | mr | warp [all] | edit",
+  "  //hud crossbar copy <JOB>",
+  "  //hud crossbar context list",
+  "  //hud crossbar open [<name>]",
+  "  //hud crossbar draw",
+  "  //hud crossbar mr",
+  "  //hud crossbar warp [all]",
+  "  //hud crossbar edit",
   "  an address is <set><L|R><slot> - 1L1, 2R8 - and takes sub: or ctx:<name>: in front",
 }
 

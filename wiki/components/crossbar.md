@@ -520,6 +520,17 @@ on your first combat set; sheathe and you land on your first utility one, every
 time, whatever you were on. Only sheathing yourself takes you out of combat mode,
 so a set rotation does not lurch back mid-pull.
 
+**Changing job lands you the same way.** A job change sheathes you, so you
+arrive on the first set of your *sheathed* rotation rather than wherever that
+job was left — on a setup whose low sets are combat-only, arriving on set 1
+meant arriving outside the sheathed rotation entirely. The consequence is that
+the active set is not remembered per job: a job always resumes at the front of
+the rotation its current weapon state belongs to.
+
+If **no** set is flagged for the state you are entering — or every set that is
+happens to be empty — the active set is left where it is. There is nowhere to
+land, and stranding the bar on nothing would be worse than staying put.
+
 Going *in* sends nothing to the game: `draw` while sheathed only flips the
 addon's state and lights the sword, so it never picks a fight for you and
 never needs a target. Going *out* does disengage you — `draw` while drawn

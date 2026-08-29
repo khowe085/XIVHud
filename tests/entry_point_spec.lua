@@ -101,4 +101,41 @@ describe("entry point", function()
       assert.is_nil(boot.ctxs.crossbar.parse_action)
     end)
   end)
+
+  --[[ The load check tells the player their install is incomplete, so a
+       path it gets WRONG is worse than no check at all: it condemns a
+       correct install and sends them re-copying files that are already
+       there. It has been wrong twice - both times because a folder was
+       moved and the manifest's prefix was rewritten by hand - and neither
+       spelling could fail any test, because nothing had ever asserted the
+       manifest describes the files that actually ship. ]]
+  describe("the asset manifest", function()
+    it("names only textures that ship in src/", function()
+      boot.handlers["load"]()
+
+      local checked, seen = {}, {}
+      for _, open in ipairs(boot.opens) do
+        local relative = open.path:match("(assets/.+)$")
+        if relative and not seen[relative] then
+          seen[relative] = true
+          checked[#checked + 1] = relative
+        end
+      end
+
+      -- Without this the whole test passes on an empty list, which is
+      -- exactly what a renamed manifest or a load that died early leaves.
+      assert.is_true(#checked > 40, "the manifest went quiet: " .. #checked .. " textures checked")
+
+      local absent = {}
+      for _, relative in ipairs(checked) do
+        local file = io.open("src/" .. relative, "r")
+        if file then
+          file:close()
+        else
+          absent[#absent + 1] = relative
+        end
+      end
+      assert.are.same({}, absent)
+    end)
+  end)
 end)
