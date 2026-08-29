@@ -54,6 +54,97 @@ local function world(overrides)
   return roulette, state
 end
 
+describe("mount availability", function()
+  --[[ A mount slot is unusable in a zone that forbids mounting, and for the
+       60 seconds after a summon (Kevin, 2026-08-29). The zone answer comes
+       from the resources' own `can_mount`, which is present-or-absent
+       rather than true/false; the cooldown is tracked here because nothing
+       in get_ability_recasts() carries it - there is no mount ability at
+       all in the job_abilities resource. ]]
+  local function build(overrides)
+    overrides = overrides or {}
+    local state = {
+      zone = overrides.zone,
+      buffs = overrides.buffs or {},
+    }
+    local roulette = new_roulette({
+      mounts = { [1] = { name = "Chocobo" } },
+      key_items = {},
+      get_key_items = function()
+        return {}
+      end,
+      get_buffs = function()
+        return state.buffs
+      end,
+      zones = overrides.zones == nil and {
+        [100] = { id = 100, en = "Carpenters' Landing", can_mount = true },
+        [200] = { id = 200, en = "Port Bastok" },
+      } or overrides.zones,
+      get_zone = function()
+        return state.zone
+      end,
+      random = function()
+        return 0.5
+      end,
+    })
+    return roulette, state
+  end
+
+  describe("where you are", function()
+    it("allows mounting in a zone whose resource says can_mount", function()
+      local roulette = build({ zone = 100 })
+      assert.is_false(roulette.blocked())
+    end)
+
+    it("blocks it in a zone that does not", function()
+      -- `can_mount` is absent rather than false on a city or dungeon, so
+      -- the test is presence, never a comparison against false.
+      local roulette = build({ zone = 200 })
+      assert.is_true(roulette.blocked())
+    end)
+
+    it("does not block on a zone it cannot resolve", function()
+      --[[ The repo's rule for the cost corner, applied here: dimming on
+           ignorance reads as unusable at every login. An unknown zone, a
+           missing zones table and no zone at all all answer "not blocked". ]]
+      assert.is_false(build({ zone = 999 }).blocked(), "a zone not in the table")
+      assert.is_false(build({ zone = nil }).blocked(), "no zone yet")
+      assert.is_false(build({ zone = 200, zones = {} }).blocked(), "no zones resource")
+    end)
+  end)
+
+  describe("the cooldown", function()
+    it("reports nothing outstanding before any summon", function()
+      local roulette = build({ zone = 100 })
+      assert.are.equal(0, roulette.cooldown(500))
+    end)
+
+    it("counts sixty seconds down from the summon", function()
+      local roulette = build({ zone = 100 })
+      roulette.summoned(1000)
+      assert.are.equal(60, roulette.cooldown(1000))
+      assert.are.equal(38, roulette.cooldown(1022))
+      assert.are.equal(0, roulette.cooldown(1060), "expired exactly on the minute")
+      assert.are.equal(0, roulette.cooldown(9999), "and stays expired")
+    end)
+
+    it("restarts from the latest summon", function()
+      local roulette = build({ zone = 100 })
+      roulette.summoned(1000)
+      roulette.summoned(1030)
+      assert.are.equal(60, roulette.cooldown(1030))
+    end)
+
+    it("never answers a negative, whatever the clock does", function()
+      -- A clock that goes backwards (a reload re-basing os.clock) must not
+      -- produce a remaining longer than the cooldown, nor a negative one.
+      local roulette = build({ zone = 100 })
+      roulette.summoned(1000)
+      assert.are.equal(60, roulette.cooldown(900))
+    end)
+  end)
+end)
+
 describe("crossbar roulette", function()
   describe("display names", function()
     it("answers the resource's own casing for an owned mount", function()

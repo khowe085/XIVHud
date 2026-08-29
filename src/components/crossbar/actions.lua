@@ -218,7 +218,15 @@ local function new(deps)
       if not valid_name(record.action) then
         return nil, "missing action name for /" .. kind
       end
-      return command_plan("input /" .. kind .. ' "' .. record.action .. '"' .. target_suffix(record.target))
+      local plan = command_plan("input /" .. kind .. ' "' .. record.action .. '"' .. target_suffix(record.target))
+      -- The mount recast starts on a SUMMON. The dismount case returned
+      -- above, so anything reaching here with `mount` is one; the flag is
+      -- how the widget knows without reading the command string back, the
+      -- same way `dismount` already travels.
+      if kind == "mount" then
+        plan.mount_summon = true
+      end
+      return plan
     end
     if kind == "ra" then
       return command_plan("input /ra" .. target_suffix(record.target))
@@ -252,6 +260,8 @@ local function new(deps)
       -- a flag is how it knows without reading the command string back.
       if deps.roulette.mounted ~= nil and deps.roulette.mounted() then
         plan.dismount = true
+      else
+        plan.mount_summon = true
       end
       return plan
     end

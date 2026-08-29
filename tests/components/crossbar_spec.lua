@@ -718,6 +718,9 @@ describe("crossbar live widget", function()
       -- test puts the key item in env.key_items and lets the KI chunk in.
       mounts = { [1] = { name = "Chocobo" } },
       key_items = { [3000] = { category = "Mounts", name = "\226\153\170Chocobo" } },
+      -- `can_mount` is present-or-absent in the real resource, never false,
+      -- so the outdoor zone carries it and the city simply does not.
+      zones = { [100] = { id = 100, en = "Outdoors", can_mount = true }, [200] = { id = 200, en = "A City" } },
       -- Resting, and deliberately NOT the number the module falls back to:
       -- a fixture that agreed with the constant would pass whether or not
       -- the resource table was ever read.
@@ -829,6 +832,9 @@ describe("crossbar live widget", function()
         -- per-frame call is a per-frame client read like any other.
         env.chat_reads = (env.chat_reads or 0) + 1
         return env.chat_open
+      end,
+      zone = function()
+        return env.zone
       end,
       suppressed = function()
         return env.suppressed
@@ -2023,6 +2029,72 @@ describe("crossbar live widget", function()
       widget.update()
       assert.are.equal("2h", text_of("xhb_left", 4, "recast").last.text)
     end)
+
+  describe("a mount slot's own availability", function()
+    --[[ Neither of a mount's two conditions is a recast the client will
+         answer for: there is no mount ability in the job_abilities resource
+         at all, so no recast id names the timer, and the zone rule lives in
+         the zones resource's `can_mount` (Kevin, 2026-08-29). ]]
+    local function mount_world(kind, zone)
+      local files = war_bindings()
+      files.WAR.sets[1].left[2] = { type = kind }
+      build_world({ store_files = files })
+      env.zone = zone
+      env.key_items = { 3000 }
+      widget.update("chunk", 0x055)
+      widget.update()
+      return image_of("xhb_left", 2, "icon")
+    end
+
+    it("dims a mount slot in a zone that forbids mounting", function()
+      local icon = mount_world("mount", 200)
+      assert.are.equal(config.disabled_alpha, icon.last.alpha)
+    end)
+
+    it("leaves it lit where mounting is allowed", function()
+      local icon = mount_world("mount", 100)
+      assert.are.equal(255, icon.last.alpha)
+    end)
+
+    it("dims mount roulette by the same rule", function()
+      assert.are.equal(config.disabled_alpha, mount_world("mr", 200).last.alpha)
+      assert.are.equal(255, mount_world("mr", 100).last.alpha)
+    end)
+
+    it("counts the minute down after a summon, and dims for it", function()
+      local icon = mount_world("mr", 100)
+      -- The command frontend, which reaches the same resolve -> travel wait
+      -- -> execute path a slot press does.
+      widget.handle_command({ "mr" })
+      env.now = 5
+      widget.update()
+      assert.are.same({ 'input /mount "chocobo"' }, env.commands, "the travel wait is over")
+      assert.are.equal(config.disabled_alpha, icon.last.alpha, "and the slot is cooling")
+      assert.are.equal("1m", text_of("xhb_left", 2, "recast").last.text, "a full minute reads as 1m")
+      env.now = 25
+      widget.update()
+      assert.are.equal("40s", text_of("xhb_left", 2, "recast").last.text)
+      env.now = 66
+      widget.update()
+      assert.are.equal(255, icon.last.alpha, "a minute after the summon it is back")
+    end)
+
+    it("keeps the slot usable while mounted, because the press dismounts", function()
+      -- Getting OUT of something is never held up - the rule the travel
+      -- delay already follows - so neither the zone nor the recast applies.
+      local icon = mount_world("mr", 200)
+      env.player.buffs = { 252 }
+      widget.update()
+      assert.are.equal(255, icon.last.alpha)
+    end)
+
+    it("does not dim on a zone it cannot resolve", function()
+      -- Dimming on ignorance would read as unusable at every login, which
+      -- is the rule the cost corner already follows.
+      assert.are.equal(255, mount_world("mount", nil).last.alpha, "no zone yet")
+      assert.are.equal(255, mount_world("mount", 999).last.alpha, "a zone not in the table")
+    end)
+  end)
 
     it("reads spell recasts in sixtieths and dims the slot while cooling", function()
       build_world()

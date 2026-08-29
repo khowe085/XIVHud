@@ -271,7 +271,7 @@ A controller layout that produces them:
 | **LT + RT** | both | Expanded Hold takes over the screen — which one depends on the order you pressed them |
 | **LT + LB** | `\` | activates the WXHB's left side (bringing it on screen if it was not) |
 | **RT + RB** | `\` | the WXHB's right side |
-| **LB** tapped | `R` | autorun, native game functionality — the crossbar does not read it |
+| **LB** tapped | the pad's own button | whatever the game has that button doing — the crossbar never sees it |
 | **LB** long-pressed | `\` | held for the draw gesture below |
 | **RB** | `` ` `` | tap cycles sets; hold and press any slot button to jump to that set, 1 to 8 (no trigger held) |
 | **Select** | `=` | nothing on its own; with a side held, the binder |
@@ -300,17 +300,29 @@ each slot button needs one chord rather than three:
 | D-pad ← + LT, RT or RB | `8` |
 | LB + LT | `\` |
 | RB + RT | `\` |
+| Select + LT or RT | `=` |
 
-Ten chords. Everything else on the pad is a plain binding, listed in the table
-above.
+Eleven chords. Everything else on the pad is a plain binding, listed in the
+table above.
+
+The Select chord is what opens the binder: `=` on its own does nothing, and
+the crossbar only treats it as "open the binder" when a side is already held.
+Select emits `=` as a plain binding too, so the chord is there to make sure it
+still does while a trigger is down.
 
 **RB belongs in the slot chords, not just the triggers.** Jumping to a set is
 `` ` `` held plus a slot button — leave RB out and you have a switch key with
 no numbers to press against it, and set jumping does nothing at all.
 
-**The bumpers need more than one binding each.** LB is `R` on a regular press
-and `\` on a long press; RB is `` ` `` on a press. Their chords are in the
-table above.
+**The bumpers need more than one binding each.** LB carries **three**: the
+pad's own button on a tap, `\` on a long press, and `\` again in the LT + LB
+chord. RB is `` ` `` on a press. Their chords are in the table above.
+
+**Mark the LT + LB chord as not interruptable in Steam Input.** Three
+bindings on one button is what makes this necessary: left interruptable, the
+chord gives way to LB's other two and the WXHB's left side does not come up
+reliably. The RT + RB chord carries only two bindings on RB and does not need
+it.
 
 Two more things:
 
@@ -613,12 +625,26 @@ script is the way to put a sequence on a slot.
 | --- | --- |
 | `draw` | sheathe / unsheathe, and dismount when mounted. Its icon follows the state. |
 | `mr` | mount roulette — picks at random from the mounts you actually own, and dismounts if you are already up. In the binder it is filed at the head of **Mounts** rather than under General, and it only appears if you own something to ride. |
+| `mount <name>` | summons that mount, or dismounts if you are already up |
 | `warp` | picks the best warp you have, in order: the Warp or Warp II spell, then a Warp Ring, an Instant Warp, a Warp Cudgel, a Treat Staff II, and a Tavnazian Ring as the last resort. The scroll sits above the two weapons because it costs no swap and no warm-up. Equips the ring or cudgel for you and waits out the enchantment — though if it has more than about 30 seconds left to charge it gives up rather than waiting. The Tavnazian Ring is allowed longer, because its own warm-up is roughly that. A piece already on your finger is not assumed to be ready either: if its enchantment is still coming up, the crossbar waits it out for you, the same as it would for a ring it equipped itself. `warp all` sends your other characters running XIVHud home — when this character's warp actually fires, so calling the countdown off, or a ring warm-up that gets abandoned, leaves them where they are. |
 | `sneak` / `invisible` | picks the cheapest way this character has to get the effect and fires it: the ninjutsu first (Monomi: Ichi / Tonko: Ichi, if you have the tool), then Spectral Jig, then the spell, then a Silent Oil / Prism Powder. The order is the same on every job, so the press behaves the same wherever it is bound; what changes is which rungs you qualify for, which is read from the client - the spells you know and the levels your main and sub actually have. Self-only rungs stay on you; the spell and the item go to a targeted party member if you have one selected. Both take the White Magic icon whichever rung fires, so the slot's face does not change with your subjob. |
 | `open <name>` | opens a game screen |
 
 `mr` and `warp` count five seconds down before they go, and so does the
 `mount` type above — see **Travel waits five seconds** under Extras.
+
+**A mount slot greys out when you cannot ride.** Two things put it down: a
+zone that forbids mounting — a city, a dungeon — and the minute after you
+summon one, which sweeps round as a recast like anything else. Neither
+applies while you are already mounted, because then the press dismounts you,
+and getting off is never held up.
+
+The minute is counted by the addon rather than read from the game: FFXI
+exposes recasts by ability, and mounting is not an ability, so there is no
+timer to read. It starts when the summon is sent. That means a summon the
+game turns down for a reason the addon cannot see will still grey the slot
+for the minute — and a zone it cannot identify never greys it at all, since
+a slot wrongly greyed is worse than a press the game refuses out loud.
 
 #### What `open` can open
 

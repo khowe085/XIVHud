@@ -294,6 +294,16 @@ local function new(ctx)
     return 0
   end
 
+  -- The monotonic frame clock, for durations measured in play (the mount
+  -- recast). Distinct from time_now() above, which is wall clock and would
+  -- not move at all between two frames.
+  local function frame_now()
+    if ctx.now ~= nil then
+      return ctx.now()
+    end
+    return 0
+  end
+
   local function get_player()
     if ctx.get_player ~= nil then
       return ctx.get_player()
@@ -332,6 +342,12 @@ local function new(ctx)
       get_buffs = function()
         local player = get_player()
         return player and player.buffs or {}
+      end,
+      -- Whether this zone allows mounting at all, and which zone that is.
+      zones = resources.zones,
+      get_zone = function()
+        local info = ctx.zone ~= nil and ctx.zone() or nil
+        return info
       end,
       random = ctx.random or math.random,
     })
@@ -1940,6 +1956,13 @@ local function new(ctx)
       repaint()
     end
     if plan.kind == "command" then
+      -- The mount recast is ours to track: nothing in the client's recast
+      -- tables names it (see roulette.lua), so the clock starts here, where
+      -- the summon actually goes out - after the travel wait, not at the
+      -- press that armed it.
+      if plan.mount_summon and roulette ~= nil then
+        roulette.summoned(frame_now())
+      end
       send_command(plan.command)
     elseif plan.kind == "message" then
       say("crossbar: " .. plan.message)
@@ -2388,6 +2411,12 @@ local function new(ctx)
     return ability_recasts[meta.recast_id] or 0
   end
 
+  -- `mr` and a named mount share the recast and the zone rule: both are
+  -- the same one command to the game.
+  local function is_mount_record(record)
+    return record ~= nil and (record.type == "mount" or record.type == "mr")
+  end
+
   local function has_job(player, job)
     return player ~= nil and (player.main_job == job or player.sub_job == job)
   end
@@ -2526,6 +2555,20 @@ local function new(ctx)
     end
 
     local remaining = remaining_for(content.meta, spell_recasts, ability_recasts)
+    --[[ A mount slot answers to neither a spell nor an ability recast, so
+         its own two conditions land here: the zone that forbids mounting,
+         and the minute after a summon. Both only while UNMOUNTED - mounted,
+         the same slot dismounts, and getting out of something is never held
+         up (the rule the travel delay already follows). ]]
+    if is_mount_record(content.record) and roulette ~= nil and not roulette.mounted() then
+      if roulette.blocked() then
+        usable = false
+      end
+      local cooling = roulette.cooldown(frame_now())
+      if cooling > remaining then
+        remaining = cooling
+      end
+    end
     if remaining > 0 then
       usable = false
     end

@@ -784,6 +784,14 @@ step("building the crossbar component", function()
     time = os.time,
     say = say,
     chat_open = chat_open,
+    -- The zone id, for the crossbar's mount rule (res.zones carries
+    -- `can_mount`). Nil-tolerant like chat_open: it is read while drawing.
+    zone = function()
+      local ok, info = pcall(function()
+        return windower.ffxi.get_info()
+      end)
+      return ok and info ~= nil and info.zone or nil
+    end,
     suppressed = function()
       return core.suppressed()
     end,

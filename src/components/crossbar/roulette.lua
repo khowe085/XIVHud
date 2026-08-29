@@ -70,8 +70,20 @@ local NOTE = "\226\153\170"
 local MOUNTED_BUFF = 252
 local KEY_ITEM_CHUNK = 0x055
 
+--[[ The mount recast, in seconds. Tracked here rather than read from the
+     client because there is nothing to read: `get_ability_recasts()` is
+     keyed by recast id and the job_abilities resource has no mount ability
+     in it at all, so no id names this timer. 60 is the figure Kevin gave
+     (2026-08-29), and the clock starts when the summon is SENT - his call,
+     knowing that a summon the game refuses for a reason we cannot see
+     leaves the slot dimmed for the minute anyway. ]]
+local MOUNT_RECAST = 60
+
 local function new(deps)
   local self = {}
+
+  -- When the last summon went out, on the widget's clock. nil until one has.
+  local summoned_at = nil
 
   local owned = {}
   -- command form -> the resource's own casing, filled by refresh().
@@ -156,6 +168,49 @@ local function new(deps)
       end
     end
     return false
+  end
+
+  --[[ Whether this zone forbids mounting. The resources carry `can_mount`
+       per zone and it is PRESENT-OR-ABSENT rather than true/false, so the
+       test is presence.
+
+       Anything unresolved answers "not blocked": an unknown zone, a zones
+       table we were never handed, a zone the client has not named yet. The
+       cost corner's rule applies here too - dimming on ignorance would read
+       as unusable at every login, and a slot wrongly dimmed is worse than a
+       press the game refuses with its own message. ]]
+  function self.blocked()
+    local zones = type(deps.zones) == "table" and deps.zones or nil
+    if zones == nil then
+      return false
+    end
+    local zone = type(deps.get_zone) == "function" and deps.get_zone() or nil
+    local entry = zone ~= nil and zones[zone] or nil
+    if type(entry) ~= "table" then
+      return false
+    end
+    return entry.can_mount ~= true
+  end
+
+  --- Stamps a summon. Only a summon: a dismount is getting OUT of
+  --- something, which this component never holds up.
+  function self.summoned(now)
+    summoned_at = now
+  end
+
+  --- Seconds left on the mount recast, 0 when there is none. Clamped at
+  --- both ends: a clock that jumps backwards (os.clock re-basing across a
+  --- reload) must not answer more than the recast, nor less than nothing.
+  function self.cooldown(now)
+    if summoned_at == nil or type(now) ~= "number" then
+      return 0
+    end
+    local elapsed = now - summoned_at
+    if elapsed < 0 then
+      return MOUNT_RECAST
+    end
+    local left = MOUNT_RECAST - elapsed
+    return left > 0 and left or 0
   end
 
   -- Mounted -> dismount; nothing owned -> nil (the caller's no-op); else a
