@@ -40,8 +40,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local new_logic = require("components/giltracker/logic")
 local build_defaults = require("components/giltracker/defaults")
 
-local ASSET_DIR = "components/giltracker/assets/"
-local ICON_TEXTURE = "gil.png"
+-- The gil icon sits at the addon root with sylandro's notice beside it.
+local ICON_TEXTURE = "assets/gil/gil.png"
 
 local function new(ctx)
   local self = { name = "giltracker" }
@@ -73,7 +73,7 @@ local function new(ctx)
   -- The prim must not size itself to its texture, or the widget scale would
   -- silently do nothing.
   icon.fit(false)
-  icon.path(ctx.asset(ASSET_DIR .. ICON_TEXTURE))
+  icon.path(ctx.asset(ICON_TEXTURE))
   icon.hide()
 
   local function apply_visibility()

@@ -82,7 +82,10 @@ local GROUPS = {
   { key = "expanded", bar = "expanded", side = "left", anchor = "main" },
 }
 
-local ASSETS = "components/crossbar/assets/"
+-- The asset ROOT, not one folder in it: what hangs off this is `own/` for
+-- XIVHud's own chrome, `icons/` for the imported pack and `cooldown/` for
+-- the sweep frames, each with its own licence beside it.
+local ASSETS = "assets/"
 local SLOT_COUNT = 8
 local MOUNTED_BUFF = 252
 -- Namespaced so a real MyHome on another character neither triggers nor is
@@ -820,7 +823,7 @@ local function new(ctx)
       prim.repeat_xy(1, 1)
       prim.fit(false)
       if texture ~= nil then
-        prim.path(ctx.asset(ASSETS .. texture))
+        prim.path(ctx.asset(ASSETS .. "own/" .. texture))
       end
       prim.color(255, 255, 255)
       prim.hide()
@@ -1158,7 +1161,7 @@ local function new(ctx)
       return
     end
     if mode == "x" then
-      prim.path(ctx.asset(ASSETS .. "red-x.png"))
+      prim.path(ctx.asset(ASSETS .. "own/red-x.png"))
     else
       prim.path(ctx.asset(ASSETS .. ("cooldown/frame_%02d.png"):format(mode)))
     end
@@ -1189,10 +1192,10 @@ local function new(ctx)
     end
     written["frame.step"] = step
     if step == false then
-      prim.path(ctx.asset(ASSETS .. "frame.png"))
+      prim.path(ctx.asset(ASSETS .. "own/frame.png"))
       return
     end
-    prim.path(ctx.asset(ASSETS .. ("frame_step%d.png"):format(step)))
+    prim.path(ctx.asset(ASSETS .. ("own/frame_step%d.png"):format(step)))
   end
 
   local function refresh()

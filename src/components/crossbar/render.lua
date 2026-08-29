@@ -462,7 +462,10 @@ local function new(deps)
        Each candidate carries the offset it draws at: the id sheets and
        extracted bitmaps are 32x32 and centre at +4/+4 in the 40px slot
        (upstream's own fix); pack art draws at the origin. ]]
-  local ASSETS = "components/crossbar/assets/"
+  -- The asset ROOT, not one folder in it: what hangs off this is `own/` for
+  -- XIVHud's own chrome, `icons/` for the imported pack and `cooldown/` for
+  -- the sweep frames, each with its own licence beside it.
+  local ASSETS = "assets/"
 
   --[[ The ability recast ids whose icons are job-suffixed on the shipped
        sheet: the lv1 SP pool (0), the lv96 SP pool (254), and the GEO/RUN

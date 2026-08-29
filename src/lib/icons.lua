@@ -50,7 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        Copyright (c) 2021, Rubenator. All rights reserved. Redistribution and
        use in source and binary forms, with or without modification, are
        permitted provided that the conditions of the BSD 3-clause licence
-       reproduced in components/equipviewer/assets/LICENSE.txt are met.
+       reproduced in assets/encumbrance/LICENSE.txt are met.
 
      The notice above is the in-file copy that BSD clause 1 asks derived
      source to retain; nothing in lib/ depends on the component's LICENSE.txt

@@ -47,7 +47,8 @@ local build_defaults = require("components/partylist/defaults")
 local layouts = require("components/partylist/layout")
 local packet_parsers = require("components/partylist/packets")
 
-local ASSET_DIR = "components/partylist/"
+-- Art lives at the addon root now (`assets/`), shared rather than owned,
+-- so layout's own `assets/...` paths need nothing in front of them.
 
 local PARSED_PACKETS = {
   [packet_parsers.ALLIANCE] = true,
@@ -98,7 +99,7 @@ local function new(ctx)
     -- eased width and everything is multiplied by the widget scale.
     prim.fit(false)
     if texture then
-      prim.path(ctx.asset(ASSET_DIR .. texture))
+      prim.path(ctx.asset(texture))
     end
     color = color or { r = 255, g = 255, b = 255, a = 255 }
     prim.color(color.r, color.g, color.b)
@@ -450,7 +451,7 @@ local function new(ctx)
     local has_icon = plan.occupied and plan.job_icon ~= nil
     if has_icon then
       -- The icon files are lowercase; res.jobs reports the job uppercase.
-      local path = ctx.asset(ASSET_DIR .. layout.row.job_icon.path .. plan.job_icon:lower() .. ".png")
+      local path = ctx.asset(layout.row.job_icon.path .. plan.job_icon:lower() .. ".png")
       push_path(row, row.job_icon.icon, "job_icon", path)
       push_color(row, row.job_icon.bg, "job_bg", layout.row.job_icon.colors[plan.role] or layout.row.job_icon.colors.dd)
     end
@@ -492,7 +493,7 @@ local function new(ctx)
     for index, prim in ipairs(row.buffs) do
       local id = plan.occupied and (plan.buffs or {})[index] or nil
       if id then
-        push_path(row, prim, "buff_" .. index, ctx.asset(ASSET_DIR .. layout.row.buff_icons.path .. id .. ".png"))
+        push_path(row, prim, "buff_" .. index, ctx.asset(layout.row.buff_icons.path .. id .. ".png"))
       end
       want(row, prim, "buff_" .. index, id ~= nil)
     end

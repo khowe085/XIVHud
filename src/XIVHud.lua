@@ -52,7 +52,7 @@ _addon.commands = { "hud", "xivhud" }
 
 local CHAT_COLOR = 207
 -- Plain white square, tinted and stretched for the layout-mode highlight.
-local OVERLAY_TEXTURE = "assets/overlay.png"
+local OVERLAY_TEXTURE = "assets/own/overlay.png"
 
 local core
 
@@ -878,7 +878,7 @@ local function check_assets()
   local missing = {}
   local expected = { OVERLAY_TEXTURE }
   for _, texture in ipairs({ "bar_bg.png", "bar_compact.png", "hp_fg.png", "mp_fg.png", "tp_fg.png" }) do
-    expected[#expected + 1] = "components/parambar/assets/" .. texture
+    expected[#expected + 1] = "assets/ffxiv/" .. texture
   end
   -- The party list ships some 680 textures; checking every one at load would
   -- cost 680 file opens to learn what a handful already tells us.
@@ -887,18 +887,17 @@ local function check_assets()
     "assets/xiv/BarBG.png",
     "assets/xiv/Cursor.png",
     "assets/xiv/AllyBarBG.png",
-    "assets/jobIcons/frame.png",
-    "assets/jobIcons/whm.png",
-    "assets/buffIcons/33.png",
+    "assets/xiv/jobIcons/frame.png",
+    "assets/xiv/jobIcons/whm.png",
+    "assets/xiv/buffIcons/33.png",
   }) do
-    expected[#expected + 1] = "components/partylist/" .. texture
+    expected[#expected + 1] = texture
   end
-  expected[#expected + 1] = "components/giltracker/assets/gil.png"
-  for _, texture in ipairs({ "encumbrance.png", "panel.png" }) do
-    expected[#expected + 1] = "components/equipviewer/assets/" .. texture
-  end
+  expected[#expected + 1] = "assets/gil/gil.png"
+  expected[#expected + 1] = "assets/encumbrance/encumbrance.png"
+  expected[#expected + 1] = "assets/own/panel.png"
   for _, texture in ipairs({ "BarBG.png", "Bar.png", "BarFG.png", "CastBG.png", "CastBar.png", "CastFG.png" }) do
-    expected[#expected + 1] = "components/targetbar/assets/xiv/" .. texture
+    expected[#expected + 1] = "assets/xiv/wide/" .. texture
   end
   -- The crossbar ships ~1,300 icons; same sampling rule as the party list -
   -- a few from each imported category, plus every icon a CB1 table
@@ -944,7 +943,7 @@ local function check_assets()
     "icons/disengage.png",
     "icons/dismount.png",
   }) do
-    expected[#expected + 1] = "components/crossbar/assets/" .. texture
+    expected[#expected + 1] = "assets/own/" .. texture
   end
 
   for _, relative_path in ipairs(expected) do

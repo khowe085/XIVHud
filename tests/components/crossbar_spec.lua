@@ -322,8 +322,8 @@ describe("crossbar widget", function()
     -- frame, icon, sweep overlay, feedback flash and chain overlay.
     local hits = images_at(100 + 30, 900 + 35 + 28)
     assert.are.equal(6, #hits, "background, chain, icon, sweep, frame, feedback")
-    assert.are.equal("addon/components/crossbar/assets/slot.png", hits[1].last.path)
-    assert.are.equal("addon/components/crossbar/assets/frame.png", hits[5].last.path)
+    assert.are.equal("addon/assets/own/slot.png", hits[1].last.path)
+    assert.are.equal("addon/assets/own/frame.png", hits[5].last.path)
     assert.are.same({ 40, 40 }, { hits[1].width, hits[1].height })
     assert.are.same({ 40, 40 }, { hits[5].width, hits[5].height }, "the frame is slot-sized too")
     assert.is_false(hits[1].last.fit, "explicitly sized art must not fit-to-texture")
@@ -362,7 +362,7 @@ describe("crossbar widget", function()
     local panel = images_at(100, 900)[1]
     assert.is_not_nil(panel, "the left panel sits at the anchor origin")
     assert.is_true(panel.visible)
-    assert.are.equal("addon/components/crossbar/assets/bar_bg_compact.png", panel.last.path)
+    assert.are.equal("addon/assets/own/bar_bg_compact.png", panel.last.path)
     assert.are.same({ 330, 180 }, { panel.width, panel.height })
     assert.is_false(panel.last.fit, "the panel is sized too")
     assert.are.equal(widget.defaults.button_bg_alpha, panel.last.alpha)
@@ -389,7 +389,7 @@ describe("crossbar widget", function()
     widget.on_keyboard(39, true, 0, false)
     local panel = nil
     for _, prim in ipairs(prims.images) do
-      if prim.last.path == "addon/components/crossbar/assets/bar_bg_compact.png" then
+      if prim.last.path == "addon/assets/own/bar_bg_compact.png" then
         panel = prim
       end
     end
@@ -545,10 +545,10 @@ describe("crossbar widget", function()
     fresh_widget.attach(fresh_widget.defaults)
     local backgrounds, frames = 0, 0
     for _, prim in ipairs(fresh.images) do
-      if prim.last.path == "addon/components/crossbar/assets/slot.png" then
+      if prim.last.path == "addon/assets/own/slot.png" then
         backgrounds = backgrounds + 1
         assert.are.equal(123, prim.last.alpha)
-      elseif prim.last.path == "addon/components/crossbar/assets/frame.png" then
+      elseif prim.last.path == "addon/assets/own/frame.png" then
         frames = frames + 1
         assert.are.equal(255, prim.last.alpha, "the frame draws opaque")
       end
@@ -1005,12 +1005,12 @@ describe("crossbar live widget", function()
 
     it("draws a bound slot's icon from the per-job file", function()
       build_world()
-      env.files["addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png"] = true
+      env.files["addon/assets/icons/weaponskills/sword/savage-blade.png"] = true
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
       local icon = image_of("xhb_left", 3, "icon")
-      assert.are.equal("addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png", icon.last.path)
+      assert.are.equal("addon/assets/icons/weaponskills/sword/savage-blade.png", icon.last.path)
       assert.is_true(icon.visible)
       -- Cut to what the slot can draw; the record still holds the whole
       -- name, which the next test checks.
@@ -1025,18 +1025,18 @@ describe("crossbar live widget", function()
            (Kevin, live client, test plan C19). The alias verb looked fine
            beside it only because the label is recomputed every paint. ]]
       build_world()
-      env.files["addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png"] = true
-      env.files["addon/components/crossbar/assets/icons/map.png"] = true
+      env.files["addon/assets/icons/weaponskills/sword/savage-blade.png"] = true
+      env.files["addon/assets/icons/map.png"] = true
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
       assert.are.equal(
-        "addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png",
+        "addon/assets/icons/weaponskills/sword/savage-blade.png",
         image_of("xhb_left", 3, "icon").last.path
       )
       widget.handle_command({ "icon", "1L3", "map" })
       widget.update()
-      assert.are.equal("addon/components/crossbar/assets/icons/map.png", image_of("xhb_left", 3, "icon").last.path)
+      assert.are.equal("addon/assets/icons/map.png", image_of("xhb_left", 3, "icon").last.path)
       -- The memo must still settle on the override, or an re-iconed slot
       -- stats the disk every frame for the life of the binding.
       env.stats = {}
@@ -1048,7 +1048,7 @@ describe("crossbar live widget", function()
       widget.handle_command({ "icon", "1L3" })
       widget.update()
       assert.are.equal(
-        "addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png",
+        "addon/assets/icons/weaponskills/sword/savage-blade.png",
         image_of("xhb_left", 3, "icon").last.path
       )
     end)
@@ -1112,16 +1112,16 @@ describe("crossbar live widget", function()
       local player = war_player()
       player.buffs = { 252 }
       build_world({ store_files = files, player = player })
-      env.files["addon/components/crossbar/assets/icons/mount.png"] = true
-      env.files["addon/components/crossbar/assets/icons/check.png"] = true
-      env.files["addon/components/crossbar/assets/icons/dismount.png"] = true
+      env.files["addon/assets/icons/mount.png"] = true
+      env.files["addon/assets/icons/check.png"] = true
+      env.files["addon/assets/icons/dismount.png"] = true
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
-      assert.are.equal("addon/components/crossbar/assets/icons/mount.png", image_of("xhb_left", 1, "icon").last.path)
-      assert.are.equal("addon/components/crossbar/assets/icons/check.png", image_of("xhb_left", 2, "icon").last.path)
+      assert.are.equal("addon/assets/icons/mount.png", image_of("xhb_left", 1, "icon").last.path)
+      assert.are.equal("addon/assets/icons/check.png", image_of("xhb_left", 2, "icon").last.path)
       assert.are.equal(
-        "addon/components/crossbar/assets/icons/dismount.png",
+        "addon/assets/icons/dismount.png",
         image_of("xhb_left", 7, "icon").last.path,
         "draw's icon follows the mounted state"
       )
@@ -1391,22 +1391,18 @@ describe("crossbar live widget", function()
       local files = war_bindings()
       files.WAR.sets[1].left[7] = { type = "draw" }
       build_world({ store_files = files })
-      env.files["addon/components/crossbar/assets/icons/attack.png"] = true
-      env.files["addon/components/crossbar/assets/icons/disengage.png"] = true
+      env.files["addon/assets/icons/attack.png"] = true
+      env.files["addon/assets/icons/disengage.png"] = true
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
       local icon = image_of("xhb_left", 7, "icon")
-      assert.are.equal("addon/components/crossbar/assets/icons/attack.png", icon.last.path, "sheathed shows attack")
+      assert.are.equal("addon/assets/icons/attack.png", icon.last.path, "sheathed shows attack")
       press(LAYER)
       press(SWITCH)
       release(SWITCH)
       release(LAYER)
-      assert.are.equal(
-        "addon/components/crossbar/assets/icons/disengage.png",
-        icon.last.path,
-        "the flip repaints the draw slot"
-      )
+      assert.are.equal("addon/assets/icons/disengage.png", icon.last.path, "the flip repaints the draw slot")
     end)
 
     it("does nothing on a bare Select, and keeps the key anyway", function()
@@ -1877,7 +1873,7 @@ describe("crossbar live widget", function()
       widget.update()
       local sweep = image_of("xhb_left", 4, "sweep")
       assert.are.equal(
-        "addon/components/crossbar/assets/cooldown/frame_32.png",
+        "addon/assets/cooldown/frame_32.png",
         sweep.last.path,
         "a fresh recast must not draw nearly-done under the old action's 300s denominator"
       )
@@ -1933,13 +1929,13 @@ describe("crossbar live widget", function()
       widget.update()
       assert.is_true(sweep.visible)
       assert.are.equal(150, sweep.last.alpha, "upstream's fixed overlay alpha")
-      assert.are.equal("addon/components/crossbar/assets/cooldown/frame_32.png", sweep.last.path)
+      assert.are.equal("addon/assets/cooldown/frame_32.png", sweep.last.path)
       assert.are.equal("30s", recast.last.text)
       assert.is_true(recast.visible)
       env.now = 0.3
       env.ability_recasts = { [5] = 15 }
       widget.update()
-      assert.are.equal("addon/components/crossbar/assets/cooldown/frame_16.png", sweep.last.path)
+      assert.are.equal("addon/assets/cooldown/frame_16.png", sweep.last.path)
       env.now = 0.6
       env.ability_recasts = {}
       widget.update()
@@ -2135,7 +2131,7 @@ describe("crossbar live widget", function()
       assert.are.same({ 255, 0, 0 }, cost.last.color)
       local sweep = image_of("xhb_left", 1, "sweep")
       assert.is_true(sweep.visible)
-      assert.are.equal("addon/components/crossbar/assets/red-x.png", sweep.last.path)
+      assert.are.equal("addon/assets/own/red-x.png", sweep.last.path)
       assert.is_false(text_of("xhb_left", 1, "recast").visible, "the recast text hides under the X")
     end)
 
@@ -2377,12 +2373,12 @@ describe("crossbar live widget", function()
       local files = war_bindings()
       files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
       build_world({ store_files = files })
-      env.files["addon/components/crossbar/assets/icons/usable-item.png"] = true
+      env.files["addon/assets/icons/usable-item.png"] = true
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
       local icon = image_of("xhb_left", 6, "icon")
-      assert.are.equal("addon/components/crossbar/assets/icons/usable-item.png", icon.last.path, "fallback first")
+      assert.are.equal("addon/assets/icons/usable-item.png", icon.last.path, "fallback first")
       widget.update()
       assert.are.equal("icons/4165.bmp", env.writes[1], "one extraction, queued off the packet path")
       assert.are.equal("addon/icons/4165.bmp", icon.last.path, "the cache landing repaints the slot")
@@ -2392,7 +2388,7 @@ describe("crossbar live widget", function()
       -- The icon path re-resolves only when the record changes - the same
       -- identity rule the sweep uses.
       build_world()
-      env.files["addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png"] = true
+      env.files["addon/assets/icons/weaponskills/sword/savage-blade.png"] = true
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
@@ -2425,7 +2421,7 @@ describe("crossbar live widget", function()
       files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
       build_world({ store_files = files })
       env.dat_fails = true
-      env.files["addon/components/crossbar/assets/icons/usable-item.png"] = true
+      env.files["addon/assets/icons/usable-item.png"] = true
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
@@ -2443,8 +2439,8 @@ describe("crossbar live widget", function()
       local files = war_bindings()
       files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
       build_world({ store_files = files })
-      env.files["addon/components/crossbar/assets/icons/usable-item.png"] = true
-      env.files["addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png"] = true
+      env.files["addon/assets/icons/usable-item.png"] = true
+      env.files["addon/assets/icons/weaponskills/sword/savage-blade.png"] = true
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
@@ -2662,16 +2658,16 @@ describe("crossbar live widget", function()
         widget.update()
         local chain = image_of("xhb_left", 3, "chain")
         assert.is_true(chain.visible)
-        assert.are.equal("addon/components/crossbar/assets/icons/skillchain/fragmentation.png", chain.last.path)
+        assert.are.equal("addon/assets/icons/skillchain/fragmentation.png", chain.last.path)
         assert.are.equal(255, chain.last.alpha, "full TP: undimmed")
-        assert.are.equal("addon/components/crossbar/assets/frame_step1.png", image_of("xhb_left", 3, "frame").last.path)
+        assert.are.equal("addon/assets/own/frame_step1.png", image_of("xhb_left", 3, "frame").last.path)
         assert.is_false(image_of("xhb_left", 3, "icon").visible, "the action icon hides under the result")
         assert.is_false(text_of("xhb_left", 3, "cost").visible, "at full TP the cost hides too")
         -- The border animation steps every five ticks.
         for _ = 1, 5 do
           widget.update()
         end
-        assert.are.equal("addon/components/crossbar/assets/frame_step2.png", image_of("xhb_left", 3, "frame").last.path)
+        assert.are.equal("addon/assets/own/frame_step2.png", image_of("xhb_left", 3, "frame").last.path)
         -- A slot whose action forms nothing stays put: Cure is a spell.
         assert.is_false(image_of("xhb_left", 5, "chain").visible)
       end)
@@ -2682,7 +2678,7 @@ describe("crossbar live widget", function()
         -- the tick's want() cache - which already believes it pushed hidden -
         -- would never push it back down. An activation (held side key) runs
         -- exactly such a refresh.
-        env.files["addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png"] = true
+        env.files["addon/assets/icons/weaponskills/sword/savage-blade.png"] = true
         widget.attach(config, function() end, store)
         widget.show()
         open_chain(9)
@@ -2723,7 +2719,7 @@ describe("crossbar live widget", function()
 
       it("restores the slot when the window closes", function()
         -- The real icon exists on disk so the restore has something to show.
-        env.files["addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png"] = true
+        env.files["addon/assets/icons/weaponskills/sword/savage-blade.png"] = true
         widget.update("job change")
         open_chain(9)
         env.now = 4
@@ -2733,7 +2729,7 @@ describe("crossbar live widget", function()
         widget.update()
         local chain = image_of("xhb_left", 3, "chain")
         assert.is_false(chain.visible)
-        assert.are.equal("addon/components/crossbar/assets/frame.png", image_of("xhb_left", 3, "frame").last.path)
+        assert.are.equal("addon/assets/own/frame.png", image_of("xhb_left", 3, "frame").last.path)
         assert.are.equal(255, image_of("xhb_left", 3, "frame").last.alpha)
         assert.is_true(image_of("xhb_left", 3, "icon").visible, "the action icon comes back")
       end)
@@ -2743,7 +2739,7 @@ describe("crossbar live widget", function()
         -- stale chain_prop would leave the re-shown slot with NEITHER icon
         -- nor chain until the tick catches up - a one-frame hole. The
         -- hidden branch must drop the chain state with the prims.
-        env.files["addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png"] = true
+        env.files["addon/assets/icons/weaponskills/sword/savage-blade.png"] = true
         widget.attach(config, function() end, store)
         widget.show()
         open_chain(9)
@@ -2786,7 +2782,7 @@ describe("crossbar live widget", function()
         widget.update()
         local chain = image_of("xhb_left", 6, "chain")
         assert.is_true(chain.visible)
-        assert.are.equal("addon/components/crossbar/assets/icons/skillchain/impaction.png", chain.last.path)
+        assert.are.equal("addon/assets/icons/skillchain/impaction.png", chain.last.path)
       end)
 
       it("lights a blood pact's pet slot, never TP-dimmed", function()
@@ -2802,7 +2798,7 @@ describe("crossbar live widget", function()
         widget.update()
         local chain = image_of("xhb_left", 6, "chain")
         assert.is_true(chain.visible)
-        assert.are.equal("addon/components/crossbar/assets/icons/skillchain/scission.png", chain.last.path)
+        assert.are.equal("addon/assets/icons/skillchain/scission.png", chain.last.path)
         assert.are.equal(255, chain.last.alpha, "no TP gate off the ws type")
       end)
 

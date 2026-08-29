@@ -118,7 +118,7 @@ local DETAIL_ROWS = BODY_ROWS
 -- roster addition needs no prim-count edit here.
 local STACK_ROWS = #contexts + 4
 -- Panel chrome: the component's own white square, tinted and dimmed.
-local PANEL_TEXTURE = "components/crossbar/assets/black-square.png"
+local PANEL_TEXTURE = "assets/own/black-square.png"
 local PANEL_ALPHA = 220
 local ICON_SIZE = 16
 

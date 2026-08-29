@@ -49,7 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local new_logic = require("components/targetbar/logic")
 local build_defaults = require("components/targetbar/defaults")
 
-local ASSET_DIR = "components/targetbar/assets/xiv/"
+local ASSET_DIR = "assets/xiv/wide/"
 -- The one chunk this widget reads: the action packet, which reaches it
 -- already decoded - the entry point's dispatch runs
 -- windower.packets.parse_action once for every component that wants it.

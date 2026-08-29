@@ -1,5 +1,5 @@
-The image files in this directory (xiv/, jobIcons/, buffIcons/) are the "xiv"
-theme assets from the XivParty addon:
+The image files in this directory and its jobIcons/ and buffIcons/
+subdirectories are the "xiv" theme assets from the XivParty addon:
 
     https://github.com/Tylas11/XivParty
 

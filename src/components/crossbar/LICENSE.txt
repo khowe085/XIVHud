@@ -1,63 +1,12 @@
 Third-party notices for the crossbar component.
 
-This file collects every upstream notice the component depends on: for the
-image files in this directory, and for the source transcribed into the
-component's Lua from BSD- and MIT-licensed addons (BSD clause 1 also keeps
-each such notice in the derived source file itself).
+This file collects every upstream notice the source transcribed into this
+component's Lua depends on - from BSD- and MIT-licensed addons (BSD clause 1
+also keeps each such notice in the derived source file itself).
 
-What is in this directory, and where it came from
---------------------------------------------------------------------------------
-
-Every image below is a verbatim, byte-for-byte copy of its source file - no
-image was re-encoded, resized, or otherwise transformed. The one exception
-is indicator.png, which is XIVHud's own white square (the skillchain
-indicator's bar, tinted at draw time) and appears in no list below.
-
-From xivcrossbar (https://github.com/AliekberFFXI/xivcrossbar, MIT (c) 2020
-AliekberFFXI; per-file BSD headers (c) 2017 SirEdeonX inherited from
-xivhotbar):
-
-    slot.png, frame.png                  themes/ffxiv/
-    bar_bg_compact.png, feedback.png,    images/icons/iconpacks/default/ui/
-      black-square.png, red-x.png,       (bar_bg_compact.png is the panel
-      frame_step1.png - frame_step8.png   behind the active side; red-x.png
-                                          crosses out a slot whose ninja tool
-                                          count is zero; feedback.png is the
-                                          press flash; black-square.png and
-                                          the frame_step frames back the
-                                          recast overlay and the skillchain
-                                          frame animation)
-    icons/spells/                        images/icons/spells/ (by recast id)
-    icons/abilities/                     images/icons/abilities/ (by recast
-                                          id), plus the three named icons from
-                                          images/icons/iconpacks/default/abilities/
-    icons/weapons/                       images/icons/weapons/ (the .png set
-                                          the slot code resolves; the unused
-                                          capitalised .jpg set is not shipped)
-    icons/elements/                      images/icons/elements/
-    icons/skillchain/                    images/icons/iconpacks/default/skillchain/
-                                          (.png only; the .svg twins are not
-                                          shipped)
-    icons/mounts/, icons/trust/,         images/icons/iconpacks/default/<same>/
-      icons/ninjutsu/, icons/blue-magic/,
-      icons/items/, icons/weaponskills/
-    icons/*.png (the top-level singles:  images/icons/iconpacks/default/
-      attack, disengage, dismount,        (top-level)
-      mount, item, map, and the rest)
-
-From XIVhotbar2 Petit Trois Edition
-(https://github.com/WGINC/XIVhotbar2-Petit_Trois_Edition, BSD 3-clause
-(c) 2026 WG Incorporated):
-
-    cooldown/frame_01.png - frame_32.png   images/cooldown/ - the 32
-                                            pre-rendered frames of the radial
-                                            recast sweep (the shipped
-                                            frame_00.png is not imported; the
-                                            frame formula never selects it)
-
-Square Enix's underlying rights in the game-derived icon artwork are not
-addressed by any of the notices below; the icons are redistributed here as
-the upstream addons redistribute them.
+The bundled art the component draws no longer lives here: it sits under
+src/assets/, grouped by provenance, and each of those directories carries its
+own notice.
 
 Source transcribed into this component's Lua
 --------------------------------------------------------------------------------

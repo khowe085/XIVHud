@@ -520,7 +520,8 @@ describe("crossbar render", function()
   end)
 
   describe("icon resolution", function()
-    local ASSETS = "components/crossbar/assets/"
+    -- The asset root: icons hang off it, as they do in render.lua.
+    local ASSETS = "assets/"
     local render
 
     before_each(function()
@@ -672,7 +673,7 @@ describe("crossbar render", function()
         { ja = "Elemental Sforzo", job = 22 },
       }
       for _, hole in ipairs(holes) do
-        local missing = ("src/components/crossbar/assets/icons/abilities/00000.%02d.png"):format(hole.job)
+        local missing = ("src/assets/icons/abilities/00000.%02d.png"):format(hole.job)
         assert.is_nil(io.open(missing, "rb"), missing .. " is expected to be a sheet hole")
         local candidates = render.icon_candidates(
           { type = "ja", action = hole.ja },

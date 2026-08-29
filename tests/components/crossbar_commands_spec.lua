@@ -592,7 +592,7 @@ describe("crossbar commands", function()
     end)
 
     it("accepts a pack-relative name from the shipped pack", function()
-      local commands, world = build({ icons = { ["components/crossbar/assets/icons/items/warp-ring.png"] = true } })
+      local commands, world = build({ icons = { ["assets/icons/items/warp-ring.png"] = true } })
       commands.command({ "bind", "1L3", "warp" })
       commands.command({ "icon", "1L3", "items/warp-ring" })
       assert.equal("items/warp-ring", stored(world, "SCH", 1, "left", 3).icon)

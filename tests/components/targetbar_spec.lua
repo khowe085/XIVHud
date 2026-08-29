@@ -158,12 +158,12 @@ describe("targetbar widget", function()
 
     it("points every layer at its own copy of the art", function()
       assert.are.same({
-        "components/targetbar/assets/xiv/BarBG.png",
-        "components/targetbar/assets/xiv/Bar.png",
-        "components/targetbar/assets/xiv/BarFG.png",
-        "components/targetbar/assets/xiv/CastBG.png",
-        "components/targetbar/assets/xiv/CastBar.png",
-        "components/targetbar/assets/xiv/CastFG.png",
+        "assets/xiv/wide/BarBG.png",
+        "assets/xiv/wide/Bar.png",
+        "assets/xiv/wide/BarFG.png",
+        "assets/xiv/wide/CastBG.png",
+        "assets/xiv/wide/CastBar.png",
+        "assets/xiv/wide/CastFG.png",
       }, assets)
     end)
 

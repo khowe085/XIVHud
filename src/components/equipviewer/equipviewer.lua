@@ -50,12 +50,14 @@ local new_logic = require("components/equipviewer/logic")
 local build_defaults = require("components/equipviewer/defaults")
 local new_icon_cache = require("lib/icon_cache")
 
-local ASSET_DIR = "components/equipviewer/assets/"
-local ENCUMBRANCE_TEXTURE = "encumbrance.png"
+-- Two homes now, not one: the panel is XIVHud's own white square and the
+-- encumbrance X is Rubenator's, and each sits with the licence that
+-- covers it.
+local ENCUMBRANCE_TEXTURE = "assets/encumbrance/encumbrance.png"
 -- A white square, tinted to the configured colour: a prim with no texture is
 -- not something this repo draws with, and the framework's highlight box is the
 -- same trick.
-local PANEL_TEXTURE = "panel.png"
+local PANEL_TEXTURE = "assets/own/panel.png"
 
 local function new(ctx)
   local self = { name = "equipviewer" }
@@ -118,13 +120,13 @@ local function new(ctx)
   end
 
   prepare(panel)
-  panel.path(ctx.asset(ASSET_DIR .. PANEL_TEXTURE))
+  panel.path(ctx.asset(PANEL_TEXTURE))
   for _, slot in ipairs(logic.slots()) do
     slot_icons[slot] = prepare(ctx.new_image())
   end
   for _, slot in ipairs(logic.slots()) do
     markers[slot] = prepare(ctx.new_image())
-    markers[slot].path(ctx.asset(ASSET_DIR .. ENCUMBRANCE_TEXTURE))
+    markers[slot].path(ctx.asset(ENCUMBRANCE_TEXTURE))
   end
 
   ammo.draggable(false)

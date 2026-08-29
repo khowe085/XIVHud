@@ -92,8 +92,8 @@ describe("parambar widget", function()
     end)
 
     it("loads its textures from its own asset folder", function()
-      assert.are.equal("components/parambar/assets/bar_bg.png", assets[1])
-      assert.are.equal("addons/XIVHud/components/parambar/assets/hp_fg.png", fill(1).last.path)
+      assert.are.equal("assets/ffxiv/bar_bg.png", assets[1])
+      assert.are.equal("addons/XIVHud/assets/ffxiv/hp_fg.png", fill(1).last.path)
     end)
   end)
 
@@ -400,7 +400,7 @@ describe("parambar widget", function()
 
     it("switches the background image with compact mode", function()
       widget.handle_command({ "compact", "on" })
-      assert.are.equal("addons/XIVHud/components/parambar/assets/bar_compact.png", background().last.path)
+      assert.are.equal("addons/XIVHud/assets/ffxiv/bar_compact.png", background().last.path)
       assert.are.equal(421, background().width)
     end)
 

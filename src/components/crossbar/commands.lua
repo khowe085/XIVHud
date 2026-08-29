@@ -45,7 +45,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local roster = require("components/crossbar/contexts")
 
 -- The component's own asset root, for the shipped half of an icon name.
-local ASSETS = "components/crossbar/assets/"
+-- The asset ROOT, not one folder in it: what hangs off this is `own/` for
+-- XIVHud's own chrome, `icons/` for the imported pack and `cooldown/` for
+-- the sweep frames, each with its own licence beside it.
+local ASSETS = "assets/"
 local SET_COUNT = 8
 local SLOT_COUNT = 8
 

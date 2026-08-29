@@ -1,4 +1,4 @@
-One image file in this directory (encumbrance.png) is taken from the
+The one image file in this directory (encumbrance.png) is taken from the
 equipviewer addon:
 
     https://github.com/Windower/Lua/tree/dev/addons/equipviewer
@@ -10,9 +10,6 @@ code its author credits to Trv.
 
 equipviewer ships no separate asset licence, so its source licence is the basis
 on which both are redistributed here. That notice is reproduced in full below.
-
-The other image file (panel.png) is XIVHud's own: an 8x8 white square, tinted at
-runtime to draw the panel behind the grid.
 
 --------------------------------------------------------------------------------
 
