@@ -153,10 +153,43 @@ local function new(deps)
        twitch sideways as the set changes. ]]
   local SET_LABEL_GLYPH = 7
   local SET_LABEL_CHARS = 5
+  -- How many characters of an action's name a slot draws before it is cut.
+  local SLOT_LABEL_CHARS = 10
 
   --- The label for a set number, FFXIV's own wording.
   function self.set_label(set)
     return "Set " .. tostring(set)
+  end
+
+  --[[ What a slot DRAWS for its name. The stored record keeps the whole
+       thing - that is what `//hud crossbar list` prints, what the binder
+       describes and what the game is sent - and only the drawn label is cut
+       (Kevin, 2026-08-24): a long spell name otherwise runs off its slot and
+       into the neighbour's.
+
+       Ten characters, then a dot to say there is more. The dot sits ON TOP
+       of the ten, so a truncated label is eleven wide, and a name of exactly
+       ten is left whole - the cap is on what does not fit.
+
+       The cut backs off any UTF-8 continuation byte it lands on. Lua 5.1
+       has no utf8 library and `sub` counts bytes, so a mount's music note
+       taken mid-sequence would draw a broken glyph; the note is kept whole
+       or dropped whole. Everything else here is ASCII and unaffected. ]]
+  function self.slot_label(name)
+    local text = name ~= nil and tostring(name) or ""
+    if #text <= SLOT_LABEL_CHARS then
+      return text
+    end
+    local cut = SLOT_LABEL_CHARS
+    while cut > 0 do
+      local byte = text:byte(cut + 1)
+      -- 0x80..0xBF is a continuation byte: the cut is inside a character.
+      if byte == nil or byte < 128 or byte > 191 then
+        break
+      end
+      cut = cut - 1
+    end
+    return text:sub(1, cut) .. "."
   end
 
   --- The width reserved for it, at the drawing scale of 1.

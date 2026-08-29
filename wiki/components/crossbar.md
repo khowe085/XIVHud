@@ -769,6 +769,11 @@ The **active set** is written between the two crosses — `Set 3`, in gold,
 level with the slots. It is there whether or not a side is held, so a set
 switch is visible even on a bar you have not bound anything to yet.
 
+**Long names are shortened on the bar**, to ten characters and a `.` — so
+`Utsusemi: Ichi` reads `Utsusemi: .`. Only the label is cut: the binding keeps
+its full name, which is what `//hud crossbar list` shows you and what the game
+is sent when you press it.
+
 A **sword** appears above it while your weapon is drawn. That is the
 crossbar's own idea of drawn, the one that picks which set rotation is
 live — so `//hud crossbar draw` lights it even with nothing targeted, which

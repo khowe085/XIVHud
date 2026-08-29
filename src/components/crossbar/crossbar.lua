@@ -1429,16 +1429,20 @@ local function new(ctx)
           awaiting = content.awaiting_item_icon,
         }
       end
-      -- The player's own label, then the game's own casing for what the
-      -- record names, then the raw command form.
-      local label = record.alias or record.display or record.action or record.type or ""
+      --[[ The player's own label, then the game's own casing for what the
+           record names, then the raw command form - cut to what a slot can
+           draw. The record keeps its whole name; only this is shortened. ]]
+      local label = render.slot_label(record.alias or record.display or record.action or record.type)
       --[[ The source tag, edit mode only: nothing for the job base (the
            common case), one mark for a subjob layer and another for a
            context, so "where is this coming from" is answered before any
            click - and the tags leave with edit mode, since the played bar
-           has no room for them. ]]
+           has no room for them.
+
+           Added AFTER the cut, so a name loses the same characters whether
+           or not edit mode is open and the two readings of a slot agree. ]]
       local mark = editing() and binder.mark(source) or ""
-      content.label = mark ~= "" and (mark .. " " .. tostring(label)) or tostring(label)
+      content.label = mark ~= "" and (mark .. " " .. label) or label
       pair.name.text(content.label)
     else
       content.icon_found = false

@@ -1012,7 +1012,9 @@ describe("crossbar live widget", function()
       local icon = image_of("xhb_left", 3, "icon")
       assert.are.equal("addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png", icon.last.path)
       assert.is_true(icon.visible)
-      assert.are.equal("Savage Blade", text_of("xhb_left", 3, "name").last.text)
+      -- Cut to what the slot can draw; the record still holds the whole
+      -- name, which the next test checks.
+      assert.are.equal("Savage Bla.", text_of("xhb_left", 3, "name").last.text)
     end)
 
     it("redraws the icon when the icon verb overrides it", function()
@@ -1049,6 +1051,25 @@ describe("crossbar live widget", function()
         "addon/components/crossbar/assets/icons/weaponskills/sword/savage-blade.png",
         image_of("xhb_left", 3, "icon").last.path
       )
+    end)
+
+    it("cuts only the DRAWN label, never the record behind it", function()
+      --[[ The cap is a drawing decision (Kevin, 2026-08-24): a long name
+           runs off its slot and into the neighbour's. What is stored has to
+           stay whole - it is what the CLI lists, what the game is sent, and
+           what a later `alias` or `swap` moves around. ]]
+      build_world()
+      widget.attach(config, function() end, store)
+      widget.set_pos(100, 900, "main")
+      widget.show()
+      assert.are.equal("Savage Bla.", text_of("xhb_left", 3, "name").last.text, "drawn short")
+      assert.are.equal("Savage Blade", env.store_files.WAR.sets[1].left[3].action, "stored whole")
+      local listed = table.concat(widget.handle_command({ "list" }), "\n")
+      assert.is_not_nil(listed:find("Savage Blade", 1, true), "and listed whole: " .. listed)
+      -- And the press sends the real name, not the drawn one.
+      press(LEFT)
+      press(DIK_SLOT[3])
+      assert.are.equal('input /ws "Savage Blade" <t>', env.commands[#env.commands])
     end)
 
     it("labels a type-only record by its type", function()

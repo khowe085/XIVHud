@@ -942,4 +942,59 @@ describe("crossbar render", function()
       assert.are.same({}, render.icon_candidates(nil))
     end)
   end)
+
+  describe("the slot label", function()
+    --[[ A cap on what is DRAWN only - the stored record keeps its full
+         name, which is what the CLI lists, what the binder describes and
+         what the game is sent (Kevin, 2026-08-24). Ten characters, then a
+         dot to say there is more; the dot sits ON TOP of the ten, so a
+         truncated label is eleven wide. ]]
+    it("leaves a name that fits alone", function()
+      local render = make()
+      assert.are.equal("Cure", render.slot_label("Cure"))
+      assert.are.equal("Provoke", render.slot_label("Provoke"))
+      -- Exactly ten is not truncated: the cap is on what does NOT fit.
+      assert.are.equal("Berserking", render.slot_label("Berserking"))
+    end)
+
+    it("cuts a longer one to ten and marks it", function()
+      local render = make()
+      assert.are.equal("Utsusemi: .", render.slot_label("Utsusemi: Ichi"))
+      assert.are.equal("Addendum: .", render.slot_label("Addendum: White"))
+      assert.are.equal("Savage Bla.", render.slot_label("Savage Blade"))
+      -- Eleven characters is the first length that loses anything.
+      assert.are.equal("Berserking.", render.slot_label("Berserking!"))
+    end)
+
+    it("answers something drawable for anything it is handed", function()
+      -- Binding files are hand-editable and a record's fields reach here
+      -- through tostring; a wrong-typed name must not throw in the draw
+      -- path.
+      local render = make()
+      assert.are.equal("", render.slot_label(nil))
+      assert.are.equal("", render.slot_label(""))
+      assert.is_string(render.slot_label(42))
+      assert.is_string(render.slot_label({}))
+    end)
+
+    it("never cuts a multi-byte character in half", function()
+      --[[ Mount display names carry the game's own music note, and a byte
+           truncation landing inside one draws a broken glyph. Lua 5.1 has
+           no utf8 library, so the cut backs off a continuation byte at a
+           time. ]]
+      local note = "\226\153\170"
+      local render = make()
+      --[[ The note has to STRADDLE the cut or nothing is being tested: at
+           eight ASCII characters it occupies bytes 9, 10 and 11, so a bare
+           `sub(1, 10)` would keep two thirds of it and draw a broken
+           glyph. ]]
+      local straddling = "Chocobo " .. note .. "Whistle"
+      assert.are.equal(9, #("Chocobo " .. note) - 2, "the note starts at byte 9")
+      assert.are.equal("Chocobo .", render.slot_label(straddling), "dropped whole, not halved")
+
+      -- One byte later it fits entirely, and is kept entirely.
+      local fitting = "Chocobo" .. note .. "Whistle"
+      assert.are.equal("Chocobo" .. note .. ".", render.slot_label(fitting), "kept whole")
+    end)
+  end)
 end)
