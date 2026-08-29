@@ -345,6 +345,9 @@ local function new(ctx)
       end,
       -- Whether this zone allows mounting at all, and which zone that is.
       zones = resources.zones,
+      -- The recast's clock, read by the module itself: both the drawing and
+      -- the press refusal must agree about how far along it is.
+      now = frame_now,
       get_zone = function()
         local info = ctx.zone ~= nil and ctx.zone() or nil
         return info
@@ -1965,7 +1968,7 @@ local function new(ctx)
            resolve, so there is no plan, no travel countdown and no command
            (Kevin, 2026-08-29). Nothing here needs to re-check the zone. ]]
       if plan.mount_summon and roulette ~= nil then
-        roulette.summoned(frame_now())
+        roulette.summoned()
       end
       send_command(plan.command)
     elseif plan.kind == "message" then
@@ -2575,7 +2578,7 @@ local function new(ctx)
       if not roulette.mounted() and roulette.blocked() then
         usable = false
       end
-      local cooling = roulette.cooldown(frame_now())
+      local cooling = roulette.cooldown()
       if cooling > remaining then
         remaining = cooling
       end

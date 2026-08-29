@@ -637,10 +637,12 @@ script is the way to put a sequence on a slot.
 zone that forbids mounting — a city, a dungeon — and the minute after you
 summon one, which sweeps round as a recast like anything else.
 
-**In a zone that forbids mounting the press does nothing at all**: no
-five-second countdown, no command, no recast. It says so once in the log and
-stops there, rather than spending the wait on something the game was always
-going to refuse.
+**A press the addon knows will fail does nothing at all**: no five-second
+countdown, no command, no recast. That covers both cases — a zone that
+forbids mounting, and a recast still running from your last summon. It says
+which in the log once and stops there, rather than spending the wait on
+something the game was always going to refuse. The greyed icon and the dead
+press are the same rule, so what you see is what the button will do.
 
 The two part company once you are actually mounted. The zone stops mattering
 — you can be riding somewhere you could not have mounted, and the press is

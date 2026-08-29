@@ -192,16 +192,33 @@ local function new(deps)
     return entry.can_mount ~= true
   end
 
+  --[[ The frame clock, which this module reads for itself rather than
+       taking as an argument at each call site. It was passed in, and the
+       first caller passed the WALL clock by mistake - it barely moves
+       between frames, so the countdown sat at a full minute forever. One
+       source, named once, cannot be got wrong twice. An explicit argument
+       still wins, which is what the spec drives it with. ]]
+  local function clock(now)
+    if type(now) == "number" then
+      return now
+    end
+    if type(deps.now) == "function" then
+      return deps.now()
+    end
+    return nil
+  end
+
   --- Stamps a summon. Only a summon: a dismount is getting OUT of
   --- something, which this component never holds up.
   function self.summoned(now)
-    summoned_at = now
+    summoned_at = clock(now)
   end
 
   --- Seconds left on the mount recast, 0 when there is none. Clamped at
   --- both ends: a clock that jumps backwards (os.clock re-basing across a
   --- reload) must not answer more than the recast, nor less than nothing.
   function self.cooldown(now)
+    now = clock(now)
     if summoned_at == nil or type(now) ~= "number" then
       return 0
     end

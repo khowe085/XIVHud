@@ -2130,6 +2130,63 @@ describe("crossbar live widget", function()
       assert.are.equal(255, icon.last.alpha, "and back when the minute is up")
     end)
 
+    it("does nothing at all when the recast is still running", function()
+      --[[ The recast only DREW; nothing refused the press (Kevin, live
+           client, 2026-08-29). Pressing again mid-sweep counted five
+           seconds down and sent a second summon the game was always going
+           to refuse. A cooling slot is a no-op on exactly the same terms as
+           a zone-blocked one. ]]
+      mount_world("mr", 100)
+      widget.handle_command({ "mr" })
+      env.now = 5
+      widget.update()
+      assert.are.same({ 'input /mount "chocobo"' }, env.commands)
+
+      -- Dismount, which is always allowed, then press again while the
+      -- minute is still running: that second press must do nothing.
+      env.player.buffs = { 252 }
+      widget.update()
+      widget.handle_command({ "mr" })
+      env.now = 12
+      widget.update()
+      env.player.buffs = {}
+      widget.update()
+      widget.handle_command({ "mr" })
+      env.now = 20
+      widget.update()
+      assert.are.same({
+        'input /mount "chocobo"',
+        "input /dismount",
+      }, env.commands, "the summon and the dismount, and nothing else")
+
+      -- Once the minute is up it works again.
+      env.now = 66
+      widget.update()
+      widget.handle_command({ "mr" })
+      env.now = 71
+      widget.update()
+      assert.are.same({
+        'input /mount "chocobo"',
+        "input /dismount",
+        'input /mount "chocobo"',
+      }, env.commands)
+    end)
+
+    it("still dismounts while the recast runs", function()
+      -- Getting off is never held up by the timer that says when you could
+      -- get back on.
+      mount_world("mr", 100)
+      widget.handle_command({ "mr" })
+      env.now = 5
+      widget.update()
+      env.player.buffs = { 252 }
+      widget.update()
+      widget.handle_command({ "mr" })
+      env.now = 10
+      widget.update()
+      assert.are.same({ 'input /mount "chocobo"', "input /dismount" }, env.commands)
+    end)
+
     it("counts no travel delay down for a blocked press", function()
       -- The five-second wait is downstream of resolve, so a refused press
       -- never arms it - no "Chocobo in 5 seconds" for a trip that is not

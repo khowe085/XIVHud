@@ -158,7 +158,30 @@ local function mount_blocked(deps)
   return roulette ~= nil and type(roulette.blocked) == "function" and roulette.blocked() == true
 end
 
-local MOUNT_BLOCKED = "you cannot use a mount here"
+--[[ Seconds left on the mount recast. The recast used to only DRAW - a
+     press during it still counted five seconds down and sent a summon the
+     game was always going to refuse (Kevin, live client, 2026-08-29). A
+     cooling slot is a no-op on the same terms as a zone-blocked one. ]]
+local function mount_cooling(deps)
+  local roulette = deps.roulette
+  if roulette == nil or type(roulette.cooldown) ~= "function" then
+    return 0
+  end
+  local left = roulette.cooldown()
+  return type(left) == "number" and left or 0
+end
+
+--- The reason a summon cannot go out now, or nil when one can.
+local function summon_refusal(deps)
+  if mount_blocked(deps) then
+    return "you cannot use a mount here"
+  end
+  local left = mount_cooling(deps)
+  if left > 0 then
+    return ("mount is not ready - %ds"):format(math.ceil(left))
+  end
+  return nil
+end
 
 local function open_plan(name)
   local entry = openers[name]
@@ -239,8 +262,11 @@ local function new(deps)
       -- outright where the zone forbids one, and otherwise carries the flag
       -- that tells the widget to start the clock - the same way `dismount`
       -- already travels, rather than the command string being read back.
-      if kind == "mount" and mount_blocked(deps) then
-        return nil, MOUNT_BLOCKED
+      if kind == "mount" then
+        local refusal = summon_refusal(deps)
+        if refusal ~= nil then
+          return nil, refusal
+        end
       end
       local plan = command_plan("input /" .. kind .. ' "' .. record.action .. '"' .. target_suffix(record.target))
       if kind == "mount" then
@@ -273,8 +299,11 @@ local function new(deps)
       -- Mounted, the press dismounts, and getting out is never blocked -
       -- you can be riding in a zone you could not have mounted in.
       local mounted = deps.roulette.mounted ~= nil and deps.roulette.mounted() == true
-      if not mounted and mount_blocked(deps) then
-        return nil, MOUNT_BLOCKED
+      if not mounted then
+        local refusal = summon_refusal(deps)
+        if refusal ~= nil then
+          return nil, refusal
+        end
       end
       local command = deps.roulette.ride()
       if command == nil then
