@@ -71,6 +71,7 @@ local function new(ctx)
   local save = nil
   local pos = nil
   local scale = 1
+  local preview = false
   local visible = false
   -- hide_solo: the framework says the widget is on screen, the widget draws
   -- nothing anyway. Kept apart from `visible` so neither has to know about the
@@ -350,12 +351,22 @@ local function new(ctx)
   -- party does; six prim writes a frame for a list that has not moved is
   -- exactly the cost this component cannot afford.
   local placed_background = nil
+  -- The last plan render() or apply_layout() computed. A move re-places from
+  -- this rather than ticking for a fresh one: logic.tick() advances the bar
+  -- ease and clears the forced flag, and draw_row writes a fill's width only
+  -- on the tick that moved it -- so a move that ticked without drawing would
+  -- swallow the tick that lands on the target and freeze the fill part-drawn.
+  -- Everything a move needs from the plan is geometry, which only a new
+  -- roster or a config change moves, and both of those go through a redraw.
+  local last_plan = nil
 
   local function place_background(content_height, content_offset_y)
     if not pos then
       return
     end
-    local signature = ("%d:%d:%f:%d:%d"):format(pos.x, pos.y, scale, content_height, content_offset_y)
+    -- %f on the position, not %d: layout.clamp returns a fractional x at a
+    -- non-integral scale, and a move is invalidated by this signature alone.
+    local signature = ("%f:%f:%f:%d:%d"):format(pos.x, pos.y, scale, content_height, content_offset_y)
     local origin_x, origin_y = content_origin()
     if placed_background == signature then
       return
@@ -552,6 +563,7 @@ local function new(ctx)
     logic.set_target(target and target.id or nil, subtarget and subtarget.id or nil)
 
     local plan = logic.tick()
+    last_plan = plan
     apply_box(plan)
 
     if plan.hidden ~= suppressed then
@@ -589,10 +601,25 @@ local function new(ctx)
     place_background(plan.content_height, plan.content_offset_y)
   end
 
-  -- Pushes the frame geometry to every prim. Called when the position, the
-  -- scale or a metric changes; render() only writes the fills that moved.
-  --[[ Pushes the frame geometry to every prim. Called when the position, the
-       scale or a metric changes.
+  --[[ A move changes only where the rows sit: every value draw_row writes --
+       text, colour, alpha, path, visibility, fill width -- is independent of
+       the widget's origin. So the rows are re-placed from the last plan,
+       without being redrawn and without the write cache being cleared.
+
+       This is the drag path: layout mode runs core.apply on every raw
+       mouse-move event, and a full rebuild there costs three figures of prim
+       calls per event. Callers must have a plan already -- see set_pos. ]]
+  local function reposition()
+    apply_box(last_plan)
+    for slot, row in pairs(rows) do
+      place_row(row, last_plan.rows[slot])
+    end
+    place_background(last_plan.content_height, last_plan.content_offset_y)
+  end
+
+  --[[ Pushes the frame geometry to every prim, and redraws them. Called when
+       the scale or a metric changes -- a move goes through reposition above,
+       which is the cheaper half of this.
 
        It has to draw as well as place. The bar fill's *width* is the one thing
        place_row does not write -- render() owns it, because it is the eased
@@ -606,6 +633,7 @@ local function new(ctx)
       return
     end
     local plan = logic.tick()
+    last_plan = plan
     apply_box(plan)
     for slot, row in pairs(rows) do
       row.written = {}
@@ -678,12 +706,29 @@ local function new(ctx)
     self.hide()
   end
 
+  --[[ Core pushes all three of these on every core.apply, and layout mode runs
+       one per raw mouse-move event -- so two of the three carry a value the
+       widget already holds. An unchanged setter must cost nothing. ]]
   function self.set_pos(x, y)
+    if pos and pos.x == x and pos.y == y then
+      return
+    end
+    -- The first placement is a full layout: reposition assumes the rows
+    -- already hold every value but their origin, and before this they hold
+    -- nothing at all.
+    local placed = pos ~= nil and last_plan ~= nil
     pos = { x = x, y = y }
-    apply_layout()
+    if placed then
+      reposition()
+    else
+      apply_layout()
+    end
   end
 
   function self.set_scale(new_scale)
+    if scale == new_scale then
+      return
+    end
     scale = new_scale
     apply_layout()
   end
@@ -692,6 +737,11 @@ local function new(ctx)
   -- layout-mode highlight, and both reads land before the next render. So the
   -- box has to be right now, not a frame later.
   function self.set_preview(on)
+    on = on == true
+    if preview == on then
+      return
+    end
+    preview = on
     logic.set_preview(on)
     apply_box(logic.tick())
     if pos then
