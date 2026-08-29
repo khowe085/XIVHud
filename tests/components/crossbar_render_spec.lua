@@ -196,7 +196,7 @@ describe("crossbar render", function()
       assert.are.same({ PANEL_W, PANEL_H }, { width, height })
       width, height = render.bounds("wxhb_right")
       assert.are.same({ PANEL_W, PANEL_H }, { width, height })
-      width, height = render.bounds("indicator")
+      width, height = render.bounds("skillchain_indicator")
       -- The skillchain bg at its widest displayed state (open: 604 x 14).
       assert.are.same({ 604, 14 }, { width, height })
     end)

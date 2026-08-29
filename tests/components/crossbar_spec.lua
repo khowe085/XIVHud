@@ -5,6 +5,23 @@ local new_render = require("components/crossbar/render")
 local SIDE = 39
 local SLOT_3 = 4
 
+--[[ Core places EVERY anchor from the config; these specs drive the widget
+     directly, so this stands in for it. `set` and `weapon` land at the
+     defaults' own offsets from the main origin - exactly where both drew
+     back when they rode the main anchor - so a position assertion means the
+     same thing before and after they became anchors of their own. ]]
+local function place_all(widget, x, y)
+  local render = new_render({ config = widget.defaults })
+  local label_x, label_y = render.set_label_pos()
+  local sword_x, sword_y = render.set_icon_pos()
+  widget.set_pos(x, y, "main")
+  widget.set_scale(1, "main")
+  widget.set_pos(x + label_x, y + label_y, "set")
+  widget.set_scale(1, "set")
+  widget.set_pos(x + sword_x, y + sword_y, "weapon")
+  widget.set_scale(1, "weapon")
+end
+
 describe("crossbar stand-in", function()
   local ctx, env, widget
 
@@ -185,8 +202,23 @@ describe("crossbar stand-in", function()
   -- boxes give them a visible, draggable footprint even though the stand-in
   -- itself draws nothing. CB4's render.lua replaces the placeholder sizes.
   describe("anchors", function()
-    it("declares the four anchors, main first", function()
-      assert.are.same({ "main", "wxhb_left", "wxhb_right", "indicator" }, widget.anchors())
+    it("declares the six anchors, main first", function()
+      --[[ The set label and the sword became anchors of their own on
+           2026-08-29 (Kevin): both rode `main` at a fixed offset, so the
+           only way to move either was to move the whole bar. ]]
+      assert.are.same({ "main", "wxhb_left", "wxhb_right", "set", "weapon", "skillchain_indicator" }, widget.anchors())
+    end)
+
+    it("places the set label and the sword independently of the bar", function()
+      widget.set_pos(100, 900, "main")
+      widget.set_pos(10, 20, "set")
+      widget.set_pos(30, 40, "weapon")
+      local set_x, set_y = widget.get_bounds("set")
+      local sword_x, sword_y = widget.get_bounds("weapon")
+      assert.are.same({ 10, 20 }, { set_x, set_y })
+      assert.are.same({ 30, 40 }, { sword_x, sword_y })
+      local main_x, main_y = widget.get_bounds("main")
+      assert.are.same({ 100, 900 }, { main_x, main_y }, "and the bar itself has not moved")
     end)
 
     it("matches its defaults' anchored slot schema", function()
@@ -203,10 +235,10 @@ describe("crossbar stand-in", function()
 
     it("returns the origin set_pos gave it, per anchor", function()
       widget.set_pos(100, 900, "main")
-      widget.set_pos(600, 700, "indicator")
+      widget.set_pos(600, 700, "skillchain_indicator")
       local x, y = widget.get_bounds("main")
       assert.are.same({ 100, 900 }, { x, y })
-      x, y = widget.get_bounds("indicator")
+      x, y = widget.get_bounds("skillchain_indicator")
       assert.are.same({ 600, 700 }, { x, y })
     end)
 
@@ -279,8 +311,7 @@ describe("crossbar widget", function()
     }
     widget = require("components/crossbar/crossbar")(ctx)
     widget.attach(widget.defaults)
-    widget.set_pos(100, 900, "main")
-    widget.set_scale(1, "main")
+    place_all(widget, 100, 900)
     widget.show()
   end)
 
@@ -503,8 +534,8 @@ describe("crossbar widget", function()
     widget.set_pos(5, 6, "wxhb_left")
     local _, _, wxhb_width, wxhb_height = widget.get_bounds("wxhb_left")
     assert.are.same({ 330, 180 }, { wxhb_width, wxhb_height })
-    widget.set_pos(7, 8, "indicator")
-    local _, _, indicator_width, indicator_height = widget.get_bounds("indicator")
+    widget.set_pos(7, 8, "skillchain_indicator")
+    local _, _, indicator_width, indicator_height = widget.get_bounds("skillchain_indicator")
     assert.are.same({ 604, 14 }, { indicator_width, indicator_height })
   end)
 
@@ -586,8 +617,7 @@ describe("crossbar widget", function()
     config.slot_spacing = 16 -- pitch 56, not the default 46
     config.always_show_wxhb = true
     fresh_widget.attach(config)
-    fresh_widget.set_pos(100, 900, "main")
-    fresh_widget.set_scale(1, "main")
+    place_all(fresh_widget, 100, 900)
     fresh_widget.show()
     -- Slot 6 (dpad right, column 3, middle row) on the attached pitch.
     local hit = nil
@@ -926,8 +956,7 @@ describe("crossbar live widget", function()
     widget.attach(config, function()
       env.config_saves = (env.config_saves or 0) + 1
     end, store)
-    widget.set_pos(100, 900, "main")
-    widget.set_scale(1, "main")
+    place_all(widget, 100, 900)
     widget.show()
   end
 
@@ -1500,7 +1529,7 @@ describe("crossbar live widget", function()
         { "main", 100, 900 },
         { "wxhb_left", 400, 100 },
         { "wxhb_right", 800, 100 },
-        { "indicator", 600, 700 },
+        { "skillchain_indicator", 600, 700 },
       }
       env.layout = true
       local function core_apply(main_x, main_y)
@@ -2496,7 +2525,7 @@ describe("crossbar live widget", function()
     before_each(function()
       build_world()
       env.target = { id = 99, hpp = 75 }
-      widget.set_pos(1000, 500, "indicator")
+      widget.set_pos(1000, 500, "skillchain_indicator")
     end)
 
     describe("the indicator", function()
@@ -2565,7 +2594,7 @@ describe("crossbar live widget", function()
         env.now = 1.5
         widget.update()
         widget.hide()
-        widget.set_pos(1200, 700, "indicator")
+        widget.set_pos(1200, 700, "skillchain_indicator")
         widget.show()
         widget.update()
         assert.is_true(fill.visible)
@@ -2573,7 +2602,7 @@ describe("crossbar live widget", function()
       end)
 
       it("scales with its own anchor", function()
-        widget.set_scale(2, "indicator")
+        widget.set_scale(2, "skillchain_indicator")
         local _, fill = indicator_prims()
         open_chain(8)
         env.now = 1.5
@@ -2601,7 +2630,7 @@ describe("crossbar live widget", function()
           end,
         })
         env.target = { id = 99, hpp = 75 }
-        widget.set_pos(1000, 500, "indicator")
+        widget.set_pos(1000, 500, "skillchain_indicator")
         local bg, fill = indicator_prims()
         open_chain(8)
         env.now = 1.5
@@ -2620,7 +2649,7 @@ describe("crossbar live widget", function()
           end,
         })
         env.target = { id = 99, hpp = 75 }
-        widget.set_pos(1000, 500, "indicator")
+        widget.set_pos(1000, 500, "skillchain_indicator")
         local _, fill = indicator_prims()
         open_chain(8)
         env.now = 1.5
@@ -2824,7 +2853,7 @@ describe("crossbar live widget", function()
           end,
         })
         env.target = { id = 99, hpp = 75 }
-        widget.set_pos(1000, 500, "indicator")
+        widget.set_pos(1000, 500, "skillchain_indicator")
         open_chain(9)
         env.now = 4
         widget.update()

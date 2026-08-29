@@ -140,7 +140,7 @@ return function(screen_width, screen_height)
   local render = new_render({ config = config })
   local metrics = render.metrics()
   local main_width, main_height = render.bounds("main")
-  local indicator_width = render.bounds("indicator")
+  local indicator_width = render.bounds("skillchain_indicator")
   local main_x = math.max(0, math.floor((screen_width - main_width) / 2))
   local main_y = math.max(0, screen_height - (BOTTOM_ROW_FROM_BOTTOM + metrics.pad_y + 2 * metrics.row_pitch))
   -- The WXHB halves mirror the XHB's side columns, one bar height above.
@@ -148,13 +148,21 @@ return function(screen_width, screen_height)
 
   -- Framework-owned; per-anchor under the multi-anchor contract. `visible`
   -- is per component, not per anchor.
+  --[[ The set label and the sword are anchors of their own, seeded exactly
+       where they used to be drawn on the main anchor - so a fresh install
+       is unchanged and only a player who moves them sees a difference. ]]
+  local label_x, label_y = render.set_label_pos()
+  local sword_x, sword_y = render.set_icon_pos()
+
   config.slots = {
     default = {
       anchors = {
         main = { pos = { x = main_x, y = main_y }, scale = 1 },
+        set = { pos = { x = main_x + label_x, y = main_y + label_y }, scale = 1 },
+        weapon = { pos = { x = main_x + sword_x, y = main_y + sword_y }, scale = 1 },
         wxhb_left = { pos = { x = main_x, y = wxhb_y }, scale = 1 },
         wxhb_right = { pos = { x = main_x + metrics.side_gap, y = wxhb_y }, scale = 1 },
-        indicator = {
+        skillchain_indicator = {
           pos = {
             x = math.max(0, math.floor((screen_width - indicator_width) / 2)),
             y = math.max(0, wxhb_y - INDICATOR_LIFT),

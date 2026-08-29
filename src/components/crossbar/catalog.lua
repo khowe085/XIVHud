@@ -62,7 +62,11 @@ local SCHOOL_RANK = 1
 
 --[[ The built-ins, in the order a picker reads best: the state-aware toggle
      first (the catalog's "Attack" IS `draw`, not a bare /attack line), then
-     the two one-button conveniences, then the bare ranged attack.
+     the one-button convenience, then the bare ranged attack.
+
+     `mr` is NOT here: Mount Roulette files with the mounts instead, which
+     is where a player goes looking for it (Kevin, 2026-08-29), and so it
+     rides `mounts()` below rather than this table.
 
      A CURATED LIST, not a mirror of actions.lua's BUILTINS: it carries
      `ra`, which is a game type rather than a built-in, and leaves out
@@ -71,8 +75,9 @@ local SCHOOL_RANK = 1
      decision, and this is where it gets made. ]]
 local BUILTIN_ENTRIES = {
   { label = "Attack", type = "draw" },
-  { label = "Mount Roulette", type = "mr" },
   { label = "Warp", type = "warp" },
+  { label = "Sneak", type = "sneak" },
+  { label = "Invisible", type = "invisible" },
   { label = "Ranged Attack", type = "ra" },
 }
 
@@ -271,9 +276,16 @@ local function new(deps)
        the CLI produced differently-labelled bindings for the same mount,
        and clearing an alias would lose the casing for good. Two owners, two
        fields, alias first. ]]
+  --[[ The roulette is pinned above the mounts rather than sorted among
+       them - it is not a mount, and an owned mount whose name sorts before
+       it would bury it. It appears only when the player owns something to
+       ride: a roulette over nothing cannot fire, and the group is built
+       from owned mounts, so the two vanish together. ]]
   local function mounts(groups)
+    local owned = 0
     for _, name in ipairs(table_or_empty(call(deps.owned_mounts))) do
       if type(name) == "string" then
+        owned = owned + 1
         local shown = type(deps.mount_display) == "function" and deps.mount_display(name) or nil
         local record = { type = "mount", action = name }
         if type(shown) == "string" and shown ~= name then
@@ -281,6 +293,9 @@ local function new(deps)
         end
         add(groups, "Mounts", { label = record.display or name, record = record })
       end
+    end
+    if owned > 0 then
+      add(groups, "Mounts", { label = "Mount Roulette", record = { type = "mr" }, rank = -1 })
     end
   end
 
@@ -314,7 +329,13 @@ local function new(deps)
     for _, group in pairs(groups) do
       -- Stable inside a category: pairs() over the client's tables would
       -- reshuffle the picker between openings for no reason.
+      -- `rank` is the pin, absent on almost every entry: same rank sorts by
+      -- label, which is the whole ordering everywhere but the Mounts group.
       table.sort(group.entries, function(a, b)
+        local rank_a, rank_b = a.rank or 0, b.rank or 0
+        if rank_a ~= rank_b then
+          return rank_a < rank_b
+        end
         return a.label < b.label
       end)
       ordered[#ordered + 1] = group

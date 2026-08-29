@@ -942,6 +942,8 @@ local function check_assets()
     -- actions.lua built-ins: mr, warp, and draw's three states.
     "icons/mounts/mount-roulette.png",
     "icons/spells/00261.png",
+    "icons/spells/00137.png",
+    "icons/spells/00136.png",
     "icons/attack.png",
     "icons/disengage.png",
     "icons/dismount.png",

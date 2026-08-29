@@ -55,6 +55,7 @@ local new_commands = require("components/crossbar/commands")
 local new_roulette = require("components/crossbar/roulette")
 local new_warp = require("components/crossbar/warp")
 local new_enchanteditem = require("components/crossbar/enchanteditem")
+local new_stealth = require("components/crossbar/stealth")
 local enchanted = require("components/crossbar/enchanted")
 local counters = require("components/crossbar/counters")
 local openers = require("components/crossbar/openers")
@@ -66,7 +67,10 @@ local new_binder = require("components/crossbar/binder")
 local new_icon_cache = require("lib/icon_cache")
 local build_defaults = require("components/crossbar/defaults")
 
-local ANCHORS = { "main", "wxhb_left", "wxhb_right", "indicator" }
+--[[ `set` is the active-set label and `weapon` the sword above it. Both
+     rode the main anchor at a fixed offset until 2026-08-29, so the only
+     way to move either was to move the whole bar (Kevin). ]]
+local ANCHORS = { "main", "wxhb_left", "wxhb_right", "set", "weapon", "skillchain_indicator" }
 
 --[[ The five slot groups, in prim-construction order (a spec contract): the
      XHB's two sides on the main anchor, the WXHB's halves on their own
@@ -401,6 +405,62 @@ local function new(ctx)
     end,
   })
 
+  --[[ A PRESS-TIME bag read, deliberately not the per-frame `item_counts`
+       tally: that one is maintained only for ids some painted slot is
+       bound to, and the stealth ladder asks about ids nothing need be
+       bound to at all. A press happens seconds apart, so reading the bag
+       then is both cheap and always current.
+
+       Bag 0 alone. A ninja tool or a Silent Oil in a wardrobe is not one
+       the game will let you use, which is the same rule the slot counters
+       apply to a consumable. ]]
+  local function tally_inventory(matches)
+    local counts = {}
+    local bag = read_bag(0)
+    if type(bag) ~= "table" or bag.enabled == false then
+      return nil
+    end
+    for _, item in ipairs(bag) do
+      if type(item) == "table" and type(item.id) == "number" and item.id ~= 0 and matches(item.id) then
+        counts[item.id] = (counts[item.id] or 0) + (item.count or 0)
+      end
+    end
+    return counts
+  end
+
+  local stealth = new_stealth({
+    get_player = get_player,
+    get_spells = function()
+      if ctx.get_spells ~= nil then
+        return ctx.get_spells()
+      end
+      return {}
+    end,
+    get_abilities = ctx.get_abilities,
+    resources = resources,
+    tool_counts = function()
+      return tally_inventory(counters.tracked_item) or {}
+    end,
+    --[[ nil, never 0, when the item cannot be resolved or the bag cannot be
+         read: the ladder reads a real 0 as "you have none" and skips the
+         rung, and refusing a press that might have worked is worse than
+         letting the game answer for itself. ]]
+    item_count = function(name)
+      local entry = resource_by_name("items", name)
+      local id = type(entry) == "table" and entry.id or nil
+      if type(id) ~= "number" then
+        return nil
+      end
+      local counts = tally_inventory(function(candidate)
+        return candidate == id
+      end)
+      return counts ~= nil and (counts[id] or 0) or nil
+    end,
+    get_target = function()
+      return ctx.get_mob_by_target ~= nil and ctx.get_mob_by_target("t") or nil
+    end,
+  })
+
   local actions = new_actions({
     roulette = roulette or {
       ride = function()
@@ -409,6 +469,7 @@ local function new(ctx)
     },
     warp = warp,
     enchanteditem = enchanteditem,
+    stealth = stealth,
   })
 
   --[[ The chain-state engine (CB6): pure, always built - it needs no
@@ -1107,7 +1168,7 @@ local function new(ctx)
     end
     -- The indicator has no resting geometry - the tick draws it from the
     -- live plan - but whatever was pushed is now against the wrong origin.
-    if anchor == nil or anchor == "indicator" then
+    if anchor == nil or anchor == "skillchain_indicator" then
       reset_indicator_written()
     end
   end
@@ -1298,35 +1359,35 @@ local function new(ctx)
     if not panel_shown then
       prims.panel.hide()
     end
-    --[[ The set label rides the main anchor, not a panel: it says which set
-         the XHB is on, which is true whether or not a side is held, so it
-         is shown whenever the widget is. ]]
-    local main = placed.main
-    if not hidden and main ~= nil and main.pos ~= nil then
-      local label_x, label_y = render.set_label_pos()
-      prims.set_label.pos(main.pos.x + label_x * main.scale, main.pos.y + label_y * main.scale)
-      prims.set_label.size(math.floor(SET_LABEL_SIZE * main.scale + 0.5))
+    --[[ The set label, on its own anchor: it says which set the XHB is on,
+         which is true whether or not a side is held, so it is shown
+         whenever the widget is - and it is not a panel, so nothing about
+         the hold state moves it. ]]
+    local set_at = placed.set
+    if not hidden and set_at ~= nil and set_at.pos ~= nil then
+      prims.set_label.pos(set_at.pos.x, set_at.pos.y)
+      prims.set_label.size(math.floor(SET_LABEL_SIZE * set_at.scale + 0.5))
       prims.set_label.text(render.set_label(bindings.active_set()))
       prims.set_label.show()
-      --[[ The sword: shown while the weapon is drawn, hidden while it is
-           sheathed. Its space is reserved either way (render reserves it in
-           the centring), so the label does not shift as it comes and goes.
-
-           This is the component's OWN weapon state, not the client's
-           status - the same state that picks which set rotation is live -
-           so it lights on `draw` even with nothing targeted, which is what
-           makes that press visible at all. ]]
-      local icon_x, icon_y = render.set_icon_pos()
-      local icon_size = render.set_icon_size() * main.scale
-      prims.set_icon.pos(main.pos.x + icon_x * main.scale, main.pos.y + icon_y * main.scale)
-      prims.set_icon.size(icon_size, icon_size)
-      if bindings.weapon_state() == "drawn" then
-        prims.set_icon.show()
-      else
-        prims.set_icon.hide()
-      end
     else
       prims.set_label.hide()
+    end
+    --[[ The sword, likewise its own: shown while the weapon is drawn,
+         hidden while it is sheathed. Nothing reserves its space any more
+         and nothing needs to - the label cannot move when the sword goes,
+         because the two no longer share an origin.
+
+         This is the component's OWN weapon state, not the client's status
+         - the same state that picks which set rotation is live - so it
+         lights on `draw` even with nothing targeted, which is what makes
+         that press visible at all. ]]
+    local weapon_at = placed.weapon
+    if not hidden and weapon_at ~= nil and weapon_at.pos ~= nil and bindings.weapon_state() == "drawn" then
+      local icon_size = render.set_icon_size() * weapon_at.scale
+      prims.set_icon.pos(weapon_at.pos.x, weapon_at.pos.y)
+      prims.set_icon.size(icon_size, icon_size)
+      prims.set_icon.show()
+    else
       prims.set_icon.hide()
     end
     if hidden then
@@ -2528,7 +2589,7 @@ local function new(ctx)
       return
     end
     local pair = prims.indicator
-    local entry = placed.indicator
+    local entry = placed.skillchain_indicator
     local cfg = type(config.skillchain) == "table" and config.skillchain or {}
     local plan = nil
     if entry ~= nil and entry.pos ~= nil and cfg.indicator ~= false then

@@ -23,6 +23,15 @@ local function build(state)
         return state.item_plan
       end,
     },
+    stealth = {
+      plan = function(which)
+        state.stealth_asked = which
+        if state.stealth_hint ~= nil then
+          return nil, state.stealth_hint
+        end
+        return state.stealth_command or 'input /magic "Sneak" <me>'
+      end,
+    },
   })
   return actions, state
 end
@@ -35,7 +44,7 @@ end
 
 -- The shipped built-ins, spelled out. Two specs read it: one proves each
 -- name resolves, the other proves the table holds these and nothing else.
-local SHIPPED_BUILTINS = { "draw", "mr", "warp", "open" }
+local SHIPPED_BUILTINS = { "draw", "mr", "warp", "sneak", "invisible", "open" }
 
 describe("crossbar actions", function()
   describe("game action commands", function()
@@ -169,10 +178,47 @@ describe("crossbar actions", function()
       local actions = build()
       local plan = actions.resolve({ type = "open", action = "equipment" })
       assert.equal("command", plan.kind)
-      assert.equal(
-        "setkey ctrl down;setkey e down;wait 0.25;setkey e up;setkey ctrl up",
-        plan.command
-      )
+      assert.equal("setkey ctrl down;setkey e down;wait 0.25;setkey e up;setkey ctrl up", plan.command)
+    end)
+
+    it("opens either linkshell's search window", function()
+      -- `/sea all linkshell2` had no entry at all, and neither carried an
+      -- icon (Kevin, 2026-08-29). They stay openers rather than built-ins:
+      -- a slash command that raises a game screen is what an opener IS, and
+      -- promoting them would reserve two more command words for nothing.
+      local actions = build()
+      assert.equal("input /sea all linkshell", command_of(actions, { type = "open", action = "linkshell" }))
+      assert.equal("input /sea all linkshell2", command_of(actions, { type = "open", action = "linkshell2" }))
+    end)
+
+    it("gives both linkshells the party-member icon", function()
+      local actions = build()
+      assert.equal("party-member", actions.icon_for({ type = "open", action = "linkshell" }))
+      assert.equal("party-member", actions.icon_for({ type = "open", action = "linkshell2" }))
+    end)
+
+    it("asks the ladder for a stealth press and fires what it answers", function()
+      local actions, state = build()
+      state.stealth_command = 'input /ninjutsu "Monomi: Ichi" <me>'
+      assert.equal('input /ninjutsu "Monomi: Ichi" <me>', command_of(actions, { type = "sneak" }))
+      assert.equal("sneak", state.stealth_asked, "the ladder is told which effect is wanted")
+      command_of(actions, { type = "invisible" })
+      assert.equal("invisible", state.stealth_asked)
+    end)
+
+    it("passes the ladder's hint out when it can find no rung", function()
+      -- Silence would read as a dead key; the player is told why instead.
+      local actions, state = build()
+      state.stealth_hint = "no way to sneak right now"
+      local plan, hint = actions.resolve({ type = "sneak" })
+      assert.is_nil(plan)
+      assert.equal("no way to sneak right now", hint)
+    end)
+
+    it("gives both stealth built-ins their White Magic icon", function()
+      local actions = build()
+      assert.equal("spells/00137", actions.icon_for({ type = "sneak" }))
+      assert.equal("spells/00136", actions.icon_for({ type = "invisible" }))
     end)
 
     it("rejects an unknown opener with a hint", function()

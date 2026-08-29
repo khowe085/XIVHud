@@ -229,6 +229,8 @@ commands, they work with `//bind` and in in-game macros too.
 | `//hud crossbar draw` | sheathe / unsheathe — or dismount, if mounted |
 | `//hud crossbar mr` | summon a random mount you own, or dismount if you are on one. Summoning waits five seconds first — see **Travel waits five seconds** below |
 | `//hud crossbar warp [all]` | warp home by the best means you have, after the same five-second wait; `all` warps your other characters running XIVHud, and sends them only when this character's own warp actually goes |
+| `//hud crossbar sneak` | picks the cheapest way this character has to get the effect and fires it: the ninjutsu first (Monomi: Ichi / Tonko: Ichi, if you have the tool), then Spectral Jig, then the spell, then a Silent Oil / Prism Powder. The order is the same on every job, so the press behaves the same wherever it is bound; what changes is which rungs you qualify for, which is read from the client - the spells you know and the levels your main and sub actually have. Self-only rungs stay on you; the spell and the item go to a targeted party member if you have one selected. |
+| `//hud crossbar invisible` | the same ladder for invisible |
 | `//hud crossbar open <name>` | open a game screen (`map`, `equipment`, …) |
 
 ---
@@ -610,8 +612,9 @@ script is the way to put a sequence on a slot.
 | Type | What it does |
 | --- | --- |
 | `draw` | sheathe / unsheathe, and dismount when mounted. Its icon follows the state. |
-| `mr` | mount roulette — picks at random from the mounts you actually own, and dismounts if you are already up |
+| `mr` | mount roulette — picks at random from the mounts you actually own, and dismounts if you are already up. In the binder it is filed at the head of **Mounts** rather than under General, and it only appears if you own something to ride. |
 | `warp` | picks the best warp you have, in order: the Warp or Warp II spell, then a Warp Ring, an Instant Warp, a Warp Cudgel, a Treat Staff II, and a Tavnazian Ring as the last resort. The scroll sits above the two weapons because it costs no swap and no warm-up. Equips the ring or cudgel for you and waits out the enchantment — though if it has more than about 30 seconds left to charge it gives up rather than waiting. The Tavnazian Ring is allowed longer, because its own warm-up is roughly that. A piece already on your finger is not assumed to be ready either: if its enchantment is still coming up, the crossbar waits it out for you, the same as it would for a ring it equipped itself. `warp all` sends your other characters running XIVHud home — when this character's warp actually fires, so calling the countdown off, or a ring warm-up that gets abandoned, leaves them where they are. |
+| `sneak` / `invisible` | picks the cheapest way this character has to get the effect and fires it: the ninjutsu first (Monomi: Ichi / Tonko: Ichi, if you have the tool), then Spectral Jig, then the spell, then a Silent Oil / Prism Powder. The order is the same on every job, so the press behaves the same wherever it is bound; what changes is which rungs you qualify for, which is read from the client - the spells you know and the levels your main and sub actually have. Self-only rungs stay on you; the spell and the item go to a targeted party member if you have one selected. Both take the White Magic icon whichever rung fires, so the slot's face does not change with your subjob. |
 | `open <name>` | opens a game screen |
 
 `mr` and `warp` count five seconds down before they go, and so does the
@@ -630,6 +633,7 @@ script is the way to put a sequence on a slot.
 | `wardrobe`, `wardrobe2` … `wardrobe8` | that wardrobe |
 | `quests` | your quest log |
 | `linkshell` | a search listing your linkshell members |
+| `linkshell2` | the same for your second linkshell |
 
 `//hud crossbar open` prints this list in game.
 
@@ -798,8 +802,16 @@ live — so `//hud crossbar draw` lights it even with nothing targeted, which
 is the point: you can put yourself in the combat rotation without picking a
 fight.
 
-**Positioning.** In `//hud layout` you place four things independently: the
-XHB, the WXHB's **left and right sides separately**, and the skillchain
-indicator. Splitting the WXHB lets it sit at the edges of the screen, or
-wherever the XHB is not. Expanded Hold follows the XHB, since it only ever
-appears in the XHB's place.
+**Positioning.** In `//hud layout` you place six things independently: the
+XHB, the WXHB's **left and right sides separately**, the **set label**, the
+**weapon sword**, and the skillchain indicator. Splitting the WXHB lets it
+sit at the edges of the screen, or wherever the XHB is not. Expanded Hold
+follows the XHB, since it only ever appears in the XHB's place.
+
+The set label and the sword used to be pinned to the XHB at a fixed offset,
+so the only way to move either was to move the whole bar. They are now
+placed like anything else — drag one and the bar stays where it is. Out of
+the box they land where they always drew, except that the sword sits higher
+and is half again as big: its foot rests just above the middle slot row,
+well clear of the label below it. Both are still one widget for visibility — a right-click toggles
+the crossbar entire, not a piece of it.

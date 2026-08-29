@@ -105,7 +105,7 @@ describe("crossbar defaults", function()
 
   it("places all four anchors on screen", function()
     local anchors = defaults.slots.default.anchors
-    for _, name in ipairs({ "main", "wxhb_left", "wxhb_right", "indicator" }) do
+    for _, name in ipairs({ "main", "wxhb_left", "wxhb_right", "set", "weapon", "skillchain_indicator" }) do
       local anchor = anchors[name]
       assert.is_table(anchor, name)
       assert.equal(1, anchor.scale, name)
@@ -131,8 +131,8 @@ describe("crossbar defaults", function()
     assert.equal(anchors.wxhb_left.pos.y, anchors.wxhb_right.pos.y)
     -- The skillchain indicator: centred on its own 604 footprint, floating
     -- its 40px lift above the WXHB pair.
-    assert.equal((WIDTH - 604) / 2, anchors.indicator.pos.x)
-    assert.equal(anchors.wxhb_left.pos.y - 40, anchors.indicator.pos.y)
+    assert.equal((WIDTH - 604) / 2, anchors.skillchain_indicator.pos.x)
+    assert.equal(anchors.wxhb_left.pos.y - 40, anchors.skillchain_indicator.pos.y)
   end)
 
   it("survives a zero screen (size not yet known)", function()

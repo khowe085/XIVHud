@@ -81,6 +81,11 @@ local BUILTINS = {
   draw = {},
   mr = { icon = "mounts/mount-roulette" },
   warp = { icon = "spells/00261" },
+  -- The White Magic art for both, whichever rung the ladder actually fires
+  -- (Kevin, 2026-08-29): the slot means "become sneaky", and a face that
+  -- changed with your subjob would be a worse label than a fixed one.
+  sneak = { icon = "spells/00137" },
+  invisible = { icon = "spells/00136" },
   open = {},
 }
 -- Derived, sorted: the name walk can never drift from the table, so the two
@@ -252,6 +257,17 @@ local function new(deps)
     end
     if kind == "warp" then
       return { kind = "warp", plan = deps.warp.plan() }
+    end
+    --[[ One ladder per effect, walked at the press: which rung is available
+         depends on the job pair, the bag and the target, none of which hold
+         still. A ladder that finds nothing answers its own hint rather than
+         a bare nil, so the player is told why the press did nothing. ]]
+    if kind == "sneak" or kind == "invisible" then
+      local command, hint = deps.stealth.plan(kind)
+      if command == nil then
+        return nil, hint
+      end
+      return command_plan(command)
     end
     -- The named-item sibling of warp: the same plan shapes, so the widget's
     -- equip -> wait -> use scheduler runs either without knowing which asked.

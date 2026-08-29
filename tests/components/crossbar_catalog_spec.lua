@@ -101,6 +101,16 @@ local function labels(list, name)
   return out
 end
 
+local function entry_named(list, name, label)
+  local found = category(list, name)
+  for _, entry in ipairs(found and found.entries or {}) do
+    if entry.label == label then
+      return entry
+    end
+  end
+  return nil
+end
+
 local function has(list, name, label)
   for _, entry in ipairs(labels(list, name)) do
     if entry == label then
@@ -122,8 +132,8 @@ describe("crossbar catalog", function()
           return name == "raptor companion" and "Raptor Companion" or name
         end,
       })
-      local entry = category(catalog.build(), "Mounts").entries[1]
-      assert.equal("Raptor Companion", entry.label)
+      local entry = entry_named(catalog.build(), "Mounts", "Raptor Companion")
+      assert.is_not_nil(entry)
       assert.equal("mount", entry.record.type)
       assert.equal("raptor companion", entry.record.action, "the command form is what gets sent")
       assert.equal("Raptor Companion", entry.record.display, "and the display form rides along for the label")
@@ -132,8 +142,8 @@ describe("crossbar catalog", function()
 
     it("falls back to the owned name with no display lookup wired", function()
       local catalog = build({ mounts = { "chocobo" } })
-      local entry = category(catalog.build(), "Mounts").entries[1]
-      assert.equal("chocobo", entry.label)
+      local entry = entry_named(catalog.build(), "Mounts", "chocobo")
+      assert.is_not_nil(entry)
       assert.is_nil(entry.record.display)
       assert.is_nil(entry.record.alias)
     end)
@@ -283,8 +293,27 @@ describe("crossbar catalog", function()
 
     it("lists an owned mount, bound as /mount", function()
       local built = build().build()
+      assert.are.same({ type = "mount", action = "chocobo" }, entry_named(built, "Mounts", "chocobo").record)
+    end)
+
+    it("files Mount Roulette with the mounts, at the head of them", function()
+      --[[ It was in General beside Warp, which is where a player looking
+           for it does not look (Kevin, 2026-08-29). It is pinned above the
+           mounts rather than sorted among them: it is not a mount, and an
+           owned mount whose name sorts before it would otherwise bury it. ]]
+      local built = build({ mounts = { "adamantoise", "chocobo" } }).build()
       local mounts = category(built, "Mounts")
-      assert.are.same({ type = "mount", action = "chocobo" }, mounts.entries[1].record)
+      assert.are.equal("Mount Roulette", mounts.entries[1].label)
+      assert.are.same({ type = "mr" }, mounts.entries[1].record)
+      assert.are.same({ "adamantoise", "chocobo" }, { mounts.entries[2].label, mounts.entries[3].label })
+      assert.is_false(has(built, "General", "Mount Roulette"), "and no longer in General")
+    end)
+
+    it("offers no roulette to a player who owns no mounts", function()
+      -- A roulette over nothing cannot fire, and the Mounts group is built
+      -- from owned mounts, so both vanish together.
+      local built = build({ mounts = {} }).build()
+      assert.is_nil(category(built, "Mounts"))
     end)
 
     it("carries the built-ins, Attack among them as the draw toggle", function()
@@ -295,7 +324,6 @@ describe("crossbar catalog", function()
         seen[entry.label] = entry.record
       end
       assert.are.same({ type = "draw" }, seen["Attack"], "Attack is the state-aware toggle")
-      assert.are.same({ type = "mr" }, seen["Mount Roulette"])
       assert.are.same({ type = "warp" }, seen["Warp"])
       assert.are.same({ type = "ra" }, seen["Ranged Attack"])
     end)

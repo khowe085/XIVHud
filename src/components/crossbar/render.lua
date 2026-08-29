@@ -93,12 +93,19 @@ local PANEL_BOTTOM = 49
 -- The set label's own line height, for centring it in that bottom band.
 -- parambar's size, which is what the indicator was asked to match.
 local SET_LABEL_HEIGHT = 14
--- The sword that marks the drawn weapon state, stacked ABOVE the label.
--- 24 and a 2px gap put the pair exactly inside the bottom slot row's own
--- band (24 + 2 + 14 = the 40px slot), which is what keeps it clear of the
--- art it sits between.
-local SET_ICON = 24
-local SET_ICON_GAP = 2
+-- The sword that marks the drawn weapon state. It used to stack directly
+-- above the label - 24 and a 2px gap fitting the pair inside the bottom
+-- slot row's own 40px band - but the two are separate anchors now, so it
+-- is placed on its own: its foot 8px clear of the MIDDLE row's top edge,
+-- the row slots 2 and 8 occupy (Kevin, 2026-08-29). Flush against that
+-- edge read as touching, so the clearance is its own constant and is
+-- measured from the row rather than from the screen - the defaults are
+-- computed per resolution, and a fixed pixel would only be right at one.
+-- That lifts the sword clear of the label entirely, and the centre column
+-- it sits in has no slot in it - which is what leaves room for it to be
+-- half again the 24 it was drawn at while it shared the label's band.
+local SET_ICON = 36
+local SET_ICON_CLEARANCE = 8
 -- Upstream h2's base sits 300 right of h1's, and its Expanded bars at +150 -
 -- reproduced exactly by centring one side panel across the main footprint.
 -- The centring offset is SIDE_GAP / 2 whatever the side width, because the
@@ -206,6 +213,12 @@ local function new(deps)
        anchor's origin. Each is centred across the bar on its own, one above
        the other, so the sword coming and going never moves the label.
 
+       These are the DEFAULT placements only. Both became anchors of their
+       own on 2026-08-29 (Kevin), so once a config exists the player's own
+       positions decide - defaults.lua is the one caller left, seeding those
+       positions from this geometry so a fresh install draws where it always
+       did.
+
        The vertical placement is the constraint that matters. The two
        clusters flank the bar's centre, and in the MIDDLE row they occupy it
        (a slot ends at the centre-left, another starts at the centre-right),
@@ -227,11 +240,12 @@ local function new(deps)
     return set_centre(metrics) - self.set_label_width() / 2, set_row_bottom(metrics) - SET_LABEL_HEIGHT
   end
 
-  --- The sword's top-left, stacked directly above the label.
+  --- The sword's top-left: centred across the bar, its bottom edge 8px
+  --- clear of the middle slot row's top edge (the row slots 2 and 8 sit in).
   function self.set_icon_pos()
     local metrics = self.metrics()
-    local _, label_y = self.set_label_pos()
-    return set_centre(metrics) - SET_ICON / 2, label_y - SET_ICON_GAP - SET_ICON
+    local foot = metrics.pad_y + metrics.row_pitch - SET_ICON_CLEARANCE
+    return set_centre(metrics) - SET_ICON / 2, foot - SET_ICON
   end
 
   function self.metrics()
@@ -286,7 +300,13 @@ local function new(deps)
       return { width = SIDE_GAP + metrics.panel_width, height = metrics.panel_height }
     elseif anchor == "wxhb_left" or anchor == "wxhb_right" then
       return { width = metrics.panel_width, height = metrics.panel_height }
-    elseif anchor == "indicator" then
+    elseif anchor == "set" then
+      -- The reserved width, not the current text's: the box must not
+      -- breathe as the set number changes under the player's cursor.
+      return { width = self.set_label_width(), height = SET_LABEL_HEIGHT }
+    elseif anchor == "weapon" then
+      return { width = SET_ICON, height = SET_ICON }
+    elseif anchor == "skillchain_indicator" then
       return { width = INDICATOR_WIDTH, height = INDICATOR_HEIGHT }
     end
     return nil

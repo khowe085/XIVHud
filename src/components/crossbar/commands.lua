@@ -116,6 +116,8 @@ local HELP = {
   "  //hud crossbar open [<name>]",
   "  //hud crossbar draw",
   "  //hud crossbar mr",
+  "  //hud crossbar sneak - the cheapest sneak this job and bag can manage",
+  "  //hud crossbar invisible",
   "  //hud crossbar warp [all]",
   "  //hud crossbar edit",
   "  an address is <set><L|R><slot> - 1L1, 2R8 - and takes sub: or ctx:<name>: in front",
@@ -123,7 +125,7 @@ local HELP = {
 
 -- Types that carry no action name. `ra` still takes a target (`/ra <t>`);
 -- the other three take nothing at all.
-local NO_ACTION_TYPES = { ra = true, draw = true, mr = true, warp = true }
+local NO_ACTION_TYPES = { ra = true, draw = true, mr = true, warp = true, sneak = true, invisible = true }
 -- Types whose action IS the rest of the line: a chat line or a console
 -- command may end in anything, so no target word is split off it.
 local WHOLE_LINE_TYPES = { ct = true, ex = true }

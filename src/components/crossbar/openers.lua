@@ -57,7 +57,8 @@ local openers = {
   sack = { command = "/sack", icon = "item" },
   satchel = { command = "/satchel", icon = "item" },
   quests = { command = "/quest" }, -- needs in-client verification: a wrong slash command fails silently
-  linkshell = { command = "/sea all linkshell" },
+  linkshell = { command = "/sea all linkshell", icon = "party-member" },
+  linkshell2 = { command = "/sea all linkshell2", icon = "party-member" },
   map = { command = "/map", icon = "map" }, -- needs in-client verification: a wrong slash command fails silently
 }
 
