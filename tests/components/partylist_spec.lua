@@ -515,6 +515,170 @@ describe("partylist widget", function()
     end)
   end)
 
+  --[[ The drag path -------------------------------------------------------
+
+       Layout mode calls move_to on every raw mouse-move event, and each one
+       runs core.apply, which pushes set_scale, set_pos and set_preview before
+       reading get_bounds. Two of those three carry a value the widget already
+       holds, so the cost that matters is what an unchanged setter does -- and
+       what a move does that a rescale has to but a move does not. ]]
+  describe("the drag path", function()
+    local function prim_calls()
+      local total = 0
+      for _, prim in ipairs(prims.all) do
+        total = total + #prim.calls
+      end
+      return total
+    end
+
+    local function measure(act)
+      local before = prim_calls()
+      act()
+      return prim_calls() - before
+    end
+
+    local function full_party()
+      env.party = { party1_count = 6 }
+      for slot = 1, 6 do
+        env.party["p" .. (slot - 1)] = member("Mem" .. slot, 100 + slot)
+      end
+      settle()
+    end
+
+    it("writes nothing when the scale it is given is the one it holds", function()
+      full_party()
+      assert.are.equal(
+        0,
+        measure(function()
+          widget.set_scale(1)
+        end)
+      )
+    end)
+
+    it("writes nothing when the position it is given is the one it holds", function()
+      full_party()
+      widget.set_pos(300, 400)
+      assert.are.equal(
+        0,
+        measure(function()
+          widget.set_pos(300, 400)
+        end)
+      )
+    end)
+
+    it("writes nothing when the preview flag it is given is the one it holds", function()
+      full_party()
+      widget.set_preview(true)
+      assert.are.equal(
+        0,
+        measure(function()
+          widget.set_preview(true)
+        end)
+      )
+    end)
+
+    -- A move changes no drawn value -- not a text, colour, alpha, path,
+    -- visibility or fill width -- so it re-places without redrawing. A scale
+    -- change has to do both, because the fill widths are written by render().
+    it("costs less to move than to rescale", function()
+      full_party()
+      local move = measure(function()
+        widget.set_pos(301, 401)
+      end)
+      local rescale = measure(function()
+        widget.set_scale(1.25)
+      end)
+      assert.is_true(move > 0)
+      assert.is_true(move < rescale)
+    end)
+
+    -- The whole point of the gate: one core.apply per mouse move used to cost
+    -- three full rebuilds, two of them for values that had not moved.
+    it("costs one placement pass for a whole core.apply, not three rebuilds", function()
+      full_party()
+      widget.set_preview(true)
+      local placement = measure(function()
+        widget.set_pos(310, 410)
+      end)
+      local apply = measure(function()
+        widget.set_scale(1)
+        widget.set_pos(311, 411)
+        widget.get_bounds()
+        widget.set_preview(true)
+      end)
+      assert.are.equal(placement, apply)
+    end)
+
+    local function first_fill()
+      for _, prim in ipairs(prims.images) do
+        if type(prim.last.path) == "string" and prim.last.path:find("xiv/Bar.png", 1, true) then
+          return prim
+        end
+      end
+    end
+
+    --[[ logic.tick() is not a query. It advances the ease and clears the
+         forced flag, and draw_row writes a fill's width only on the tick that
+         moved it -- so a move that ticks without drawing can swallow the tick
+         that lands on the target, and the fill stays part-drawn for good.
+
+         Dragging the list in layout mode is exactly that sequence. ]]
+    it("does not swallow the bar ease while it is being moved", function()
+      local function settled_width(drag)
+        build("main")
+        env.party = { p0 = member("Ayame", 1) }
+        settle()
+        env.party = { p0 = member("Ayame", 1, { hp = 400, hpp = 40 }) }
+        env.clock = env.clock + 1
+        widget.update()
+        if drag then
+          for step = 1, 30 do
+            widget.set_pos(100 + step, 200)
+          end
+        end
+        settle()
+        return first_fill().width
+      end
+      assert.are.equal(settled_width(false), settled_width(true))
+    end)
+
+    -- layout.clamp hands back a fractional x at a non-integral scale, and the
+    -- background's placement signature is the only thing a move invalidates.
+    -- Truncate the position into that signature and the frame stays behind
+    -- while the rows it wraps move out from under it.
+    it("moves the background too when only the fraction of the position changes", function()
+      full_party()
+      widget.set_pos(100.1, 200)
+      local before = {}
+      for index, prim in ipairs(prims.all) do
+        before[index] = prim.x
+      end
+      widget.set_pos(100.9, 200)
+      for index, prim in ipairs(prims.all) do
+        if before[index] then
+          assert.is_true(math.abs(prim.x - (before[index] + 0.8)) < 1e-9)
+        end
+      end
+    end)
+
+    -- Core reads get_bounds and clamps straight after set_pos, and layout mode
+    -- draws its highlight from the same read -- all before the next render.
+    -- So a move has to land on the prims now, not on the following frame.
+    it("moves every prim without waiting for a render", function()
+      full_party()
+      local before = {}
+      for index, prim in ipairs(prims.all) do
+        before[index] = prim.x
+      end
+      widget.set_pos(140, 200)
+      for index, prim in ipairs(prims.all) do
+        if before[index] then
+          assert.are.equal(before[index] + 40, prim.x)
+        end
+      end
+    end)
+  end)
+
   describe("visibility", function()
     it("hides every prim when the framework hides it", function()
       env.party = { p0 = member("Ayame", 1) }
