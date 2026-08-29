@@ -114,6 +114,31 @@ local function command_plan(command)
   return { kind = "command", command = command }
 end
 
+--[[ How long a chord is held down, in seconds. FFXI samples the keyboard
+     once a frame, so the four edges sent back to back inside a single frame
+     were never observed as a press at all - the menu did not open, and
+     nothing reported it. A quarter second is what opened the equipment
+     window in a live client (Kevin, 2026-08-29); the key names were right
+     all along. ]]
+local CHORD_HOLD = 0.25
+
+--[[ The edges are chained into ONE console command around a `wait`, rather
+     than scheduled for release on a later frame, because that is the form
+     verified working and because a release owed to a future frame is one a
+     zone, a logout or a detach can swallow - which would leave the modifier
+     stuck down with no way back. ]]
+local function chord_command(chord)
+  local parts = {}
+  for index = 1, #chord do
+    parts[#parts + 1] = "setkey " .. chord[index] .. " down"
+  end
+  parts[#parts + 1] = "wait " .. tostring(CHORD_HOLD)
+  for index = #chord, 1, -1 do
+    parts[#parts + 1] = "setkey " .. chord[index] .. " up"
+  end
+  return table.concat(parts, ";")
+end
+
 local function open_plan(name)
   local entry = openers[name]
   if entry == nil then
@@ -122,14 +147,7 @@ local function open_plan(name)
   if entry.command then
     return command_plan("input " .. entry.command)
   end
-  local sequence = {}
-  for index = 1, #entry.chord do
-    sequence[#sequence + 1] = { key = entry.chord[index], state = "down" }
-  end
-  for index = #entry.chord, 1, -1 do
-    sequence[#sequence + 1] = { key = entry.chord[index], state = "up" }
-  end
-  return { kind = "keys", sequence = sequence }
+  return command_plan(chord_command(entry.chord))
 end
 
 -- Mounted outranks everything: you cannot engage while mounted, and the same

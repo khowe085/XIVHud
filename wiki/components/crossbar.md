@@ -635,9 +635,11 @@ script is the way to put a sequence on a slot.
 
 Most of these are chat commands the game already has, so they are reliable.
 **`equipment` and `inventory` are the exceptions**: FFXI has no command for
-them, so those two work by pressing Ctrl+E and Ctrl+I for you. That makes them
-the fragile pair — they stop working if you have rebound those keys in the
-game's own settings, and not every FFXI window can be opened this way at all.
+them, so those two work by pressing Ctrl+E and Ctrl+I for you — and the keys
+are *held* for a quarter second, because the game reads the keyboard once a
+frame and a press released inside that frame is never seen at all. That makes
+them the fragile pair — they stop working if you have rebound those keys in
+the game's own settings, and not every FFXI window can be opened this way.
 
 ---
 

@@ -1862,8 +1862,9 @@ local function new(ctx)
     content.written["feedback.visible"] = true
   end
 
-  -- Runs a resolved plan. `setkey` strings are composed here, in testable
-  -- code - the ctx stays a plain send_command.
+  -- Runs a resolved plan. Console strings - the `input` line for a slash
+  -- command, the chained setkey chord for an opener - are composed in
+  -- actions.lua, where they are pure; the ctx stays a plain send_command.
   local function execute(plan, hint)
     if plan == nil then
       if hint ~= nil then
@@ -1879,10 +1880,6 @@ local function new(ctx)
     end
     if plan.kind == "command" then
       send_command(plan.command)
-    elseif plan.kind == "keys" then
-      for _, edge in ipairs(plan.sequence or {}) do
-        send_command("setkey " .. edge.key .. " " .. edge.state)
-      end
     elseif plan.kind == "message" then
       say("crossbar: " .. plan.message)
     elseif plan.kind == "warp" then

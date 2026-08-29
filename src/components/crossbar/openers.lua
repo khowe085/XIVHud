@@ -31,7 +31,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      An entry opens with either a slash `command` (sent as `input <command>`,
      instant from any hold state) or a `chord` of key names injected through
      Windower's `setkey` console command (for game UI with no slash command).
-     Exactly one of the two, never both. The table grows by small code
+     Exactly one of the two, never both. A chord is HELD - see CHORD_HOLD in
+     actions.lua - because the client samples the keyboard once a frame and
+     never saw the edges when they went out back to back. The table grows by small code
      additions; each new chord entry needs in-client verification, and the
      chords assume the client's default keyboard bindings.
 

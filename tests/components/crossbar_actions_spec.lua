@@ -154,16 +154,25 @@ describe("crossbar actions", function()
       assert.equal("input /map", command_of(actions, { type = "open", action = "map" }))
     end)
 
-    it("resolves a chord entry to the full setkey sequence", function()
+    it("holds a chord down long enough for the client to see it", function()
+      --[[ The four edges went out as four separate console commands inside
+           one frame. FFXI samples the keyboard once a frame, so a key
+           pressed and released within a frame is never observed down: the
+           menu never opened, and nothing said so. The same chord with a
+           `wait` between the edges DOES open it, verified in the client
+           (Kevin, 2026-08-29) - so the hold is the fix, not the key names.
+
+           It is one chained console command rather than a scheduled
+           release because that is the form that was verified working, and
+           because a release owed on a later frame is a release a zone, a
+           logout or a detach can swallow - leaving ctrl stuck down. ]]
       local actions = build()
       local plan = actions.resolve({ type = "open", action = "equipment" })
-      assert.equal("keys", plan.kind)
-      assert.same({
-        { key = "ctrl", state = "down" },
-        { key = "e", state = "down" },
-        { key = "e", state = "up" },
-        { key = "ctrl", state = "up" },
-      }, plan.sequence)
+      assert.equal("command", plan.kind)
+      assert.equal(
+        "setkey ctrl down;setkey e down;wait 0.25;setkey e up;setkey ctrl up",
+        plan.command
+      )
     end)
 
     it("rejects an unknown opener with a hint", function()

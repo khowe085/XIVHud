@@ -4957,21 +4957,22 @@ describe("crossbar live widget", function()
       assert.is_not_nil(text:find("map"), text)
     end)
 
-    it("composes setkey edges for a chord opener", function()
+    it("sends a chord opener as one held command", function()
+      -- One console command, not four: the edges must straddle a `wait` or
+      -- the client never samples the keys down (Kevin, live, 2026-08-29).
       build_world()
       widget.handle_command({ "open", "equipment" })
-      assert.are.same({
-        "setkey ctrl down",
-        "setkey e down",
-        "setkey e up",
-        "setkey ctrl up",
-      }, env.commands)
+      assert.are.same({ "setkey ctrl down;setkey e down;wait 0.25;setkey e up;setkey ctrl up" }, env.commands)
     end)
 
     it("matches open targets case-insensitively", function()
       build_world()
       widget.handle_command({ "open", "EQUIPMENT" })
-      assert.are.equal("setkey ctrl down", env.commands[1], "the framework convention covers arguments too")
+      assert.are.same(
+        { "setkey ctrl down;setkey e down;wait 0.25;setkey e up;setkey ctrl up" },
+        env.commands,
+        "the framework convention covers arguments too"
+      )
     end)
 
     it("hints on an unknown open target", function()
