@@ -79,8 +79,8 @@ local GAME_TYPES = { ma = true, ja = true, ws = true, item = true, pet = true, m
      picker only if someone decides it belongs there. ]]
 local BUILTINS = {
   draw = {},
-  mr = { icon = "mount" },
-  warp = { icon = "items/warp-ring" },
+  mr = { icon = "mounts/mount-roulette" },
+  warp = { icon = "spells/00261" },
   open = {},
 }
 -- Derived, sorted: the name walk can never drift from the table, so the two

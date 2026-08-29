@@ -817,13 +817,18 @@ local function new(ctx)
          explicit untinted color, and hidden from the first frame. `texture`
          is optional - the icon and sweep prims have no art until content
          picks one. Alphas are config-owned and land at attach. ]]
+    --[[ `texture` is relative to the ASSET ROOT, not to any one folder in
+         it. It used to have `own/` put in front, which was right for the
+         chrome and silently wrong for the sword - `assets/own/icons/...`
+         does not exist, and a missing texture draws a bare square rather
+         than complaining. Each caller names its own folder now. ]]
     local function image(texture)
       local prim = ctx.new_image()
       prim.draggable(false)
       prim.repeat_xy(1, 1)
       prim.fit(false)
       if texture ~= nil then
-        prim.path(ctx.asset(ASSETS .. "own/" .. texture))
+        prim.path(ctx.asset(ASSETS .. texture))
       end
       prim.color(255, 255, 255)
       prim.hide()
@@ -837,7 +842,7 @@ local function new(ctx)
       return prim
     end
 
-    prims = { panel = image("bar_bg_compact.png"), groups = {} }
+    prims = { panel = image("own/bar_bg_compact.png"), groups = {} }
     for _, group in ipairs(GROUPS) do
       local slots = {}
       for slot = 1, SLOT_COUNT do
@@ -850,12 +855,12 @@ local function new(ctx)
         -- the reference loads its feedback icon ("last so it stays above
         -- everything else").
         slots[slot] = {
-          background = image("slot.png"),
+          background = image("own/slot.png"),
           chain = image(),
           icon = image(),
           sweep = image(),
-          frame = image("frame.png"),
-          feedback = image("feedback.png"),
+          frame = image("own/frame.png"),
+          feedback = image("own/feedback.png"),
           name = text(),
           cost = text(),
           recast = text(),
@@ -870,7 +875,7 @@ local function new(ctx)
          stay last in the image list, which is how the specs address it. ]]
     prims.set_icon = image("icons/weapons/sword.png")
     -- The skillchain indicator, last.
-    prims.indicator = { bg = image("indicator.png"), fill = image("indicator.png") }
+    prims.indicator = { bg = image("own/indicator.png"), fill = image("own/indicator.png") }
     -- The active set, written between the two crosses, with the sword that
     -- marks the drawn weapon state to its left.
     prims.set_label = text()

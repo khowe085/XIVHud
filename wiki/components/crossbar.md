@@ -512,7 +512,12 @@ point a WXHB or Expanded view at it.
 
 **"Drawn" is the addon's own idea, not the game's.** It flips when you use the
 `draw` action, and it flips when you engage a mob — but it does *not* flip
-back when the mob dies. Only sheathing yourself takes you out of combat mode,
+back when the mob dies.
+
+Changing it also **moves you to the first set of the mode you just entered** —
+the lowest-numbered set you have flagged for that rotation. Draw and you land
+on your first combat set; sheathe and you land on your first utility one, every
+time, whatever you were on. Only sheathing yourself takes you out of combat mode,
 so a set rotation does not lurch back mid-pull.
 
 Going *in* sends nothing to the game: `draw` while sheathed only flips the
@@ -769,8 +774,8 @@ The **active set** is written between the two crosses — `Set 3`, in gold,
 level with the slots. It is there whether or not a side is held, so a set
 switch is visible even on a bar you have not bound anything to yet.
 
-**Long names are shortened on the bar**, to ten characters and a `.` — so
-`Utsusemi: Ichi` reads `Utsusemi: .`. Only the label is cut: the binding keeps
+**Long names are shortened on the bar**, to seven characters and a `.` — so
+`Utsusemi: Ichi` reads `Utsusem.`. Only the label is cut: the binding keeps
 its full name, which is what `//hud crossbar list` shows you and what the game
 is sent when you press it.
 

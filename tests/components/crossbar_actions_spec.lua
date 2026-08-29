@@ -416,10 +416,25 @@ describe("crossbar actions", function()
       assert.equal("attack", actions.icon_for({ type = "draw" }, { weapon_drawn = false }))
     end)
 
-    it("gives every built-in its fixed icon", function()
+    it("gives every built-in its fixed icon, and each one ships", function()
+      --[[ `mr` wore the generic mount glyph and `warp` a Warp Ring, which
+           named one rung of a ladder with several (Kevin, 2026-08-24). The
+           roulette has its own art, and the trip is the Warp SPELL's icon -
+           by recast id, the way every spell icon resolves.
+
+           Each is checked to exist: an icon naming art that does not ship
+           draws a bare square and says nothing. ]]
       local actions = build()
-      assert.equal("mount", actions.icon_for({ type = "mr" }))
-      assert.equal("items/warp-ring", actions.icon_for({ type = "warp" }))
+      local expected = {
+        ["mr"] = "mounts/mount-roulette",
+        ["warp"] = "spells/00261",
+      }
+      for kind, icon in pairs(expected) do
+        assert.equal(icon, actions.icon_for({ type = kind }))
+        local file = io.open("src/assets/icons/" .. icon .. ".png", "rb")
+        assert.is_not_nil(file, icon .. " must ship")
+        file:close()
+      end
       assert.equal("map", actions.icon_for({ type = "open", action = "map" }))
     end)
 

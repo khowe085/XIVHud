@@ -947,24 +947,23 @@ describe("crossbar render", function()
   describe("the slot label", function()
     --[[ A cap on what is DRAWN only - the stored record keeps its full
          name, which is what the CLI lists, what the binder describes and
-         what the game is sent (Kevin, 2026-08-24). Ten characters, then a
-         dot to say there is more; the dot sits ON TOP of the ten, so a
-         truncated label is eleven wide. ]]
+         what the game is sent (Kevin, 2026-08-24). Seven characters, then a
+         dot to say there is more; the dot sits ON TOP of the seven, so a
+         truncated label is eight wide. ]]
     it("leaves a name that fits alone", function()
       local render = make()
       assert.are.equal("Cure", render.slot_label("Cure"))
+      -- Exactly seven is not truncated: the cap is on what does NOT fit.
       assert.are.equal("Provoke", render.slot_label("Provoke"))
-      -- Exactly ten is not truncated: the cap is on what does NOT fit.
-      assert.are.equal("Berserking", render.slot_label("Berserking"))
     end)
 
-    it("cuts a longer one to ten and marks it", function()
+    it("cuts a longer one to seven and marks it", function()
       local render = make()
-      assert.are.equal("Utsusemi: .", render.slot_label("Utsusemi: Ichi"))
-      assert.are.equal("Addendum: .", render.slot_label("Addendum: White"))
-      assert.are.equal("Savage Bla.", render.slot_label("Savage Blade"))
-      -- Eleven characters is the first length that loses anything.
-      assert.are.equal("Berserking.", render.slot_label("Berserking!"))
+      assert.are.equal("Utsusem.", render.slot_label("Utsusemi: Ichi"))
+      assert.are.equal("Addendu.", render.slot_label("Addendum: White"))
+      assert.are.equal("Savage .", render.slot_label("Savage Blade"))
+      -- Eight characters is the first length that loses anything.
+      assert.are.equal("Berserk.", render.slot_label("Berserki"))
     end)
 
     it("answers something drawable for anything it is handed", function()
@@ -986,16 +985,15 @@ describe("crossbar render", function()
       local note = "\226\153\170"
       local render = make()
       --[[ The note has to STRADDLE the cut or nothing is being tested: at
-           eight ASCII characters it occupies bytes 9, 10 and 11, so a bare
-           `sub(1, 10)` would keep two thirds of it and draw a broken
+           five ASCII characters it occupies bytes 6, 7 and 8, so a bare
+           `sub(1, 7)` would keep two thirds of it and draw a broken
            glyph. ]]
-      local straddling = "Chocobo " .. note .. "Whistle"
-      assert.are.equal(9, #("Chocobo " .. note) - 2, "the note starts at byte 9")
-      assert.are.equal("Chocobo .", render.slot_label(straddling), "dropped whole, not halved")
+      local straddling = "Choco" .. note .. "Whistle"
+      assert.are.equal("Choco.", render.slot_label(straddling), "dropped whole, not halved")
 
-      -- One byte later it fits entirely, and is kept entirely.
-      local fitting = "Chocobo" .. note .. "Whistle"
-      assert.are.equal("Chocobo" .. note .. ".", render.slot_label(fitting), "kept whole")
+      -- One byte earlier it fits entirely, and is kept entirely.
+      local fitting = "Chic" .. note .. "Whistle"
+      assert.are.equal("Chic" .. note .. ".", render.slot_label(fitting), "kept whole")
     end)
   end)
 end)

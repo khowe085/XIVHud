@@ -154,7 +154,7 @@ local function new(deps)
   local SET_LABEL_GLYPH = 7
   local SET_LABEL_CHARS = 5
   -- How many characters of an action's name a slot draws before it is cut.
-  local SLOT_LABEL_CHARS = 10
+  local SLOT_LABEL_CHARS = 7
 
   --- The label for a set number, FFXIV's own wording.
   function self.set_label(set)

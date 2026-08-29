@@ -559,6 +559,97 @@ describe("crossbar bindings", function()
     end)
   end)
 
+  describe("the set follows the weapon state", function()
+    --[[ Drawing or sheathing lands you on the FIRST set of the mode you
+         just entered (Kevin, 2026-08-24) - the lowest-numbered non-empty
+         one flagged for it, not an advance from wherever you were. The
+         landing is then the same every time, which is what makes a
+         combat set worth arranging. ]]
+    local function kevins_layout()
+      local flags = default_flags()
+      flags[1].cycle = { drawn = true, sheathed = false }
+      flags[2].cycle = { drawn = true, sheathed = false }
+      for set = 3, 5 do
+        flags[set].cycle = { drawn = false, sheathed = false }
+      end
+      for set = 6, 8 do
+        flags[set] = { shared = false, cycle = { drawn = false, sheathed = true } }
+      end
+      local sets = {}
+      for set = 1, 8 do
+        sets[set] = { left = { [1] = record("WS " .. set) } }
+      end
+      local bindings = build({ files = { WAR = { sets = sets } }, set_flags = flags })
+      bindings.set_job("WAR", "NIN")
+      return bindings
+    end
+
+    it("jumps to the first drawn set when the weapon comes out", function()
+      local bindings = kevins_layout()
+      bindings.jump(7)
+      assert.are.equal(7, bindings.active_set())
+      bindings.set_weapon_state("drawn")
+      assert.are.equal(1, bindings.active_set(), "the first set of the drawn rotation")
+    end)
+
+    it("jumps to the first sheathed set when it goes away", function()
+      local bindings = kevins_layout()
+      bindings.set_weapon_state("drawn")
+      bindings.jump(2)
+      bindings.set_weapon_state("sheathed")
+      assert.are.equal(6, bindings.active_set(), "the first set of the sheathed rotation")
+    end)
+
+    it("lands the same way however far up the rotation you were", function()
+      -- The point of a jump over a cycle: where you were does not decide
+      -- where you arrive.
+      for _, from in ipairs({ 6, 7, 8 }) do
+        local bindings = kevins_layout()
+        bindings.jump(from)
+        bindings.set_weapon_state("drawn")
+        assert.are.equal(1, bindings.active_set(), "from " .. from)
+      end
+    end)
+
+    it("moves the set when the GAME engages you, not just the draw action", function()
+      -- The state is the state, however it changed (Kevin, 2026-08-24).
+      local bindings = kevins_layout()
+      bindings.jump(8)
+      bindings.on_status(1)
+      assert.are.equal("drawn", bindings.weapon_state())
+      assert.are.equal(1, bindings.active_set())
+    end)
+
+    it("stays put when the state did not actually change", function()
+      -- on_status fires on every engage; only a transition moves the set,
+      -- or picking a combat set by hand would be undone by the next mob.
+      local bindings = kevins_layout()
+      bindings.set_weapon_state("drawn")
+      bindings.jump(2)
+      bindings.on_status(1)
+      assert.are.equal(2, bindings.active_set(), "already drawn, so nothing moved")
+      bindings.set_weapon_state("drawn")
+      assert.are.equal(2, bindings.active_set(), "and a redundant draw is no transition either")
+    end)
+
+    it("leaves the set alone when the new mode has no set to offer", function()
+      -- Every set out of both rotations: there is nowhere to land, and
+      -- stranding the bar on nothing would be worse than staying.
+      local flags = default_flags()
+      for set = 1, 8 do
+        flags[set].cycle = { drawn = false, sheathed = false }
+      end
+      local bindings = build({
+        files = { WAR = { sets = { [3] = { left = { [1] = record("WS 3") } } } } },
+        set_flags = flags,
+      })
+      bindings.set_job("WAR", "NIN")
+      bindings.jump(3)
+      bindings.set_weapon_state("drawn")
+      assert.are.equal(3, bindings.active_set())
+    end)
+  end)
+
   describe("cycle", function()
     -- Kevin's layout: 1-2 drawn-only, 3-4 out of both rotations (views and
     -- jump only), 6-8 shared and sheathed-only. 5 is bound nowhere.
@@ -677,9 +768,12 @@ describe("crossbar bindings", function()
       bindings.set_job("WAR")
       assert.equal(2, bindings.cycle())
       assert.equal(4, bindings.cycle())
+      -- Drawing now LANDS on the first drawn set (2026-08-24), so the
+      -- rotation resumes from there rather than from where it was.
       bindings.set_weapon_state("drawn")
-      assert.equal(2, bindings.cycle())
+      assert.equal(2, bindings.active_set(), "landed on the first drawn set")
       assert.equal(4, bindings.cycle())
+      assert.equal(2, bindings.cycle())
     end)
   end)
 

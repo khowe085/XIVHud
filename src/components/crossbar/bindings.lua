@@ -369,9 +369,24 @@ local function new(deps)
     return weapon
   end
 
+  --[[ The set follows the weapon state (Kevin, 2026-08-24): entering a mode
+       lands you on the FIRST set of it - the lowest-numbered non-empty one
+       flagged for that rotation - rather than advancing from wherever you
+       happened to be. The landing is then the same every time, which is
+       what makes arranging a combat set worth doing.
+
+       Only a real TRANSITION moves it. `on_status` fires on every engage,
+       so re-entering a mode you are already in must leave the set alone or
+       picking one by hand would be undone by the next mob. And a mode with
+       no set to offer leaves it alone too: stranding the bar on nothing is
+       worse than staying put. ]]
+  -- Forward-declared: the landing needs `set_is_empty`, which the cycle
+  -- below owns and which is defined with it.
+  local enter_weapon_state
+
   --- The explicit flip -- the `draw` action's two-way transition.
   function self.set_weapon_state(state)
-    weapon = state
+    enter_weapon_state(state)
   end
 
   --- The one-way game trigger: engaging by any means (status 1 or 3) enters
@@ -379,7 +394,7 @@ local function new(deps)
   --- only an explicit `draw` returns to sheathed.
   function self.on_status(status)
     if status == 1 or status == 3 then
-      weapon = "drawn"
+      enter_weapon_state("drawn")
     end
   end
 
@@ -507,6 +522,25 @@ local function new(deps)
   --- Advance to the next set that is non-empty AND flagged for the current
   --- weapon state's rotation. Wraps; when nothing qualifies it stays put and
   --- answers the unchanged active set (the no-op).
+  function enter_weapon_state(state)
+    if weapon == state then
+      return
+    end
+    weapon = state
+    if job_data == nil then
+      return
+    end
+    for set = 1, SET_COUNT do
+      if cycle_flags(set)[state] and not set_is_empty(set) then
+        if set ~= job_data.active_set then
+          job_data.active_set = set
+          save_job()
+        end
+        return
+      end
+    end
+  end
+
   function self.cycle()
     local ok, err = require_job()
     if ok == nil then

@@ -456,6 +456,19 @@ describe("crossbar widget", function()
     assert.are.same({ 100 + x, 900 + y }, { label.x, label.y })
   end)
 
+  it("points the sword at art that actually ships", function()
+    --[[ It drew a bare white square in a live client (Kevin, 2026-08-24):
+         the prim builder put `own/` in front of every texture, which is
+         right for the chrome and wrong for the sword, and a missing
+         texture draws the prim's fill rather than complaining. Nothing
+         caught it, so this checks the path AND that the file is there. ]]
+    local sword = prims.images[#prims.images - 2]
+    assert.are.equal("addon/assets/icons/weapons/sword.png", sword.last.path)
+    local file = io.open("src/assets/icons/weapons/sword.png", "rb")
+    assert.is_not_nil(file, "the sword art must ship")
+    file:close()
+  end)
+
   it("keeps the sword down while the weapon is sheathed", function()
     -- Sheathed is the state a fresh attach starts in. The sword sits just
     -- before the indicator pair, which is last in the image list.
@@ -1014,7 +1027,7 @@ describe("crossbar live widget", function()
       assert.is_true(icon.visible)
       -- Cut to what the slot can draw; the record still holds the whole
       -- name, which the next test checks.
-      assert.are.equal("Savage Bla.", text_of("xhb_left", 3, "name").last.text)
+      assert.are.equal("Savage .", text_of("xhb_left", 3, "name").last.text)
     end)
 
     it("redraws the icon when the icon verb overrides it", function()
@@ -1062,7 +1075,7 @@ describe("crossbar live widget", function()
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
-      assert.are.equal("Savage Bla.", text_of("xhb_left", 3, "name").last.text, "drawn short")
+      assert.are.equal("Savage .", text_of("xhb_left", 3, "name").last.text, "drawn short")
       assert.are.equal("Savage Blade", env.store_files.WAR.sets[1].left[3].action, "stored whole")
       local listed = table.concat(widget.handle_command({ "list" }), "\n")
       assert.is_not_nil(listed:find("Savage Blade", 1, true), "and listed whole: " .. listed)
@@ -1091,7 +1104,8 @@ describe("crossbar live widget", function()
 
       files.WAR.sets[1].left[2] = { type = "mount", action = "chocobo", display = "Chocobo", alias = "Pull mount" }
       build_world({ store_files = files })
-      assert.are.equal("Pull mount", text_of("xhb_left", 2, "name").last.text)
+      -- Cut to seven and marked, like every other drawn label.
+      assert.are.equal("Pull mo.", text_of("xhb_left", 2, "name").last.text)
     end)
 
     it("labels a degenerate record with nothing, never the word nil", function()
@@ -1112,13 +1126,13 @@ describe("crossbar live widget", function()
       local player = war_player()
       player.buffs = { 252 }
       build_world({ store_files = files, player = player })
-      env.files["addon/assets/icons/mount.png"] = true
+      env.files["addon/assets/icons/mounts/mount-roulette.png"] = true
       env.files["addon/assets/icons/check.png"] = true
       env.files["addon/assets/icons/dismount.png"] = true
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
-      assert.are.equal("addon/assets/icons/mount.png", image_of("xhb_left", 1, "icon").last.path)
+      assert.are.equal("addon/assets/icons/mounts/mount-roulette.png", image_of("xhb_left", 1, "icon").last.path)
       assert.are.equal("addon/assets/icons/check.png", image_of("xhb_left", 2, "icon").last.path)
       assert.are.equal(
         "addon/assets/icons/dismount.png",
@@ -1315,11 +1329,12 @@ describe("crossbar live widget", function()
       press(SWITCH)
       release(SWITCH)
       assert.are.equal(3, env.store_files.WAR.active_set, "set 2 is drawn-only; set 3 is the next sheathed stop")
-      -- Engage: the drawn rotation now includes 2 but not 4.
+      --[[ Engage: the drawn rotation now includes 2 but not 4 - and
+           entering drawn LANDS on the first set of that rotation before any
+           cycling (2026-08-24), so this starts from 1 rather than from the
+           3 it was on. ]]
       widget.update("status", 1)
-      press(SWITCH)
-      release(SWITCH)
-      assert.are.equal(1, env.store_files.WAR.active_set, "from 3: 4 is sheathed-only, 5-8 empty, 1 qualifies")
+      assert.are.equal(1, env.store_files.WAR.active_set, "engaging landed on the first drawn set")
       press(SWITCH)
       release(SWITCH)
       assert.are.equal(2, env.store_files.WAR.active_set, "drawn reaches set 2 now")
