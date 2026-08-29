@@ -144,6 +144,22 @@ local function chord_command(chord)
   return table.concat(parts, ";")
 end
 
+--[[ Whether this zone forbids mounting, from the roulette's read of the
+     zones resource. A blocked press is refused HERE, at resolve, so it is a
+     true no-op: the travel countdown, the command and the recast stamp all
+     sit downstream and none of them ever start (Kevin, 2026-08-29).
+
+     Guarded rather than called outright: without the resources library the
+     widget hands actions a stub roulette that can ride and nothing else,
+     and an absent answer means "not blocked" - refusing a press because we
+     could not check would be worse than a press the game turns down. ]]
+local function mount_blocked(deps)
+  local roulette = deps.roulette
+  return roulette ~= nil and type(roulette.blocked) == "function" and roulette.blocked() == true
+end
+
+local MOUNT_BLOCKED = "you cannot use a mount here"
+
 local function open_plan(name)
   local entry = openers[name]
   if entry == nil then
@@ -218,11 +234,15 @@ local function new(deps)
       if not valid_name(record.action) then
         return nil, "missing action name for /" .. kind
       end
-      local plan = command_plan("input /" .. kind .. ' "' .. record.action .. '"' .. target_suffix(record.target))
       -- The mount recast starts on a SUMMON. The dismount case returned
-      -- above, so anything reaching here with `mount` is one; the flag is
-      -- how the widget knows without reading the command string back, the
-      -- same way `dismount` already travels.
+      -- above, so anything reaching here with `mount` is one: it is refused
+      -- outright where the zone forbids one, and otherwise carries the flag
+      -- that tells the widget to start the clock - the same way `dismount`
+      -- already travels, rather than the command string being read back.
+      if kind == "mount" and mount_blocked(deps) then
+        return nil, MOUNT_BLOCKED
+      end
+      local plan = command_plan("input /" .. kind .. ' "' .. record.action .. '"' .. target_suffix(record.target))
       if kind == "mount" then
         plan.mount_summon = true
       end
@@ -250,6 +270,12 @@ local function new(deps)
       return draw_plan(state)
     end
     if kind == "mr" then
+      -- Mounted, the press dismounts, and getting out is never blocked -
+      -- you can be riding in a zone you could not have mounted in.
+      local mounted = deps.roulette.mounted ~= nil and deps.roulette.mounted() == true
+      if not mounted and mount_blocked(deps) then
+        return nil, MOUNT_BLOCKED
+      end
       local command = deps.roulette.ride()
       if command == nil then
         return { kind = "none" }
@@ -258,7 +284,7 @@ local function new(deps)
       -- Which of the two rides this is, from the roulette's own buff read.
       -- The travel delay holds a summon and lets a dismount go at once, and
       -- a flag is how it knows without reading the command string back.
-      if deps.roulette.mounted ~= nil and deps.roulette.mounted() then
+      if mounted then
         plan.dismount = true
       else
         plan.mount_summon = true

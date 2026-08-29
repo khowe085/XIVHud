@@ -1956,10 +1956,14 @@ local function new(ctx)
       repaint()
     end
     if plan.kind == "command" then
-      -- The mount recast is ours to track: nothing in the client's recast
-      -- tables names it (see roulette.lua), so the clock starts here, where
-      -- the summon actually goes out - after the travel wait, not at the
-      -- press that armed it.
+      --[[ The mount recast is ours to track: nothing in the client's recast
+           tables names it (see roulette.lua), so the clock starts here,
+           where the summon actually goes out - after the travel wait, not
+           at the press that armed it.
+
+           A blocked press never arrives: actions.lua refuses it at
+           resolve, so there is no plan, no travel countdown and no command
+           (Kevin, 2026-08-29). Nothing here needs to re-check the zone. ]]
       if plan.mount_summon and roulette ~= nil then
         roulette.summoned(frame_now())
       end
@@ -2556,12 +2560,19 @@ local function new(ctx)
 
     local remaining = remaining_for(content.meta, spell_recasts, ability_recasts)
     --[[ A mount slot answers to neither a spell nor an ability recast, so
-         its own two conditions land here: the zone that forbids mounting,
-         and the minute after a summon. Both only while UNMOUNTED - mounted,
-         the same slot dismounts, and getting out of something is never held
-         up (the rule the travel delay already follows). ]]
-    if is_mount_record(content.record) and roulette ~= nil and not roulette.mounted() then
-      if roulette.blocked() then
+         its own two conditions land here - and they part company the moment
+         you are actually mounted.
+
+         The ZONE stops applying: you can be riding somewhere you could not
+         have mounted, and the press is a dismount, which is never held up.
+
+         The RECAST does not. It is the one thing still true while you ride
+         - it says when you could mount again - so it keeps counting and
+         keeps the slot dim (Kevin's call, 2026-08-29), even though the
+         press would dismount you. Skipping it along with the zone made the
+         sweep vanish the instant the mount landed. ]]
+    if is_mount_record(content.record) and roulette ~= nil then
+      if not roulette.mounted() and roulette.blocked() then
         usable = false
       end
       local cooling = roulette.cooldown(frame_now())

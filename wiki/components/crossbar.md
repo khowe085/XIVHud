@@ -635,16 +635,26 @@ script is the way to put a sequence on a slot.
 
 **A mount slot greys out when you cannot ride.** Two things put it down: a
 zone that forbids mounting — a city, a dungeon — and the minute after you
-summon one, which sweeps round as a recast like anything else. Neither
-applies while you are already mounted, because then the press dismounts you,
-and getting off is never held up.
+summon one, which sweeps round as a recast like anything else.
+
+**In a zone that forbids mounting the press does nothing at all**: no
+five-second countdown, no command, no recast. It says so once in the log and
+stops there, rather than spending the wait on something the game was always
+going to refuse.
+
+The two part company once you are actually mounted. The zone stops mattering
+— you can be riding somewhere you could not have mounted, and the press is
+now a dismount, which is never held up. The recast keeps running, because it
+is the one thing still true up there: it is what tells you when you could
+mount again. It keeps the slot greyed while it does.
 
 The minute is counted by the addon rather than read from the game: FFXI
 exposes recasts by ability, and mounting is not an ability, so there is no
-timer to read. It starts when the summon is sent. That means a summon the
-game turns down for a reason the addon cannot see will still grey the slot
-for the minute — and a zone it cannot identify never greys it at all, since
-a slot wrongly greyed is worse than a press the game refuses out loud.
+timer to read. It starts when the summon is sent, which means a summon the
+game turns down for a reason the addon cannot see — being in combat, say —
+will still grey the slot for the minute. A zone it cannot identify never
+greys anything, since a slot wrongly greyed is worse than a press the game
+refuses out loud.
 
 #### What `open` can open
 
