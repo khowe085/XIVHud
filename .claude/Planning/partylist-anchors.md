@@ -197,6 +197,11 @@ component's half of the force-show and it must be a spec'd behaviour, not an acc
 
 - `src/XIVHud.lua:735-762`: one `core.register(new_partylist({...}))`, no variant loop.
   Drop `variant` from the ctx (the outer widget owns the three now); keep `name`.
+- Drop `alias` from the ctx at the same time and hardcode `alias = "pl"` in the
+  factory beside the name (PR #28 added it). It is only per-registration data
+  because ONE factory backs three registrations: hardcoding it today has all
+  three claim `pl`, and the second registration aborts the load. With one
+  registration that reason is gone and the ctx field is dead weight.
 - CLAUDE.md: the partylist bullet, the Commands block, and the line at CLAUDE.md:85
   stating partylist needed no edits when crossbar landed - all three go stale here.
 - `wiki/` - check for a partylist page and the framework/positioning prose.
