@@ -39,8 +39,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        3. XIVBar's compact width is 422 against a 421px image.
        4. XIVBar renders the bar from the percent stream and the number from the
           absolute stream and never reconciles them, so on death the bar can
-          empty while the number still reads full. Here 0% forces the number to
-          0, and a status change re-seeds both streams from the player.
+          empty while the number still reads full -- and an absolute value the
+          client never corrects sticks for the rest of the session. Here 0%
+          forces the number to 0, and the player is polled as the authoritative
+          source, with the change events applied on top of it between polls.
 
      Beyond XIVBar: HP and MP numbers are banded by percent (XIVParty's
      thresholds and colours). TP is never banded — its only colouring is the
@@ -56,6 +58,8 @@ local FILL_HEIGHT = 8
 local DIM_ALPHA = 180
 local FULL_ALPHA = 255
 local MIN_BAR_WIDTH = 8
+-- The target bar's cadence, and the party list's.
+local POLL_INTERVAL_MS = 200
 
 -- Frame padding baked into the background images, from XIVBar's ui:position.
 local BAR_X = { 15, 25, 35 }
@@ -72,10 +76,6 @@ local SAMPLE_VITALS = { hp = 1500, hpp = 75, mp = 800, mpp = 50, tp = 1500 }
 
 local function zeroed()
   return { hp = 0, hpp = 0, mp = 0, mpp = 0, tp = 0 }
-end
-
-local function all_unknown()
-  return { hp = true, hpp = true, mp = true, mpp = true, tp = true }
 end
 
 local function band_for(percent)
@@ -106,11 +106,7 @@ local function new(config)
   local preview = false
   local widths = { hp = 0, mp = 0, tp = 0 }
   local dirty = { hp = true, mp = true, tp = true }
-  -- Vitals the client has never given a real number for, as opposed to ones it
-  -- has said are zero. Only these are open to fill_missing. Every vital starts
-  -- here: the widget can be attached with get_player() unreadable, in which case
-  -- the seed never runs and the fill is the only thing that will fill the bars.
-  local unknown = all_unknown()
+  local next_poll = nil
 
   local function vitals()
     return preview and SAMPLE_VITALS or live
@@ -131,58 +127,53 @@ local function new(config)
 
   function self.set_config(new_config)
     config = new_config
+    next_poll = nil
     mark_all_dirty()
   end
 
-  -- Full re-seed from windower.ffxi.get_player().vitals. Anything the table is
-  -- missing goes to zero: this is a replacement, not a patch.
-  function self.seed(player_vitals)
-    player_vitals = player_vitals or {}
-    live = zeroed()
-    unknown = all_unknown()
-    for key in pairs(live) do
-      live[key] = tonumber(player_vitals[key]) or 0
-      if live[key] ~= 0 then
-        unknown[key] = nil
-      end
+  -- True once per interval, and true on its first call after a re-config, so
+  -- the frame after an attach already has real numbers on the bars.
+  function self.due_for_poll(now)
+    if next_poll and now < next_poll then
+      return false
     end
-    mark_all_dirty()
+    next_poll = now + POLL_INTERVAL_MS / 1000
+    return true
   end
 
-  -- Whether any vital is still waiting for its first real number. The widget
-  -- stops re-reading the player as soon as this goes false.
-  function self.awaiting_vitals()
-    return next(unknown) ~= nil
-  end
+  --[[ The authoritative read, from windower.ffxi.get_player().vitals.
 
-  -- Fills in vitals the client has never given a number for, from a fresh read
-  -- of the player. It populates its vitals table field by field, so a bar can
-  -- still be waiting for its first real number while its neighbours are current.
-  -- Unlike seed() this cannot walk over a change event: a vital an event drove
-  -- to zero is a vital the client has spoken for, and stays where it was put.
-  function self.fill_missing(player_vitals)
+       The absolute and the percent stream are independent, and the absolute one
+       has been seen carrying a value that no later event corrects -- the HP
+       number stuck at max HP after a Max HP Down wore off, while the bar and
+       its colour band tracked the real percent. Nothing in the event stream
+       heals that, so the client is re-read rather than trusted, and the events
+       are only what keeps the bars moving between polls. The party list never
+       drifted for the same reason: it drops the event values it holds on every
+       poll of get_party().
+
+       Anything the table is missing goes to zero: this is a replacement, not a
+       patch. Only bars whose numbers actually moved are marked dirty, so a
+       settled HUD still costs nothing between polls. ]]
+  function self.poll(player_vitals)
     player_vitals = player_vitals or {}
     for key, bar in pairs(VITALS) do
-      if unknown[key] then
-        local value = tonumber(player_vitals[key]) or 0
-        if value ~= 0 then
-          live[key] = value
-          unknown[key] = nil
-          dirty[bar] = true
-        end
+      local value = tonumber(player_vitals[key]) or 0
+      if live[key] ~= value then
+        live[key] = value
+        dirty[bar] = true
       end
     end
   end
 
-  -- One value from an `hp change` / `hpp change` / … event.
+  -- One value from an `hp change` / `hpp change` / … event, good until
+  -- the next poll overrules it.
   function self.set_vital(kind, value)
     local bar = VITALS[kind]
     if not bar then
       return
     end
     live[kind] = tonumber(value) or 0
-    -- The client has now spoken for this vital, zero or not.
-    unknown[kind] = nil
     dirty[bar] = true
   end
 
