@@ -41,8 +41,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
           absolute stream and never reconciles them, so on death the bar can
           empty while the number still reads full -- and an absolute value the
           client never corrects sticks for the rest of the session. Here 0%
-          forces the number to 0, and the player is polled as the authoritative
-          source, with the change events applied on top of it between polls.
+          forces the number to 0, and the vitals arrive already reconciled from
+          `lib/player`, which owns that policy for every component.
 
      Beyond XIVBar: HP and MP numbers are banded by percent (XIVParty's
      thresholds and colours). TP is never banded — its only colouring is the
@@ -58,8 +58,6 @@ local FILL_HEIGHT = 8
 local DIM_ALPHA = 180
 local FULL_ALPHA = 255
 local MIN_BAR_WIDTH = 8
--- The target bar's cadence, and the party list's.
-local POLL_INTERVAL_MS = 200
 
 -- Frame padding baked into the background images, from XIVBar's ui:position.
 local BAR_X = { 15, 25, 35 }
@@ -106,7 +104,6 @@ local function new(config)
   local preview = false
   local widths = { hp = 0, mp = 0, tp = 0 }
   local dirty = { hp = true, mp = true, tp = true }
-  local next_poll = nil
 
   local function vitals()
     return preview and SAMPLE_VITALS or live
@@ -127,35 +124,20 @@ local function new(config)
 
   function self.set_config(new_config)
     config = new_config
-    next_poll = nil
     mark_all_dirty()
   end
 
-  -- True once per interval, and true on its first call after a re-config, so
-  -- the frame after an attach already has real numbers on the bars.
-  function self.due_for_poll(now)
-    if next_poll and now < next_poll then
-      return false
-    end
-    next_poll = now + POLL_INTERVAL_MS / 1000
-    return true
-  end
+  --[[ The current vitals, as `lib/player` hands them over: the client's own
+       numbers with any `hp change` / `hpp change` / … event already laid on top.
+       Reconciling the two streams is that service's job, and used to be done
+       here - wrongly, until 2026-08-30, when the absolute stream could carry a
+       value nothing corrected and an HP number stuck at max HP for the session.
 
-  --[[ The authoritative read, from windower.ffxi.get_player().vitals.
-
-       The absolute and the percent stream are independent, and the absolute one
-       has been seen carrying a value that no later event corrects -- the HP
-       number stuck at max HP after a Max HP Down wore off, while the bar and
-       its colour band tracked the real percent. Nothing in the event stream
-       heals that, so the client is re-read rather than trusted, and the events
-       are only what keeps the bars moving between polls. The party list never
-       drifted for the same reason: it drops the event values it holds on every
-       poll of get_party().
-
-       Anything the table is missing goes to zero: this is a replacement, not a
-       patch. Only bars whose numbers actually moved are marked dirty, so a
-       settled HUD still costs nothing between polls. ]]
-  function self.poll(player_vitals)
+       The widget calls this every frame, so it must be cheap and quiet:
+       anything the table is missing goes to zero (this is a replacement, not a
+       patch), and only bars whose numbers actually moved are marked dirty, so a
+       settled HUD costs nothing. ]]
+  function self.set_vitals(player_vitals)
     player_vitals = player_vitals or {}
     for key, bar in pairs(VITALS) do
       local value = tonumber(player_vitals[key]) or 0
@@ -164,17 +146,6 @@ local function new(config)
         dirty[bar] = true
       end
     end
-  end
-
-  -- One value from an `hp change` / `hpp change` / … event, good until
-  -- the next poll overrules it.
-  function self.set_vital(kind, value)
-    local bar = VITALS[kind]
-    if not bar then
-      return
-    end
-    live[kind] = tonumber(value) or 0
-    dirty[bar] = true
   end
 
   function self.set_preview(on)

@@ -2694,14 +2694,22 @@ local function new(ctx)
   -- re-arms it.
   local RESCOPE_DEADLINE_SECONDS = 10
 
-  --[[ Client reads ride the roster cadence (200ms - the plan's partylist
-       cadence, targetbar's precedent). The sweep has 32 frames of
-       granularity, so nothing visible is lost; the per-frame work between
-       reads runs against the cached answers, and a bar with nothing on
-       screen reads nothing at all. ]]
-  local READ_INTERVAL_SECONDS = 0.2
+  --[[ Client reads ride the roster cadence. The sweep has 32 frames of
+       granularity, so nothing visible is lost; the per-frame work between reads
+       runs against the cached answers, and a bar with nothing on screen reads
+       nothing at all.
+
+       The cadence is **lib/player's read counter**, not a clock of our own. A
+       second 200ms throttle in front of the service's would sit out of phase
+       with it and leave these answers up to two intervals stale - the pattern
+       the sibling components had removed. The recasts have no service behind
+       them, but they want the same cadence, so they ride the counter too.
+
+       An absent counter reads every frame, the same fallback the party list and
+       the target bar take: costly, and unreachable in a client, but a wiring
+       slip must degrade rather than freeze. ]]
   local reads = nil
-  local next_read = 0
+  local last_read_generation = nil
 
   --[[ The binder (CB8) ----------------------------------------------------
        Built here, at the foot of the constructor, because every dep below
@@ -2843,11 +2851,17 @@ local function new(ctx)
 
   --[[ The cast retry's guards, answered for the record it is about to
        re-send. Every fact comes from state the widget already holds - the
-       binding store, the memoised resource tables and the 200ms client read
-       - so a guard costs no client call, and the probe is only ever called
-       when a re-send is otherwise due. The target is not among them: it was
-       pinned at the press (see FIXED_TARGETS above), so there is nothing to
-       re-check and no second lookup to pay for. ]]
+       binding store, the memoised resource tables and the recast cache - plus
+       the player, which is lib/player's cached read and so costs no client
+       call either. The probe is only ever called when a re-send is otherwise
+       due. The target is not among them: it was pinned at the press (see
+       FIXED_TARGETS above), so there is nothing to re-check and no second
+       lookup to pay for.
+
+       The player is read HERE rather than taken off the recast snapshot: the
+       whole point of a guard is that it sees the state as it is at the re-send,
+       and MP spent or a silence landed since the snapshot is exactly what it
+       is looking for. ]]
   local function retry_facts(entry)
     if bindings.resolve(entry.set, entry.side, entry.slot) ~= entry.record then
       -- Rebound, re-set, or a context has swapped the slot out from under
@@ -2857,7 +2871,7 @@ local function new(ctx)
     end
     local meta = meta_for(entry.record)
     local snapshot = reads or {}
-    local player = snapshot.player
+    local player = get_player()
     local cost = render.cost(meta, player ~= nil and player.vitals or {})
     return {
       bound = true,
@@ -2946,8 +2960,9 @@ local function new(ctx)
     if counts_dirty then
       recount_items()
     end
-    if reads == nil or clock >= next_read then
-      next_read = clock + READ_INTERVAL_SECONDS
+    local generation = ctx.generation and ctx.generation() or nil
+    if reads == nil or generation == nil or generation ~= last_read_generation then
+      last_read_generation = generation
       reads = {
         player = get_player(),
         spell_recasts = ctx.get_spell_recasts ~= nil and ctx.get_spell_recasts() or {},
@@ -3318,7 +3333,7 @@ local function new(ctx)
       end
     end
     active_state = "none"
-    reads, next_read = nil, 0
+    reads, last_read_generation = nil, nil
     dress()
     layout()
     -- The login may already be far enough along to name the job; otherwise
@@ -3355,7 +3370,7 @@ local function new(ctx)
     machine = nil
     active_state = "none"
     scoped_main, scoped_sub, rescope_want = nil, nil, nil
-    reads, next_read = nil, 0
+    reads, last_read_generation = nil, nil
     bindings = build_bindings(nil)
     reset_contents()
     -- Chain state is per character and per zone at best; a detach (logout,

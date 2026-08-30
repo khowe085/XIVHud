@@ -478,6 +478,17 @@ local function new(deps)
       settings.set_slot(active_slot())
     end
 
+    --[[ Who is being played has changed, and core is the only thing that knows
+         it: the `login` event fires before the client can name anybody, and a
+         switch can resolve here without one at all (see the prerender search).
+         Anything holding client state for a whole character - the player
+         service does - has to be told, and told BEFORE the attach below, or the
+         incoming character's first tick reads the outgoing one. Optional: a
+         deps table that does not carry it simply is not told. ]]
+    if deps.on_scope_change then
+      deps.on_scope_change(name)
+    end
+
     apply_settings(name)
     return true
   end

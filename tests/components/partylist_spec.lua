@@ -58,10 +58,20 @@ end
 
 describe("partylist widget", function()
   local prims, env, widget
+  local generation_count, generation_deadline
 
   local function build(variant)
     prims = fakes.prims()
     env = { party = {}, targets = {}, clock = 0, polls = 0, target_reads = 0 }
+    env.player = {
+      name = "Ayame",
+      buffs = {},
+      main_job_id = 4,
+      main_job_level = 99,
+      sub_job_id = 5,
+      sub_job_level = 49,
+    }
+    generation_count, generation_deadline = 0, nil
 
     local ctx = {
       name = variant == "main" and "partylist" or "alliancelist1",
@@ -75,18 +85,11 @@ describe("partylist widget", function()
         return "addons/XIVHud/" .. path
       end,
       resources = RESOURCES,
-      now = function()
-        return env.clock
-      end,
+      -- One table, so a spec can move a field on it between reads: lib/player
+      -- hands the same object back for the whole interval, and the point of
+      -- reading per frame is that a keyed invalidation lands inside one.
       get_player = function()
-        return {
-          name = "Ayame",
-          buffs = {},
-          main_job_id = 4,
-          main_job_level = 99,
-          sub_job_id = 5,
-          sub_job_level = 49,
-        }
+        return env.player
       end,
       get_party = function()
         env.polls = env.polls + 1
@@ -100,6 +103,17 @@ describe("partylist widget", function()
       end,
       get_info = function()
         return { zone = 230 }
+      end,
+      --[[ lib/player's read counter, faked to its real contract: reading it opens
+           the interval, so it advances for a caller that gates every one of its
+           reads behind it. A fake driven by the clock alone would pass over a
+           service that had stopped advancing. ]]
+      generation = function()
+        if generation_deadline == nil or env.clock >= generation_deadline then
+          generation_deadline = env.clock + 0.2
+          generation_count = generation_count + 1
+        end
+        return generation_count
       end,
     }
 
@@ -326,9 +340,6 @@ describe("partylist widget", function()
         end,
         asset = tostring,
         resources = RESOURCES,
-        now = function()
-          return 0
-        end,
       })
       assert.is_nil(fresh.get_bounds())
     end)
@@ -790,6 +801,56 @@ describe("partylist widget", function()
       env.clock = env.clock + 0.2
       widget.update()
       assert.are.equal(1, env.polls)
+    end)
+
+    --[[ The player is read every FRAME while the roster rides the counter, and
+         this is what that buys. Your own buff icons come off get_player().buffs
+         - no packet carries them for you - and a `gain buff` sends the entry
+         point's keyed invalidate("player"), which refreshes the player without
+         moving the counter. Read on the counter instead and your own buffs
+         would wait for the next roster rebuild.
+
+         The counter is held still here deliberately: that is the whole case. ]]
+    it("shows the player's own new buff without waiting for a roster rebuild", function()
+      env.party = { p0 = member("Ayame", 1) }
+      settle(2)
+      local function own_icons()
+        local shown = 0
+        for _, prim in ipairs(prims.images) do
+          if type(prim.last.path) == "string" and prim.last.path:find("buffIcons", 1, true) and prim.visible then
+            shown = shown + 1
+          end
+        end
+        return shown
+      end
+      assert.are.equal(0, own_icons())
+
+      -- REPLACED, not mutated: set_main_player stores the table by reference,
+      -- so moving a field on it would be visible whether or not the setter ran
+      -- again - and the test would pass against the gated placement too.
+      env.player = {
+        name = "Ayame",
+        buffs = { 33 },
+        main_job_id = 4,
+        main_job_level = 99,
+        sub_job_id = 5,
+        sub_job_level = 49,
+      }
+      widget.update()
+      assert.is_true(own_icons() > 0, "the player's own buff waited for the next roster rebuild")
+    end)
+
+    --[[ The read counter survives a detach, so without the reset on attach a
+         relog inside one interval would leave the previous character's roster
+         on screen until the service next read. targetbar has the same guard. ]]
+    it("reads the party again on the first frame after a fresh attach", function()
+      env.party = { p0 = member("Ayame", 1) }
+      widget.update()
+      local before = env.polls
+      widget.detach()
+      widget.attach(widget.defaults, function() end)
+      widget.update()
+      assert.is_true(env.polls > before, "a relog waited out the interval before reading the party")
     end)
 
     -- The cursor follows the target key, so it cannot wait up to 200ms for the

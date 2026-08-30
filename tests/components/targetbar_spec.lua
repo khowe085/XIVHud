@@ -4,6 +4,7 @@ local fakes = require("tests/support/fakes")
 describe("targetbar widget", function()
   local prims, assets, widget
   local target, party, player, me, clock, saves, target_reads
+  local generation_count, generation_deadline
 
   -- The prims are built in draw order: the hp layers, then the cast's.
   local function background()
@@ -92,6 +93,7 @@ describe("targetbar widget", function()
     clock = 0
     saves = 0
     target_reads = 0
+    generation_count, generation_deadline = 0, nil
     widget = new_targetbar({
       new_text = prims.new_text,
       new_image = prims.new_image,
@@ -113,6 +115,16 @@ describe("targetbar widget", function()
       end,
       get_player = function()
         return player
+      end,
+      --[[ lib/player's read counter, faked to its real contract: reading it opens
+           the interval, so it advances for a caller - this one - that gates all
+           of its reads behind it. ]]
+      generation = function()
+        if generation_deadline == nil or clock >= generation_deadline then
+          generation_deadline = clock + 0.2
+          generation_count = generation_count + 1
+        end
+        return generation_count
       end,
       now = function()
         return clock
@@ -618,6 +630,13 @@ describe("targetbar widget", function()
         end,
         get_player = function()
           return player
+        end,
+        generation = function()
+          if generation_deadline == nil or clock >= generation_deadline then
+            generation_deadline = clock + 0.2
+            generation_count = generation_count + 1
+          end
+          return generation_count
         end,
         now = function()
           return clock

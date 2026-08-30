@@ -190,13 +190,18 @@ local function new(ctx)
     end
   end
 
-  -- get_player() can return nil around zone-in. Polling nothing would zero
-  -- every vital, and the change events only fire on an actual change — so a
-  -- character standing at full HP would read 0 until something moved.
-  local function poll_player()
+  --[[ Read every frame. `ctx.get_player` is lib/player's, so this costs a real
+       client read only once per interval and the vitals come back with the
+       change events already reconciled into them - the widget hears no event of
+       its own.
+
+       get_player() can return nil around zone-in, and the client fills the
+       player in field by field, so a missing vitals table leaves the bars where
+       they are: pushing nothing would zero every one of them. ]]
+  local function read_player()
     local player = ctx.get_player()
     if player and player.vitals then
-      logic.poll(player.vitals)
+      logic.set_vitals(player.vitals)
     end
   end
 
@@ -208,7 +213,7 @@ local function new(ctx)
     logic.set_config(config)
     apply_text_style()
     apply_layout()
-    -- No read here: set_config re-armed the poll, so the next tick takes one.
+    -- No read here: the next tick takes one, as every tick does.
   end
 
   function self.detach()
@@ -248,24 +253,19 @@ local function new(ctx)
     return logic.bounds(pos.x, pos.y, scale)
   end
 
-  --[[ No arguments is the per-frame tick; otherwise a game event the entry
-       point forwarded. Vitals arrive as two independent streams that XIVBar let
-       drift apart, so the player is the authority and the change events only
-       carry the bars between polls. A status change — death, resting — reads
-       the player at once rather than waiting the interval out. ]]
-  function self.update(event, value)
-    if event == nil then
-      if attached and logic.due_for_poll(ctx.now()) then
-        poll_player()
-      end
-      render()
+  --[[ Only the per-frame tick does anything. The vitals events reach
+       `lib/player`, which reconciles them against the client and hands the
+       result back through `ctx.get_player` - so a forwarded event needs no
+       handling here, and a status change needs no special case: the service
+       drops its interval on one, and the next tick sees the fresh numbers. ]]
+  function self.update(event)
+    if event ~= nil then
       return
     end
-    if event == "status" then
-      poll_player()
-    else
-      logic.set_vital(event, value)
+    if attached then
+      read_player()
     end
+    render()
   end
 
   function self.handle_command(args)

@@ -63,8 +63,6 @@ local BANDS = { { 25, "red" }, { 50, "orange" }, { 75, "yellow" } }
 
 local PARTY_KEYS = { main = "p%d", alliance1 = "a1%d", alliance2 = "a2%d" }
 
-local DEFAULT_POLL_INTERVAL_MS = 200
-
 local OWN_VITALS = { hp = true, hpp = true, mp = true, mpp = true, tp = true }
 
 --[[ The party layout mode shows when there is no party to show. Hand-written
@@ -136,7 +134,6 @@ local function new(deps)
   local buff_ranks = nil
   local buff_ordered = nil
   local trust_cache = {}
-  local next_poll = nil
 
   -- Bar animation state, keyed by list position. A slot whose occupant changes
   -- restarts rather than easing the new member's bar down from the old one's.
@@ -360,20 +357,6 @@ local function new(deps)
         live.ids_by_name[name] = nil
       end
     end
-  end
-
-  -- True once per poll interval. Nonsense in the config means every frame,
-  -- which is merely wasteful rather than a gate that never opens.
-  function self.due_for_poll(now)
-    local interval = tonumber(config.poll_interval_ms) or DEFAULT_POLL_INTERVAL_MS
-    if interval <= 0 then
-      return true
-    end
-    if next_poll and now < next_poll then
-      return false
-    end
-    next_poll = now + interval / 1000
-    return true
   end
 
   local function is_main_player(member)

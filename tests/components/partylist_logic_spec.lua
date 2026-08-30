@@ -245,36 +245,6 @@ describe("partylist logic", function()
     end)
   end)
 
-  describe("the poll gate", function()
-    it("is due on the very first frame", function()
-      assert.is_true(logic.due_for_poll(0))
-    end)
-
-    it("is not due again until the interval has passed", function()
-      logic.due_for_poll(0)
-      assert.is_false(logic.due_for_poll(0.1))
-      assert.is_false(logic.due_for_poll(0.19))
-      assert.is_true(logic.due_for_poll(0.2))
-    end)
-
-    it("takes the interval from configuration", function()
-      config.poll_interval_ms = 500
-      logic.due_for_poll(0)
-      assert.is_false(logic.due_for_poll(0.4))
-      assert.is_true(logic.due_for_poll(0.5))
-    end)
-
-    -- os.clock does not go backwards, but a hand-edited interval of zero would
-    -- otherwise make the gate meaningless rather than merely fast.
-    it("polls every frame when the interval is zero or nonsense", function()
-      config.poll_interval_ms = 0
-      logic.due_for_poll(0)
-      assert.is_true(logic.due_for_poll(0))
-      config.poll_interval_ms = "soon"
-      assert.is_true(logic.due_for_poll(0))
-    end)
-  end)
-
   describe("the bars", function()
     local function only(fields)
       logic.set_roster({ p0 = member(fields) })
