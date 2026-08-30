@@ -949,7 +949,9 @@ local function new(deps)
        buff you cannot see is a buff you cannot promote, and only the first ten
        are ever drawn. ]]
 
-  local NAMES = { main = "partylist", alliance1 = "alliancelist1", alliance2 = "alliancelist2" }
+  -- How a message names this list, which is also how the user addresses it:
+  -- the three are one component now, told apart by the anchor word.
+  local NAMES = { main = "partylist", alliance1 = "partylist alliance1", alliance2 = "partylist alliance2" }
   local NAME = NAMES[variant] or NAMES.main
   local PAGE_SIZE = 20
   local MAX_SEARCH_HITS = 20
@@ -972,8 +974,15 @@ local function new(deps)
   end
 
   local function verbs()
-    local list = { "spacing", "align", "emptyrows", "range" }
+    --[[ `on` and `off` belong to the widget above, not to this module, and are
+         named here because this hint is the only place the user is told a list
+         can be switched at all - it is what replaced `//hud hide
+         alliancelist1`, and a replacement nothing mentions is not one. ]]
+    local list = { "on", "off", "spacing", "align", "emptyrows" }
     if variant == "main" then
+      -- `range` joins them: the alliance row layout has no range block, so the
+      -- setting could only ever be stored and never drawn.
+      list[#list + 1] = "range"
       list[#list + 1] = "hidesolo"
       list[#list + 1] = "buff"
     end
@@ -989,12 +998,17 @@ local function new(deps)
         config.align_bottom == true and "bottom" or "top",
         config.show_empty_rows == true and "on" or "off"
       ),
-      ("  range %s, near %s, far %s"):format(
+    }
+    -- Reported where it can be drawn, which is the same test range_plan makes
+    -- and the same reason the verb is refused on an alliance list: advertising
+    -- a setting the next command turns down is worse than either alone.
+    if layout.row.range then
+      lines[#lines + 1] = ("  range %s, near %s, far %s"):format(
         settings.numeric == true and "numeric" or "icons",
         tonumber(settings.near) or 0,
         tonumber(settings.far) or 0
-      ),
-    }
+      )
+    end
     if variant == "main" then
       lines[#lines + 1] = ("  hide solo %s, buff icons %d, filter %s (%d)"):format(
         config.hide_solo == true and "on" or "off",

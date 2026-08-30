@@ -58,11 +58,15 @@ end
 
 describe("partylist widget", function()
   local prims, env, widget
+  -- The list a plain `widget.set_pos(...)` in this file addresses. The three
+  -- are one component now, so every placement names an anchor; `build` picks
+  -- which one the block that follows is about.
+  local anchor
   local generation_count, generation_deadline
 
   local function build(variant)
     prims = fakes.prims()
-    env = { party = {}, targets = {}, clock = 0, polls = 0, target_reads = 0 }
+    env = { party = {}, targets = {}, clock = 0, polls = 0, target_reads = 0, saves = 0 }
     env.player = {
       name = "Ayame",
       buffs = {},
@@ -73,9 +77,10 @@ describe("partylist widget", function()
     }
     generation_count, generation_deadline = 0, nil
 
+    anchor = variant or "main"
+
     local ctx = {
-      name = variant == "main" and "partylist" or "alliancelist1",
-      variant = variant or "main",
+      name = "partylist",
       new_text = prims.new_text,
       new_image = prims.new_image,
       screen = function()
@@ -118,9 +123,18 @@ describe("partylist widget", function()
     }
 
     widget = new_partylist(ctx)
-    widget.attach(widget.defaults, function() end)
-    widget.set_pos(100, 200)
-    widget.set_scale(1)
+    widget.attach(widget.defaults, function()
+      env.saves = env.saves + 1
+    end)
+    -- Only the anchor under test is placed: an unplaced list draws nothing,
+    -- which keeps a block about one list counting only that list's prims.
+    widget.set_scale(1, anchor)
+    widget.set_pos(100, 200, anchor)
+    -- The alliance lists ship switched off, so a block about one has to turn
+    -- it on the way a user would.
+    if anchor ~= "main" then
+      widget.handle_command({ anchor, "on" })
+    end
     widget.show()
     return widget
   end
@@ -142,12 +156,20 @@ describe("partylist widget", function()
     end
   end
 
+  -- One anchor placed the way core does it: scale first, then position.
+  local function place(name, x, y)
+    widget.set_scale(1, name)
+    widget.set_pos(x, y, name)
+  end
+
   before_each(function()
     build("main")
   end)
 
   describe("prims", function()
-    local FRAME_PRIMS = 3
+    -- Three background prims apiece, and all three lists build theirs in the
+    -- factory whether or not they are ever placed.
+    local FRAME_PRIMS = 3 * 3
 
     it("draws only the background until somebody is in the party", function()
       widget.update()
@@ -238,7 +260,7 @@ describe("partylist widget", function()
     -- With align_bottom the rows sit at the bottom of the box, so every
     -- existing row moves when the party grows.
     it("re-places the rows already on screen when the list grows upward", function()
-      widget.defaults.align_bottom = true
+      widget.defaults.lists[anchor].align_bottom = true
       widget.attach(widget.defaults, function() end)
       env.party = { p0 = member("Ayame", 1) }
       settle(3)
@@ -261,7 +283,7 @@ describe("partylist widget", function()
     it("reports the origin it was given, so the framework can clamp it", function()
       env.party = { p0 = member("Ayame", 1) }
       settle(2)
-      local x, y = widget.get_bounds()
+      local x, y = widget.get_bounds(anchor)
       assert.are.equal(100, x)
       assert.are.equal(200, y)
     end)
@@ -274,7 +296,7 @@ describe("partylist widget", function()
     it("reports a box that contains everything it draws", function()
       env.party = { p0 = member("Ayame", 1) }
       settle(2)
-      local x, y, width, height = widget.get_bounds()
+      local x, y, width, height = widget.get_bounds(anchor)
 
       for _, prim in ipairs(prims.all) do
         if prim.visible and prim.x then
@@ -289,9 +311,9 @@ describe("partylist widget", function()
     it("scales the box it reports", function()
       env.party = { p0 = member("Ayame", 1) }
       settle(2)
-      local _, _, full_width, full_height = widget.get_bounds()
-      widget.set_scale(0.5)
-      local _, _, width, height = widget.get_bounds()
+      local _, _, full_width, full_height = widget.get_bounds(anchor)
+      widget.set_scale(0.5, anchor)
+      local _, _, width, height = widget.get_bounds(anchor)
       assert.are.equal(full_width / 2, width)
       assert.are.equal(full_height / 2, height)
     end)
@@ -311,7 +333,7 @@ describe("partylist widget", function()
       assert.is_not_nil(fill)
       local width = fill.width
       assert.is_true(width > 0)
-      widget.set_scale(2)
+      widget.set_scale(2, anchor)
       widget.update()
       assert.are.equal(width * 2, fill.width)
     end)
@@ -349,7 +371,7 @@ describe("partylist widget", function()
     -- The frame has to contain the rows. align_bottom moves the rows to the
     -- foot of the box, and the background has to follow them there.
     it("keeps the background around the rows when the list is aligned to the bottom", function()
-      widget.defaults.align_bottom = true
+      widget.defaults.lists[anchor].align_bottom = true
       widget.attach(widget.defaults, function() end)
       env.party = { p0 = member("Ayame", 1) }
       settle(3)
@@ -364,7 +386,9 @@ describe("partylist widget", function()
 
       local top, bottom = nil, nil
       for _, prim in ipairs(prims.images) do
-        if type(prim.last.path) == "string" then
+        -- Every list builds a background, and the two alliance lists ship
+        -- switched off, so only this one's is ever shown.
+        if prim.visible and type(prim.last.path) == "string" then
           if prim.last.path:find("BgTop", 1, true) then
             top = prim.y
           elseif prim.last.path:find("BgBottom", 1, true) then
@@ -386,9 +410,9 @@ describe("partylist widget", function()
     it("reports the preview's box as soon as previewing starts", function()
       env.party = {}
       settle(2)
-      local _, _, _, one_row = widget.get_bounds()
+      local _, _, _, one_row = widget.get_bounds(anchor)
       widget.set_preview(true)
-      local _, _, _, previewing = widget.get_bounds()
+      local _, _, _, previewing = widget.get_bounds(anchor)
       assert.is_true(previewing > one_row)
     end)
 
@@ -399,10 +423,10 @@ describe("partylist widget", function()
       env.party = { p0 = member("Ayame", 1) }
       settle(2)
 
-      local x = select(1, widget.get_bounds())
+      local x = select(1, widget.get_bounds(anchor))
       local strip = nil
       for _, prim in ipairs(prims.images) do
-        if type(prim.last.path) == "string" and prim.last.path:find("BgMid", 1, true) then
+        if prim.visible and type(prim.last.path) == "string" and prim.last.path:find("BgMid", 1, true) then
           strip = prim
         end
       end
@@ -516,7 +540,7 @@ describe("partylist widget", function()
       for index, prim in ipairs(prims.all) do
         before[index] = prim.x
       end
-      widget.set_pos(150, 200)
+      widget.set_pos(150, 200, anchor)
       widget.update()
       for index, prim in ipairs(prims.all) do
         if before[index] then
@@ -561,18 +585,18 @@ describe("partylist widget", function()
       assert.are.equal(
         0,
         measure(function()
-          widget.set_scale(1)
+          widget.set_scale(1, anchor)
         end)
       )
     end)
 
     it("writes nothing when the position it is given is the one it holds", function()
       full_party()
-      widget.set_pos(300, 400)
+      widget.set_pos(300, 400, anchor)
       assert.are.equal(
         0,
         measure(function()
-          widget.set_pos(300, 400)
+          widget.set_pos(300, 400, anchor)
         end)
       )
     end)
@@ -594,10 +618,10 @@ describe("partylist widget", function()
     it("costs less to move than to rescale", function()
       full_party()
       local move = measure(function()
-        widget.set_pos(301, 401)
+        widget.set_pos(301, 401, anchor)
       end)
       local rescale = measure(function()
-        widget.set_scale(1.25)
+        widget.set_scale(1.25, anchor)
       end)
       assert.is_true(move > 0)
       assert.is_true(move < rescale)
@@ -609,15 +633,51 @@ describe("partylist widget", function()
       full_party()
       widget.set_preview(true)
       local placement = measure(function()
-        widget.set_pos(310, 410)
+        widget.set_pos(310, 410, anchor)
       end)
       local apply = measure(function()
-        widget.set_scale(1)
-        widget.set_pos(311, 411)
-        widget.get_bounds()
+        widget.set_scale(1, anchor)
+        widget.set_pos(311, 411, anchor)
+        widget.get_bounds(anchor)
         widget.set_preview(true)
       end)
       assert.are.equal(placement, apply)
+    end)
+
+    --[[ The reason PA0 was a prerequisite: core.apply pushes a placement for
+         EVERY anchor on every mouse-move event, and now all three are inside
+         one component. Dragging one list must not lay out the other two -
+         untouched, this shape was measured at roughly 5000 prim calls per
+         event against the old 2882. ]]
+    it("lays out only the anchor that moved, over a whole three-anchor apply", function()
+      full_party()
+      widget.handle_command({ "alliance1", "on" })
+      widget.handle_command({ "alliance2", "on" })
+      for _, name in ipairs({ "alliance1", "alliance2" }) do
+        widget.set_scale(1, name)
+        widget.set_pos(700, 300, name)
+      end
+      env.party.a10 = member("Ally1", 200)
+      env.party.a20 = member("Ally2", 201)
+      settle()
+
+      local moved = measure(function()
+        widget.set_pos(320, 420, anchor)
+      end)
+      -- Exactly what core does per mouse move: scale then position for every
+      -- anchor, the preview flag, then show().
+      local apply = measure(function()
+        widget.set_scale(1, "main")
+        widget.set_pos(321, 421, "main")
+        widget.set_scale(1, "alliance1")
+        widget.set_pos(700, 300, "alliance1")
+        widget.set_scale(1, "alliance2")
+        widget.set_pos(700, 300, "alliance2")
+        widget.set_preview(false)
+        widget.show()
+      end)
+      assert.is_true(moved > 0)
+      assert.are.equal(moved, apply, "an apply must cost the moved anchor's placement and nothing else")
     end)
 
     local function first_fill()
@@ -644,7 +704,7 @@ describe("partylist widget", function()
         widget.update()
         if drag then
           for step = 1, 30 do
-            widget.set_pos(100 + step, 200)
+            widget.set_pos(100 + step, 200, anchor)
           end
         end
         settle()
@@ -659,12 +719,12 @@ describe("partylist widget", function()
     -- while the rows it wraps move out from under it.
     it("moves the background too when only the fraction of the position changes", function()
       full_party()
-      widget.set_pos(100.1, 200)
+      widget.set_pos(100.1, 200, anchor)
       local before = {}
       for index, prim in ipairs(prims.all) do
         before[index] = prim.x
       end
-      widget.set_pos(100.9, 200)
+      widget.set_pos(100.9, 200, anchor)
       for index, prim in ipairs(prims.all) do
         if before[index] then
           assert.is_true(math.abs(prim.x - (before[index] + 0.8)) < 1e-9)
@@ -681,7 +741,7 @@ describe("partylist widget", function()
       for index, prim in ipairs(prims.all) do
         before[index] = prim.x
       end
-      widget.set_pos(140, 200)
+      widget.set_pos(140, 200, anchor)
       for index, prim in ipairs(prims.all) do
         if before[index] then
           assert.are.equal(before[index] + 40, prim.x)
@@ -727,7 +787,7 @@ describe("partylist widget", function()
     -- cutscenes and zoning, not party size -- so the component draws nothing
     -- rather than deciding it is off screen.
     it("draws nothing when the only member is the player", function()
-      widget.defaults.hide_solo = true
+      widget.defaults.lists.main.hide_solo = true
       widget.attach(widget.defaults, function() end)
       env.party = { p0 = member("Ayame", 1) }
       settle(3)
@@ -737,7 +797,7 @@ describe("partylist widget", function()
     end)
 
     it("draws the list again as soon as somebody joins", function()
-      widget.defaults.hide_solo = true
+      widget.defaults.lists.main.hide_solo = true
       widget.attach(widget.defaults, function() end)
       env.party = { p0 = member("Ayame", 1) }
       settle(3)
@@ -906,7 +966,7 @@ describe("partylist widget", function()
         end
       end
       assert.is_not_nil(cursor)
-      local x = select(1, widget.get_bounds())
+      local x = select(1, widget.get_bounds(anchor))
       local right = cursor.x - x + cursor.width
       -- 24 is the left margin; the icon grid's own right edge is 24 + 460.
       assert.is_true(right >= 24 + 460, ("cursor ends at %.0f, the icon grid ends at 484"):format(right))
@@ -1032,14 +1092,13 @@ describe("partylist widget", function()
   end)
 
   describe("construction", function()
-    -- No alias while ONE factory backs three registrations: all three would
-    -- claim the same word and the second would abort the load. It gets `pl`
-    -- when the trio collapses into one anchored component.
-    it("declares no short alias, on any variant", function()
-      for _, variant in ipairs({ "main", "alliance1", "alliance2" }) do
-        build(variant)
-        assert.is_nil(widget.alias, variant .. " must claim no alias")
-      end
+    -- One registration backs all three lists, so there is one name to claim a
+    -- short word for. Three registrations off one factory could not: each
+    -- would claim `pl` and the second would abort the load.
+    it("registers under one name and claims the short alias", function()
+      build()
+      assert.are.equal("partylist", widget.name)
+      assert.are.equal("pl", widget.alias)
     end)
   end)
 
@@ -1076,6 +1135,493 @@ describe("partylist widget", function()
       env.party = { a10 = member("Zeid", 3) }
       settle(2)
       assert.is_true(#prims.all < main_row)
+    end)
+  end)
+  --[[ The three lists are ONE registered component with three anchors, so the
+       framework places each of them independently while owning a single
+       `visible` flag for the widget. Everything here is the anchor half of the
+       widget contract; the per-list on/off that replaced `//hud hide
+       alliancelist1` is with the commands. ]]
+  describe("multi-anchor contract", function()
+    it("declares its three anchors, main first", function()
+      build()
+      assert.are.same({ "main", "alliance1", "alliance2" }, widget.anchors())
+    end)
+
+    --[[ layout.repair keys the anchored branch off the DEFAULTS, so a stray
+         top-level pos would be shed from every stored file it repaired.
+
+         Iterated from anchors() rather than a hardcoded list, and counted in
+         both directions: the ordered names live in partylist.lua and the
+         seeding copy in defaults.lua, so an anchor added to one alone would
+         otherwise reach a list with no defaults at all - at factory time,
+         before login, which is the failure this repo cannot diagnose. ]]
+    it("seeds a placement and a settings block for every anchor it declares", function()
+      build()
+      local layout = widget.defaults.layout
+      assert.is_nil(layout.pos)
+      assert.is_nil(layout.scale)
+      assert.is_true(layout.visible)
+
+      local seeded = 0
+      for _ in pairs(widget.defaults.lists) do
+        seeded = seeded + 1
+      end
+      assert.are.equal(#widget.anchors(), seeded, "defaults and anchors() must name the same lists")
+
+      for _, name in ipairs(widget.anchors()) do
+        assert.is_table(layout.anchors[name].pos, name .. " must ship a position")
+        assert.is_number(layout.anchors[name].scale, name .. " must ship a scale")
+        assert.is_table(widget.defaults.lists[name], name .. " must ship its own settings")
+      end
+
+      -- Seeded only where it can be drawn: the alliance row layout has no range
+      -- block, and the verb is refused there.
+      assert.is_table(widget.defaults.lists.main.range)
+      assert.is_nil(widget.defaults.lists.alliance1.range)
+      assert.is_nil(widget.defaults.lists.alliance2.range)
+    end)
+
+    it("gives each anchor back the origin it was given", function()
+      build()
+      place("main", 100, 200)
+      place("alliance1", 300, 400)
+      place("alliance2", 500, 600)
+      env.party = { p0 = member("Ayame", 1), a10 = member("Zeid", 3), a20 = member("Curilla", 5) }
+      settle(2)
+      local function origin(name)
+        local x, y = widget.get_bounds(name)
+        return { x, y }
+      end
+      assert.are.same({ 100, 200 }, origin("main"))
+      assert.are.same({ 300, 400 }, origin("alliance1"))
+      assert.are.same({ 500, 600 }, origin("alliance2"))
+    end)
+
+    -- get_bounds and set_pos route through the same lookup, so bounds alone
+    -- cannot tell a correct fan-out from one that moves the wrong list.
+    it("draws each list at its own anchor's origin", function()
+      build()
+      place("main", 100, 200)
+      place("alliance1", 900, 200)
+      widget.handle_command({ "alliance1", "on" })
+      env.party = { p0 = member("Ayame", 1), a10 = member("Zeid", 3) }
+      settle(2)
+
+      local main_x, ally_x = nil, nil
+      for _, prim in ipairs(prims.texts) do
+        if prim.visible then
+          main_x = main_x or (prim.last.text == "Ayame" and prim.x or nil)
+          ally_x = ally_x or (prim.last.text == "Zeid" and prim.x or nil)
+        end
+      end
+      assert.is_not_nil(main_x)
+      assert.is_not_nil(ally_x)
+      assert.is_true(main_x >= 100 and main_x < 500, ("main drew at %.0f"):format(main_x))
+      assert.is_true(ally_x >= 900, ("alliance1 drew at %.0f"):format(ally_x))
+    end)
+
+    it("scales one anchor without touching another", function()
+      build()
+      place("main", 100, 200)
+      place("alliance1", 300, 400)
+      env.party = { p0 = member("Ayame", 1), a10 = member("Zeid", 3) }
+      settle(2)
+      local _, _, main_width = widget.get_bounds("main")
+      local _, _, ally_width = widget.get_bounds("alliance1")
+      widget.set_scale(0.5, "alliance1")
+      assert.are.equal(main_width, select(3, widget.get_bounds("main")))
+      assert.are.equal(ally_width / 2, select(3, widget.get_bounds("alliance1")))
+    end)
+
+    -- Crossbar's guard: core fans every placement out over every anchor, and a
+    -- name that is not ours must cost nothing rather than crash the apply.
+    it("ignores a placement for an anchor it does not have", function()
+      build()
+      place("main", 100, 200)
+      assert.has_no.errors(function()
+        widget.set_pos(10, 20, "wxhb_left")
+        widget.set_scale(3, nil)
+        widget.set_pos(10, 20)
+      end)
+      assert.is_nil(widget.get_bounds("wxhb_left"))
+      local x, y = widget.get_bounds("main")
+      assert.are.same({ 100, 200 }, { x, y })
+    end)
+
+    it("reports no bounds for an anchor it has never been given a position for", function()
+      build()
+      place("main", 100, 200)
+      assert.is_nil(widget.get_bounds("alliance1"))
+    end)
+  end)
+  --[[ show/hide/detach are the framework's, and reach the widget as a whole -
+       auto-hide during a cutscene or a zone, and the logout that detaches. A
+       fan-out that quietly served the main list alone would leave the alliance
+       lists on screen through a cutscene, which no spec placing one anchor can
+       see. ]]
+  describe("the framework's whole-widget calls", function()
+    local function all_three_drawing()
+      build()
+      widget.handle_command({ "alliance1", "on" })
+      widget.handle_command({ "alliance2", "on" })
+      for _, name in ipairs({ "alliance1", "alliance2" }) do
+        widget.set_scale(1, name)
+        widget.set_pos(700, 200, name)
+      end
+      env.party = { p0 = member("Ayame", 1), a10 = member("Zeid", 3), a20 = member("Curilla", 5) }
+      settle(2)
+      local drawn = {}
+      for _, prim in ipairs(prims.texts) do
+        if prim.visible then
+          drawn[tostring(prim.last.text)] = true
+        end
+      end
+      for _, name in ipairs({ "Ayame", "Zeid", "Curilla" }) do
+        assert.is_true(drawn[name] == true, name .. " has to be on screen before it can be taken off it")
+      end
+    end
+
+    local function nothing_visible()
+      for _, prim in ipairs(prims.all) do
+        assert.is_false(prim.visible, "a prim was left on screen")
+      end
+    end
+
+    it("takes every list off screen on hide", function()
+      all_three_drawing()
+      widget.hide()
+      nothing_visible()
+    end)
+
+    it("takes every list off screen on detach", function()
+      all_three_drawing()
+      widget.detach()
+      nothing_visible()
+    end)
+
+    -- The config the outgoing character was attached to, and the closure that
+    -- writes it, must not outlive the detach. Core does not route a command to
+    -- a detached component, so this is a defence rather than a live path.
+    it("stops writing config once it has been detached", function()
+      build()
+      widget.detach()
+      local before = env.saves
+      widget.handle_command({ "spacing", "4" })
+      widget.handle_command({ "alliance1", "on" })
+      assert.are.equal(before, env.saves)
+    end)
+
+    -- The other half of the rule below: placing a list is what makes it
+    -- drawable, so the placement has to re-ask the question. Core always
+    -- follows a placement with show(), which is why nothing noticed - but a
+    -- widget that only draws if its caller happens to call the right thing
+    -- next is the silent failure this repo keeps being bitten by.
+    it("draws a list the moment it is placed, without waiting to be shown again", function()
+      build()
+      widget.handle_command({ "alliance1", "on" })
+      widget.show()
+      env.party = { a10 = member("Zeid", 3) }
+      settle(2)
+      widget.set_scale(1, "alliance1")
+      widget.set_pos(700, 200, "alliance1")
+      settle(2)
+
+      local drawn, framed = false, false
+      for _, prim in ipairs(prims.texts) do
+        drawn = drawn or (prim.visible and prim.last.text == "Zeid")
+      end
+      -- The row's own prims come back through the draw path, which asks
+      -- drawing() per element. The background does not: it is behind a cache
+      -- only apply_visibility writes, so it is the half that stays dark.
+      for _, prim in ipairs(prims.images) do
+        if prim.visible and type(prim.last.path) == "string" and prim.last.path:find("BgTop", 1, true) then
+          framed = framed or (prim.x ~= nil and prim.x >= 700)
+        end
+      end
+      assert.is_true(drawn, "the row has to draw")
+      assert.is_true(framed, "and so does the frame behind it")
+    end)
+
+    --[[ A list core has shown but never placed has no origin to draw at, and
+         its background would otherwise be pushed onto the screen at whatever
+         position the prims were created with. Unreachable through core, which
+         places every anchor before it shows anything - but `drawing()` is what
+         the rest of this file relies on to mean "on screen". ]]
+    it("draws nothing for a list that has been shown but never placed", function()
+      build()
+      widget.handle_command({ "alliance1", "on" })
+      widget.show()
+      for _, prim in ipairs(prims.all) do
+        if prim.visible then
+          assert.is_not_nil(prim.x, "a prim was shown before it was ever placed")
+        end
+      end
+    end)
+  end)
+
+  --[[ `//hud partylist [<list>] <verb> ...`. The list word leads, and its
+       absence means the main party - so every line that worked while the three
+       were separate components still means what it did. The per-list on/off
+       replaces `//hud show|hide alliancelist1`, which cannot exist any more:
+       the framework's `visible` is per widget and nothing in `//hud` addresses
+       an anchor. ]]
+  describe("the command router", function()
+    local function said(args)
+      return table.concat(widget.handle_command(args), "\n")
+    end
+
+    it("addresses the main party when no list is named", function()
+      build()
+      said({ "spacing", "4" })
+      assert.are.equal(4, widget.defaults.lists.main.item_spacing)
+      assert.are.equal(0, widget.defaults.lists.alliance1.item_spacing)
+    end)
+
+    it("addresses the list it is given", function()
+      build()
+      said({ "alliance1", "spacing", "6" })
+      assert.are.equal(6, widget.defaults.lists.alliance1.item_spacing)
+      assert.are.equal(0, widget.defaults.lists.main.item_spacing)
+    end)
+
+    it("switches one list on and off, and persists it", function()
+      build()
+      local before = env.saves
+      said({ "alliance1", "on" })
+      assert.is_true(widget.defaults.lists.alliance1.enabled)
+      assert.is_true(env.saves > before)
+      said({ "alliance1", "off" })
+      assert.is_false(widget.defaults.lists.alliance1.enabled)
+    end)
+
+    it("stops drawing a list that has been switched off", function()
+      build("alliance1")
+      env.party = { a10 = member("Zeid", 3) }
+      settle(2)
+      local drawn = false
+      for _, prim in ipairs(prims.texts) do
+        drawn = drawn or (prim.visible and prim.last.text == "Zeid")
+      end
+      assert.is_true(drawn, "the list has to be on screen before it can be switched off")
+
+      said({ "alliance1", "off" })
+      for _, prim in ipairs(prims.texts) do
+        if prim.last.text == "Zeid" then
+          assert.is_false(prim.visible)
+        end
+      end
+    end)
+
+    -- The asymmetry is real - 0x076 carries the main party alone and the
+    -- alliance row draws no buff icons - so it is refused out loud rather than
+    -- quietly applied to a list the user did not name.
+    it("refuses the main-only verbs at an alliance list", function()
+      build()
+      local reply = said({ "alliance1", "hidesolo", "on" })
+      assert.is_not_nil(reply:find("main party only", 1, true))
+      assert.is_false(widget.defaults.lists.main.hide_solo == true)
+      assert.is_not_nil(said({ "alliance2", "buff", "reset" }):find("main party only", 1, true))
+    end)
+
+    -- The alliance row layout has no range block at all, so the setting could
+    -- only ever be stored and never drawn.
+    it("refuses range at an alliance list too", function()
+      build()
+      assert.is_not_nil(said({ "alliance1", "range", "5", "10" }):find("main party only", 1, true))
+      said({ "range", "5", "10" })
+      assert.are.equal(5, widget.defaults.lists.main.range.near)
+    end)
+
+    -- A report that advertises a setting the next command refuses is worse than
+    -- either one alone.
+    it("leaves range out of an alliance list's own report", function()
+      build()
+      assert.is_nil(said({ "alliance1" }):find("range", 1, true))
+      assert.is_not_nil(said({ "main" }):find("range", 1, true))
+    end)
+
+    it("leaves range out of an alliance list's own verb hint", function()
+      build()
+      local hint = said({ "alliance1", "wobble" })
+      assert.is_nil(hint:find("range", 1, true))
+      assert.is_not_nil(said({ "wobble" }):find("range", 1, true))
+    end)
+
+    it("still takes the main-only verbs at the main party", function()
+      build()
+      said({ "hidesolo", "on" })
+      assert.is_true(widget.defaults.lists.main.hide_solo)
+      said({ "main", "hidesolo", "off" })
+      assert.is_false(widget.defaults.lists.main.hide_solo)
+    end)
+
+    it("reports every list when nothing is named, and one when it is", function()
+      build()
+      local all = said({})
+      assert.is_not_nil(all:find("partylist alliance1", 1, true))
+      assert.is_not_nil(all:find("partylist alliance2", 1, true))
+      assert.is_not_nil(all:find("disabled", 1, true))
+      local one = said({ "alliance2" })
+      assert.is_not_nil(one:find("partylist alliance2", 1, true))
+      assert.is_nil(one:find("alliance1", 1, true))
+    end)
+
+    -- Every other verb plumbs `changed` back so an unchanged setting writes no
+    -- file; the switch has to do the same.
+    it("writes no config when the switch is already where it is asked to be", function()
+      build()
+      said({ "alliance1", "on" })
+      local after_change = env.saves
+      said({ "alliance1", "on" })
+      assert.are.equal(after_change, env.saves)
+      said({ "alliance1", "off" })
+      assert.is_true(env.saves > after_change)
+    end)
+
+    it("takes a bare on|off as the main party's", function()
+      build()
+      said({ "off" })
+      assert.is_false(widget.defaults.lists.main.enabled)
+      said({ "on" })
+      assert.is_true(widget.defaults.lists.main.enabled)
+    end)
+
+    --[[ Deliberately NOT "shown"/"hidden": that is the framework's word for the
+         whole widget (`//hud hide partylist`, and what `//hud list` prints), and
+         one word for two independent switches is how a report ends up saying a
+         list is on while nothing is on screen. ]]
+    it("says whether the list it reports on is enabled, in words the framework does not use", function()
+      build()
+      local reply = said({ "alliance1" })
+      assert.is_nil(reply:find("hidden", 1, true))
+      assert.is_nil(reply:find("shown", 1, true))
+    end)
+
+    it("says whether the list it reports on is switched on", function()
+      build()
+      assert.is_not_nil(said({ "alliance1" }):find("disabled", 1, true))
+      said({ "alliance1", "on" })
+      assert.is_not_nil(said({ "alliance1" }):find("enabled", 1, true))
+    end)
+
+    it("answers an unknown verb with the hint it always did", function()
+      build()
+      assert.is_not_nil(said({ "wobble" }):find("wobble", 1, true))
+    end)
+  end)
+
+  --[[ PA4: a list switched off must still be draggable, or it can never be
+       positioned again. Core force-shows the COMPONENT in layout mode and
+       knows nothing about this component's own per-list flag, so preview
+       outranking `shown` is the component's half of that force-show. ]]
+  describe("preview against a switched-off list", function()
+    it("draws a list that is off while previewing, and stops when it ends", function()
+      build("alliance1")
+      widget.handle_command({ "alliance1", "off" })
+      env.party = { a10 = member("Zeid", 3) }
+      settle(2)
+
+      widget.set_preview(true)
+      settle(2)
+      local drawn = false
+      for _, prim in ipairs(prims.texts) do
+        drawn = drawn or (prim.visible and type(prim.last.text) == "string" and prim.last.text ~= "")
+      end
+      assert.is_true(drawn, "a switched-off list must draw while previewing")
+
+      widget.set_preview(false)
+      for _, prim in ipairs(prims.texts) do
+        assert.is_false(prim.visible)
+      end
+    end)
+
+    it("reports bounds for a switched-off list, so it can still be dragged", function()
+      build("alliance1")
+      widget.handle_command({ "alliance1", "off" })
+      local x, y, width = widget.get_bounds("alliance1")
+      assert.are.same({ 100, 200 }, { x, y })
+      assert.is_true(width > 0)
+    end)
+  end)
+  --[[ config.lua is code and is hand-editable, and `//hud copy` imports another
+       character's - so a list entry can be any shape at all by the time it
+       arrives. It has to degrade to defaults: this attach runs inside core's
+       login path, under the guard-wrapped prerender, where five errors disable
+       the render loop outright. ]]
+  describe("a config that is not the shape it should be", function()
+    local function attach(config)
+      build()
+      widget.attach(config, function()
+        env.saves = env.saves + 1
+      end)
+      widget.set_scale(1, "main")
+      widget.set_pos(100, 200, "main")
+      widget.show()
+    end
+
+    it("falls back to defaults for a list entry that is not a table", function()
+      assert.has_no.errors(function()
+        attach({ lists = { main = 1, alliance1 = "on", alliance2 = false } })
+      end)
+      env.party = { p0 = member("Ayame", 1) }
+      settle(2)
+      local drawn = false
+      for _, prim in ipairs(prims.texts) do
+        drawn = drawn or (prim.visible and prim.last.text == "Ayame")
+      end
+      assert.is_true(drawn, "the main list must still draw on defaults")
+    end)
+
+    it("falls back to defaults when there are no list entries at all", function()
+      for _, broken in ipairs({ { lists = "nonsense" }, {} }) do
+        assert.has_no.errors(function()
+          attach(broken)
+        end)
+        -- Not just "it did not throw": a config swallowed whole would leave
+        -- every list unattached, which draws nothing and says nothing.
+        assert.is_table(broken.lists.main, "the config must be seeded in place")
+        assert.are.equal(0, broken.lists.main.item_spacing)
+        widget.handle_command({ "spacing", "7" })
+        assert.are.equal(7, broken.lists.main.item_spacing)
+      end
+    end)
+
+    --[[ The round trip of this change's headline behaviour: the flag is saved
+         to config.lua, and a relog, a `//hud slot` switch and the reload after
+         `//hud copy` all come back through attach. Read it there or the list
+         comes up in whatever state the factory happened to leave it in, with
+         the file saying otherwise. ]]
+    it("takes each list's on/off state from the config it is attached to", function()
+      attach({ lists = { main = { enabled = false }, alliance1 = { enabled = true } } })
+      widget.set_scale(1, "alliance1")
+      widget.set_pos(400, 200, "alliance1")
+      env.party = { p0 = member("Ayame", 1), a10 = member("Zeid", 3) }
+      settle(2)
+
+      local main_drawn, ally_drawn = false, false
+      for _, prim in ipairs(prims.texts) do
+        if prim.visible then
+          main_drawn = main_drawn or prim.last.text == "Ayame"
+          ally_drawn = ally_drawn or prim.last.text == "Zeid"
+        end
+      end
+      assert.is_false(main_drawn, "main was switched off in the config")
+      assert.is_true(ally_drawn, "alliance1 was switched on in the config")
+    end)
+
+    -- Writing into the defaults instead would make every command a silent
+    -- no-op: save() serialises the config it was attached to, which would never
+    -- have seen the change.
+    it("writes a command into the config it was attached to", function()
+      local config = { lists = {} }
+      attach(config)
+      widget.handle_command({ "spacing", "4" })
+      assert.are.equal(4, config.lists.main.item_spacing)
+      assert.are.equal(0, widget.defaults.lists.main.item_spacing)
+      widget.handle_command({ "alliance1", "on" })
+      assert.is_true(config.lists.alliance1.enabled)
+      assert.is_false(widget.defaults.lists.alliance1.enabled)
     end)
   end)
 end)

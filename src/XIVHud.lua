@@ -792,32 +792,26 @@ step("building the targetbar component", function()
   }))
 end)
 
--- One factory, three components: the main party and the two alliance parties
--- each get their own config file, layout slot and drag box.
-step("building the party list components", function()
+-- One component over three lists: the main party and the two alliance parties,
+-- each placed independently through an anchor of its own (`main`, `alliance1`,
+-- `alliance2`), sharing one config file and one `visible` flag.
+step("building the party list component", function()
   if safe_mode or libraries_error then
     return
   end
-  for _, list in ipairs({
-    { name = "partylist", variant = "main" },
-    { name = "alliancelist1", variant = "alliance1" },
-    { name = "alliancelist2", variant = "alliance2" },
-  }) do
-    core.register(new_partylist({
-      name = list.name,
-      variant = list.variant,
-      new_text = wrap_text,
-      new_image = wrap_image,
-      screen = screen,
-      asset = asset,
-      resources = res,
-      get_player = read_player,
-      get_party = read_party,
-      generation = read_generation,
-      get_mob_by_target = read_mob_by_target,
-      get_info = read_info,
-    }))
-  end
+  core.register(new_partylist({
+    name = "partylist",
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
+    resources = res,
+    get_player = read_player,
+    get_party = read_party,
+    generation = read_generation,
+    get_mob_by_target = read_mob_by_target,
+    get_info = read_info,
+  }))
 end)
 
 --[[ The crossbar, live since CB5: all three bars drawn, slot presses
@@ -1164,10 +1158,12 @@ windower.register_event(
      here rather than once per consumer, and the result rides the fourth
      argument.
 
-       - the three party-list ids Windower has a field definition for, since
-         `partylist`, `alliancelist1` and `alliancelist2` would otherwise each
-         redo the same `packets.parse` call on every packet. `PARTY_BUFFS` has
-         no such definition (see packets.lua) and is decoded by the component
+       - the three party-list ids Windower has a field definition for. The
+         party list is one component now, but it is still three lists behind
+         one name, each with its own state machine reading the same packet,
+         so the decode would otherwise be redone three times over. Doing it
+         here also keeps that private to the component. `PARTY_BUFFS` has no
+         such definition (see packets.lua) and is decoded by the component
          itself from the raw bytes.
        - the action packet 0x028, wanted by targetbar's cast bar and by the
          crossbar's skillchain engine, which parsed it independently until

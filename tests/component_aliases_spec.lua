@@ -13,9 +13,7 @@ local FACTORIES = {
   { module = "components/equipviewer/equipviewer" },
   { module = "components/targetbar/targetbar" },
   { module = "components/crossbar/crossbar" },
-  { module = "components/partylist/partylist", name = "partylist", variant = "main" },
-  { module = "components/partylist/partylist", name = "alliancelist1", variant = "alliance1" },
-  { module = "components/partylist/partylist", name = "alliancelist2", variant = "alliance2" },
+  { module = "components/partylist/partylist" },
 }
 
 describe("component aliases", function()
@@ -70,6 +68,7 @@ describe("component aliases", function()
       ev = "equipviewer",
       tb = "targetbar",
       cb = "crossbar",
+      pl = "partylist",
     }, registry.alias_map())
   end)
 end)

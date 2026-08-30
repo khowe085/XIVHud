@@ -28,10 +28,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --[[ Party List -- the FFXIV party list for FFXI, on XIVParty's xiv art.
 
-     One factory, registered three times: the main party and the two alliance
-     parties are separate components, so each gets its own config file, layout
-     slot, drag box and `//hud show|hide`. `ctx.variant` picks which party the
-     instance reads and which of the two row layouts it draws.
+     ONE registered component over three lists: the main party and the two
+     alliance parties, each placed independently through an anchor of the same
+     name. `new_list` below is the whole of one list -- its own logic instance,
+     its own prims, its own box -- and `new` builds three of them and routes
+     the contract by anchor. A list still knows only its own variant, which
+     picks which party keys it reads and which of the two row layouts it draws.
+
+     The framework's `visible` is per widget, so a right-click in layout mode
+     toggles all three together; the per-list on/off is this component's own
+     `enabled` -- its own word, deliberately, since `shown` is what the
+     framework's switch is called -- and preview outranks it so a disabled list
+     can still be dragged back into place.
 
      This file owns prims and nothing else. What to draw comes from logic.lua,
      whether to draw comes from the framework. A row's prims are built when a
@@ -56,22 +64,30 @@ local PARSED_PACKETS = {
   [packet_parsers.CHAR] = true,
 }
 
-local function new(ctx)
-  local variant = ctx.variant or "main"
-  local self = { name = ctx.name or "partylist" }
-
-  local screen_width, screen_height = (ctx.screen or function() end)()
-  self.defaults = build_defaults(screen_width, screen_height, variant)
+--[[ One list: the prims, the logic instance and the placement for a single
+     anchor. It implements the widget contract in the singular -- no anchor
+     argument reaches it -- and `new` below is what turns three of these into
+     one component. ]]
+local function new_list(ctx, variant, defaults)
+  local self = {}
 
   local layout = layouts[variant == "main" and "main" or "alliance"]
-  local config = self.defaults
+  local config = defaults
   local logic = new_logic({ variant = variant, config = config, resources = ctx.resources or {} })
+  --[[ This list's own on/off, replacing XIVParty's hideAlliance. Apart from
+       `visible`, which is the framework's and governs all three lists at once -
+       and deliberately not sharing its word, so a report can never say a list
+       is on while the widget it belongs to is off.
+
+       `== true` rather than a nil-tolerant test, the way the framework reads
+       `visible`: the defaults always carry the key, so anything else in it is a
+       broken file, and a broken file must not switch a list ON. ]]
+  local enabled = config.enabled == true
 
   local attached = false
   -- The service's read counter as of the last roster rebuild; nil until the
   -- first frame, which is why the first one always rebuilds.
   local last_generation = nil
-  local save = nil
   local pos = nil
   local scale = 1
   local preview = false
@@ -85,6 +101,18 @@ local function new(ctx)
     width = margin.left + layout.column_width * layout.columns + margin.right,
     height = margin.top + layout.row_height + margin.bottom,
   }
+
+  --[[ Whether this list puts anything on screen at all. The reasons do not
+       rank the same way: the framework's `visible` and hide_solo both silence
+       it outright, while `enabled` -- the user's own per-list toggle -- is
+       overruled by preview, or a disabled list could never be dragged back
+       into place. An unplaced list is silenced too: nothing has told it where
+       it is, so its background would go up at whatever position its prims were
+       created with. Core places every anchor before it shows one, so that last
+       term is a defence rather than a live path. ]]
+  local function drawing()
+    return visible and pos ~= nil and not suppressed and (enabled or preview)
+  end
 
   -- The art overhangs its column rectangle, so the widget's own origin is the
   -- top-left of everything it draws, and the row grid starts inside it.
@@ -429,8 +457,8 @@ local function new(ctx)
   local function want(row, prim, key, on)
     row.showing[key] = on
     row.by_key[key] = prim
-    push(row, key .. ".visible", visible and not suppressed and on, function(shown)
-      if shown then
+    push(row, key .. ".visible", drawing() and on, function(wanted)
+      if wanted then
         prim.show()
       else
         prim.hide()
@@ -525,7 +553,7 @@ local function new(ctx)
       end
     end
 
-    local wanted = visible and not suppressed
+    local wanted = drawing()
     if background_shown == wanted then
       return
     end
@@ -677,9 +705,10 @@ local function new(ctx)
   --[[ Packets ------------------------------------------------------------ ]]
 
   --[[ `parsed` is the entry point's `packets.parse` result, handed in rather
-       than fetched: three components see every chunk, and parsing the same
+       than fetched: all three lists see every chunk, and parsing the same
        packet three times to reach the same table is work done to be thrown
-       away twice. 0x076 is decoded from the raw bytes instead: Windower does
+       away twice. One component now, but still three state machines reading
+       it. 0x076 is decoded from the raw bytes instead: Windower does
        define it, but as an opaque data[8] bit mask plus a data[32] blob, so
        the bit arithmetic is ours either way. ]]
   local function handle_chunk(id, original, parsed)
@@ -721,12 +750,12 @@ local function new(ctx)
     end
   end
 
-  --[[ The widget contract -------------------------------------------------- ]]
+  --[[ The contract, in the singular ------------------------------------- ]]
 
-  function self.attach(loaded_config, persist)
+  function self.attach(loaded_config)
     config = loaded_config
-    save = persist
     attached = true
+    enabled = config.enabled == true
     -- Forget the last read: a relog inside one interval would otherwise keep
     -- the previous character's roster until the service next reads.
     last_generation = nil
@@ -736,7 +765,6 @@ local function new(ctx)
 
   function self.detach()
     attached = false
-    save = nil
     self.hide()
   end
 
@@ -756,6 +784,11 @@ local function new(ctx)
       reposition()
     else
       apply_layout()
+      -- Being placed is one of the reasons drawing() weighs, so the first
+      -- placement has to re-ask it. Core happens to follow every placement
+      -- with show(), but a widget that draws only because its caller calls
+      -- the right thing next is exactly the silent failure to avoid.
+      apply_visibility()
     end
   end
 
@@ -778,6 +811,9 @@ local function new(ctx)
     preview = on
     logic.set_preview(on)
     apply_box(logic.tick())
+    -- Preview outranks `enabled`: a list the user switched off must still draw
+    -- in layout mode, or there would be no way to drag it back on screen.
+    apply_visibility()
     if pos then
       apply_layout()
     end
@@ -791,6 +827,24 @@ local function new(ctx)
   function self.hide()
     visible = false
     apply_visibility()
+  end
+
+  -- The user's own on/off for this list, answering whether it moved: every
+  -- other verb plumbs the same flag back, and the outer widget writes the one
+  -- file all three share only when something in it actually changed.
+  function self.set_enabled(on)
+    on = on == true
+    if enabled == on then
+      return false
+    end
+    enabled = on
+    config.enabled = enabled
+    apply_visibility()
+    return true
+  end
+
+  function self.enabled()
+    return enabled
   end
 
   -- The origin set_pos was given, exactly: core clamps the widget on screen by
@@ -816,15 +870,14 @@ local function new(ctx)
     end
   end
 
-  function self.handle_command(args)
+  -- The verbs logic.lua parses, for this list alone. The outer widget picks
+  -- which list a `//hud partylist ...` line addresses.
+  function self.command(args)
     local lines, changed = logic.command(args)
     if changed then
       apply_layout()
-      if save then
-        save()
-      end
     end
-    return lines
+    return lines, changed
   end
 
   function self.destroy()
@@ -834,6 +887,205 @@ local function new(ctx)
     for slot in pairs(rows) do
       dispose_row(slot)
     end
+  end
+
+  return self
+end
+
+--[[ The component: three lists under one name, one config file and one
+     `visible` flag, addressed through the anchor names below. ]]
+
+-- Main first. This is the order `//hud list` prints and, reversed, layout
+-- mode's hit-test priority, so a later anchor wins where two overlap.
+local ANCHORS = { "main", "alliance1", "alliance2" }
+
+--[[ Verbs the main party alone can answer, refused out loud at an alliance
+     list rather than quietly applied to main or quietly stored where nothing
+     will read them. Two reasons, both structural: 0x076 carries the main party
+     alone and an alliance row draws no buff icons, and the alliance row layout
+     has no range block at all - `range` was accepted and inert there before
+     this, back to when the lists were three components. ]]
+local MAIN_ONLY = { hidesolo = true, buff = true, range = true }
+
+local function new(ctx)
+  local self = { name = ctx.name or "partylist", alias = "pl" }
+
+  local screen_width, screen_height = (ctx.screen or function() end)()
+  self.defaults = build_defaults(screen_width, screen_height)
+
+  local save = nil
+  local lists = {}
+  for _, anchor in ipairs(ANCHORS) do
+    lists[anchor] = new_list(ctx, anchor, self.defaults.lists[anchor])
+  end
+
+  local function each(method, ...)
+    for _, anchor in ipairs(ANCHORS) do
+      lists[anchor][method](...)
+    end
+  end
+
+  function self.anchors()
+    return ANCHORS
+  end
+
+  --[[ Core fans a placement out over every anchor on every apply, and layout
+       mode drags one of them -- so a name that is not ours has to cost
+       nothing rather than crash the apply. Crossbar's guard, for the same
+       reason. ]]
+  local function list_at(anchor)
+    return anchor ~= nil and lists[anchor] or nil
+  end
+
+  --[[ A config file is code and is hand-editable, and `//hud copy` imports
+       another character's, so a list entry can be any shape at all by the time
+       it reaches here - and lib/settings' merge leaves a non-table where it
+       found one, since it only recurses where both sides are tables. This
+       attach runs inside core's login path under the guard-wrapped prerender,
+       where five errors disable the render loop, so anything unusable is
+       replaced with a FRESH copy of the defaults rather than indexed.
+
+       Fresh, and written back into the config, deliberately: handing a list
+       `self.defaults` would have every later command write into the defaults
+       table, which `save()` does not serialise - a change the user was told
+       had been made and that no file ever carried. ]]
+  function self.attach(loaded_config, persist)
+    save = persist
+    local config = type(loaded_config) == "table" and loaded_config or {}
+    if type(config.lists) ~= "table" then
+      config.lists = {}
+    end
+    local seed = nil
+    for _, anchor in ipairs(ANCHORS) do
+      if type(config.lists[anchor]) ~= "table" then
+        -- Built at most once per attach, however many entries are unusable.
+        seed = seed or build_defaults(screen_width, screen_height)
+        config.lists[anchor] = seed.lists[anchor]
+      end
+      lists[anchor].attach(config.lists[anchor])
+    end
+  end
+
+  -- The config tables and the saver belong to the character being detached;
+  -- core does not route a command to a detached component, but holding its
+  -- writer afterwards is a defence worth keeping.
+  function self.detach()
+    save = nil
+    each("detach")
+  end
+
+  function self.set_pos(x, y, anchor)
+    local list = list_at(anchor)
+    if list then
+      list.set_pos(x, y)
+    end
+  end
+
+  function self.set_scale(scale, anchor)
+    local list = list_at(anchor)
+    if list then
+      list.set_scale(scale)
+    end
+  end
+
+  function self.set_preview(on)
+    each("set_preview", on)
+  end
+
+  function self.show()
+    each("show")
+  end
+
+  function self.hide()
+    each("hide")
+  end
+
+  function self.get_bounds(anchor)
+    local list = list_at(anchor)
+    if not list then
+      return nil
+    end
+    return list.get_bounds()
+  end
+
+  function self.update(event, ...)
+    each("update", event, ...)
+  end
+
+  function self.destroy()
+    each("destroy")
+  end
+
+  --[[ `//hud partylist [<list>] <verb> ...`, the list word leading so it reads
+       the same as the on/off verb and leaves the verb grammar behind it
+       untouched. Absent, the main party is addressed - which is what every
+       line that worked before this component was merged still means. ]]
+  -- What `//hud partylist <list>` reports: the list's own settings, and whether
+  -- it is switched on at all - which is the first thing anyone asking about a
+  -- blank list needs to hear.
+  local function status_of(anchor)
+    local lines = lists[anchor].command({})
+    lines[#lines + 1] = ("  %s"):format(lists[anchor].enabled() and "enabled" or "disabled")
+    return lines
+  end
+
+  local function status_all()
+    local lines = {}
+    for _, anchor in ipairs(ANCHORS) do
+      for _, line in ipairs(status_of(anchor)) do
+        lines[#lines + 1] = line
+      end
+    end
+    return lines
+  end
+
+  local function set_enabled(anchor, on)
+    if lists[anchor].set_enabled(on) and save then
+      save()
+    end
+    return { ("partylist %s %s"):format(anchor, on and "enabled" or "disabled") }
+  end
+
+  function self.handle_command(args)
+    args = args or {}
+    local first = args[1] and args[1]:lower() or nil
+    if not first then
+      return status_all()
+    end
+
+    -- The list word, if the first one is a list at all.
+    local anchor = lists[first] and first or nil
+    local rest = args
+    if anchor then
+      rest = {}
+      for index = 2, #args do
+        rest[index - 1] = args[index]
+      end
+    end
+
+    local verb = rest[1] and rest[1]:lower() or nil
+    if verb == nil then
+      return status_of(anchor or "main")
+    end
+    -- The per-list switch, which is what `//hud show|hide alliancelist1` was
+    -- before the three became one widget. Unnamed it means the main party,
+    -- like every other verb here.
+    if verb == "on" or verb == "off" then
+      return set_enabled(anchor or "main", verb == "on")
+    end
+
+    -- Kept loud rather than silently applied to main: the asymmetry is real,
+    -- and a command that appears to work on the wrong list is worse than one
+    -- that refuses.
+    if anchor and anchor ~= "main" and MAIN_ONLY[verb] then
+      return { ("%s is the main party only, so //hud partylist %s takes it, not %s"):format(verb, verb, anchor) }
+    end
+
+    local lines, changed = lists[anchor or "main"].command(rest)
+    if changed and save then
+      save()
+    end
+    return lines
   end
 
   return self

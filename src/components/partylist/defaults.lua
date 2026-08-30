@@ -26,15 +26,20 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ Party list configuration defaults, one variant per registered component.
+--[[ Party list configuration defaults - one file for all three lists.
 
      Keys are snake_case; the XIVParty setting each replaces is named in the
      comments. Position, scale and visibility are framework-owned and live in
      layout slots, so XIVParty's party.pos / party.scale are gone -- the default
-     slot just reproduces its first-run anchor.
+     slot just reproduces its first-run anchor, once per anchor.
 
-     XIVParty's hideAlliance has no equivalent here either: the alliance lists
-     are separate components, so `//hud hide alliancelist1` already says it. ]]
+     The three lists are one component with three anchors, so each list's own
+     display settings are namespaced under `lists.<anchor>`: the anchor name is
+     the single key across the config, the code, the command word and the
+     layout-mode label. XIVParty's hideAlliance is `lists.<anchor>.enabled` here -
+     the framework's `visible` governs the whole widget, so the per-list on/off
+     has to be the component's own, and carries its own word for the same
+     reason: `shown` is what the framework's switch is called. ]]
 
 -- XIVParty's relative first-run anchors, resolution independent.
 local ANCHORS = {
@@ -43,9 +48,15 @@ local ANCHORS = {
   alliance2 = { 0.8671875, 0.5972222 },
 }
 
+-- Main first: the anchor order the widget reports, which is the order
+-- `//hud list` prints. Layout mode hit-tests it REVERSED, so alliance2 wins an
+-- overlap and main is asked last. partylist.lua owns that order; this is the
+-- seeding copy, and a spec holds the two together.
+local LISTS = { "main", "alliance1", "alliance2" }
+
 -- The art is drawn for a 1440p screen, so a 1080p user starts at 0.75 rather
 -- than with a list two thirds of their screen wide. XIVParty's autoscale, but
--- applied once as the default slot scale instead of every frame.
+-- applied once as the default anchor scale instead of every frame.
 local BASE_RESOLUTION_Y = 1440
 
 local function round(value, places)
@@ -53,33 +64,31 @@ local function round(value, places)
   return math.floor(value * factor + 0.5) / factor
 end
 
-return function(screen_width, screen_height, variant)
-  local anchor = ANCHORS[variant] or ANCHORS.main
+-- One list's own settings - what its logic instance is handed, and the only
+-- part of the file a list can reach.
+local function list_defaults(name)
   local defaults = {
     item_spacing = 0, -- party.itemSpacing
     align_bottom = false, -- party.alignBottom
     show_empty_rows = false, -- party.showEmptyRows
-    range = {
+    -- The alliance lists start switched off: most play is a single party,
+    -- and two empty boxes on screen would read as a bug. Deliberately not
+    -- called `shown`: the framework has a `visible` of its own over the whole
+    -- widget, and one word for two switches makes a report that cannot be read.
+    enabled = name == "main", -- party.hideAlliance, inverted and per list
+  }
+
+  if name == "main" then
+    -- Seeded on main alone, with the two settings below it: the alliance row
+    -- layout has no range block, so a range here could only ever be stored.
+    defaults.range = {
       numeric = false, -- rangeNumeric
       near = 0, -- rangeIndicator, 0 = off
       far = 0, -- rangeIndicatorFar, 0 = off
-    },
-    layout = {
-      pos = {
-        x = math.floor((screen_width or 0) * anchor[1] + 0.5),
-        y = math.floor((screen_height or 0) * anchor[2] + 0.5),
-      },
-      scale = math.max(0.25, round((screen_height or BASE_RESOLUTION_Y) / BASE_RESOLUTION_Y, 2)),
-      -- The alliance lists start switched off: most play is a single party,
-      -- and two empty boxes on screen would read as a bug.
-      visible = variant == "main",
-    },
-  }
-
-  if variant == "main" then
+    }
     defaults.hide_solo = false -- hideSolo
     -- 0x076 carries the main party only, and the alliance row has no buff
-    -- icons, so there is nothing for the alliance variants to configure.
+    -- icons, so there is nothing for the alliance lists to configure.
     defaults.buffs = {
       -- The tweak: XIVParty's 19+13 icons run 263px past the end of a 410px
       -- row and never clear the bars. Sixteen 20px icons in two rows of eight
@@ -96,4 +105,31 @@ return function(screen_width, screen_height, variant)
   end
 
   return defaults
+end
+
+return function(screen_width, screen_height)
+  local scale = math.max(0.25, round((screen_height or BASE_RESOLUTION_Y) / BASE_RESOLUTION_Y, 2))
+  local lists, anchors = {}, {}
+
+  for _, name in ipairs(LISTS) do
+    local anchor = ANCHORS[name]
+    lists[name] = list_defaults(name)
+    anchors[name] = {
+      pos = {
+        x = math.floor((screen_width or 0) * anchor[1] + 0.5),
+        y = math.floor((screen_height or 0) * anchor[2] + 0.5),
+      },
+      scale = scale,
+    }
+  end
+
+  -- No top-level pos or scale: layout.repair keys the anchored branch off the
+  -- defaults, and would shed a stray pair from every file it repaired anyway.
+  return {
+    lists = lists,
+    layout = {
+      anchors = anchors,
+      visible = true,
+    },
+  }
 end

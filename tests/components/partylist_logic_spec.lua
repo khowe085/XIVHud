@@ -54,7 +54,7 @@ describe("partylist logic", function()
   local config, logic
 
   local function build(variant, overrides)
-    config = build_defaults(1920, 1080, variant or "main")
+    config = build_defaults(1920, 1080).lists[variant or "main"]
     for key, value in pairs(overrides or {}) do
       config[key] = value
     end
