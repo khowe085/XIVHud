@@ -60,6 +60,7 @@ describe("crossbar stand-in", function()
 
   it("implements the contract under the component's name", function()
     assert.are.equal("crossbar", widget.name)
+    assert.are.equal("cb", widget.alias)
     assert.are.same({ 39 }, widget.defaults.input.xhb_left)
     assert.is_nil(widget.get_bounds())
   end)

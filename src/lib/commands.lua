@@ -69,6 +69,9 @@ end
 local function new(deps)
   local self = { reserved = RESERVED }
 
+  -- A component answers to its name or to its short alias, everywhere one is
+  -- taken: `//hud show pb` and `//hud pb width 150` read as `parambar`. The
+  -- name is tried first, though the registry refuses a collision either way.
   local function resolve_component(name)
     local wanted = name:lower()
     for _, registered in ipairs(deps.components() or {}) do
@@ -76,7 +79,8 @@ local function new(deps)
         return registered:lower()
       end
     end
-    return nil
+    local aliases = deps.aliases and deps.aliases() or {}
+    return aliases[wanted]
   end
 
   -- `verb` may be more than one word ("slot list"); anything past it is an error.

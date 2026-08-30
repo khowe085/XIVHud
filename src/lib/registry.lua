@@ -36,6 +36,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local NAME_PATTERN = "^[%a][%w_]*$"
 
+-- An alias stands in for the component's name after `//hud`, so it is a word on
+-- its own: no underscore, and bounded at both ends - one character is too easy
+-- to type by accident, and past four the full name is as quick to type.
+local ALIAS_PATTERN = "^[%a][%w]*$"
+local ALIAS_MIN, ALIAS_MAX = 2, 4
+
 -- Not a verb, but `//hud reset all` already means something else.
 local RESERVED_TARGETS = { all = true }
 
@@ -43,6 +49,7 @@ local function new(deps)
   local self = {}
   local reserved = deps.reserved or {}
   local by_name = {}
+  local by_alias = {}
   local order = {}
 
   local function notify(message)
@@ -66,8 +73,42 @@ local function new(deps)
     if by_name[key] then
       error("component already registered: " .. name, 0)
     end
+    if by_alias[key] then
+      error("component name '" .. name .. "' is already another component's alias", 0)
+    end
+
+    -- The alias is optional; a component without one is reached by its name
+    -- alone. Nothing is claimed until both name and alias have passed, so a
+    -- rejected alias cannot leave its component half registered.
+    local alias_key = nil
+    local alias = component.alias
+    if alias ~= nil then
+      if type(alias) ~= "string" or not alias:match(ALIAS_PATTERN) or #alias < ALIAS_MIN or #alias > ALIAS_MAX then
+        error(
+          ("component alias must be %d-%d letters or digits starting with a letter, got %s"):format(
+            ALIAS_MIN,
+            ALIAS_MAX,
+            tostring(alias)
+          ),
+          0
+        )
+      end
+      alias_key = alias:lower()
+      if reserved[alias_key] or RESERVED_TARGETS[alias_key] then
+        error("component alias '" .. alias .. "' is a reserved XIVHud command", 0)
+      end
+      -- `key` as well as the table: the name is not in `by_name` yet, so
+      -- `{ name = "cb", alias = "cb" }` would otherwise pass and alias a word
+      -- to itself.
+      if by_alias[alias_key] or by_name[alias_key] or alias_key == key then
+        error("component alias '" .. alias .. "' is already taken", 0)
+      end
+    end
 
     by_name[key] = component
+    if alias_key then
+      by_alias[alias_key] = key
+    end
     order[#order + 1] = component
     return component
   end
@@ -77,6 +118,16 @@ local function new(deps)
       return nil
     end
     return by_name[name:lower()]
+  end
+
+  -- Alias to component name, for the parser, which takes either. Nothing else
+  -- consumes it: an alias is a word inside `//hud`, never a command of its own.
+  function self.alias_map()
+    local copy = {}
+    for alias, name in pairs(by_alias) do
+      copy[alias] = name
+    end
+    return copy
   end
 
   function self.all()
@@ -109,6 +160,7 @@ local function new(deps)
       end
     end
     by_name = {}
+    by_alias = {}
     order = {}
   end
 

@@ -44,7 +44,7 @@ local build_defaults = require("components/giltracker/defaults")
 local ICON_TEXTURE = "assets/gil/gil.png"
 
 local function new(ctx)
-  local self = { name = "giltracker" }
+  local self = { name = "giltracker", alias = "gt" }
 
   local screen_width, screen_height = ctx.screen()
   self.defaults = build_defaults(screen_width, screen_height)

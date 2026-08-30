@@ -56,9 +56,15 @@ local PARSED_PACKETS = {
   [packet_parsers.CHAR] = true,
 }
 
+-- The short alias is the main list's alone (Kevin's call): the alliance lists
+-- are reached by name, and the three collapse into one anchored component in
+-- due course anyway. Keyed off the variant rather than the name, which is what
+-- the entry point already picks a list by.
+local ALIASES = { main = "pl" }
+
 local function new(ctx)
   local variant = ctx.variant or "main"
-  local self = { name = ctx.name or "partylist" }
+  local self = { name = ctx.name or "partylist", alias = ALIASES[variant] }
 
   local screen_width, screen_height = (ctx.screen or function() end)()
   self.defaults = build_defaults(screen_width, screen_height, variant)

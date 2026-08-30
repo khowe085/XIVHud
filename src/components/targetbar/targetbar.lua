@@ -56,7 +56,7 @@ local ASSET_DIR = "assets/xiv/wide/"
 local ACTION_CHUNK = 0x028
 
 local function new(ctx)
-  local self = { name = "targetbar" }
+  local self = { name = "targetbar", alias = "tb" }
 
   local screen_width, screen_height = ctx.screen()
   self.defaults = build_defaults(screen_width, screen_height)
