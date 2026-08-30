@@ -467,32 +467,6 @@ describe("targetbar logic", function()
     end)
   end)
 
-  describe("the poll gate", function()
-    it("is open on its first call, so the first frame has a roster", function()
-      assert.is_true(logic.due_for_poll(0))
-    end)
-
-    it("stays shut inside the interval", function()
-      logic.due_for_poll(0)
-      assert.is_false(logic.due_for_poll(0.1))
-    end)
-
-    it("opens again once the interval has passed", function()
-      logic.due_for_poll(0)
-      assert.is_true(logic.due_for_poll(0.2))
-    end)
-
-    --[[ Logic is built once per widget but attached on every login, so
-         without this only the session's first attach would poll immediately
-         and a relog would spend a window with no roster. ]]
-    it("reopens when a fresh config arrives on attach", function()
-      logic.due_for_poll(0)
-      assert.is_false(logic.due_for_poll(0.1))
-      logic.set_config(config)
-      assert.is_true(logic.due_for_poll(0.1))
-    end)
-  end)
-
   --[[ DistancePlus's range coding, ported whole. The expected values are
        derived by walking that addon's own branch order at the given model
        sizes, never from a description of it: its bands add both model sizes,

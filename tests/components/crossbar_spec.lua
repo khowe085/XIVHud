@@ -922,6 +922,21 @@ describe("crossbar live widget", function()
       now = function()
         return env.now
       end,
+      --[[ lib/player's read counter, faked to its real contract: reading it
+           opens the interval, so it advances for a caller that gates its reads
+           behind it. In the client this is always present - a nil one means the
+           service failed to load, and nothing is built at all then - so the
+           specs must exercise the counter path, not the clock fallback. ]]
+      generation = function()
+        if env.generation_hold then
+          return env.generation_count or 0
+        end
+        if env.generation_deadline == nil or env.now >= env.generation_deadline then
+          env.generation_deadline = env.now + 0.2
+          env.generation_count = (env.generation_count or 0) + 1
+        end
+        return env.generation_count
+      end,
       time = function()
         return env.time
       end,
@@ -1835,6 +1850,49 @@ describe("crossbar live widget", function()
   end)
 
   describe("the per-frame tick", function()
+    --[[ The gate is lib/player's counter, not a clock of the widget's own: a
+         second 200ms throttle in front of the service's would sit out of phase
+         with it and leave these answers up to two intervals stale, which is the
+         pattern the sibling components had removed. Pinned by holding the
+         counter still while the clock runs on. ]]
+    it("waits for the counter rather than for its own clock", function()
+      build_world()
+      widget.update()
+      env.player_reads, env.spell_reads, env.ability_reads = 0, 0, 0
+
+      env.generation_hold = true
+      env.now = env.now + 5
+      widget.update()
+      assert.are.equal(0, env.player_reads, "re-read on a clock while the counter stood still")
+      assert.are.equal(0, env.spell_reads + env.ability_reads)
+
+      env.generation_hold = false
+      widget.update()
+      assert.are.equal(1, env.player_reads, "the counter moved and nothing was re-read")
+      assert.are.equal(1, env.spell_reads)
+      assert.are.equal(1, env.ability_reads)
+    end)
+
+    --[[ Re-attached WITHOUT a detach first, which is what core does on a
+         `//hud copy` reload of the character being played: detach resets these
+         itself, so going through it would prove nothing about attach. Without
+         the reset the recasts of the configuration just replaced would be
+         served for the rest of the interval. ]]
+    it("reads again on the first frame after a fresh attach", function()
+      build_world()
+      widget.update()
+
+      widget.attach(widget.defaults, function() end)
+      -- Counted from after the attach, which does client reads of its own:
+      -- what is under test is the first TICK, with the counter standing still.
+      env.player_reads, env.spell_reads, env.ability_reads = 0, 0, 0
+      env.generation_hold = true
+      widget.update()
+      assert.are.equal(1, env.player_reads, "a relog waited out the interval before reading")
+      assert.are.equal(1, env.spell_reads)
+      assert.are.equal(1, env.ability_reads)
+    end)
+
     it("reads the client on the roster cadence, not per frame", function()
       build_world()
       env.player_reads, env.spell_reads, env.ability_reads = 0, 0, 0
@@ -4789,6 +4847,36 @@ describe("crossbar live widget", function()
       env.player.vitals = { mp = 2, tp = 1000 }
       widget.update()
       assert.are.same({ CURE }, env.commands)
+    end)
+
+    --[[ The guards read the player LIVE rather than off the recast snapshot the
+         tick caches. A keyed invalidate("player") - what a buff gain sends -
+         refreshes get_player() without moving the read counter, so the snapshot
+         stays a whole interval behind exactly when a silence has just landed.
+         The table is REPLACED here, not mutated: the two reads are the same
+         object otherwise, and this would pass against either. ]]
+    it("drops a cast off a player the snapshot has not caught up with", function()
+      live()
+      -- One tick first, so the snapshot really holds the ORIGINAL player: with
+      -- no tick it is still nil, every read refreshes, and the two are the same.
+      widget.update()
+      refused()
+
+      env.generation_hold = true
+      env.player = {
+        id = 777,
+        main_job = "WAR",
+        main_job_id = 1,
+        main_job_level = 99,
+        sub_job = "NIN",
+        sub_job_id = 13,
+        sub_job_level = 49,
+        vitals = { mp = 2, tp = 1000 },
+        buffs = {},
+        status = 0,
+      }
+      widget.update()
+      assert.are.same({ CURE }, env.commands, "re-sent off a stale snapshot of the player")
     end)
 
     it("drops a cast while silenced", function()

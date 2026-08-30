@@ -2,7 +2,7 @@ local new_parambar = require("components/parambar/parambar")
 local fakes = require("tests/support/fakes")
 
 describe("parambar widget", function()
-  local prims, player, saves, assets, widget, clock, reads
+  local prims, player, saves, assets, widget, reads
 
   local function attach()
     widget.attach(widget.defaults, function()
@@ -29,21 +29,25 @@ describe("parambar widget", function()
     end
   end
 
+  --[[ The widget hears no vitals event of its own any more: `ctx.get_player` is
+       lib/player's, and hands back the client's numbers with the change events
+       already reconciled into them. So a spec moves a vital by moving what the
+       client reports. ]]
+  local function vital(key, value)
+    player.vitals[key] = value
+  end
+
   before_each(function()
     prims = fakes.prims()
     saves = 0
     assets = {}
     player = { vitals = { hp = 1000, hpp = 100, mp = 500, mpp = 100, tp = 500 } }
-    clock = 0
     reads = 0
     widget = new_parambar({
       new_text = prims.new_text,
       new_image = prims.new_image,
       screen = function()
         return 1920, 1080
-      end,
-      now = function()
-        return clock
       end,
       get_player = function()
         reads = reads + 1
@@ -118,7 +122,6 @@ describe("parambar widget", function()
 
       player.vitals.mp = 500
       player.vitals.mpp = 100
-      clock = 1
       settle()
       assert.are.equal("500", number(2).last.text)
     end)
@@ -134,21 +137,19 @@ describe("parambar widget", function()
       assert.are.equal("0", number(1).last.text)
 
       player = { vitals = { hp = 1000, hpp = 100, mp = 500, mpp = 100, tp = 250 } }
-      clock = 1
       settle()
       assert.are.equal("1000", number(1).last.text)
       assert.are.equal("500", number(2).last.text)
     end)
 
-    it("reads the player on its own interval rather than every frame", function()
+    -- The widget reads every frame and lets lib/player throttle; a throttle
+    -- here as well would put the two out of phase and double the worst-case lag.
+    it("reads the player every frame", function()
       attach()
       widget.set_pos(0, 0)
-      settle()
-      assert.are.equal(1, reads, "read the client more than once inside one interval")
-
-      clock = 0.2
-      settle()
-      assert.are.equal(2, reads, "never read the client again")
+      widget.update()
+      widget.update()
+      assert.are.equal(2, reads)
     end)
 
     it("stops re-reading the player when it is detached", function()
@@ -159,7 +160,6 @@ describe("parambar widget", function()
       widget.detach()
 
       local before = reads
-      clock = 10
       settle()
       assert.are.equal(before, reads, "still polling the client for a character it is no longer showing")
     end)
@@ -168,12 +168,10 @@ describe("parambar widget", function()
       player = { vitals = { hp = 1000, hpp = 100, mp = 0, mpp = 0, tp = 0, max_hp = 1000 } }
       attach()
       widget.set_pos(0, 0)
-      clock = 30
       settle()
 
       player.vitals.mp = 500
       player.vitals.mpp = 100
-      clock = 31
       settle()
       assert.are.equal("500", number(2).last.text, "stopped reading the client after login")
     end)
@@ -252,7 +250,7 @@ describe("parambar widget", function()
     end)
 
     it("eases the fill towards its target instead of jumping", function()
-      widget.update("hpp", 50)
+      vital("hpp", 50)
       widget.update()
       assert.is_true(fill(1).width > 66 and fill(1).width < 132, "mid-animation, got " .. tostring(fill(1).width))
       settle()
@@ -275,29 +273,29 @@ describe("parambar widget", function()
     end)
 
     it("hides an emptied fill and brings it back on a refill", function()
-      widget.update("hpp", 0)
+      vital("hpp", 0)
       settle()
       assert.is_false(fill(1).visible)
-      widget.update("hpp", 100)
+      vital("hpp", 100)
       settle()
       assert.is_true(fill(1).visible)
     end)
 
     it("colours the number for the low-HP band it is in", function()
-      widget.update("hpp", 20)
+      vital("hpp", 20)
       settle()
       assert.are.same({ 252, 129, 130 }, number(1).last.color)
     end)
 
     it("highlights the TP number and undims the TP fill at full TP", function()
-      widget.update("tp", 1000)
+      vital("tp", 1000)
       settle()
       assert.are.same({ 80, 180, 250 }, number(3).last.color)
       assert.are.equal(255, fill(3).last.alpha)
     end)
 
     it("dims only the TP fill below full TP", function()
-      widget.update("tp", 500)
+      vital("tp", 500)
       settle()
       assert.are.equal(180, fill(3).last.alpha)
       assert.are.equal(255, fill(1).last.alpha)
@@ -308,40 +306,39 @@ describe("parambar widget", function()
       settle()
       assert.are.equal("1000", number(1).last.text)
       player = nil
-      widget.update("status", 0, 4)
       settle()
       assert.are.equal("1000", number(1).last.text, "a nil player must not blank the bars")
     end)
 
-    --[[ The absolute and the percent stream are independent, and the absolute
-         one has been seen carrying a value nothing ever corrects: after a Max
-         HP Down wore off, the HP number sat at max HP while the bar and its
-         colour band tracked the real percent. No event heals that -- only a
-         fresh read of the player does. ]]
-    it("heals a wrong absolute value on the next poll", function()
+    -- The client fills the player in field by field, so a vitals table can be
+    -- absent on a player that is otherwise readable.
+    it("keeps the last known vitals when the player has no vitals table", function()
       settle()
-      widget.update("hp", 2238)
+      player = { name = "Kevin" }
       settle()
-      assert.are.equal("2238", number(1).last.text)
-
-      clock = 1
-      settle()
-      assert.are.equal("1000", number(1).last.text, "the client was never re-read")
+      assert.are.equal("1000", number(1).last.text)
     end)
 
-    it("shows a change event without waiting for the next poll", function()
+    --[[ Whatever the player service hands over is what gets drawn, on the very
+         next frame. Reconciling the absolute and percent streams - the defect
+         that had an HP number stuck at max HP for a whole session - is that
+         service's job and is pinned in tests/player_spec.lua; all that is left
+         here is that the widget does not hold a value of its own. ]]
+    it("follows the player it is handed, every frame", function()
       settle()
-      widget.update("hp", 900)
-      settle()
-      assert.are.equal("900", number(1).last.text)
-    end)
-
-    it("re-reads both vitals streams on a status change", function()
-      widget.update("hp", 9999)
       player.vitals = { hp = 700, hpp = 70, mp = 100, mpp = 20, tp = 0 }
-      widget.update("status", 0, 4)
       settle()
       assert.are.equal("700", number(1).last.text)
+      assert.are.equal("100", number(2).last.text)
+    end)
+
+    it("ignores a forwarded event, having no vitals of its own to update", function()
+      settle()
+      assert.has_no.errors(function()
+        widget.update("hp", 9999)
+        widget.update("status", 0, 4)
+      end)
+      assert.are.equal("1000", number(1).last.text)
     end)
   end)
 
@@ -374,7 +371,7 @@ describe("parambar widget", function()
 
     it("keeps everything hidden while hidden, whatever the bars do", function()
       widget.hide()
-      widget.update("hpp", 100)
+      vital("hpp", 100)
       settle()
       assert.is_false(fill(1).visible)
     end)

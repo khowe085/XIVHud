@@ -2,7 +2,7 @@ local new_logic = require("components/parambar/logic")
 local parambar_defaults = require("components/parambar/defaults")
 
 describe("parambar logic", function()
-  local config, logic
+  local config, logic, vitals
 
   -- Runs frames until every bar has stopped animating, so assertions can talk
   -- about the settled picture. Guards against the runaway-easing bug.
@@ -17,32 +17,27 @@ describe("parambar logic", function()
     error("bars never converged")
   end
 
+  --[[ The widget hands the whole vitals table over every frame - lib/player owns
+       the read interval and the event reconciliation now - so these track it
+       here and push all of it on every change, which keeps a spec about one
+       vital readable. ]]
+  local function set_all(table)
+    vitals = table or {}
+    logic.set_vitals(table)
+  end
+
+  local function set(key, value)
+    vitals[key] = value
+    logic.set_vitals(vitals)
+  end
+
   before_each(function()
     config = parambar_defaults(1920, 1080)
     logic = new_logic(config)
+    vitals = {}
   end)
 
-  describe("the poll interval", function()
-    it("is due on its very first call, so the first frame reads the player", function()
-      assert.is_true(logic.due_for_poll(0))
-    end)
-
-    it("is not due again until the interval has passed", function()
-      logic.due_for_poll(0)
-      assert.is_false(logic.due_for_poll(0.19))
-      assert.is_true(logic.due_for_poll(0.2))
-    end)
-
-    -- attach() hands the loaded config over, which is what re-arms the poll for
-    -- a character the widget has just been scoped to.
-    it("is due again after a re-config", function()
-      logic.due_for_poll(0)
-      logic.set_config(config)
-      assert.is_true(logic.due_for_poll(0))
-    end)
-  end)
-
-  describe("polling and vitals", function()
+  describe("vitals", function()
     it("starts empty", function()
       local plan = settle()
       assert.are.equal(0, plan.hp.width)
@@ -50,35 +45,23 @@ describe("parambar logic", function()
       assert.are.equal("0", plan.hp.text)
     end)
 
-    --[[ The absolute and the percent stream are independent, and the absolute
-         one has been seen carrying a value no later event corrects: an HP
-         number stuck at max HP after a Max HP Down wore off. Only a re-read of
-         the player heals it, so the poll outranks the events. ]]
-    it("overrules a value a change event delivered", function()
-      logic.poll({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
-      logic.set_vital("hp", 2238)
-      assert.are.equal("2238", settle().hp.text)
-
-      logic.poll({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
-      assert.are.equal("1200", settle().hp.text)
-    end)
-
     -- The client fills its vitals table in field by field, so a bar can read 0
-    -- for a poll or two after login while its neighbours are already current.
+    -- for a frame or two after login while its neighbours are already current.
     it("picks up a vital the client filled in later", function()
-      logic.poll({ hp = 1200, hpp = 100, mp = 0, mpp = 0, tp = 0 })
+      logic.set_vitals({ hp = 1200, hpp = 100, mp = 0, mpp = 0, tp = 0 })
       assert.are.equal("0", settle().mp.text)
 
-      logic.poll({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+      logic.set_vitals({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
       assert.are.equal("300", settle().mp.text)
     end)
 
-    -- The poll runs five times a second, so a bar it found unchanged must not
-    -- cost a redraw.
-    it("does not redraw a bar the poll found unchanged", function()
-      logic.poll({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+    --[[ The widget is told the vitals every frame - lib/player owns the read
+         interval and the reconciliation now - so a set that changed nothing
+         must not cost a redraw sixty times a second. ]]
+    it("does not redraw a bar whose numbers did not move", function()
+      logic.set_vitals({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
       settle()
-      logic.poll({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
+      logic.set_vitals({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 0 })
       local plan = logic.tick()
       assert.is_false(plan.hp.dirty)
       assert.is_false(plan.mp.dirty)
@@ -86,92 +69,85 @@ describe("parambar logic", function()
     end)
 
     it("zeroes a vital the table no longer mentions, being a replacement", function()
-      logic.poll({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 250 })
+      set_all({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 250 })
       settle()
-      logic.poll({ hp = 1200, hpp = 100 })
+      set_all({ hp = 1200, hpp = 100 })
       assert.are.equal("0", settle().mp.text)
     end)
 
     it("takes the whole vitals table from the player", function()
-      logic.poll({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 250 })
+      set_all({ hp = 1200, hpp = 100, mp = 300, mpp = 60, tp = 250 })
       local plan = settle()
       assert.are.equal("1200", plan.hp.text)
       assert.are.equal("300", plan.mp.text)
       assert.are.equal("250", plan.tp.text)
     end)
 
-    it("takes single values from the change events", function()
-      logic.set_vital("hpp", 50)
-      logic.set_vital("hp", 600)
+    it("ignores a key the vitals table should not carry", function()
+      logic.set_vitals({ hp = 600, hpp = 50, wisdom = 5 })
       local plan = settle()
       assert.are.equal("600", plan.hp.text)
       assert.are.equal(66, plan.hp.width)
     end)
 
-    it("ignores a vital it does not know", function()
-      assert.has_no.errors(function()
-        logic.set_vital("wisdom", 5)
-      end)
-    end)
-
     it("survives a nil vitals table", function()
       assert.has_no.errors(function()
-        logic.poll(nil)
+        logic.set_vitals(nil)
       end)
     end)
   end)
 
   describe("bar widths", function()
     it("fills proportionally to the percent, floored", function()
-      logic.poll({ hp = 100, hpp = 100, mp = 100, mpp = 50, tp = 0 })
+      set_all({ hp = 100, hpp = 100, mp = 100, mpp = 50, tp = 0 })
       local plan = settle()
       assert.are.equal(132, plan.hp.width)
       assert.are.equal(66, plan.mp.width)
     end)
 
     it("derives the TP bar from tenths of TP, capped at a full bar", function()
-      logic.set_vital("tp", 500)
+      set("tp", 500)
       assert.are.equal(50, logic.tpp())
-      logic.set_vital("tp", 3000)
+      set("tp", 3000)
       assert.are.equal(100, logic.tpp())
       local plan = settle()
       assert.are.equal(132, plan.tp.width)
     end)
 
     it("hides a bar that has emptied and shows it again when it refills", function()
-      logic.poll({ hp = 100, hpp = 100 })
+      set_all({ hp = 100, hpp = 100 })
       assert.is_false(settle().hp.hidden)
-      logic.set_vital("hpp", 0)
+      set("hpp", 0)
       assert.is_true(settle().hp.hidden)
-      logic.set_vital("hpp", 100)
+      set("hpp", 100)
       assert.is_false(settle().hp.hidden)
     end)
   end)
 
   describe("easing", function()
     it("grows a tenth of the remaining distance per frame, rounded up", function()
-      logic.poll({ hp = 1000, hpp = 100 })
+      set_all({ hp = 1000, hpp = 100 })
       assert.are.equal(14, logic.tick().hp.width)
       assert.are.equal(26, logic.tick().hp.width)
     end)
 
     it("shrinks the same way", function()
-      logic.poll({ hp = 1000, hpp = 100 })
+      set_all({ hp = 1000, hpp = 100 })
       settle()
-      logic.set_vital("hpp", 0)
+      set("hpp", 0)
       assert.are.equal(118, logic.tick().hp.width)
       assert.are.equal(106, logic.tick().hp.width)
     end)
 
     it("converges exactly on the target rather than overshooting", function()
-      logic.poll({ hp = 1000, hpp = 100 })
+      set_all({ hp = 1000, hpp = 100 })
       assert.are.equal(132, settle().hp.width)
-      logic.set_vital("hpp", 0)
+      set("hpp", 0)
       assert.are.equal(0, settle().hp.width)
     end)
 
     it("stops being dirty once it converges", function()
-      logic.poll({ hp = 1000, hpp = 100 })
+      set_all({ hp = 1000, hpp = 100 })
       settle()
       assert.is_false(logic.tick().hp.dirty, "a converged bar must not re-ease every frame")
       assert.is_false(logic.tick().mp.dirty)
@@ -179,15 +155,15 @@ describe("parambar logic", function()
     end)
 
     it("becomes dirty again when a value changes", function()
-      logic.poll({ hp = 1000, hpp = 100 })
+      set_all({ hp = 1000, hpp = 100 })
       settle()
-      logic.set_vital("hpp", 50)
+      set("hpp", 50)
       assert.is_true(logic.tick().hp.dirty)
       assert.is_false(logic.tick().mp.dirty, "only the bar that changed")
     end)
 
     it("re-eases towards a new width when the metrics change mid-animation", function()
-      logic.poll({ hp = 1000, hpp = 100 })
+      set_all({ hp = 1000, hpp = 100 })
       settle()
       logic.command({ "width", "40" })
       assert.are.equal(40, settle().hp.width)
@@ -196,7 +172,7 @@ describe("parambar logic", function()
 
   describe("text colouring", function()
     local function hp_state(hpp)
-      logic.set_vital("hpp", hpp)
+      set("hpp", hpp)
       return settle().hp.color_state
     end
 
@@ -211,39 +187,39 @@ describe("parambar logic", function()
     end)
 
     it("bands MP the same way", function()
-      logic.set_vital("mpp", 24)
+      set("mpp", 24)
       assert.are.equal("red", settle().mp.color_state)
-      logic.set_vital("mpp", 80)
+      set("mpp", 80)
       assert.are.equal("normal", settle().mp.color_state)
     end)
 
     it("resolves the band to the colour configured for it", function()
-      logic.set_vital("hpp", 10)
+      set("hpp", 10)
       assert.are.same(config.low_hp_colors.red, settle().hp.color)
-      logic.set_vital("hpp", 100)
+      set("hpp", 100)
       local normal = settle().hp.color
       assert.are.same({ r = config.text_color.r, g = config.text_color.g, b = config.text_color.b }, normal)
     end)
 
     it("never bands TP, however low it is", function()
-      logic.set_vital("tp", 0)
+      set("tp", 0)
       assert.are.equal("normal", settle().tp.color_state)
     end)
 
     it("highlights TP from exactly 1000", function()
-      logic.set_vital("tp", 999)
+      set("tp", 999)
       assert.are.equal("normal", settle().tp.color_state)
-      logic.set_vital("tp", 1000)
+      set("tp", 1000)
       assert.are.equal("full_tp", settle().tp.color_state)
       assert.are.same(config.full_tp_color, settle().tp.color)
-      logic.set_vital("tp", 1001)
+      set("tp", 1001)
       assert.are.equal("full_tp", settle().tp.color_state)
     end)
   end)
 
   describe("bar dimming", function()
     it("dims only the TP bar below full TP", function()
-      logic.poll({ hp = 1, hpp = 100, mp = 1, mpp = 100, tp = 999 })
+      set_all({ hp = 1, hpp = 100, mp = 1, mpp = 100, tp = 999 })
       local plan = settle()
       assert.are.equal(180, plan.tp.alpha)
       assert.are.equal(255, plan.hp.alpha, "HP must not be dimmed as a side effect")
@@ -251,38 +227,37 @@ describe("parambar logic", function()
     end)
 
     it("brightens the TP bar at full TP", function()
-      logic.set_vital("tp", 1000)
+      set("tp", 1000)
       assert.are.equal(255, settle().tp.alpha)
     end)
 
     it("leaves the TP bar bright when dimming is turned off", function()
       config.dim_tp_bar = false
-      logic.set_vital("tp", 500)
+      set("tp", 500)
       assert.are.equal(255, settle().tp.alpha)
     end)
   end)
 
   describe("death reconciliation", function()
     it("shows zero HP when the percent says dead, whatever the absolute stream said", function()
-      logic.poll({ hp = 1200, hpp = 100 })
+      set_all({ hp = 1200, hpp = 100 })
       settle()
-      logic.set_vital("hpp", 0)
+      set("hpp", 0)
       local plan = settle()
       assert.are.equal("0", plan.hp.text)
       assert.are.equal("red", plan.hp.color_state)
     end)
 
     it("does the same for MP", function()
-      logic.poll({ mp = 900, mpp = 100 })
+      set_all({ mp = 900, mpp = 100 })
       settle()
-      logic.set_vital("mpp", 0)
+      set("mpp", 0)
       assert.are.equal("0", settle().mp.text)
     end)
 
-    it("re-reads both streams together", function()
-      logic.set_vital("hp", 1200)
-      logic.set_vital("hpp", 0)
-      logic.poll({ hp = 500, hpp = 100, mp = 0, mpp = 0, tp = 0 })
+    it("takes both streams together", function()
+      logic.set_vitals({ hp = 1200, hpp = 0, mp = 0, mpp = 0, tp = 0 })
+      logic.set_vitals({ hp = 500, hpp = 100, mp = 0, mpp = 0, tp = 0 })
       assert.are.equal("500", settle().hp.text)
     end)
   end)
@@ -358,7 +333,7 @@ describe("parambar logic", function()
     end)
 
     it("scales the eased fill width too", function()
-      logic.poll({ hp = 100, hpp = 100 })
+      set_all({ hp = 100, hpp = 100 })
       assert.are.equal(264, logic.geometry(0, 0, 2).fill_width(settle().hp.width))
     end)
   end)
@@ -373,7 +348,7 @@ describe("parambar logic", function()
     end)
 
     it("restores the live values on the way out", function()
-      logic.poll({ hp = 42, hpp = 10, mp = 0, mpp = 0, tp = 0 })
+      set_all({ hp = 42, hpp = 10, mp = 0, mpp = 0, tp = 0 })
       settle()
       logic.set_preview(true)
       settle()
@@ -385,8 +360,8 @@ describe("parambar logic", function()
 
     it("keeps recording live changes while previewing", function()
       logic.set_preview(true)
-      logic.set_vital("hp", 77)
-      logic.set_vital("hpp", 100)
+      set("hp", 77)
+      set("hpp", 100)
       logic.set_preview(false)
       assert.are.equal("77", settle().hp.text)
     end)

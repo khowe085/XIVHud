@@ -68,6 +68,9 @@ local function new(ctx)
   local logic = new_logic({ variant = variant, config = config, resources = ctx.resources or {} })
 
   local attached = false
+  -- The service's read counter as of the last roster rebuild; nil until the
+  -- first frame, which is why the first one always rebuilds.
+  local last_generation = nil
   local save = nil
   local pos = nil
   local scale = 1
@@ -546,16 +549,44 @@ local function new(ctx)
       return
     end
 
-    if logic.due_for_poll(ctx.now()) then
+    --[[ Read every frame; lib/player owns the interval, so this costs a real
+         client read only once per interval however many lists ask.
+
+         NOT for the row's vitals: those come from get_party() with the change
+         events laid over them by `set_own_vital`, and between reads this hands
+         back the identical cached table. What per-frame buys is the KEYED
+         invalidation - a `gain buff` refreshes the player without moving the
+         counter, so the player's own buff icons land on the next frame rather
+         than at the next rebuild. ]]
+    logic.set_main_player(ctx.get_player and ctx.get_player() or nil)
+
+    --[[ The roster is only rebuilt when the service actually read, because
+         set_roster drops the 0x0DD / 0x0DF pushes this list is holding -- doing
+         that sixty times a second would throw away the very packets the pushes
+         exist to deliver. The service's own counter is the gate rather than a
+         clock here: a second throttle would sit out of phase with it and put
+         this list up to two intervals behind.
+
+         An absent counter falls back to rebuilding every frame. That is a
+         DEGRADED list, not merely a costly one: rebuilding drops the packet
+         pushes, so the 0x0DD / 0x0DF overlay never survives to be drawn and the
+         rows fall back to what the poll alone says. It is still the better of
+         the two failures - a wiring slip must not leave the list frozen on a
+         dead roster, which is what Lua's nil-tolerance would otherwise buy -
+         and it is unreachable in a client, where the entry point always wires
+         the counter. ]]
+    local generation = ctx.generation and ctx.generation() or nil
+    if generation == nil or generation ~= last_generation then
+      last_generation = generation
       local info = ctx.get_info and ctx.get_info() or nil
       logic.set_zone(info and info.zone or nil)
-      logic.set_main_player(ctx.get_player and ctx.get_player() or nil)
       logic.set_roster(ctx.get_party and ctx.get_party() or nil)
     end
 
     -- Read every frame: the cursor follows the target key, so it cannot wait
-    -- for the next poll. Up to four client lookups a frame per list, against
-    -- the eighteen member tables the poll would allocate.
+    -- for the next read. Up to four client lookups a frame across ALL THREE
+    -- lists, not four per list - lib/player memoizes them for the frame, and
+    -- the three ask for the same four.
     local target = ctx.get_mob_by_target and ctx.get_mob_by_target("t") or nil
     local subtarget = ctx.get_mob_by_target
         and (ctx.get_mob_by_target("st") or ctx.get_mob_by_target("stpt") or ctx.get_mob_by_target("stal"))
@@ -696,6 +727,9 @@ local function new(ctx)
     config = loaded_config
     save = persist
     attached = true
+    -- Forget the last read: a relog inside one interval would otherwise keep
+    -- the previous character's roster until the service next reads.
+    last_generation = nil
     logic.set_config(config)
     apply_layout()
   end

@@ -215,11 +215,6 @@ local function ranged_state(band, distance, self_size, target_size)
   return "out"
 end
 
---[[ The party roster is polled rather than evented - there is no party event
-     of any kind - at partylist's own cadence. Only the claim ownership set
-     rides this; the target itself is read every frame. ]]
-local POLL_INTERVAL_MS = 200
-
 -- The eighteen keys get_party() files members under. Walked explicitly rather
 -- than with pairs(), because the same table carries scalars (member counts,
 -- leader ids) that would be indexed as tables by a blind walk.
@@ -265,7 +260,6 @@ local function new(initial_config, resources)
   local self_model_size = nil
   local self_main_job = nil
   local party_ids = {}
-  local next_poll = nil
   -- The fill's animated width, in authored pixels (0..FILL_WIDTH).
   local eased_width = 0
   -- The cast the target is winding up, or nil. name/started_at/duration in
@@ -307,23 +301,8 @@ local function new(initial_config, resources)
     return math.max(minimum, math.floor(number))
   end
 
-  --[[ Config arrives on every attach, so this doubles as the login hook: it
-       reopens the poll gate. Logic is built once per widget but attached once
-       per login, so without the reset only the session's first attach would
-       have a roster on its first frame. ]]
   function self.set_config(new_config)
     config = new_config or {}
-    next_poll = nil
-  end
-
-  -- True once per interval, and true on its very first call so the first frame
-  -- after an attach already has a roster to colour the fill with.
-  function self.due_for_poll(now)
-    if next_poll and now < next_poll then
-      return false
-    end
-    next_poll = now + POLL_INTERVAL_MS / 1000
-    return true
   end
 
   --[[ The player's own facts, fed on the poll rather than per frame: none of

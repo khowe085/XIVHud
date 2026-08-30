@@ -56,10 +56,6 @@ end
 return function(screen_width, screen_height, variant)
   local anchor = ANCHORS[variant] or ANCHORS.main
   local defaults = {
-    -- get_party() roster/distance poll. Target and subtarget are read every
-    -- frame instead: they drive the row cursor, and 200ms of lag between a
-    -- target keypress and the cursor moving is visible.
-    poll_interval_ms = 200,
     item_spacing = 0, -- party.itemSpacing
     align_bottom = false, -- party.alignBottom
     show_empty_rows = false, -- party.showEmptyRows

@@ -67,6 +67,8 @@ local function new(ctx)
   local logic = new_logic(config, ctx.resources)
 
   local attached = false
+  -- The service's read counter as of the last rebuild of the claim roster.
+  local last_generation = nil
   local save = nil
   local pos = nil
   local scale = 1
@@ -258,9 +260,19 @@ local function new(ctx)
       return
     end
 
-    -- The target can change between any two frames, so it is read every one.
-    -- Everything else rides the poll below.
-    if logic.due_for_poll(ctx.now()) then
+    --[[ The target can change between any two frames, so it is read every one -
+         and lib/player memoizes that read for the frame, so the party list
+         asking for the same target costs nothing extra.
+
+         The rest is rebuilt only when the service actually read the client:
+         set_party walks eighteen member tables, which is not worth doing sixty
+         times a second for data that changes five. The service's counter is the
+         gate rather than a clock of our own, which would sit out of phase with
+         it and leave this bar up to two intervals behind. An absent counter
+         falls back to rebuilding every frame rather than never. ]]
+    local generation = ctx.generation and ctx.generation() or nil
+    if generation == nil or generation ~= last_generation then
+      last_generation = generation
       local me = ctx.get_mob_by_target("me")
       local player = ctx.get_player()
       logic.set_self(me and me.id, me and me.model_size, player and player.main_job)
@@ -315,6 +327,9 @@ local function new(ctx)
     config = loaded_config
     save = persist
     attached = true
+    -- Forget the last read: a relog inside one interval would otherwise keep
+    -- the previous character's roster until the service next reads.
+    last_generation = nil
     logic.set_config(config)
     apply_style()
     apply_layout()

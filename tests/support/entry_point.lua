@@ -173,17 +173,24 @@ local function build_windower(boot)
         return boot.action
       end,
     },
+    --[[ The four reads the player service caches are counted, because how many
+         of them reach the client is exactly what that service is for and is
+         invisible from any component spec. ]]
     ffxi = {
       get_player = function()
+        boot.client_calls.player = boot.client_calls.player + 1
         return boot.player
       end,
-      get_mob_by_target = function()
-        return nil
+      get_mob_by_target = function(...)
+        boot.client_calls.mob = boot.client_calls.mob + 1
+        return boot.mobs[(...)]
       end,
       get_party = function()
-        return {}
+        boot.client_calls.party = boot.client_calls.party + 1
+        return boot.party
       end,
       get_info = function()
+        boot.client_calls.info = boot.client_calls.info + 1
         return { logged_in = true, chat_open = false }
       end,
       get_items = function()
@@ -222,6 +229,17 @@ local function build_core(boot)
     boot.dispatches[#boot.dispatches + 1] = { event = event, n = select("#", ...), ... }
   end
 
+  --[[ Stands in for a component reading the target during its per-frame update.
+       What that buys a spec is the ordering of `begin_frame` against
+       `core.on_prerender`: a component must never see the memo a key press
+       filled during the previous frame. ]]
+  function core.on_prerender()
+    local component = boot.ctxs.targetbar
+    if component ~= nil and component.get_mob_by_target ~= nil then
+      boot.prerender_targets[#boot.prerender_targets + 1] = component.get_mob_by_target("t")
+    end
+  end
+
   function core.wants_keyboard()
     return false
   end
@@ -239,7 +257,9 @@ local function build_core(boot)
     "on_unload",
     "on_login",
     "on_logout",
-    "on_prerender",
+    -- on_prerender is NOT here: it has a real stub above, which reads a target
+    -- the way a component would so a spec can pin the frame memo's clearing
+    -- against it. A no-op here would silently overwrite it.
     "on_status_change",
     "on_zone_change",
     "character",
@@ -276,7 +296,11 @@ function M.boot(options)
     -- What the fake windower.packets.parse_action answers with.
     action = { category = 8, param = 0, targets = {} },
     action_raises = false,
-    player = { name = "Tester" },
+    player = { name = "Tester", vitals = { hp = 1000, hpp = 100, mp = 500, mpp = 100, tp = 0 } },
+    party = {},
+    mobs = { t = { id = 7 } },
+    client_calls = { player = 0, party = 0, info = 0, mob = 0 },
+    prerender_targets = {},
   }
 
   boot.core = build_core(boot)

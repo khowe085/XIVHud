@@ -318,6 +318,7 @@ function M.core_deps(overrides)
     chat = {},
     capture = false,
     player = nil,
+    scope_changes = {},
     clock = 0,
     screen_width = 1920,
     screen_height = 1080,
@@ -331,6 +332,11 @@ function M.core_deps(overrides)
     end,
     logged_in = function()
       return recorder.player ~= nil
+    end,
+    -- Optional in the contract; recorded here so a spec can pin when core
+    -- announces a scope change.
+    on_scope_change = function(name)
+      recorder.scope_changes[#recorder.scope_changes + 1] = name or false
     end,
     screen = function()
       return recorder.screen_width, recorder.screen_height

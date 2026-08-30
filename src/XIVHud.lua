@@ -182,6 +182,9 @@ end)
 local new_core = step("loading lib/core", function()
   return require("lib/core")
 end)
+local new_player_service = step("loading lib/player", function()
+  return require("lib/player")
+end)
 local new_parambar = step("loading the parambar component", function()
   return require("components/parambar/parambar")
 end)
@@ -537,9 +540,8 @@ local function get_player()
   return windower.ffxi.get_player()
 end
 
--- Module level because two components read them now: the party list, which
--- builds a row per member, and the target bar, which needs the same roster to
--- decide whether a claim is the player's own.
+-- A dep of the player service below, which is what every component gets handed
+-- instead: nothing here reaches a component directly any more.
 -- Argument-agnostic: the skillchain engine reads the fallback pair
 -- ('t', 'bt'), the other consumers a single kind - a wrapper must not
 -- narrow the API's arity.
@@ -550,6 +552,43 @@ end
 local function get_party()
   return windower.ffxi.get_party()
 end
+
+local function get_info()
+  return windower.ffxi.get_info()
+end
+
+--[[ One read of the client per interval, shared by every component, and the one
+     place the two vitals streams are reconciled -- see lib/player. The four
+     accessors above are its deps, and no COMPONENT gets them: what each ctx
+     below gets is the service's getters, so a component cannot reach past it.
+     Core is the exception, and takes the raw `get_player` for the reason given
+     where its deps are built.
+
+     `player_service` is nil only when its own load step failed, in which case
+     `load_error` is set and nothing below this point builds a ctx, registers a
+     handler or draws. ]]
+local player_service = step("building the player service", function()
+  -- No nil check on new_player_service: if its own load step failed, load_error
+  -- is set and step() never calls this at all. Were it somehow nil, the call
+  -- below would throw inside the step and become a reported load failure, which
+  -- is the outcome a check would have to produce anyway.
+  return new_player_service({
+    now = os.clock,
+    get_player = get_player,
+    get_party = get_party,
+    get_info = get_info,
+    get_mob_by_target = get_mob_by_target,
+  })
+end)
+
+-- All nil together, and only when the service's own load step failed - which
+-- sets `load_error`, and nothing past that point builds a ctx or registers a
+-- handler. A raw fallback here would read as safety it does not provide.
+local read_player = player_service and player_service.get_player
+local read_party = player_service and player_service.get_party
+local read_info = player_service and player_service.get_info
+local read_mob_by_target = player_service and player_service.get_mob_by_target
+local read_generation = player_service and player_service.generation
 
 local function asset(relative_path)
   return windower.addon_path .. relative_path
@@ -617,6 +656,14 @@ end
 -- Whether the chat box has focus, for the crossbar's chat guard. Runs on
 -- every key event inside a guarded handler, so it must be nil-tolerant by
 -- construction - an input spike once died on exactly this call unguarded.
+--[[ Deliberately NOT through the player service: this is asked on every key
+     event to decide whether a key belongs to the game's chat box or to the
+     crossbar, and a verdict up to an interval old would swallow the first
+     keystrokes after a chat line opens or closes.
+
+     Not the only raw get_info caller: core's `logged_in` below is another, and
+     for its own reason - core's login scoping polls it while nothing is scoped
+     yet, which is the visible delay before the HUD comes up. ]]
 local function chat_open()
   local ok, info = pcall(function()
     return windower.ffxi.get_info()
@@ -635,6 +682,20 @@ step("building the framework", function()
     list_dir = list_dir,
     is_dir = is_dir,
     delete_file = delete_file,
+    --[[ Core scopes a character from its own prerender search, not from the
+         `login` event, so the event's invalidation is not enough on its own:
+         between the two, the outgoing character's components are still attached
+         and still reading, and they refill the cache. This drops it at the
+         moment the scope actually moves. ]]
+    on_scope_change = function()
+      player_service.invalidate()
+    end,
+    --[[ The raw read, deliberately not the service's. Core re-reads the player
+         every 0.05s while a login is under way, and that retry is the visible
+         delay before the HUD comes up; a 200ms cache in front of it would
+         answer three of every four attempts from the same stale nil. Once a
+         character is scoped it makes no calls at all, so there is nothing to
+         save here either. ]]
     get_player = get_player,
     logged_in = function()
       return windower.ffxi.get_info().logged_in
@@ -661,8 +722,7 @@ step("building the parambar component", function()
     new_text = wrap_text,
     new_image = wrap_image,
     screen = screen,
-    get_player = get_player,
-    now = os.clock,
+    get_player = read_player,
     asset = asset,
   }))
 end)
@@ -722,9 +782,10 @@ step("building the targetbar component", function()
     screen = screen,
     asset = asset,
     now = os.clock,
-    get_player = get_player,
-    get_mob_by_target = get_mob_by_target,
-    get_party = get_party,
+    get_player = read_player,
+    get_mob_by_target = read_mob_by_target,
+    get_party = read_party,
+    generation = read_generation,
     -- nil when the resource library failed to load: the cast bar then never
     -- shows, and the health bar, name and distance carry on without it.
     resources = libraries_error == nil and res or nil,
@@ -750,13 +811,11 @@ step("building the party list components", function()
       screen = screen,
       asset = asset,
       resources = res,
-      now = os.clock,
-      get_player = get_player,
-      get_party = get_party,
-      get_mob_by_target = get_mob_by_target,
-      get_info = function()
-        return windower.ffxi.get_info()
-      end,
+      get_player = read_player,
+      get_party = read_party,
+      generation = read_generation,
+      get_mob_by_target = read_mob_by_target,
+      get_info = read_info,
     }))
   end
 end)
@@ -784,12 +843,13 @@ step("building the crossbar component", function()
     time = os.time,
     say = say,
     chat_open = chat_open,
-    -- The zone id, for the crossbar's mount rule (res.zones carries
-    -- `can_mount`). Nil-tolerant like chat_open: it is read while drawing.
+    --[[ The zone id, for the crossbar's mount rule (res.zones carries
+         `can_mount`). Read while drawing, so it goes through the service: this
+         was the heaviest get_info caller in the addon, once a frame. A zone id
+         is safe to hold for an interval, and `zone change` invalidates anyway.
+         Nil-tolerant like chat_open. ]]
     zone = function()
-      local ok, info = pcall(function()
-        return windower.ffxi.get_info()
-      end)
+      local ok, info = pcall(read_info)
       return ok and info ~= nil and info.zone or nil
     end,
     suppressed = function()
@@ -812,8 +872,9 @@ step("building the crossbar component", function()
     end,
     -- Client state (CB5); each returns nil-tolerantly like the rest of the
     -- entry point's accessors.
-    get_player = get_player,
-    get_mob_by_target = get_mob_by_target,
+    get_player = read_player,
+    get_mob_by_target = read_mob_by_target,
+    generation = read_generation,
     get_spell_recasts = function()
       return windower.ffxi.get_spell_recasts()
     end,
@@ -1034,6 +1095,8 @@ windower.register_event(
 windower.register_event(
   "login",
   guard.wrap("login", function()
+    -- Whoever was cached is not who is logging in.
+    player_service.invalidate()
     core.on_login()
   end)
 )
@@ -1041,6 +1104,10 @@ windower.register_event(
 windower.register_event(
   "logout",
   guard.wrap("logout", function()
+    -- Nothing draws once core detaches, so this is tidiness rather than a
+    -- visible fix: it keeps the invalidation set complete, so the service can
+    -- never hand the next reader the character who just left.
+    player_service.invalidate()
     core.on_logout()
   end)
 )
@@ -1049,6 +1116,9 @@ if not safe_mode then
   windower.register_event(
     "prerender",
     guard.wrap("prerender", function()
+      -- Before core touches a component: the mob memo is good for one frame,
+      -- and a component reading a target must not see the previous frame's.
+      player_service.begin_frame()
       core.on_prerender()
     end)
   )
@@ -1057,6 +1127,16 @@ end
 windower.register_event(
   "status change",
   guard.wrap("status change", function(new_status, old_status)
+    --[[ Keyed, like the buff events and for the same reason: a death, a
+         cutscene or resting moves the PLAYER and neither the party nor the zone
+         nor any mob, so dropping the whole interval would re-read those too and
+         move the counter, putting the party list through a full roster rebuild
+         for a fact it does not hold.
+
+         Ordering against core does not matter here: on_status_change reads no
+         player of its own, and the one read on a re-attach takes the raw
+         accessor. ]]
+    player_service.invalidate("player")
     core.on_status_change(new_status, old_status)
   end)
 )
@@ -1064,6 +1144,7 @@ windower.register_event(
 windower.register_event(
   "zone change",
   guard.wrap("zone change", function()
+    player_service.invalidate()
     core.on_zone_change()
   end)
 )
@@ -1141,12 +1222,17 @@ if not safe_mode and not libraries_error then
   end
 end
 
--- FFXI reports vitals as two independent streams, absolute and percent; both
--- are forwarded, and the component reconciles them.
+--[[ FFXI reports vitals as two independent streams, absolute and percent. Each
+     value goes to the player service first, which lays it over the cached
+     player until the next read of the client overrules it -- so every component
+     asking `get_player()` sees one answer rather than three reconciliations.
+     They are still dispatched as well: a component that wants the event itself,
+     rather than the reconciled value, is not cut off from it. ]]
 for _, vital in ipairs({ "hp", "hpp", "mp", "mpp", "tp" }) do
   windower.register_event(
     vital .. " change",
     guard.wrap(vital .. " change", function(new_value, old_value)
+      player_service.set_vital(vital, new_value)
       core.dispatch(vital, new_value, old_value)
     end)
   )
@@ -1161,6 +1247,33 @@ for _, event in ipairs({ "gain focus", "lose focus", "gain buff", "lose buff", "
   windower.register_event(
     event,
     guard.wrap(event, function(...)
+      --[[ Three of these are answered out of get_player() the moment they
+           arrive, so a cached read taken BEFORE the event would be read as
+           "nothing changed". They are all rare, so dropping the interval costs
+           nothing:
+
+             job change - the crossbar holds it until get_player() agrees with
+             the ids the event announced, retrying per frame, so a stale read
+             only makes that wait an interval longer.
+
+             gain buff / lose buff - the crossbar's context layers are a pure
+             diff of get_player().buffs done once, from here. A list that does
+             not yet contain the buff diffs to no change, and nothing re-syncs
+             per frame, so the layer would stay wrong until the next buff
+             event - minutes, on a Light Arts flip. ]]
+      if event == "job change" or event == "gain buff" or event == "lose buff" then
+        --[[ Keyed: none of the three changes the party or the zone, and buff
+             events are frequent enough that dropping the whole interval for one
+             would undo the deduplication this service exists for.
+
+             Accepted for the job change: the crossbar's rescope retries every
+             frame until get_player() agrees with the ids the event announced,
+             and it now sees a fresh answer once per interval rather than once
+             per frame. Its deadline is ten wall-clock seconds, so it still gets
+             about fifty attempts, and the binding reload lands up to ~200ms
+             later than it used to on a change that takes a menu to make. ]]
+        player_service.invalidate("player")
+      end
       core.dispatch(event, ...)
     end)
   )

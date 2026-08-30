@@ -84,6 +84,35 @@ describe("core", function()
       assert.are.equal("return { snap = 25 }", env.fs.files["data/Azureblood/core.lua"])
     end)
 
+    --[[ The player service caches the client for an interval, and core is the
+         only thing that knows a different character is now being played - the
+         `login` event fires before the client can name anybody, and CLAUDE.md
+         records that a switch can resolve without one at all. So core announces
+         the scope, and it announces it BEFORE attaching: the incoming
+         character's first tick must not be able to read the outgoing one. ]]
+    it("announces a scope change before it attaches anything", function()
+      local widget = core.register(bar())
+      local seen_at_attach = nil
+      local attach = widget.attach
+      widget.attach = function(...)
+        seen_at_attach = #env.scope_changes
+        return attach(...)
+      end
+      env.login("Azureblood")
+      core.on_login()
+      assert.are.same({ "Azureblood" }, env.scope_changes)
+      assert.are.equal(1, seen_at_attach, "attached before the scope change was announced")
+    end)
+
+    it("announces the un-scoping on a logout too", function()
+      core.register(bar())
+      env.login("Azureblood")
+      core.on_login()
+      env.player = nil
+      core.on_logout()
+      assert.are.same({ "Azureblood", false }, env.scope_changes)
+    end)
+
     it("ignores a blank character name until the real one arrives", function()
       local widget = core.register(bar())
       env.player = { name = "", vitals = {} }
