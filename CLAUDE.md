@@ -191,7 +191,7 @@ built-in actions itself; `commands.lua` answers the rest):
 //hud crossbar list [<set>]
 //hud crossbar wxhb [on|off]
 //hud crossbar retry [on|off]
-//hud crossbar bind <address> <type> [<action>] [<target>] ["<alias>"] ["<icon>"]
+//hud crossbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>]
 //hud crossbar unbind <address>
 //hud crossbar alias <address> [<name>]
 //hud crossbar icon <address> [<name>]
@@ -223,26 +223,75 @@ Two verbs are deliberately overloaded: bare `cycle` advances the rotation while
 `open <name>` opens one.
 
 `bind`'s trailing alias and icon - the same two overrides the `alias` and
-`icon` verbs write afterwards - must each be QUOTED, and `""` in the alias
-slot is how an icon is given without one. The quotes are the grammar rather
-than decoration: an action name may be several words, so nothing else could
-tell a label from another word of the name. A quoted word in the TARGET
-position is still the target where it spells one (`ma "Cure IV" "p1"`), the
-reading `ra "t"` always had: a target that vanished into an alias would bind
-an action aimed at nothing. One that spells no target is the alias, where a
-BARE word there is still the typo it always was. An icon naming art that does not
-resolve refuses the whole bind - a bind is one command, and binding the
-action while dropping the art silently would be worse. Every type takes them, a `ct` or `ex` line
-only when the user quoted the line AND what follows reads as labels. The line
-ends at the quote its labels FOLLOW, which is not always the first one to
-close (`/p "Odin" up` closes twice on the way there), so every quote it could
-close on is asked the same question; a label carrying a quote of its own
-answers no, since no label anyone means to write contains one. An unquoted
-line - and a quoted one no reading finds labels after - still takes the whole
-rest of what was typed, which is what keeps `/ma "Cure IV" <t>` whole.
-`//hud crossbar list` prints the labels positionally, and quotes a chat line
-that carries them, so a listed row retyped binds the same thing - bar an
-alias that spells a target token, which reads back as the target it spells.
+`icon` verbs write afterwards - are each opened by a MARKER, `alias=` and
+`icon=`, matched in any case and in either order. They were positional and
+QUOTE-delimited until 2026-08-30, when a live client settled testplan row C26:
+Windower groups a quoted run into ONE argument and strips the quote characters
+before the addon is asked, so the grammar's own test (`word:sub(1, 1) == '"'`)
+could never be true in a client and every label was silently swallowed by the
+action name. The marker is what survives that trip, and it also ends the
+action name - the one job the quotes used to do, which is why a ONE-WORD name
+can carry a label now (`ma Cure alias=C`): `"C"` and `C` reach the addon as
+the same word, so nothing else could have told them apart. A value runs to the
+next marker or the end of the line, so `alias=Big Hit` needs no quotes of its
+own and all three shapes `alias="My Alias"` can arrive in - one argument, two
+with the quotes still on, two bare words - read as the same alias. An empty
+value (`alias=`) is no label at all. Every type takes them, a `ct` or `ex`
+line included: the marker is the only thing that can end a line, so the line
+keeps every word up to it, and a line needing a literal `alias=` in it must be
+quoted as a WHOLE (`ct "p alias=x"` arrives as one argument, which the marker
+pattern never matches, and stores `p alias=x`) - unquoted, that line binds `/p`
+under the label `x`. A `ct`/`ex` line also gets the user's own QUOTING PUT BACK, without
+which `ct ma "Cure IV" <t>` would say `/ma Cure IV <t>` and never cast: an
+argument can only carry whitespace where the user quoted it (the client groups
+a quoted run and strips the quotes), so a word with a space in it is one they
+delimited and is re-quoted before the words are joined. A word already
+carrying a quote is left alone - it came from a client that hands quotes
+through, which never produces a word with whitespace in it, so the two
+readings never meet. Quoting around a SINGLE word is the one thing that cannot
+survive, being indistinguishable from a bare word on arrival, and the game
+reads `/ma Cure <t>` the same way regardless. The cost, and it is a real one: a
+quoted phrase in a CHAT line is now said with its quotes (`ct p "Hello there"`
+says `/p "Hello there"`, where the old joining said it plainly) - the two
+cannot be told apart, and a spell name that will not cast is the worse of the
+two failures. Chat text is written unquoted. Quotes around the WHOLE line come
+off again (`ct "sea all linkshell"`), that pair being the line's own wrapper
+rather than a phrase inside it. Both of these and the loss of a literal
+`alias=` inside a line are consequences of the marker grammar, not decisions
+taken separately - they are Kevin's to overturn, and doing so means giving up
+`ct ma "Cure IV" <t>`. A TARGET still goes in front of the labels;
+one arriving after them as a word of its own is refused rather than swallowed,
+since an aim that vanished into an alias would bind an action pointed at
+nothing - but only on the types that could have TAKEN a target (the game types
+and `ra`), and only where the client split it off as its own word. On `warp`,
+`ct` or `open` a target token is an ordinary word of the alias (`Follow me`),
+and refusing it would leave the user nowhere to go: `warp` and `open` refuse a
+bare `me` in front of the labels too, so it could not be moved there, and on a
+`ct` line moving it in front is a silently DIFFERENT bind - the word is part
+of what gets said. A value the client
+handed over whole (`alias="Cure p1"`) is one the user delimited and is left
+alone either way, which is the way out the refusal itself spells. A quote left
+in a GAME action's name is refused for the same reason a bad icon is - nothing
+is called `"Cure IV`, so it could only ever have been a bind that never
+fires - while a `ct`/`ex` line keeps every quote it was given. An icon naming art that does not resolve
+refuses the whole bind - a bind is one command, and binding the action while
+dropping the art silently would be worse. `//hud crossbar list` prints each
+label marked and quoted (`alias="Cure 4" icon="cure"`), so a listed row
+retyped binds the same thing whichever way the client splits it - bar a value
+carrying a quote OF ITS OWN, which nothing can quote back and which only a
+quote-passing client could have stored in the first place.
+
+Quotes now do exactly one thing in the parser: a value that arrives wrapped in
+a MATCHED pair is unwrapped and trimmed (commands.lua's file-local
+`undelimit`), which is what a client that hands the quotes through would
+produce. The pair is matched by checking the inside for a quote of its own -
+`"/p a" "b"` opens and closes with one without those two being a pair, and
+stripping them would delete characters out of the middle of what was typed, so
+it is left alone (as is a delimited line that really does carry interior
+quotes: storing what was typed beats silently editing it). A lone quote is a
+character in the name - a chat line carrying one is a line someone means to
+say, and refusing it would refuse what nobody can otherwise type - except in a
+GAME action's name, where it is refused, above.
 
 In layout mode: left-drag moves a widget (snapped to the grid; hold CTRL for free movement), the wheel scales it (floor 0.25), right-click toggles it on or off. A multi-anchor widget drags and scales one anchor at a time — the one under the cursor — while the right-click still toggles the whole widget. Every change persists immediately. Auto-hide outranks layout mode: the HUD stays hidden during a cutscene (player status 4, disable with `hideCutscene`), while zoning (plus a ~3s settle), and while logged out.
 

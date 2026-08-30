@@ -124,8 +124,10 @@ and the answer changes what ships. C and D gate the CB9 cast-retry feature and
 are worth collecting while you are casting anyway.
 
 **A. Does FFXI accept a bare player name as a target, and does `<Name>` work?**
-The CLI refuses a trailing unrecognised word and tells the user to quote the
-whole name or use a token; the wiki says a player's name is not a target. If
+The CLI refuses a trailing unrecognised word and names the two readings that
+work - a target token, or `alias="<word>"` (quoting the whole name stopped
+being advice there on 2026-08-30: it binds a name the refusal has just
+established is not an action); the wiki says a player's name is not a target. If
 `<Name>` does work in a macro line, the parser can stop refusing it, the hint
 can teach it, and the wiki gains a row. Test by hand first: `/ma "Cure" <Kevin>`
 typed straight into the client, then the same as a bound slot.

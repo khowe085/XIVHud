@@ -99,7 +99,7 @@ local HELP = {
   "  //hud crossbar cycle - advance the rotation",
   "  //hud crossbar list [<set>]",
   "  //hud crossbar wxhb [on|off]",
-  '  //hud crossbar bind <address> <type> [<action>] [<target>] ["<alias>"] ["<icon>"]',
+  "  //hud crossbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>]",
   "  //hud crossbar unbind <address>",
   "  //hud crossbar alias <address> [<name>] - omit to clear",
   "  //hud crossbar icon <address> [<name>] - omit to clear",
@@ -121,9 +121,9 @@ local HELP = {
   "  //hud crossbar warp [all]",
   "  //hud crossbar edit",
   "  an address is <set><L|R><slot> - 1L1, 2R8 - and takes sub: or ctx:<name>: in front",
-  -- The quotes are the grammar, not decoration: an action name may be
-  -- several words, so nothing else could tell a label from one of them.
-  '  a bind\'s alias and icon must be quoted - give "" as the alias for an icon without one',
+  -- The marker is the grammar, not decoration: an action name may be
+  -- several words, and Windower strips the quotes that used to delimit one.
+  "  a bind's alias and icon are marked - alias=Cure 4 icon=cure - and the mark ends the action name",
 }
 
 -- Types that carry no action name. `ra` still takes a target (`/ra <t>`);
@@ -136,8 +136,9 @@ local WHOLE_LINE_TYPES = { ct = true, ex = true }
 --[[ FFXI's target tokens. The grammar is `<type> [<action>] [<target>]` over
      words Windower already split on spaces, and an action name may be
      several words ("Ascetic's Fury"), so the last word is a target only when
-     it is one of these -- or is bracketed, which says so outright. A name
-     may also be double-quoted, which settles it without the list. ]]
+     it is one of these -- or is bracketed, which says so outright. Quoting
+     the WHOLE name settles it without the list (it arrives as one word);
+     quoting part of one settles nothing, the quotes being gone by then. ]]
 local TARGET_TOKENS = {
   t = true,
   me = true,
@@ -153,22 +154,19 @@ local TARGET_TOKENS = {
   pet = true,
 }
 
---[[ The two readings that actually work, named the same way everywhere a
+--[[ The reading that actually works, named the same way everywhere a
      trailing word is refused. Deliberately terminal: it does NOT teach
      `<Name>` for a player (a bracketed player name is UNVERIFIED in client
-     and awaits the in-client check), and it never sends anyone to a form the parser
-     also refuses - quoting only the shorter name leaves the trailing word
-     bare, which lands right back here. A user who types `<Name>` anyway is
-     still obeyed; we simply do not recommend it.
+     and awaits the in-client check), and it never sends anyone to a form the
+     parser also refuses. A user who types `<Name>` anyway is still obeyed;
+     we simply do not recommend it. Quoting is not offered beside it: quoting
+     part of a line changes nothing (the words arrive as they already were),
+     and quoting the whole of one binds a name each of these refusals has
+     just established is not an action.
 
      The token list is the parser's own: a16-a19 are not alliance targets,
      so a hint promising a10-a25 would promise more than bind accepts. ]]
-local TARGET_ADVICE = "a player name as a target is not supported yet - quote the whole name to keep it, "
-  .. "or use a target token (t, me, bt, ft, pet, p0-p5, a10-a15, a20-a25, st, stpc, stnpc)"
-
-local function not_a_target(word)
-  return "not a target: " .. word .. " - " .. TARGET_ADVICE
-end
+local TARGET_TOKENS_ADVICE = "a target token (t, me, bt, ft, pet, p0-p5, a10-a15, a20-a25, st, stpc, stnpc)"
 
 local function is_target_token(word)
   if TARGET_TOKENS[word] then
@@ -177,42 +175,34 @@ local function is_target_token(word)
   return word:match("^p[0-5]$") ~= nil or word:match("^a[12][0-5]$") ~= nil
 end
 
--- A name the user wrapped in quotes: the wiki teaches quoting for names with
--- spaces, and a user who quotes one without them must not get the quotes
--- stored as the label.
 local function trim(text)
   return (text:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
-local function unquote(text)
-  return text:match('^"(.*)"$') or text
-end
+--[[ A name the client handed over with its quotes still ON, stripped of
+     them, and whether it was. Windower groups a quoted run into one argument
+     and strips the quotes before an addon is asked (settled in a live client
+     2026-08-30), so nothing in the parser may depend on reading one: this is
+     the belt to that brace, and the only place a quote is read at all. An
+     unbalanced quote is simply a character in the name, which is what a chat
+     line carrying one needs.
 
---- A quoted name, or nil + a complaint when the quote never closes: a
---- dropped closing quote stores the quote as part of the name and binds
---- something that can never fire.
-local function unquote_checked(text)
-  if text:sub(1, 1) == '"' and (#text < 2 or text:sub(-1) ~= '"') then
-    return nil, "unterminated quote in " .. text
+     Trimmed when it strips: the quotes are the user saying where the name
+     ends, and an action carrying the whitespace inside them can never
+     fire. ]]
+local function undelimit(text)
+  --[[ A MATCHED pair, which is why the inside is checked for a quote of its
+       own: `"/p a" "b"` opens and closes with one without those two being a
+       pair, and stripping them would delete characters out of the middle of
+       what the user typed. A delimited line that really does carry interior
+       quotes is left wrapped instead - storing what was typed beats
+       silently editing it, and no client this addon has met can produce
+       either shape. ]]
+  local inside = #text > 1 and text:sub(1, 1) == '"' and text:sub(-1) == '"' and text:sub(2, -2)
+  if inside and inside:find('"', 1, true) == nil then
+    return trim(inside), true
   end
-  -- Trimmed: the quotes are the user's way of saying where the name ends,
-  -- and an action whose name carries the whitespace they typed inside them
-  -- can never fire.
-  return trim(unquote(text))
-end
-
---- The word that closes the quoted span opening at `from`, or nil. The
---- opening quote cannot double as the closing one, so a one-word span
---- needs two characters before it can close. `search_from` resumes past a
---- closer the caller rejected, for a line that runs through several.
-local function span_end(words, from, search_from)
-  for index = search_from or from, #words do
-    local word = words[index]
-    if word:sub(-1) == '"' and (index > from or #word > 1) then
-      return index
-    end
-  end
-  return nil
+  return text, false
 end
 
 --- A decimal integer, or nil. tonumber takes "0x3", "3.0" and "1e0" as
@@ -236,7 +226,7 @@ local function target_of(word)
   if bracketed ~= nil then
     return is_target_token(bracketed:lower()) and bracketed:lower() or bracketed
   end
-  local bare = unquote(word)
+  local bare = undelimit(word)
   if is_target_token(bare:lower()) then
     return bare:lower()
   end
@@ -251,151 +241,196 @@ local function slice(words, from, to)
   return out
 end
 
+--[[ The words as one phrase. An EMPTY word contributes nothing, not even
+     its separator: the old grammar spelled "an icon with no alias" as an
+     empty span, so `ja "Berserk" "" "attack"` is what an existing user
+     retypes, and joining it plainly names an action with a double space in
+     it that no listing or file could be read back from. ]]
 local function join(words, from, to)
-  return table.concat(slice(words, from or 1, to), " ")
+  local kept = {}
+  for _, word in ipairs(slice(words, from or 1, to)) do
+    if word ~= "" then
+      kept[#kept + 1] = word
+    end
+  end
+  return table.concat(kept, " ")
 end
 
---- A label carrying a quote of its own -- which no label the user meant to
---- write does, so it is a quote that belongs to whatever came before it.
-local function quoted(label)
-  return label ~= nil and label:find('"', 1, true) ~= nil
+--[[ The two label markers, `alias=` and `icon=`. The value one opens runs
+     to the next marker or the end of the line, which is what makes
+     `alias="My Alias"` read the same however the client hands it over: as
+     one argument with the quotes stripped (what a live client does, settled
+     2026-08-30), as two with the quotes still on, or as two bare words. The
+     addon has no say in which of those it gets, and quotes alone -- the
+     grammar this replaced -- survive none of them. ]]
+local LABEL_MARKERS = { alias = true, icon = true }
+
+--- The field a word opens a label for and the first of its value, or nil.
+--- Matched case-insensitively, exactly as every verb and component name is.
+local function label_marker(word)
+  local field, value = word:match("^(%a+)=(.*)$")
+  if field == nil or not LABEL_MARKERS[field:lower()] then
+    return nil
+  end
+  return field:lower(), value
 end
 
---[[ The optional trailing labels, in order: the alias then the icon, each
-     a QUOTED span. The quotes are the whole grammar -- an action name may
-     be several words, so nothing else could tell `Healer` in
-     `ma Cure IV Healer` from another word of the name -- and an empty span
-     (`""`) is how an icon is given without an alias. `bare` says, in the
-     caller's own terms, what an unquoted word there means, since every
-     type refused one before labels existed. ]]
-local function take_labels(words, from, bare)
-  local found, index = {}, from
+--- Where the labels begin -- the first word opening one, or past the end.
+--- That word also ends the ACTION NAME, which is the whole reason the
+--- markers exist: nothing else can say where a several-word name stops.
+local function labels_begin(words)
+  for index = 1, #words do
+    if label_marker(words[index]) ~= nil then
+      return index
+    end
+  end
+  return #words + 1
+end
+
+--[[ The alias form to advise for words the user must otherwise drop, or ""
+     where the line ALREADY carries an alias - a second one is refused, so
+     advising it would be advising a second refusal.
+
+     QUOTED, because that is the spelling that works in ONE hop: the words
+     may end in a target token, which a bare `alias=junk me` would be
+     refused for, and a value handed over whole is never read that way. Both
+     the grouping client and a splitting one read it back the same. ]]
+local function label_hint(words, labelled)
+  if labelled then
+    return ""
+  end
+  return ', or mark it as alias="' .. words .. '"'
+end
+
+--- Whether an `alias=` carrying a VALUE is already among the words from
+--- `from` on. An empty one stores no label, so a hint to write one is still
+--- the way out rather than a second refusal.
+local function has_alias(words, from)
+  for index = from, #words do
+    local field, first = label_marker(words[index])
+    if field == "alias" then
+      local stop = index
+      while stop < #words and label_marker(words[stop + 1]) == nil do
+        stop = stop + 1
+      end
+      if trim(first .. " " .. join(words, index + 1, stop)) ~= "" then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+--[[ The labels, read from the first marker on: an alias and an icon, in
+     either order and neither required. Answers a table plus a complaint,
+     and an empty value is no label at all -- `alias=` says nothing.
+
+     `targetable` says whether the type could have taken a target, which is
+     the only case where a target word inside a value is worth refusing over
+     (see below). On a type that takes none, `Follow me` and `Warp me` are
+     ordinary aliases and there would be nowhere else to put the word.
+     `targeted` says one was already given, which changes the ADVICE and
+     nothing else: a second target cannot be moved in front of the first. ]]
+local function take_labels(words, from, targetable, targeted)
+  local found, seen, index = {}, {}, from
+  -- The FIRST marker is where a late target has to go in front of: in front
+  -- of a later one is still behind this one, which is this same refusal.
+  local opener = label_marker(words[from])
   while index <= #words do
-    -- Count first: past the icon there is no third label to quote, so
-    -- "quote it" would send the user to a form the parser also refuses.
-    if #found == 2 then
-      --[[ Three LABELS is the count refusal; anything else here is a line
-           running on. A bare word is not a label the user typed, and
-           neither is a quoted one that carries a quote of its own (nor its
-           two predecessors) - `ct "/p "a" "b"" "x" "y"` reaches this on its
-           first close and is a perfectly good line with two labels on the
-           end. Neither reading is told to quote what it should drop. ]]
-      local third = words[index]:sub(1, 1) == '"' and span_end(words, index) or nil
-      local overflow = third ~= nil
-        and not quoted(found[1])
-        and not quoted(found[2])
-        and not quoted(trim(join(words, index, third):sub(2, -2)))
-      local complaint = "an alias and an icon are the last of a bind - drop " .. join(words, index)
-      return nil, nil, complaint, overflow
+    local field, first = label_marker(words[index])
+    if field == nil then
+      -- Unreachable from `bind`, which starts at a marker and lets every
+      -- value run to the next one. Answering rather than assuming keeps a
+      -- later caller from dropping words in silence.
+      return nil, "a label starts at alias= or icon= - drop " .. join(words, index)
     end
-    if words[index]:sub(1, 1) ~= '"' then
-      return nil, nil, bare(words[index])
+    local stop = index
+    while stop < #words and label_marker(words[stop + 1]) == nil do
+      stop = stop + 1
     end
-    local close = span_end(words, index)
-    if close == nil then
-      return nil, nil, "unterminated quote in " .. join(words, index)
+    if seen[field] then
+      -- The repeat alone: naming the rest of the line would tell the user
+      -- to drop a marker that is doing its job.
+      return nil, "one " .. field .. "= only - drop " .. join(words, index, stop)
     end
-    found[#found + 1] = trim(join(words, index, close):sub(2, -2))
-    index = close + 1
+    --[[ A target as a word of its OWN at the end of a value is a target that
+         arrived late, not part of an alias: the value would swallow it and
+         bind an action aimed at nothing, reported as a success. A value the
+         client handed over whole is one the user delimited, so `alias=Cure
+         p1` in one piece is left alone - that is an alias someone wrote,
+         and quoting it is the way out the refusal below spells. ]]
+    local value = undelimit(trim(first .. " " .. join(words, index + 1, stop)))
+    -- `stop > index` is the value having words of its OWN: the marker word
+    -- itself carries the `alias=` prefix, so it can never read as a target.
+    if targetable and stop > index and target_of(words[stop]) ~= nil then
+      --[[ Two refusals, neither naming a form that binds something worse.
+           Told to move a SECOND target in front of the first, the words
+           between them join the action name: `ma Cure IV p1 alias=Heal me`
+           would become `ma Cure IV p1 <me>`, a spell that does not exist,
+           reported as a success. Keeping it in the label is the way out of
+           both, so both spell it. ]]
+      --[[ Only an ALIAS can keep it: an icon is a file name, so
+           `icon="cure p1"` names no art and the advice would land on the
+           icon refusal instead - the one thing neither message may do. ]]
+      local keep = field == "alias" and (', or keep it in the label as alias="' .. value .. '"') or ""
+      if targeted then
+        return nil, "one target only - drop " .. words[stop] .. keep
+      end
+      return nil, "a target goes before the labels - move " .. words[stop] .. " in front of " .. opener .. "=" .. keep
+    end
+    seen[field] = true
+    found[field] = value ~= "" and value or nil
+    index = stop + 1
   end
-  return found[1] ~= "" and found[1] or nil, found[2] ~= "" and found[2] or nil
+  return found
 end
 
---[[ An unquoted word where a label belongs, read against what the bind has
-     already taken. Three answers, and none of them names a form the parser
-     also refuses: quoting a target lands on the icon refusal, and a target
-     already in front cannot be moved there again. ]]
-local function label_refusal(word, targeted)
-  if target_of(word) == nil then
-    return "an alias and an icon must be quoted - drop " .. word .. " or quote it"
-  end
-  if targeted then
-    return "one target only - drop " .. word
-  end
-  return "a target goes before the alias and icon - move " .. word .. " in front of them"
-end
-
---[[ The target at `words[from]`, and where the words after it begin -- or
-     nil when there is no target there. A quoted span spelling one IS one:
-     the quotes delimit a name the parser could not otherwise find the end
-     of, and a target that vanished into an alias would bind an action
-     aimed at nothing. That makes the reading the same for every type,
-     `ra`'s own quoted target included. ]]
-local function take_target(words, from)
-  local word = words[from]
-  if word == nil then
-    return nil
-  end
-  if word:sub(1, 1) ~= '"' then
-    local resolved = target_of(word)
-    return resolved, resolved ~= nil and from + 1 or nil
-  end
-  local close = span_end(words, from)
-  if close == nil then
-    return nil
-  end
-  local resolved = target_of(trim(join(words, from, close):sub(2, -2)))
-  return resolved, resolved ~= nil and close + 1 or nil
-end
-
---- The optional trailing target: answers the action name and the target, or
---- nil + a complaint. A double-quoted name wins outright; otherwise the last
---- of two or more words is the target only when it reads as one -- an
---- unrecognised word stays part of the name, which is what makes a player
---- name usable as a target only when bracketed or quoted past. The fifth
---- answer is where the labels begin -- past the name and its target -- so
---- the caller reads them off the same words with the same rule everywhere.
+--[[ The action name and its target, over the words in FRONT of the labels.
+     The last word is the target only when it reads as one -- an
+     unrecognised word stays part of the name, which is what makes a player
+     name usable as a target only when bracketed. The fourth answer is the
+     word the name swallowed, for `bind` to second-guess the reading with. ]]
 local function split_action_target(rest)
   if #rest == 0 then
-    return nil, nil, nil, nil, 1
+    return nil, nil, nil, nil
   end
-  if rest[1]:sub(1, 1) == '"' then
-    local close = span_end(rest, 1)
-    if close == nil then
-      -- Unterminated. Storing it would keep the quote in the action name and
-      -- bind something that can never fire, reported as a success.
-      return nil, nil, "unterminated quote in " .. join(rest)
-    end
-    local name = trim(join(rest, 1, close):sub(2, -2))
-    if name == "" then
-      return nil, nil, "an empty action name"
-    end
-    -- The quote closed, so the next word cannot belong to the name: it is
-    -- the target, or -- quoted and not spelling one -- the first label.
-    local target, after = take_target(rest, close + 1)
-    if target ~= nil then
-      return name, target, nil, nil, after
-    end
-    local word = rest[close + 1]
-    if word ~= nil and word:sub(1, 1) ~= '"' then
-      return nil, nil, not_a_target(word)
-    end
-    return name, nil, nil, nil, close + 1
+  local last = rest[#rest]
+  local name_words = #rest
+  local target = nil
+  if #rest >= 2 and target_of(last) ~= nil then
+    target, name_words = target_of(last), #rest - 1
   end
-  -- An unquoted name runs to the first word that opens a quoted span: the
-  -- labels are the one thing it does not swallow.
-  local labels_from = #rest + 1
-  for index = 1, #rest do
-    if rest[index]:sub(1, 1) == '"' then
-      labels_from = index
-      break
-    end
+  --[[ A name that arrived with its quotes on is one the user DELIMITED, so
+       the swallowed-word check below has nothing to second-guess: they said
+       where the name ends. Every other name is taken exactly as typed. ]]
+  local name, delimited = undelimit(join(rest, 1, name_words))
+  -- A grouping client strips the quotes and keeps what was inside them, so
+  -- ` Cure IV ` arrives with the user's own spaces on it; an action name
+  -- carrying those can never fire.
+  name = trim(name)
+  if name == "" then
+    return nil, nil, "an empty action name"
   end
-  local name_words = labels_from - 1
-  local last = rest[name_words]
-  if name_words >= 2 and target_of(last) ~= nil then
-    return join(rest, 1, name_words - 1), target_of(last), nil, nil, labels_from
+  --[[ A quote still in the name is HALF a pair: the client strips a whole
+       one before we are asked, and nothing in the game is called `"Cure IV`.
+       Storing it would bind an action that can never fire and report a
+       success. A ct or ex line is the opposite case and does not come
+       through here - a quote is part of what gets said. ]]
+  if name:find('"', 1, true) ~= nil then
+    return nil, nil, "a quote left in the name: " .. name .. " - no action is called that"
   end
-  -- The name ran to the labels, so the first of them is where a quoted
-  -- target would be. It is one when it spells one, exactly as a bare word
-  -- in that position is.
-  local target, after = take_target(rest, labels_from)
   if target ~= nil then
-    return join(rest, 1, name_words), target, nil, nil, after
+    return name, target
   end
-  -- No target: the name took every word, the last of which might have been
-  -- meant as one. The fourth answer is that word, for bind to check.
-  return join(rest, 1, name_words), nil, nil, name_words >= 2 and last or nil, labels_from
+  --[[ No target: the name took every word, the last of which might have
+       been meant as one. The fourth answer is that word, for bind to check
+       - TRIMMED, because the name it will be measured against is, and a
+       word arriving with the user's own spaces on it (`ws Savage "Blade "`)
+       would otherwise cut the shorter reading mid-word. ]]
+  -- An empty last word swallowed nothing, and second-guessing the name
+  -- against it would cut the shorter reading mid-word.
+  last = trim(last)
+  return name, nil, nil, (not delimited and #rest >= 2 and last ~= "") and last or nil
 end
 
 local function new(deps)
@@ -525,25 +560,22 @@ local function new(deps)
        are correct for what they are. ]]
   local function record_label(record)
     local parts = { tostring(record.type) }
-    local labelled = record.alias ~= nil or record.icon ~= nil
     if record.action ~= nil then
-      -- A labelled chat line is quoted, because that is what a retyped row
-      -- needs for its labels to read as labels rather than as more of the
-      -- line. Every other type delimits its name for itself.
-      local action = tostring(record.action)
-      parts[#parts + 1] = (labelled and WHOLE_LINE_TYPES[record.type]) and ('"' .. action .. '"') or action
+      parts[#parts + 1] = tostring(record.action)
     end
     if record.target ~= nil then
       parts[#parts + 1] = "<" .. tostring(record.target) .. ">"
     end
-    if labelled then
-      -- Positionally, exactly as `bind` takes them - naming the icon would
-      -- print a bare word that a retyped row's action name swallows. The
-      -- empty alias is bind's own spelling of "icon, no alias".
-      parts[#parts + 1] = '"' .. tostring(record.alias or "") .. '"'
+    --[[ Marked and quoted, which is what a retyped row needs: the marker
+         says these are labels, and the quotes hold a multi-word value
+         together for a client that splits the row on spaces. A client that
+         groups a quoted run instead strips the quotes, and the marker reads
+         back the same value either way. ]]
+    if record.alias ~= nil then
+      parts[#parts + 1] = 'alias="' .. tostring(record.alias) .. '"'
     end
     if record.icon ~= nil then
-      parts[#parts + 1] = '"' .. tostring(record.icon) .. '"'
+      parts[#parts + 1] = 'icon="' .. tostring(record.icon) .. '"'
     end
     return table.concat(parts, " ")
   end
@@ -604,29 +636,43 @@ local function new(deps)
        a target -- and storing the longer one would report success on a
        command that can never fire. Where either answer is unknown, the
        user's reading stands and the reply says so. ]]
-  local function second_guess(kind, name, absorbed)
+  local function second_guess(kind, name, absorbed, labelled)
     if absorbed == nil then
       return nil, nil
     end
     local shorter = name:sub(1, #name - #absorbed - 1)
     local whole_known, shorter_known = known_action(kind, name), known_action(kind, shorter)
+    -- The third reading, which every other refusal in the parser names and
+    -- this one did not: the word may have been meant as a LABEL, which is
+    -- the likeliest of the three now that the old grammar spelled it that
+    -- way (`ma Cure IV Healer`).
+    local label = label_hint(absorbed, labelled)
     if whole_known == nil or shorter_known == nil then
-      return nil, "read '" .. shorter .. "' + target '" .. absorbed .. "'? quote the name to keep it whole"
+      return nil, "read '" .. shorter .. "' + target '" .. absorbed .. "'? quote the name to keep it whole" .. label
     end
     if whole_known == false and shorter_known == true then
-      -- '<shorter>' is real and '<name>' is not, so the user meant a
-      -- target. Saying "quote <shorter> and aim it at <absorbed>" would
-      -- name a command this parser refuses, so the advice is the terminal
-      -- one both refusals share.
-      return "'" .. name .. "' is not an action, and " .. TARGET_ADVICE, nil
+      --[[ '<shorter>' is real and '<name>' is not, so the user meant a
+           target or a label. Saying "quote <shorter> and aim it at
+           <absorbed>" would name a command this parser refuses, and
+           "quote the whole name" - the advice this shared with the other
+           refusal - would bind the name just established NOT to be an
+           action. What is left is the two readings that work. ]]
+      return "'"
+        .. name
+        .. "' is not an action - a player name as a target is not supported yet; use "
+        .. TARGET_TOKENS_ADVICE
+        .. label,
+        nil
     end
     return nil, nil
   end
 
-  --- `bind <address> <type> [<action>] [<target>] ["<alias>"] ["<icon>"]`.
+  --- `bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>]`.
   local function bind(args)
     if #args < 3 then
-      return hint('bind <address> <type> [<action>] [<target>] ["<alias>"] ["<icon>"] - an address is ' .. ADDRESS_FORM)
+      return hint(
+        "bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] - an address is " .. ADDRESS_FORM
+      )
     end
     local address, side, slot = parse_address(args[2], true)
     if address == nil then
@@ -636,120 +682,93 @@ local function new(deps)
     local rest = slice(args, 4)
     local record = { type = kind }
     local absorbed = nil
-    -- Where the labels begin, and what an unquoted word there means: every
-    -- type takes them, and every type refused a bare trailing word before
-    -- they existed, so each keeps its own words for that refusal. The
-    -- default reads `record` when it is CALLED, by which time the parse has
-    -- said whether a target was taken.
-    local labels_from = 1
-    local bare_label = function(word)
-      return label_refusal(word, record.target ~= nil)
-    end
-    local labels_complaint
+    --[[ The labels are found FIRST: the marker that opens one is also what
+         ends the action name -- the one job the quotes used to do, before a
+         live client showed they never reach us. Each type then reads its own
+         words out of the head, and none of them has to tell a label from a
+         name. ]]
+    local labels_at = labels_begin(rest)
+    local head = slice(rest, 1, labels_at - 1)
+    -- Whether a target could have been given at all, which decides how a
+    -- target word inside a label reads: a late aim on the types that take
+    -- one, an ordinary word of the alias on the types that do not.
+    local targetable = kind == "ra" or not (NO_ACTION_TYPES[kind] or WHOLE_LINE_TYPES[kind] or kind == "open")
+    local labelled = has_alias(rest, labels_at)
     if NO_ACTION_TYPES[kind] then
-      if kind == "ra" then
-        bare_label = function(word)
-          -- A target here is late or doubled, not junk, and label_refusal
-          -- tells those apart; ra takes one where every type does.
-          if target_of(word) ~= nil then
-            return label_refusal(word, record.target ~= nil)
-          end
-          return "ra takes a target, then a quoted alias and icon - drop " .. word .. " or quote it"
-        end
-        -- ra's target may be quoted, so a leading span is the target when
-        -- it spells one and the first label when it does not.
-        local first = rest[1]
-        record.target, labels_from = take_target(rest, 1)
-        labels_from = labels_from or 1
-        if record.target == nil and first ~= nil and first:sub(1, 1) ~= '"' then
-          return hint(not_a_target(first))
-        end
-      else
-        bare_label = function(word)
-          return kind .. " takes no action name or target - drop " .. word .. " or quote it as an alias"
-        end
-      end
-    elseif WHOLE_LINE_TYPES[kind] then
-      --[[ The whole line, interior quotes included -- unless the user
-           DELIMITED it and what follows READS as labels. The first test
-           alone is not enough: `ct "/ma "Cure IV" <t>"` closes a quote
-           before its last word too, and that quote is part of what gets
-           said. So the tail is parsed as labels first and the line keeps
-           every word when it is not one, which leaves an undelimited line
-           byte for byte what it always was. A leading quote that never
-           closes is the same dropped-quote typo the other path refuses,
-           and the wiki teaches quoting for exactly this type.
-
-           The line ends at the quote its LABELS follow, which is not always
-           the first one to close: `/p "Odin" up` closes twice on its way
-           there. So each quote it could close on is asked the same
-           question, and a label carrying a quote of its own answers no -
-           no label the user meant to write contains one, so that quote
-           belongs to the line. Without both, `ct "/p "Odin" "up""` bound
-           `/p "Odin` with an alias of `up"`, reported as a success. ]]
-      local first_close = rest[1] ~= nil and rest[1]:sub(1, 1) == '"' and span_end(rest, 1) or nil
-      local close, delimited, alias, icon = first_close, false, nil, nil
-      while close ~= nil and close < #rest do
-        -- `bare_label` is an ORACLE here, never a message: its answer only
-        -- says this quote does not delimit the line, and the loop reads on.
-        -- The one complaint that escapes is the count, below.
-        local overflow
-        alias, icon, labels_complaint, overflow = take_labels(rest, close + 1, bare_label)
-        if overflow then
-          -- A quoted third IS a label, so the count is the complaint: the
-          -- whole-line reading would store the line with an unbalanced
-          -- quote in it and report a success.
-          return hint(labels_complaint)
-        end
-        delimited = labels_complaint == nil and not quoted(alias) and not quoted(icon)
-        labels_complaint = nil
-        if delimited then
-          break
-        end
-        close = span_end(rest, 1, close + 1)
-      end
-      -- Read here or not at all: the line took every word either way.
-      labels_from = #rest + 1
-      if delimited then
-        local line = trim(join(rest, 1, close):sub(2, -2))
-        record.action, record.alias, record.icon = line ~= "" and line or nil, alias, icon
-      else
-        local line, quote_complaint = unquote_checked(join(rest))
-        if line == nil then
-          -- The quote DID close, before a word that is not a label: naming
-          -- only the unterminated reading would send the user looking for a
-          -- missing quote at the end of a line that has one.
+      if kind == "ra" and #head > 0 then
+        record.target = target_of(head[1])
+        if record.target == nil then
+          --[[ Its own refusal rather than the shared target advice, which
+               would tell a type that takes NO action name to quote the
+               name. `ra Shoot` is what the old positional grammar's muscle
+               memory types for a label, so both readings are named. ]]
           return hint(
-            first_close ~= nil and (quote_complaint .. " - or quote a trailing alias and icon") or quote_complaint
+            "ra takes a target or a label - "
+              .. head[1]
+              .. " is neither; use "
+              .. TARGET_TOKENS_ADVICE
+              .. label_hint(join(head), labelled)
           )
         end
-        record.action = line ~= "" and line or nil
+        if #head > 1 then
+          local extra = join(head, 2)
+          return hint("ra takes a target, then alias= and icon= - drop " .. extra .. label_hint(extra, labelled))
+        end
+      elseif kind ~= "ra" and #head > 0 then
+        local extra = join(head)
+        return hint(kind .. " takes no action name or target - drop " .. extra .. label_hint(extra, labelled))
       end
+    elseif WHOLE_LINE_TYPES[kind] then
+      --[[ Every word up to the marker, with the user's own quoting put
+           BACK. An argument can only carry whitespace where they quoted it
+           - the client groups a quoted run and strips the quotes - so a
+           word with a space in it is one they delimited, and a chat line
+           has to reach the game with those quotes or it will not cast
+           (`ct ma "Cure IV" <t>`). A word already carrying a quote is left
+           alone, deliberately: those quotes are the user's own, and a
+           second pair around them would say something they did not type. A
+           quoted run with no space in it is indistinguishable from
+           a bare word by the time we are asked and keeps no quotes -
+           harmless, the game needing none around a single word. ]]
+      local said = {}
+      for index, word in ipairs(head) do
+        local delimit = word:find("%s") ~= nil and word:find('"', 1, true) == nil
+        said[index] = delimit and ('"' .. word .. '"') or word
+      end
+      -- Trimmed like every other name: `undelimit` only trims what it
+      -- strips, and a line stored with the user's trailing space says it.
+      local line = trim(undelimit(trim(join(said))))
+      record.action = line ~= "" and line or nil
     elseif kind == "open" then
-      if #rest < 1 then
+      if #head < 1 then
         return hint("open takes one screen name - try //hud crossbar open for the list")
       end
-      bare_label = function(word)
+      if #head > 1 then
         -- The pointer, not just the arity: an extra word here usually means
         -- the screen names are what the user is missing.
-        return "open takes one screen name, then a quoted alias and icon - "
-          .. word
-          .. " is neither; try //hud crossbar open for the list"
+        local extra = join(head, 2)
+        return hint(
+          "open takes one screen name, then alias= and icon= - "
+            .. extra
+            .. " is neither; drop it"
+            .. label_hint(extra, labelled)
+            .. ", or try //hud crossbar open for the list"
+        )
       end
-      record.action = unquote(rest[1]):lower()
-      labels_from = 2
+      record.action = undelimit(head[1]):lower()
     else
       local complaint_text
-      record.action, record.target, complaint_text, absorbed, labels_from = split_action_target(rest)
+      record.action, record.target, complaint_text, absorbed = split_action_target(head)
       if complaint_text ~= nil then
         return hint(complaint_text)
       end
     end
-    if labels_from <= #rest then
-      record.alias, record.icon, labels_complaint = take_labels(rest, labels_from, bare_label)
-    end
-    if labels_complaint ~= nil then
-      return hint(labels_complaint)
+    if labels_at <= #rest then
+      local labels, labels_complaint = take_labels(rest, labels_at, targetable, record.target ~= nil)
+      if labels == nil then
+        return hint(labels_complaint)
+      end
+      record.alias, record.icon = labels.alias, labels.icon
     end
     local ok, complaint_text = deps.validate(record)
     if ok == nil then
@@ -761,7 +780,7 @@ local function new(deps)
     if icon_refusal ~= nil then
       return icon_refusal
     end
-    local refusal, caution = second_guess(kind, record.action, absorbed)
+    local refusal, caution = second_guess(kind, record.action, absorbed, labelled)
     if refusal ~= nil then
       return hint(refusal)
     end
@@ -840,11 +859,7 @@ local function new(deps)
     if #args < 2 then
       return hint("alias <address> [<name>] - omit the name to clear")
     end
-    local joined = join(args, 3)
-    local name, complaint = unquote_checked(joined)
-    if name == nil then
-      return hint(complaint)
-    end
+    local name = trim(undelimit(join(args, 3)))
     return override(args, "alias", name ~= "" and name or nil)
   end
 
@@ -858,11 +873,7 @@ local function new(deps)
     -- player's own and the wiki tells them to name files whatever they want
     -- to type. An unquoted phrase simply resolves to no art and is refused
     -- by the check below.
-    local joined = join(args, 3)
-    local name, quote_complaint = unquote_checked(joined)
-    if name == nil then
-      return hint(quote_complaint)
-    end
+    local name = trim(undelimit(join(args, 3)))
     name = name ~= "" and name or nil
     return override(args, "icon", name, function()
       return icon_complaint(name)
