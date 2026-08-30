@@ -69,7 +69,7 @@ left-hand cross is slots 1–4 and the right-hand cross 5–8.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar bind <address> <type> [<action>] [<target>]` | bind a slot |
+| `//hud crossbar bind <address> <type> [<action>] [<target>] ["<alias>"] ["<icon>"]` | bind a slot, labelling it in the same command if you want |
 | `//hud crossbar unbind <address>` | clear a slot in one layer — the one you addressed |
 | `//hud crossbar alias <address> [<name>]` | change the label under a slot — omit `<name>` to clear it |
 | `//hud crossbar icon <address> [<icon>]` | change a slot's icon — omit `<icon>` to clear it |
@@ -122,6 +122,10 @@ the addon can tell the shorter name is a real action and the longer one is
 not, it refuses instead of binding something that could never fire, and where
 it cannot tell it says which reading it took.
 
+**A quoted word after the action is a target or a label**, never part of the
+name: quoting is how you say where the name ends. `ma Cure "IV"` binds a
+spell called "Cure" with the alias "IV", where `ma Cure IV` binds "Cure IV".
+
 **A player's name is not a target.** Use a token above — `t` for whoever you
 have targeted, `p1`–`p5` for a party member.
 
@@ -152,7 +156,32 @@ icon of its own:
 //hud crossbar alias 1L3                -- back to the action's own name
 ```
 
-Both follow the same layer prefixes as `bind`, so aliasing
+**`bind` takes both on the end**, so a slot can be labelled by the command
+that binds it — each quoted, the alias first:
+
+```
+//hud crossbar bind 1L3 ja "Addendum: White" "AW"
+//hud crossbar bind 4L1 ct "/heal" "Rest" "heal"
+//hud crossbar bind 2R1 item "Warp Ring" "" "items/warp-ring"   -- an icon, no alias
+```
+
+The quotes are what tells a label from another word of the action's name, and
+`""` in the alias slot is how you give an icon without one. Three things
+follow from that:
+
+- A quoted word that spells a **target** token is still the target — `ra "t"`
+  aims, it does not alias — so on a type that takes a target, `me`, `t`,
+  `pet`, `p1` and the rest cannot be aliases here; use the `alias` verb for
+  those. On a type that takes none (`draw`, `warp`, `mr`…) they alias fine.
+- An icon the addon cannot find **refuses the whole bind**, rather than
+  binding the action and dropping the art quietly.
+- On a `ct` or `ex` line, quote the line itself as well, or the labels are
+  read as part of what gets said. A line carrying quotes of its own is fine —
+  it ends at the quote its labels follow, so `ct "/p "Odin" up" "Greet"` says
+  `/p "Odin" up` under the label "Greet". Without labels after it, an
+  unquoted line is the simpler spelling and keeps every word.
+
+The `alias` and `icon` verbs follow the same layer prefixes as `bind`, so aliasing
 `ctx:light-arts:1` relabels only what that context puts in the slot. Both need
 something in the slot to act on — on an empty one they report an error rather
 than doing nothing quietly, and `icon` says so too if it cannot find the name

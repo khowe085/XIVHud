@@ -162,7 +162,7 @@ built-in actions itself; `commands.lua` answers the rest):
 //hud crossbar list [<set>]
 //hud crossbar wxhb [on|off]
 //hud crossbar retry [on|off]
-//hud crossbar bind <address> <type> [<action>] [<target>]
+//hud crossbar bind <address> <type> [<action>] [<target>] ["<alias>"] ["<icon>"]
 //hud crossbar unbind <address>
 //hud crossbar alias <address> [<name>]
 //hud crossbar icon <address> [<name>]
@@ -192,6 +192,28 @@ else.
 Two verbs are deliberately overloaded: bare `cycle` advances the rotation while
 `cycle <set> <mode>` edits membership, and bare `open` lists the screens while
 `open <name>` opens one.
+
+`bind`'s trailing alias and icon - the same two overrides the `alias` and
+`icon` verbs write afterwards - must each be QUOTED, and `""` in the alias
+slot is how an icon is given without one. The quotes are the grammar rather
+than decoration: an action name may be several words, so nothing else could
+tell a label from another word of the name. A quoted word in the TARGET
+position is still the target where it spells one (`ma "Cure IV" "p1"`), the
+reading `ra "t"` always had: a target that vanished into an alias would bind
+an action aimed at nothing. One that spells no target is the alias, where a
+BARE word there is still the typo it always was. An icon naming art that does not
+resolve refuses the whole bind - a bind is one command, and binding the
+action while dropping the art silently would be worse. Every type takes them, a `ct` or `ex` line
+only when the user quoted the line AND what follows reads as labels. The line
+ends at the quote its labels FOLLOW, which is not always the first one to
+close (`/p "Odin" up` closes twice on the way there), so every quote it could
+close on is asked the same question; a label carrying a quote of its own
+answers no, since no label anyone means to write contains one. An unquoted
+line - and a quoted one no reading finds labels after - still takes the whole
+rest of what was typed, which is what keeps `/ma "Cure IV" <t>` whole.
+`//hud crossbar list` prints the labels positionally, and quotes a chat line
+that carries them, so a listed row retyped binds the same thing - bar an
+alias that spells a target token, which reads back as the target it spells.
 
 In layout mode: left-drag moves a widget (snapped to the grid; hold CTRL for free movement), the wheel scales it (floor 0.25), right-click toggles it on or off. A multi-anchor widget drags and scales one anchor at a time — the one under the cursor — while the right-click still toggles the whole widget. Every change persists immediately. Auto-hide outranks layout mode: the HUD stays hidden during a cutscene (player status 4, disable with `hideCutscene`), while zoning (plus a ~3s settle), and while logged out.
 
