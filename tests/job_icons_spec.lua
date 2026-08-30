@@ -64,12 +64,16 @@ describe("pre-rendered job icons", function()
     end
   end)
 
-  -- The pack the crossbar resolves them alongside is 32x32.
-  it("renders every composite at the pack's size", function()
+  --[[ Deliberately the SOURCE size rather than the pack's 32x32, and
+       checked against the source rather than a constant: a slot draws
+       40x40, so anything smaller is scaled UP at draw time, which cost
+       the gold roles most of their highlights in a live client. ]]
+  it("composites at the source size, resampling nothing", function()
     for _, job in ipairs(glyphs) do
+      local want_width, want_height = png_size(GLYPHS .. job .. ".png")
       local width, height = png_size(ICONS .. job .. ".png")
-      assert.are.equal(32, width, job .. " width")
-      assert.are.equal(32, height, job .. " height")
+      assert.are.equal(want_width, width, job .. " width")
+      assert.are.equal(want_height, height, job .. " height")
     end
   end)
 

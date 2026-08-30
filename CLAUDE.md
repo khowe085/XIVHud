@@ -69,8 +69,10 @@ src/
   assets/                 -- ALL bundled art, grouped by where it came from
     own/                  -- XIVHud's own art (overlay.png among it), and xivcrossbar's chrome
     icons/                -- the ~1,300 action icons, plus jobs/: the party
-                             list's job icon stack pre-composited flat, its
-                             own art and its own notice (generated, not
+                             list's job icon stack pre-composited flat on a
+                             SOLID role colour, at the source's own 64x64 so
+                             a 40x40 slot scales down rather than up. Its own
+                             art and its own notice (generated, not
                              hand-drawn - see icons/jobs/LICENSE.txt)
     cooldown/             -- the radial recast frames
     xiv/                  -- XivParty art (+ jobIcons/, buffIcons/, wide/)
