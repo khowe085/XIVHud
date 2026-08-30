@@ -9,7 +9,7 @@ describe("partylist jobs", function()
     end)
 
     it("puts the cure jobs on healer", function()
-      for _, job in ipairs({ "WHM", "RDM", "SCH" }) do
+      for _, job in ipairs({ "WHM", "SCH" }) do
         assert.are.equal("healer", jobs.role_of(job))
       end
     end)
@@ -26,8 +26,9 @@ describe("partylist jobs", function()
       assert.are.equal("special", jobs.role_of("SPC"))
     end)
 
+    -- RDM is a deliberate divergence from XivParty, which has it on healer.
     it("falls back to dd for everything else, monstrosity included", function()
-      for _, job in ipairs({ "WAR", "BLM", "MON", "DNC" }) do
+      for _, job in ipairs({ "WAR", "BLM", "MON", "DNC", "RDM" }) do
         assert.are.equal("dd", jobs.role_of(job))
       end
     end)

@@ -45,7 +45,7 @@ local BARS = { "hp", "mp", "tp" }
 local FILL_TEXTURES = { "hp_fg.png", "mp_fg.png", "tp_fg.png" }
 
 local function new(ctx)
-  local self = { name = "parambar" }
+  local self = { name = "parambar", alias = "pb" }
 
   local screen_width, screen_height = ctx.screen()
   self.defaults = build_defaults(screen_width, screen_height)

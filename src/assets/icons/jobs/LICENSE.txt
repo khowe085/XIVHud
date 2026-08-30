@@ -1,0 +1,84 @@
+The 24 images in this directory are NOT part of the xivcrossbar icon pack that
+fills the rest of assets/icons/. They are XIVHud's own composites of the
+XivParty job icon art that the party list draws:
+
+    https://github.com/Tylas11/XivParty
+
+XivParty ships no separate asset licence, so its source licence is the basis on
+which they are redistributed here. That notice is reproduced in full below; the
+same one covers the sources they are built from, in assets/xiv/jobIcons/.
+
+What these are, and how they were made
+--------------------------------------------------------------------------------
+
+The party list draws a job icon as a STACK of five textures, tinted at runtime.
+The crossbar cannot: a slot draws one flat picture. So each job's stack is
+composited ahead of time into a single file:
+
+    1.  assets/xiv/jobIcons/bg.png        multiplied by the job's role colour
+    2.  assets/xiv/jobIcons/<job>.png     source-over
+    3.  assets/xiv/jobIcons/frame.png     source-over
+
+Two of the party list's five layers are deliberately left out, and the second
+of them makes these DIFFER from what the party list draws:
+
+    highlight.png  the party cursor, drawn only on the row the player is
+                   targeting. Not part of the icon at all.
+    gradient.png   a dark shading wash (44,44,44 at 40% alpha) over the
+                   background. Dropped on purpose (Kevin, 2026-08-30) so the
+                   background reads as one solid colour - the wash costs the
+                   gold roles most of their shine at a slot's size.
+
+The tint is a per-pixel MULTIPLY rather than a fill of bg.png's silhouette,
+because that is what Windower does to a tinted prim - bg.png's edge is
+antialiased white over partial alpha, and multiplying keeps that edge where a
+fill would harden it.
+
+The role colour is components/partylist/jobs.lua's role_of() resolved through
+the colours in components/partylist/layout.lua, so these files encode this
+addon's role table and not XivParty's. They differ in one job: RDM is a damage
+dealer here, where XivParty has it on healer.
+
+    dd       102, 53, 53     healer    59, 101, 41
+    support  218, 178, 0     tank      54, 69, 151
+    special  255, 151, 0
+
+They are 64x64, the source size, and NOT resampled: a crossbar slot draws 40x40
+and the party list draws these same sources at 36x36, so both sizes are reached
+by scaling DOWN at draw time, which is what keeps the glyph's highlights. An
+earlier pass shipped them resized to 32x32, the pack's size, and the slot then
+scaled that back UP - which cost the gold roles most of their bright pixels and
+was visible in a live client.
+
+Regenerate them rather than editing a pixel: any change to the role table or to
+the colours means re-running the composite for every job, and a hand-edited
+file would silently disagree with the party list.
+
+    2026-08-30  24 jobs at 32x32, RDM on dd
+    2026-08-30  64x64 and no gradient - see above
+
+Copyright (c) 2024, Tylas
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of XivParty nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL Tylas BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

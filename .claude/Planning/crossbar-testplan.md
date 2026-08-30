@@ -82,6 +82,11 @@ These bindings are used by every later section — leave them in place.
 | C23 | `//hud crossbar bind 1L8 ma "Dia" t` then `unbind 1L8` | Bound, then the slot empties | [x] | [ ] |  |
 | C24 | `//hud crossbar bind 1Ly ma "Cure" me` | **Refused** - a slot is 1-8. The controller button names went with the address change (2026-08-22): there is no controller for them to name | [x] | [ ] |  |
 | C25 | Type `/ma "Cure" <YourName>` straight into the game | It casts — a name in angle brackets IS a target | [x] | [ ] | Confirmed - the game accepts a bare player name in angle brackets as a target, so #20 is a parser change and not a non-feature |
+| C26 | `//hud crossbar bind 2L1 ma "Cure IV" me "Cure 4" "cure"` | Bound with the label `Cure 4` and the pack's `cure` art. **This is the row that settles how Windower splits an addon command**: the label grammar assumes the words arrive space-split with their quote characters intact. Were quoted runs grouped and unquoted instead, this binds an action called `Cure IV Cure 4` or is refused - loudly either way, never silently | [ ] | [ ] |  |
+| C27 | `//hud crossbar bind 2L2 ja "Berserk" "" "attack"` | Bound with the pack's `attack` art and Berserk's own name under it - `""` is the empty alias slot | [ ] | [ ] |  |
+| C28 | `//hud crossbar bind 2L3 ma "Cure IV" "nosuchart"` | **Refused**, naming `icons/custom/nosuchart.png`, and slot 3 stays empty - a bad icon refuses the whole bind | [ ] | [ ] |  |
+| C29 | `//hud crossbar bind 2R1 ct "/p pulling" "Pull"` | Bound; the slot reads `Pull` and pressing it says `/p pulling` - and NOT `/p pulling "Pull"` | [ ] | [ ] |  |
+| C30 | `//hud crossbar list 2` then retype one listed row at a free address | The two slots hold identical records - a listed row is what you would type to reproduce it | [ ] | [ ] |  |
 
 ## D. Sets and layers
 

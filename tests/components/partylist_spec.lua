@@ -970,6 +970,18 @@ describe("partylist widget", function()
     end)
   end)
 
+  describe("construction", function()
+    -- No alias while ONE factory backs three registrations: all three would
+    -- claim the same word and the second would abort the load. It gets `pl`
+    -- when the trio collapses into one anchored component.
+    it("declares no short alias, on any variant", function()
+      for _, variant in ipairs({ "main", "alliance1", "alliance2" }) do
+        build(variant)
+        assert.is_nil(widget.alias, variant .. " must claim no alias")
+      end
+    end)
+  end)
+
   describe("the alliance variant", function()
     it("reads its own party keys and draws the smaller row", function()
       build("alliance1")
