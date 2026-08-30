@@ -194,6 +194,14 @@ named by their path inside its icon pack, so a top-level one is a bare word —
 `map`, `mount`, `attack` — and one in a folder keeps the folder:
 `items/warp-ring`, `mounts/chocobo`, `weapons/sword`.
 
+**Job icons.** The party list's job icons ship as pictures too, one per job
+under `jobs/` — `jobs/whm`, `jobs/rdm`, `jobs/pld` — already drawn on their
+role colour, so a slot can carry the job it belongs to:
+
+```
+//hud crossbar icon 3L1 jobs/whm
+```
+
 #### Using your own icons
 
 Put PNGs in **`icons/custom/`** inside the addon folder, and name them

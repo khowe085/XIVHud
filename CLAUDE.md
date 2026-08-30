@@ -68,7 +68,10 @@ src/
     icon_cache.lua        -- the queue/cache discipline around it, shared by components
   assets/                 -- ALL bundled art, grouped by where it came from
     own/                  -- XIVHud's own art (overlay.png among it), and xivcrossbar's chrome
-    icons/                -- the ~1,300 action icons
+    icons/                -- the ~1,300 action icons, plus jobs/: the party
+                             list's job icon stack pre-composited flat, its
+                             own art and its own notice (generated, not
+                             hand-drawn - see icons/jobs/LICENSE.txt)
     cooldown/             -- the radial recast frames
     xiv/                  -- XivParty art (+ jobIcons/, buffIcons/, wide/)
     ffxiv/ gil/ encumbrance/ -- XIVBar, giltracker and equipviewer art
