@@ -65,6 +65,7 @@ describe("partylist widget", function()
 
     local ctx = {
       name = variant == "main" and "partylist" or "alliancelist1",
+      alias = variant == "main" and "pl" or nil,
       variant = variant or "main",
       new_text = prims.new_text,
       new_image = prims.new_image,

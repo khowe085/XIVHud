@@ -48,7 +48,7 @@ local ENTRY_POINT = "src/XIVHud.lua"
 local function build_stubs(boot, options)
   local function component(name)
     return function(ctx)
-      boot.ctxs[name] = ctx
+      boot.ctxs[ctx.name or name] = ctx
       boot.built[#boot.built + 1] = name
       return { name = ctx.name or name }
     end

@@ -58,8 +58,7 @@ local PARSED_PACKETS = {
 
 local function new(ctx)
   local variant = ctx.variant or "main"
-  -- The main list alone: an alliance list is reached by its own name.
-  local self = { name = ctx.name or "partylist", alias = variant == "main" and "pl" or nil }
+  local self = { name = ctx.name or "partylist", alias = ctx.alias }
 
   local screen_width, screen_height = (ctx.screen or function() end)()
   self.defaults = build_defaults(screen_width, screen_height, variant)

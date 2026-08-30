@@ -737,13 +737,17 @@ step("building the party list components", function()
   if safe_mode or libraries_error then
     return
   end
+  -- One factory, three registrations, so the name and the short alias are both
+  -- per registration. `pl` is the main list's: an alliance list is reached by
+  -- its own name.
   for _, list in ipairs({
-    { name = "partylist", variant = "main" },
+    { name = "partylist", variant = "main", alias = "pl" },
     { name = "alliancelist1", variant = "alliance1" },
     { name = "alliancelist2", variant = "alliance2" },
   }) do
     core.register(new_partylist({
       name = list.name,
+      alias = list.alias,
       variant = list.variant,
       new_text = wrap_text,
       new_image = wrap_image,
