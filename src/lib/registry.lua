@@ -97,20 +97,11 @@ local function new(deps)
       if reserved[alias_key] or RESERVED_TARGETS[alias_key] then
         error("component alias '" .. alias .. "' is a reserved XIVHud command", 0)
       end
-      -- A word already spoken for by a NAME is fatal: two different components
-      -- disagreeing about one word is a programmer error, and `key` is checked
-      -- alongside the table because this component's own name is not in
-      -- `by_name` yet (`{ name = "cb", alias = "cb" }` would alias a word to
-      -- itself). A word already held by another ALIAS is not fatal - one
-      -- factory registered several times declares the same alias on each
-      -- registration, which is the party list - so the first claimant keeps it
-      -- and the rest register without one, said out loud rather than guessed at.
-      if by_name[alias_key] or alias_key == key then
-        error("component alias '" .. alias .. "' is a component name", 0)
-      end
-      if by_alias[alias_key] then
-        notify(("alias '%s' is already %s's; %s keeps none"):format(alias_key, by_alias[alias_key], name))
-        alias_key = nil
+      -- `key` as well as the table: the name is not in `by_name` yet, so
+      -- `{ name = "cb", alias = "cb" }` would otherwise pass and alias a word
+      -- to itself.
+      if by_alias[alias_key] or by_name[alias_key] or alias_key == key then
+        error("component alias '" .. alias .. "' is already taken", 0)
       end
     end
 

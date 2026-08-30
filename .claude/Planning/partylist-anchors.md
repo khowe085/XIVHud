@@ -197,9 +197,10 @@ component's half of the force-show and it must be a spec'd behaviour, not an acc
 
 - `src/XIVHud.lua:735-762`: one `core.register(new_partylist({...}))`, no variant loop.
   Drop `variant` from the ctx (the outer widget owns the three now); keep `name`.
-- Nothing to do for the short `//hud` alias: the widget already hardcodes
-  `alias = "pl"` (PR #28), and with one registration instead of three there is
-  no longer a duplicate claim for the registry to warn about.
+- Give the widget `alias = "pl"` beside its name, the short `//hud` word every
+  other component has (PR #28 gave the other five theirs and deliberately left
+  the party list out): with three registrations off one factory, all three would
+  claim `pl` and the second would abort the load. One registration removes that.
 - CLAUDE.md: the partylist bullet, the Commands block, and the line at CLAUDE.md:85
   stating partylist needed no edits when crossbar landed - all three go stale here.
 - `wiki/` - check for a partylist page and the framework/positioning prose.

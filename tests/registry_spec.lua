@@ -101,28 +101,11 @@ describe("registry", function()
       end)
     end)
 
-    it("gives an alias to the first claimant and warns the rest off, without refusing them", function()
-      local first = component("alpha", "al")
-      local second = component("bravo", "AL")
-      registry.register(first)
-      assert.has_no.errors(function()
-        registry.register(second)
+    it("refuses an alias already claimed by another component", function()
+      registry.register(component("alpha", "al"))
+      assert.has_error(function()
+        registry.register(component("bravo", "AL"))
       end)
-      assert.are.equal("alpha", registry.alias_map().al, "the first claim stands")
-      assert.are.equal(second, registry.get("bravo"), "and the component is still registered")
-      assert.are.equal(1, #warnings, "said: " .. table.concat(warnings, ", "))
-      assert.is_not_nil(warnings[1]:find("al", 1, true))
-    end)
-
-    it("lets one factory registered several times declare the same alias", function()
-      -- What the party list does: three registrations off one factory, each
-      -- carrying `pl`. The addon must load, with the first list holding it.
-      for _, name in ipairs({ "partylist", "alliancelist1", "alliancelist2" }) do
-        assert.has_no.errors(function()
-          registry.register(component(name, "pl"))
-        end, nil, name)
-      end
-      assert.are.same({ pl = "partylist" }, registry.alias_map())
     end)
 
     it("refuses an alias that collides with a component name, either way round", function()

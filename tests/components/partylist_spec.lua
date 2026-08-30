@@ -971,12 +971,13 @@ describe("partylist widget", function()
   end)
 
   describe("construction", function()
-    -- Hardcoded like every other component's, on all three registrations off
-    -- this factory; the registry hands it to the one that registers first.
-    it("declares the short alias, whatever the variant", function()
+    -- No alias while ONE factory backs three registrations: all three would
+    -- claim the same word and the second would abort the load. It gets `pl`
+    -- when the trio collapses into one anchored component.
+    it("declares no short alias, on any variant", function()
       for _, variant in ipairs({ "main", "alliance1", "alliance2" }) do
         build(variant)
-        assert.are.equal("pl", widget.alias, variant .. " declares the same alias")
+        assert.is_nil(widget.alias, variant .. " must claim no alias")
       end
     end)
   end)
