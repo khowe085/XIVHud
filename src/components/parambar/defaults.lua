@@ -63,15 +63,13 @@ return function(screen_width, screen_height)
     full_tp_color = { r = 80, g = 180, b = 250 }, -- Texts.FullTpColor
     low_hp_colors = low_vitals_colors(),
     low_mp_colors = low_vitals_colors(),
-    slots = {
-      default = {
-        pos = {
-          x = math.max(0, math.floor((screen_width or 0) / 2 - FULL_WIDTH / 2)),
-          y = math.max(0, (screen_height or 0) - ANCHOR_FROM_BOTTOM),
-        },
-        scale = 1,
-        visible = true,
+    layout = {
+      pos = {
+        x = math.max(0, math.floor((screen_width or 0) / 2 - FULL_WIDTH / 2)),
+        y = math.max(0, (screen_height or 0) - ANCHOR_FROM_BOTTOM),
       },
+      scale = 1,
+      visible = true,
     },
   }
 end

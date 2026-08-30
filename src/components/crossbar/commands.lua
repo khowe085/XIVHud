@@ -399,7 +399,7 @@ local function new(deps)
        same precaution with the same fields). ]]
   --[[ A listing prints the RECORD, not the thing's name: type, action,
        target, alias - the same words `bind` takes and the same words the
-       hand-editable `data/<Character>/crossbar/<JOB>.lua` holds, in that
+       hand-editable `<JOB>.lua` in the component's own directory holds, in that
        order, so what you read here is what is stored and what you would
        type to reproduce it.
 
@@ -755,8 +755,9 @@ local function new(deps)
   --[[ The config-owning half of the CLI. These write the component's own
        config table (views, set_flags, always_show_wxhb) rather than the
        binding store, so they ask the widget to save it -- and they need no
-       job: the config is character-wide, and a set's shared-ness cannot vary
-       by job or two jobs would disagree about where set n lives. ]]
+       job: the config is per character and layout slot, not per job, and a
+       set's shared-ness cannot vary by job or two jobs would disagree about
+       where set n lives. ]]
   local function config()
     local live = deps.get_config()
     return type(live) == "table" and live or {}

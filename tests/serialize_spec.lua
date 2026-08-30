@@ -56,7 +56,7 @@ describe("serialize", function()
     local cfg = {
       compact = false,
       bar = { width = 132, spacing = 18 },
-      slots = { default = { pos = { x = 100, y = 200 }, scale = 1, visible = true } },
+      layout = { pos = { x = 100, y = 200 }, scale = 1, visible = true },
     }
     assert.are.same(cfg, roundtrip(cfg))
   end)

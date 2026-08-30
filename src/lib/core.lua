@@ -145,13 +145,22 @@ local function new(deps)
   local function active_slot()
     local config = core_config()
     local slot = config and config.slot
-    return type(slot) == "string" and slot or CORE_DEFAULTS.slot
+    -- The name becomes a path segment, and this one arrives from a file: core.lua
+    -- is hand-editable and `//hud copy` imports another character's. Everything
+    -- else that takes a slot name checks it (the parser, the directory listing,
+    -- the store); this is the one that would otherwise compose `..` into a path
+    -- that `//hud reset` deletes inside.
+    if type(slot) == "string" and slot:match("^[%w_]+$") then
+      return slot
+    end
+    return CORE_DEFAULTS.slot
   end
 
-  -- The layout a component falls back to when a slot has no entry for it.
-  local function default_state_of(component)
+  -- The placement a component ships with, seeding its layout.lua and repairing
+  -- whatever a hand edit left unusable in it.
+  local function layout_defaults_of(component)
     local defaults = component.defaults or {}
-    return defaults.slots and defaults.slots.default
+    return defaults.layout
   end
 
   -- The anchor names of a multi-anchor component (touchpoint 2), or nil for
@@ -169,11 +178,11 @@ local function new(deps)
   -- The component's layout state in the active slot, or nil while logged out.
   local function state_of(component)
     local handle = handles[component.name]
-    local config = handle and handle.get()
-    if not config then
+    local state = handle and handle.layout()
+    if not state then
       return nil
     end
-    local state = layout.slot(config, active_slot(), default_state_of(component))
+    layout.repair(state, layout_defaults_of(component))
     -- Repair in place rather than only on the way to the prims, so `//hud list`
     -- and the next wheel step work from the same number that is on screen.
     local names = anchor_names(component)
@@ -201,25 +210,31 @@ local function new(deps)
     return state
   end
 
+  -- Layout is core's file, so this is the only thing that writes it.
   local function persist(component)
     local handle = handles[component.name]
     if handle then
-      handle.save()
+      handle.save_layout()
     end
   end
 
   -- Handed to a component on attach so it can write its *own* config after a
-  -- change of its own (a `//hud <name> ...` command). Layout state is still
-  -- saved by core; a component never reaches another component's handle.
+  -- change of its own (a `//hud <name> ...` command). It reaches config.lua
+  -- alone: layout.lua is core's, and a component never reaches another
+  -- component's handle at all.
   local function saver_for(component)
     return function()
-      persist(component)
+      local handle = handles[component.name]
+      if handle then
+        handle.save_config()
+      end
     end
   end
 
   --[[ The directory store, for a component declaring `wants_store = true`:
-       named files under `data/<Character>/<component>/`, the shape per-job
-       configuration needs. The closures re-read the handle on every call
+       the files it adds beside the config.lua and layout.lua core writes into
+       `data/<Character>/<slot>/<component>/`, the shape per-job configuration
+       needs. The closures re-read the handle on every call
        rather than capturing its state, so one accessor stays valid across
        re-attaches and reloads. Everyone else keeps the two-argument attach
        they always had. ]]
@@ -284,10 +299,9 @@ local function new(deps)
   -- only known once the position and scale are on the component, hence the
   -- second set_pos.
   local function apply_placement(component, placement, anchor)
-    -- Anchored defaults on a widget with no anchors() member (the CB2
-    -- stand-in's shape): layout.slot keys off the defaults and strips the
-    -- top-level pos, while detection here keys off the member - skip the
-    -- mismatch rather than crash the apply.
+    -- Anchored defaults on a widget with no anchors() member: layout.repair
+    -- keys off the defaults and strips the top-level pos, while detection here
+    -- keys off the member - skip the mismatch rather than crash the apply.
     if type(placement.pos) ~= "table" then
       return
     end
@@ -441,13 +455,22 @@ local function new(deps)
     end
 
     if not core_handle then
-      core_handle = settings.register(CORE_NAMESPACE, CORE_DEFAULTS)
+      -- Character-scoped, not slot-scoped: core holds the active slot, so its
+      -- own file cannot live inside one.
+      core_handle = settings.register_character(CORE_NAMESPACE, CORE_DEFAULTS)
     end
 
     -- Nothing else ever writes core's file, so create it on the first login for
     -- a character: an option the user cannot see is an option they do not have.
     if name and not deps.read_file(core_handle.path()) then
       core_handle.save()
+    end
+
+    -- Every component's directory hangs off the active slot, which is core's
+    -- to know, so announce it before anything reads a config. A logout needs
+    -- no announcement: set_character has already un-scoped every component.
+    if name then
+      settings.set_slot(active_slot())
     end
 
     apply_settings(name)
@@ -466,7 +489,7 @@ local function new(deps)
     local player = deps.get_player()
     local name = player and player.name
     -- The name is briefly an empty string around zone-in; scoping configs to
-    -- `data//<component>.lua` on the strength of that would be worse than
+    -- `data//<slot>/<component>/` on the strength of that would be worse than
     -- waiting a frame.
     if type(name) ~= "string" or name == "" then
       return nil
@@ -690,156 +713,10 @@ local function new(deps)
     apply(component)
   end
 
-  --[[ Layout slots ------------------------------------------------------- ]]
+  --[[ Config trees ------------------------------------------------------- ]]
 
-  -- Slots live in each component's own config, so the set of slots is their
-  -- union. `default` and the active slot always count, even before any
-  -- component has written an entry for them.
-  local function slot_names()
-    local seen, names = {}, {}
-    local function add(name)
-      if not seen[name] then
-        seen[name] = true
-        names[#names + 1] = name
-      end
-    end
-
-    for _, component in ipairs(registry.all()) do
-      local handle = handles[component.name]
-      local config = handle and handle.get()
-      if config then
-        for _, name in ipairs(layout.slot_names(config)) do
-          add(name)
-        end
-      end
-    end
-    add("default")
-    add(active_slot())
-
-    table.sort(names)
-    for index, name in ipairs(names) do
-      if name == "default" and index > 1 then
-        table.remove(names, index)
-        table.insert(names, 1, "default")
-        break
-      end
-    end
-    return names
-  end
-
-  -- Config files are hand-editable, so a stored key may not be lowercase even
-  -- though the parser lowercases what the user types. Returns the stored key.
-  local function resolve_slot(name)
-    for _, known in ipairs(slot_names()) do
-      if known:lower() == name:lower() then
-        return known
-      end
-    end
-    return nil
-  end
-
-  local function say_slots()
-    say("XIVHud layout slots:")
-    for _, name in ipairs(slot_names()) do
-      say("  " .. name .. (name == active_slot() and "  (active)" or ""))
-    end
-  end
-
-  local function slot_switch(name)
-    local slot = resolve_slot(name)
-    if not slot then
-      say("no layout slot named '" .. name .. "'")
-      say_slots()
-      return
-    end
-
-    core_config().slot = slot
-    core_handle.save()
-    for _, component in ipairs(registry.all()) do
-      -- Reading the state creates this slot's entry if the component has none,
-      -- seeded from its default slot; persist it so the fallback sticks.
-      state_of(component)
-      persist(component)
-    end
-    apply_all()
-    say("layout slot '" .. slot .. "' is now active")
-  end
-
-  local function slot_create(name)
-    local existing = resolve_slot(name)
-    if existing then
-      say("layout slot '" .. existing .. "' already exists")
-      return
-    end
-    if #registry.all() == 0 then
-      say("no components are registered, so there is nothing to put in a slot")
-      return
-    end
-
-    local source = active_slot()
-    for _, component in ipairs(registry.all()) do
-      layout.create_slot(handles[component.name].get(), name, source, default_state_of(component))
-      persist(component)
-    end
-    say(("layout slot '%s' created from '%s' - '//hud slot %s' to switch to it"):format(name, source, name))
-  end
-
-  local function slot_delete(name)
-    local slot = resolve_slot(name)
-    if not slot then
-      say("no layout slot named '" .. name .. "'")
-      return
-    end
-    if slot:lower() == "default" then
-      say("the 'default' layout slot cannot be deleted")
-      return
-    end
-    if slot == active_slot() then
-      say("'" .. slot .. "' is the active layout slot - switch to another one first")
-      return
-    end
-
-    for _, component in ipairs(registry.all()) do
-      layout.delete_slot(handles[component.name].get(), slot)
-      persist(component)
-    end
-    say("layout slot '" .. slot .. "' deleted")
-  end
-
-  local function run_slot(action)
-    if action.op == "list" then
-      say_slots()
-    elseif action.op == "create" then
-      slot_create(action.name)
-    elseif action.op == "delete" then
-      slot_delete(action.name)
-    else
-      slot_switch(action.name)
-    end
-  end
-
-  --[[ Copying another character's configuration ---------------------------- ]]
-
-  -- Every character with saved configuration. Both ends of a copy are named
-  -- explicitly, so the character being played is no longer a special case.
-  local function character_dirs()
-    local names = {}
-    for _, entry in ipairs((deps.list_dir and deps.list_dir("data")) or {}) do
-      if entry ~= "." and entry ~= ".." and deps.is_dir("data/" .. entry) then
-        names[#names + 1] = entry
-      end
-    end
-    table.sort(names)
-    return names
-  end
-
-  local function resolve_character(name, known)
-    for _, entry in ipairs(known) do
-      if entry:lower() == name:lower() then
-        return entry
-      end
-    end
-    return nil
+  local function character_dir(name)
+    return "data/" .. name
   end
 
   -- Empties a config tree. Deleting the files is what makes a copy a
@@ -863,10 +740,10 @@ local function new(deps)
     return removed
   end
 
-  -- Copies a config tree file by file, recursing into the directories a
-  -- component may claim for itself. Returns how many files were written and how
-  -- many failed. The destination is emptied by delete_tree first, so what this
-  -- leaves behind is the source's configuration and nothing else.
+  -- Copies a config tree file by file, recursing into the directories under it.
+  -- Returns how many files were written and how many failed. Callers empty the
+  -- destination with delete_tree first, so what this leaves behind is the
+  -- source and nothing else.
   local function copy_tree(from, to)
     local copied, failed = 0, 0
     for _, entry in ipairs(deps.list_dir(from) or {}) do
@@ -887,6 +764,226 @@ local function new(deps)
       end
     end
     return copied, failed
+  end
+
+  --[[ Layout slots ------------------------------------------------------- ]]
+
+  --[[ Whether a directory is a slot, which is not the same question as whether
+       it exists. A slot holds one directory per component, and the files are a
+       level below that; both halves are load-bearing:
+
+       - `os.remove` refuses a directory outright on Windows, so deleting a slot
+         empties its tree and leaves every directory in it standing. Asking
+         `dir_exists` alone would go on offering a slot the player deleted, and
+         refuse to let them re-create it.
+       - A directory of loose files is not an empty slot, it is something else -
+         `data/<Character>/<component>/` as a pre-slot install wrote it. ]]
+  local function is_slot_dir(dir)
+    for _, entry in ipairs(deps.list_dir(dir) or {}) do
+      local component = dir .. "/" .. entry
+      if entry ~= "." and entry ~= ".." and deps.is_dir(component) then
+        for _, file in ipairs(deps.list_dir(component) or {}) do
+          if file ~= "." and file ~= ".." and not deps.is_dir(component .. "/" .. file) then
+            return true
+          end
+        end
+      end
+    end
+    return false
+  end
+
+  -- Slot names are compared case-insensitively throughout: the name in core.lua
+  -- and the directory on disk are two different sources, and a hand edit can
+  -- have them disagree. The path segment works either way on Windows.
+  local function same_slot(one, other)
+    return type(one) == "string" and type(other) == "string" and one:lower() == other:lower()
+  end
+
+  -- A slot is a directory under the character's own. `default` and the active
+  -- slot always count, whether or not either has been written to disk yet - and
+  -- the directory is added first, so its casing is the one that survives.
+  local function slot_names()
+    local seen, names = {}, {}
+    local function add(name)
+      if type(name) == "string" and name ~= "" and not seen[name:lower()] then
+        seen[name:lower()] = true
+        names[#names + 1] = name
+      end
+    end
+
+    local character = settings.character()
+    if character and deps.list_dir then
+      local root = character_dir(character)
+      for _, entry in ipairs(deps.list_dir(root) or {}) do
+        -- core.lua sits beside the slots, and a slot name has to be typeable as
+        -- a command word: a directory that is neither is not a slot.
+        local child = root .. "/" .. entry
+        if entry:match("^[%w_]+$") and deps.is_dir(child) and is_slot_dir(child) then
+          add(entry)
+        end
+      end
+    end
+    add("default")
+    add(active_slot())
+
+    table.sort(names)
+    for index, name in ipairs(names) do
+      if name:lower() == "default" and index > 1 then
+        table.remove(names, index)
+        table.insert(names, 1, "default")
+        break
+      end
+    end
+    return names
+  end
+
+  -- Directory names are hand-editable, so a stored slot may not be lowercase
+  -- even though the parser lowercases what the user types. Returns the stored
+  -- name, which is the path segment.
+  local function resolve_slot(name)
+    for _, known in ipairs(slot_names()) do
+      if known:lower() == name:lower() then
+        return known
+      end
+    end
+    return nil
+  end
+
+  local function say_slots()
+    say("XIVHud layout slots:")
+    for _, name in ipairs(slot_names()) do
+      say("  " .. name .. (same_slot(name, active_slot()) and "  (active)" or ""))
+    end
+  end
+
+  local function slot_switch(name)
+    local slot = resolve_slot(name)
+    if not slot then
+      say("no layout slot named '" .. name .. "'")
+      say_slots()
+      return
+    end
+
+    if same_slot(slot, active_slot()) then
+      -- Still written down, and only then: `active_slot` answers `default` for a
+      -- stored value it rejected, so returning here without writing would leave
+      -- that value in core.lua with no way to correct it from in-game.
+      if core_config().slot ~= slot then
+        core_config().slot = slot
+        core_handle.save()
+      end
+      say("'" .. slot .. "' is already the active layout slot")
+      return
+    end
+
+    core_config().slot = slot
+    core_handle.save()
+    settings.set_slot(slot)
+    -- A slot holds every component's configuration, not just its placement, so
+    -- the switch is a re-attach rather than a re-index: what each component was
+    -- handed on login belongs to the slot being left.
+    for _, component in ipairs(registry.all()) do
+      attach(component)
+    end
+    apply_all()
+    say("layout slot '" .. slot .. "' is now active")
+  end
+
+  local function slot_create(name)
+    local existing = resolve_slot(name)
+    if existing then
+      say("layout slot '" .. existing .. "' already exists")
+      return
+    end
+    if #registry.all() == 0 then
+      say("no components are registered, so there is nothing to put in a slot")
+      return
+    end
+
+    local source = active_slot()
+    -- The copy is of files, so the active slot has to be on disk first: a
+    -- component that has never been written would be missing from the new slot
+    -- rather than copied into it, and a slot with no files in it does not
+    -- survive the listing. Every component is still attempted before giving up,
+    -- so one unwritable file does not decide the rest.
+    local saved = true
+    for _, component in ipairs(registry.all()) do
+      saved = handles[component.name].save() and saved
+    end
+    if not saved then
+      say(("could not write the '%s' slot, so there was nothing to copy"):format(source))
+      return
+    end
+
+    local character = settings.character()
+    local copied, failed = copy_tree(character_dir(character) .. "/" .. source, character_dir(character) .. "/" .. name)
+    if failed > 0 then
+      say(("%d file(s) could not be copied into '%s'; %d were"):format(failed, name, copied))
+      say(("  '//hud slot delete %s' to start over"):format(name))
+      return
+    end
+    -- The saves above succeeded, so an empty copy means the source could not be
+    -- read. Claiming success would name a slot that never appears in the list.
+    if copied == 0 then
+      say(("nothing was copied into '%s' - the '%s' slot could not be read"):format(name, source))
+      return
+    end
+    say(("layout slot '%s' created from '%s' - '//hud slot %s' to switch to it"):format(name, source, name))
+  end
+
+  local function slot_delete(name)
+    local slot = resolve_slot(name)
+    if not slot then
+      say("no layout slot named '" .. name .. "'")
+      return
+    end
+    if slot:lower() == "default" then
+      say("the 'default' layout slot cannot be deleted")
+      return
+    end
+    if same_slot(slot, active_slot()) then
+      say("'" .. slot .. "' is the active layout slot - switch to another one first")
+      return
+    end
+
+    delete_tree(character_dir(settings.character()) .. "/" .. slot)
+    say("layout slot '" .. slot .. "' deleted")
+  end
+
+  local function run_slot(action)
+    if action.op == "list" then
+      say_slots()
+    elseif action.op == "create" then
+      slot_create(action.name)
+    elseif action.op == "delete" then
+      slot_delete(action.name)
+    else
+      slot_switch(action.name)
+    end
+  end
+
+  --[[ Copying another character's configuration ---------------------------- ]]
+
+  -- Every character with saved configuration. Both ends of a copy are named
+  -- explicitly, so the character being played is no longer a special case.
+  local function character_dirs()
+    local names = {}
+    for _, entry in ipairs((deps.list_dir and deps.list_dir("data")) or {}) do
+      if entry ~= "." and entry ~= ".." and deps.is_dir(character_dir(entry)) then
+        names[#names + 1] = entry
+      end
+    end
+    table.sort(names)
+    return names
+  end
+
+  local function resolve_character(name, known)
+    for _, entry in ipairs(known) do
+      if entry:lower() == name:lower() then
+        return entry
+      end
+    end
+    return nil
   end
 
   -- `//hud copy <source> <destination>` replaces the destination outright: its
@@ -919,13 +1016,17 @@ local function new(deps)
       return
     end
 
-    local removed = delete_tree("data/" .. destination)
-    local copied, failed = copy_tree("data/" .. source, "data/" .. destination)
+    local removed = delete_tree(character_dir(destination))
+    local copied, failed = copy_tree(character_dir(source), character_dir(destination))
 
     -- Only the character being played has anything loaded to refresh.
     local character = settings.character()
     if character and destination:lower() == character:lower() then
       settings.reload()
+      -- The copied core.lua can name a different slot, and the components were
+      -- just re-read under the old one; announcing it puts them in the right
+      -- directory.
+      settings.set_slot(active_slot())
       apply_settings(character)
     end
 

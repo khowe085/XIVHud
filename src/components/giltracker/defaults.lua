@@ -65,15 +65,13 @@ return function(screen_width, screen_height)
       gap = 1, -- was a bare "+ 1" against the text position
       color = { a = 255, r = 255, g = 255, b = 255 }, -- gilImage.color.*
     },
-    slots = {
-      default = {
-        pos = {
-          x = math.max(0, (screen_width or 0) - ANCHOR_FROM_RIGHT),
-          y = math.max(0, (screen_height or 0) - ANCHOR_FROM_BOTTOM),
-        },
-        scale = 1,
-        visible = true,
+    layout = {
+      pos = {
+        x = math.max(0, (screen_width or 0) - ANCHOR_FROM_RIGHT),
+        y = math.max(0, (screen_height or 0) - ANCHOR_FROM_BOTTOM),
       },
+      scale = 1,
+      visible = true,
     },
   }
 end

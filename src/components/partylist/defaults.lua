@@ -68,17 +68,15 @@ return function(screen_width, screen_height, variant)
       near = 0, -- rangeIndicator, 0 = off
       far = 0, -- rangeIndicatorFar, 0 = off
     },
-    slots = {
-      default = {
-        pos = {
-          x = math.floor((screen_width or 0) * anchor[1] + 0.5),
-          y = math.floor((screen_height or 0) * anchor[2] + 0.5),
-        },
-        scale = math.max(0.25, round((screen_height or BASE_RESOLUTION_Y) / BASE_RESOLUTION_Y, 2)),
-        -- The alliance lists start switched off: most play is a single party,
-        -- and two empty boxes on screen would read as a bug.
-        visible = variant == "main",
+    layout = {
+      pos = {
+        x = math.floor((screen_width or 0) * anchor[1] + 0.5),
+        y = math.floor((screen_height or 0) * anchor[2] + 0.5),
       },
+      scale = math.max(0.25, round((screen_height or BASE_RESOLUTION_Y) / BASE_RESOLUTION_Y, 2)),
+      -- The alliance lists start switched off: most play is a single party,
+      -- and two empty boxes on screen would read as a bug.
+      visible = variant == "main",
     },
   }
 

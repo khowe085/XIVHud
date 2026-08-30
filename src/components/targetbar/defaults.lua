@@ -110,15 +110,13 @@ return function(screen_width, _screen_height)
       -- an animation of this length rather than a measurement.
       tp_move_sweep = 2,
     },
-    slots = {
-      default = {
-        pos = {
-          x = math.max(0, math.floor(((screen_width or 0) - ROW_WIDTH) / 2)),
-          y = 50,
-        },
-        scale = 1,
-        visible = true,
+    layout = {
+      pos = {
+        x = math.max(0, math.floor(((screen_width or 0) - ROW_WIDTH) / 2)),
+        y = 50,
       },
+      scale = 1,
+      visible = true,
     },
   }
 end

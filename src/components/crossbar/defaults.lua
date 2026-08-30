@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
 --[[ Crossbar configuration defaults. Keys are snake_case; bindings are NOT
-     here -- they live in the per-job files under data/<Character>/crossbar/.
+     here -- they live in the per-job files the component's own directory holds.
      Geometry and alpha values are upstream xivcrossbar's verbatim (decided:
      port its drawing, don't re-derive); compact halves bar_spacing at render
      time exactly as upstream does. ]]
@@ -91,8 +91,9 @@ return function(screen_width, screen_height)
       expanded_lr = { set = 3, side = "left" },
       expanded_rl = { set = 3, side = "right" },
     },
-    -- Per-set flags; character-wide by definition (a set's shared-ness cannot
-    -- vary by job, or two jobs would disagree about where set n lives).
+    -- Per-set flags, in the component's config rather than a per-job file: a
+    -- set's shared-ness cannot vary by job, or two jobs would disagree about
+    -- where set n lives. Layout slots do partition them, like everything else.
     set_flags = set_flags,
     slot_spacing = SLOT_SPACING,
     bar_spacing = 56, -- upstream's HotbarSpacing verbatim; compact halves it at render time
@@ -154,24 +155,22 @@ return function(screen_width, screen_height)
   local label_x, label_y = render.set_label_pos()
   local sword_x, sword_y = render.set_icon_pos()
 
-  config.slots = {
-    default = {
-      anchors = {
-        main = { pos = { x = main_x, y = main_y }, scale = 1 },
-        set = { pos = { x = main_x + label_x, y = main_y + label_y }, scale = 1 },
-        weapon = { pos = { x = main_x + sword_x, y = main_y + sword_y }, scale = 1 },
-        wxhb_left = { pos = { x = main_x, y = wxhb_y }, scale = 1 },
-        wxhb_right = { pos = { x = main_x + metrics.side_gap, y = wxhb_y }, scale = 1 },
-        skillchain_indicator = {
-          pos = {
-            x = math.max(0, math.floor((screen_width - indicator_width) / 2)),
-            y = math.max(0, wxhb_y - INDICATOR_LIFT),
-          },
-          scale = 1,
+  config.layout = {
+    anchors = {
+      main = { pos = { x = main_x, y = main_y }, scale = 1 },
+      set = { pos = { x = main_x + label_x, y = main_y + label_y }, scale = 1 },
+      weapon = { pos = { x = main_x + sword_x, y = main_y + sword_y }, scale = 1 },
+      wxhb_left = { pos = { x = main_x, y = wxhb_y }, scale = 1 },
+      wxhb_right = { pos = { x = main_x + metrics.side_gap, y = wxhb_y }, scale = 1 },
+      skillchain_indicator = {
+        pos = {
+          x = math.max(0, math.floor((screen_width - indicator_width) / 2)),
+          y = math.max(0, wxhb_y - INDICATOR_LIFT),
         },
+        scale = 1,
       },
-      visible = true,
     },
+    visible = true,
   }
   return config
 end

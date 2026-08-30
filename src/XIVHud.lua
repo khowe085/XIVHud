@@ -272,7 +272,7 @@ end
      not be created is reported as "New file: ..." and then dies indexing a nil
      handle. That is exactly what happened here: load.log, which sits directly
      in the addon folder and is written with raw io, appeared every time, while
-     data/<Character>/<component>.lua -- two directories deep -- never did.
+     a component's config -- directories deep under data/ -- never did.
 
      So the directories are built explicitly, the result of every step is
      checked, and the file is written with plain io. ]]

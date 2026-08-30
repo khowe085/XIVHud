@@ -26,21 +26,23 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ Layout maths and the per-slot state stored in each component's own config.
+--[[ Layout maths, and the repair of the layout table a component's `layout.lua`
+     holds:
 
-     A component's layout state lives under a named slot:
+       { pos = { x = , y = }, scale = , visible = }
 
-       slots = { default = { pos = { x = , y = }, scale = , visible = } }
-
-     A multi-anchor component (touchpoint 2) declares `anchors` in its default
-     slot state instead, and pos/scale move under the anchor names; `visible`
+     A multi-anchor component (touchpoint 2) declares `anchors` in its layout
+     defaults instead, and pos/scale move under the anchor names; `visible`
      stays at the top level, because the right-click toggle is per widget:
 
-       slots = { default = { anchors = { main = { pos = , scale = } }, visible = } }
+       { anchors = { main = { pos = , scale = } }, visible = }
 
-     `default` always exists and is the seed for any slot the user creates
-     later. Positions are snapped to a grid (CTRL frees them) and clamped so a
-     widget can never be dragged off screen. ]]
+     The slot itself is a directory, not a key in here - lib/settings resolves
+     `data/<Character>/<slot>/<component>/layout.lua` and merges the file over
+     the component's layout defaults, so what reaches `repair` is already
+     complete except for the shapes a merge cannot fix. Positions are snapped to
+     a grid (CTRL frees them) and clamped so a widget can never be dragged off
+     screen. ]]
 
 local MIN_SCALE = 0.25
 
@@ -101,7 +103,7 @@ local function new(deps)
     return math.max(MIN_SCALE, scale)
   end
 
-  -- Repairs one pos/scale-bearing entry in place: `entry` is the slot state
+  -- Repairs one pos/scale-bearing entry in place: `entry` is the layout state
   -- itself for a single-anchor component, or one anchor's table otherwise.
   local function repair_placement(entry, defaults)
     if type(entry.pos) ~= "table" then
@@ -114,45 +116,35 @@ local function new(deps)
     end
   end
 
-  -- The state table for `slot_name`, created on first use: seeded from the
-  -- `default` slot when there is one, otherwise from the component's defaults.
-  -- Individual missing keys are repaired the same way.
-  function self.slot(config, slot_name, defaults)
-    if type(config.slots) ~= "table" then
-      config.slots = {}
-    end
-
-    local state = config.slots[slot_name]
-    if type(state) ~= "table" then
-      state = copy(config.slots.default)
-      if type(state) ~= "table" then
-        state = {}
-      end
-      config.slots[slot_name] = state
-    end
-
+  --[[ Makes `state` - the table lib/settings loaded, merged over `defaults`
+       already - usable as a placement, in place: the caller writes this very
+       table back. Fixes what a merge cannot, which is a stored value of the
+       wrong type, plus the two structural repairs below. ]]
+  function self.repair(state, defaults)
     defaults = defaults or {}
     if type(defaults.anchors) == "table" then
-      -- Multi-anchor entry: pos/scale live per anchor. A stray top-level
-      -- pos/scale is shed here - the CB2 stand-in registered the anchored
-      -- schema before this repair understood it, so this path fabricated and
-      -- persisted exactly that pair; dropping it in place means the next save
-      -- no longer carries it. Only slots this repair visits shed it: a
-      -- residue in a non-active slot stays until that slot is next read.
-      -- Anchors the defaults do not mention are preserved untouched, like any
-      -- other user-created key.
+      -- A top-level pos/scale on an anchored entry is residue - a hand edit, or
+      -- a component that gained anchors after its layout was first written.
+      -- Shedding it here means the next save no longer carries it.
       state.pos, state.scale = nil, nil
       if type(state.anchors) ~= "table" then
         state.anchors = {}
       end
       for name, anchor_defaults in pairs(defaults.anchors) do
-        -- A default that is not a table is a component authoring bug; skip
-        -- the anchor rather than index into it.
-        if type(anchor_defaults) == "table" then
-          if type(state.anchors[name]) ~= "table" then
-            state.anchors[name] = copy(anchor_defaults)
-          end
-          repair_placement(state.anchors[name], anchor_defaults)
+        -- A default that is not a table is a component authoring bug; it seeds
+        -- nothing, and the entry it left behind is dropped below.
+        if type(anchor_defaults) == "table" and type(state.anchors[name]) ~= "table" then
+          state.anchors[name] = copy(anchor_defaults)
+        end
+      end
+      -- Anchors the defaults do not mention are repaired like any other, so
+      -- every entry that survives is a usable placement.
+      for name, anchor in pairs(state.anchors) do
+        if type(anchor) ~= "table" then
+          state.anchors[name] = nil
+        else
+          local anchor_defaults = defaults.anchors[name]
+          repair_placement(anchor, type(anchor_defaults) == "table" and anchor_defaults or {})
         end
       end
     else
@@ -164,52 +156,6 @@ local function new(deps)
       state.visible = defaults.visible ~= false
     end
     return state
-  end
-
-  -- Creates `name` as a copy of the `source` slot's state. Falls back to the
-  -- default slot, then to the component's own defaults, so a component that has
-  -- never seen the source slot still gets something sensible. nil when `name`
-  -- is already taken — the caller decides what to say about that.
-  function self.create_slot(config, name, source, defaults)
-    config.slots = config.slots or {}
-    if config.slots[name] then
-      return nil
-    end
-
-    local seed = config.slots[source]
-    if seed then
-      config.slots[name] = copy(seed)
-    end
-    return self.slot(config, name, defaults)
-  end
-
-  -- Reports whether there was anything to delete. Refusing to delete `default`
-  -- or the active slot is a command-level decision, not this function's.
-  function self.delete_slot(config, name)
-    if not config.slots or not config.slots[name] then
-      return false
-    end
-    config.slots[name] = nil
-    return true
-  end
-
-  -- `default` first (it is the one slot that always exists), then the rest
-  -- alphabetically, so `//hud slot list` reads the same way every time.
-  function self.slot_names(config)
-    local slots = type(config.slots) == "table" and config.slots or {}
-    local names = {}
-    for name in pairs(slots) do
-      -- A slot name has to be typeable as a command word; a hand-edited config
-      -- can hold anything, and a mixed-type list is not even sortable.
-      if type(name) == "string" and name ~= "default" then
-        names[#names + 1] = name
-      end
-    end
-    table.sort(names)
-    if slots.default ~= nil then
-      table.insert(names, 1, "default")
-    end
-    return names
   end
 
   return self
