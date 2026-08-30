@@ -68,7 +68,7 @@ describe("giltracker widget", function()
     end)
 
     it("defaults its slot position to the bottom right of the screen", function()
-      local slot = widget.defaults.slots.default
+      local slot = widget.defaults.layout
       assert.are.equal(1575, slot.pos.x)
       assert.are.equal(1045, slot.pos.y)
     end)

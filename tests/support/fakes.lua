@@ -11,6 +11,12 @@ local M = {}
 function M.file_system(seed)
   local fs = {
     files = seed or {},
+    -- Directories, tracked apart from the files in them. Windows is why: the
+    -- runtime delete is `os.remove`, which refuses a directory outright, so a
+    -- directory outlives its contents and `windower.dir_exists` keeps saying
+    -- yes. A fake that derived directories from file paths alone could not
+    -- express that, and an emptied one would silently vanish.
+    dirs = {},
     fail_writes = false,
     fail_write_paths = {},
     dot_entries = false,
@@ -18,8 +24,23 @@ function M.file_system(seed)
     deletes = {},
   }
 
+  -- Writing a file brings its whole ancestry into being, as create_dir does.
+  local function record_dirs(path)
+    local built = nil
+    for segment in path:gmatch("([^/]+)/") do
+      built = built and (built .. "/" .. segment) or segment
+      fs.dirs[built] = true
+    end
+  end
+
   function fs.put(path, contents)
     fs.files[path] = contents
+    record_dirs(path)
+  end
+
+  -- An empty directory, the state `os.remove` leaves behind.
+  function fs.mkdir(path)
+    fs.dirs[path] = true
   end
 
   function fs.read_file(path)
@@ -31,7 +52,7 @@ function M.file_system(seed)
   function fs.list_dir(path)
     local prefix = path .. "/"
     local seen, entries = {}, {}
-    for name in pairs(fs.files) do
+    local function collect(name)
       if name:sub(1, #prefix) == prefix then
         local head = name:sub(#prefix + 1):match("^([^/]+)")
         if head and not seen[head] then
@@ -39,6 +60,12 @@ function M.file_system(seed)
           entries[#entries + 1] = head
         end
       end
+    end
+    for name in pairs(fs.files) do
+      collect(name)
+    end
+    for name in pairs(fs.dirs) do
+      collect(name)
     end
     table.sort(entries)
     if #entries == 0 then
@@ -65,13 +92,7 @@ function M.file_system(seed)
   end
 
   function fs.is_dir(path)
-    local prefix = path .. "/"
-    for name in pairs(fs.files) do
-      if name:sub(1, #prefix) == prefix then
-        return true
-      end
-    end
-    return false
+    return fs.dirs[path] == true
   end
 
   function fs.write_file(path, contents)
@@ -79,6 +100,7 @@ function M.file_system(seed)
       return false, "disk full"
     end
     fs.files[path] = contents
+    record_dirs(path)
     fs.writes = fs.writes + 1
     return true
   end
@@ -339,6 +361,14 @@ function M.core_deps(overrides)
   -- Every line the addon has said, joined, for substring assertions.
   function recorder.said()
     return table.concat(recorder.chat, "\n")
+  end
+
+  -- Drops what has been said so far, so an assertion that a word is ABSENT is
+  -- about the command under test rather than every command before it.
+  function recorder.forget()
+    for index = #recorder.chat, 1, -1 do
+      recorder.chat[index] = nil
+    end
   end
 
   -- A character the client has finished loading. Core scopes on the name alone,

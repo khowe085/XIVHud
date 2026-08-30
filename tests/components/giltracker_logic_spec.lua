@@ -263,13 +263,13 @@ describe("giltracker logic", function()
       assert.are.equal(46, height)
     end)
 
-    it("keeps the default slot anchor in step with the reserved width", function()
+    it("keeps the default position in step with the reserved width", function()
       -- defaults.lua restates the reserved-width formula to place the widget on
       -- the reference addon's footprint (its number ended 285px in from the
       -- right). Drift in either file moves the widget silently.
       config.icon.visible = false
       local _, _, reserved = logic.bounds(0, 0, 1)
-      assert.are.equal(1920 - 285 - reserved, config.slots.default.pos.x)
+      assert.are.equal(1920 - 285 - reserved, config.layout.pos.x)
     end)
 
     it("drops the icon from the box when it is turned off", function()

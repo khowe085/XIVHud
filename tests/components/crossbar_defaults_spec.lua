@@ -104,7 +104,7 @@ describe("crossbar defaults", function()
   end)
 
   it("places all four anchors on screen", function()
-    local anchors = defaults.slots.default.anchors
+    local anchors = defaults.layout.anchors
     for _, name in ipairs({ "main", "wxhb_left", "wxhb_right", "set", "weapon", "skillchain_indicator" }) do
       local anchor = anchors[name]
       assert.is_table(anchor, name)
@@ -113,7 +113,7 @@ describe("crossbar defaults", function()
       assert.is_true(anchor.pos.y >= 0 and anchor.pos.y < HEIGHT, name .. " y on screen")
     end
     -- Visibility is per component, never per anchor.
-    assert.is_true(defaults.slots.default.visible)
+    assert.is_true(defaults.layout.visible)
     assert.is_nil(anchors.main.visible)
   end)
 
@@ -121,7 +121,7 @@ describe("crossbar defaults", function()
     -- render.lua's main footprint is 630x180; upstream anchors its bottom
     -- slot row at ui_y_res - 120, which puts our panel-top origin 211 up
     -- (120 + the 35px pad + two 28px rows) - clear of the 180-tall box.
-    local anchors = defaults.slots.default.anchors
+    local anchors = defaults.layout.anchors
     assert.equal((WIDTH - 630) / 2, anchors.main.pos.x)
     assert.equal(HEIGHT - 211, anchors.main.pos.y)
     -- The WXHB halves mirror the XHB's side columns, one bar height up.
@@ -137,7 +137,7 @@ describe("crossbar defaults", function()
 
   it("survives a zero screen (size not yet known)", function()
     local zero = build_defaults(0, 0)
-    for name, anchor in pairs(zero.slots.default.anchors) do
+    for name, anchor in pairs(zero.layout.anchors) do
       assert.is_true(anchor.pos.x >= 0, name)
       assert.is_true(anchor.pos.y >= 0, name)
     end

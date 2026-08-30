@@ -916,7 +916,7 @@ describe("targetbar logic", function()
     local screen_width = 1920
     local defaults = build_defaults(screen_width, 1080)
     local _, _, row_width = new_logic(defaults).bounds(0, 0, 1)
-    assert.are.equal(math.floor((screen_width - row_width) / 2), defaults.slots.default.pos.x)
+    assert.are.equal(math.floor((screen_width - row_width) / 2), defaults.layout.pos.x)
   end)
 
   describe("layout", function()

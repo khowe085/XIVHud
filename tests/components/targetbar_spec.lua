@@ -146,7 +146,7 @@ describe("targetbar widget", function()
     end)
 
     it("centres its default slot on the row it draws", function()
-      local slot = widget.defaults.slots.default
+      local slot = widget.defaults.layout
       assert.are.equal(704, slot.pos.x)
       assert.are.equal(50, slot.pos.y)
     end)

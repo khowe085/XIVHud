@@ -68,15 +68,13 @@ return function(screen_width, screen_height)
     -- Where the client is installed, when the addon cannot work it out itself.
     -- Left unset, the entry point asks Windower. (game_path)
     game_path = "",
-    slots = {
-      default = {
-        pos = {
-          x = math.min(ANCHOR_X, math.max(0, (screen_width or 0) - 128)),
-          y = math.min(ANCHOR_Y, math.max(0, (screen_height or 0) - 128)),
-        },
-        scale = 1,
-        visible = true,
+    layout = {
+      pos = {
+        x = math.min(ANCHOR_X, math.max(0, (screen_width or 0) - 128)),
+        y = math.min(ANCHOR_Y, math.max(0, (screen_height or 0) - 128)),
       },
+      scale = 1,
+      visible = true,
     },
   }
 end

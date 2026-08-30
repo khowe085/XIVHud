@@ -7,12 +7,12 @@ local EVENT_STATUS = 4
 describe("core", function()
   local deps, env, core
 
-  local function slot_defaults(x, y)
-    return { slots = { default = { pos = { x = x, y = y }, scale = 1, visible = true } } }
+  local function placed(x, y)
+    return { layout = { pos = { x = x, y = y }, scale = 1, visible = true } }
   end
 
   local function bar(name, x, y)
-    return fakes.widget(name or "bar", slot_defaults(x or 100, y or 200))
+    return fakes.widget(name or "bar", placed(x or 100, y or 200))
   end
 
   local function login(name)
@@ -50,7 +50,7 @@ describe("core", function()
       local widget = core.register(bar())
       login()
       assert.is_not_nil(widget.config)
-      assert.are.same({ x = 100, y = 200 }, widget.config.slots.default.pos)
+      assert.are.same({ 100, 200 }, widget.pos)
     end)
 
     it("gives each component a config of its own", function()
@@ -62,7 +62,7 @@ describe("core", function()
     end)
 
     it("reads back what a character saved before", function()
-      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { pos = { x = 40, y = 50 } } } }")
+      env.fs.put("data/Azureblood/default/bar/layout.lua", "return { pos = { x = 40, y = 50 } }")
       local widget = core.register(bar())
       login()
       assert.are.same({ 40, 50 }, widget.pos)
@@ -160,8 +160,8 @@ describe("core", function()
     end)
 
     it("swaps configs when a different character logs in", function()
-      env.fs.put("data/Alpha/bar.lua", "return { slots = { default = { pos = { x = 10, y = 10 } } } }")
-      env.fs.put("data/Bravo/bar.lua", "return { slots = { default = { pos = { x = 20, y = 20 } } } }")
+      env.fs.put("data/Alpha/default/bar/layout.lua", "return { pos = { x = 10, y = 10 } }")
+      env.fs.put("data/Bravo/default/bar/layout.lua", "return { pos = { x = 20, y = 20 } }")
       local widget = core.register(bar())
       login("Alpha")
       assert.are.same({ 10, 10 }, widget.pos)
@@ -253,7 +253,10 @@ describe("core", function()
       login()
       widget.config.compact = true
       widget.save()
-      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("compact = true", 1, true))
+      assert.is_not_nil(env.fs.files["data/Azureblood/default/bar/config.lua"]:find("compact = true", 1, true))
+      -- config.lua alone: layout.lua is core's file, and a component saving for
+      -- itself must not be what writes a placement it was never handed.
+      assert.is_nil(env.fs.files["data/Azureblood/default/bar/layout.lua"])
     end)
 
     it("takes the save callback away on logout", function()
@@ -282,14 +285,14 @@ describe("core", function()
     end)
 
     it("hides a component switched off in its slot", function()
-      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { visible = false } } }")
+      env.fs.put("data/Azureblood/default/bar/layout.lua", "return { visible = false }")
       local widget = core.register(bar())
       login()
       assert.is_false(widget.shown)
     end)
 
     it("pulls a stored position that is off screen back into reach", function()
-      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { pos = { x = 5000, y = 4000 } } } }")
+      env.fs.put("data/Azureblood/default/bar/layout.lua", "return { pos = { x = 5000, y = 4000 } }")
       local widget = core.register(bar())
       login()
       assert.are.same({ 1720, 980 }, widget.pos, "otherwise layout mode can never grab it")
@@ -299,7 +302,7 @@ describe("core", function()
     end)
 
     it("repairs a scale below the floor, in the stored state as well as on screen", function()
-      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { scale = 0.05 } } }")
+      env.fs.put("data/Azureblood/default/bar/layout.lua", "return { scale = 0.05 }")
       local widget = core.register(bar())
       login()
       assert.are.equal(0.25, widget.scale)
@@ -419,7 +422,7 @@ describe("core", function()
     end)
 
     it("previews and force-shows even a component switched off", function()
-      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { visible = false } } }")
+      env.fs.put("data/Azureblood/default/bar/layout.lua", "return { visible = false }")
       local widget = core.register(bar())
       login()
       core.on_command({ "layout" })
@@ -490,7 +493,24 @@ describe("core", function()
       assert.is_true(core.on_mouse(LEFT_UP, 400, 500))
 
       assert.are.same({ 350, 450 }, widget.pos)
-      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("x = 350", 1, true))
+      assert.is_not_nil(env.fs.files["data/Azureblood/default/bar/layout.lua"]:find("x = 350", 1, true))
+    end)
+
+    -- The other half of the split: core owns layout.lua, so a drag writes that
+    -- and nothing else. Flushing the component's table here would persist edits
+    -- it has not asked to keep.
+    it("writes only the layout file when a drag moves a widget", function()
+      local widget = core.register(bar("bar", 100, 200))
+      login()
+      widget.config.compact = "unsaved"
+
+      core.on_command({ "layout" })
+      core.on_mouse(LEFT_DOWN, 150, 250)
+      core.on_mouse(LEFT_UP, 400, 400)
+      core.on_command({ "layout" })
+
+      assert.is_not_nil(env.fs.files["data/Azureblood/default/bar/layout.lua"])
+      assert.is_nil(env.fs.files["data/Azureblood/default/bar/config.lua"], "a drag is not the component's save")
     end)
 
     it("scales with the wheel and saves", function()
@@ -499,7 +519,7 @@ describe("core", function()
       core.on_command({ "layout" })
       assert.is_true(core.on_mouse(WHEEL, 150, 250, 120))
       assert.are.equal(2.2, widget.scale)
-      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("scale = 2.2", 1, true))
+      assert.is_not_nil(env.fs.files["data/Azureblood/default/bar/layout.lua"]:find("scale = 2.2", 1, true))
     end)
 
     it("toggles a widget off with a right click and saves", function()
@@ -508,7 +528,7 @@ describe("core", function()
       core.on_command({ "layout" })
       assert.is_true(core.on_mouse(RIGHT_DOWN, 150, 250))
       assert.is_true(widget.shown, "still force-shown while positioning")
-      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("visible = false", 1, true))
+      assert.is_not_nil(env.fs.files["data/Azureblood/default/bar/layout.lua"]:find("visible = false", 1, true))
 
       core.on_command({ "layout" })
       assert.is_false(widget.shown)
@@ -574,7 +594,7 @@ describe("core", function()
     end)
 
     it("reports a hand-edited non-boolean visible the way the screen reads it", function()
-      env.fs.put("data/Azureblood/bar.lua", "return { slots = { default = { visible = 1 } } }")
+      env.fs.put("data/Azureblood/default/bar/layout.lua", "return { visible = 1 }")
       local widget = core.register(bar())
       login()
       assert.is_false(widget.shown)
@@ -592,11 +612,11 @@ describe("core", function()
       login()
       core.on_command({ "hide", "bar" })
       assert.is_false(widget.shown)
-      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("visible = false", 1, true))
+      assert.is_not_nil(env.fs.files["data/Azureblood/default/bar/layout.lua"]:find("visible = false", 1, true))
 
       core.on_command({ "show", "BAR" })
       assert.is_true(widget.shown)
-      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("visible = true", 1, true))
+      assert.is_not_nil(env.fs.files["data/Azureblood/default/bar/layout.lua"]:find("visible = true", 1, true))
     end)
 
     it("resets one component back to its defaults", function()
@@ -612,9 +632,23 @@ describe("core", function()
       assert.is_not_nil(widget.config, "the component is re-attached to the fresh config")
     end)
 
+    -- Reset is scoped to the slot the player is in: another slot's copy of the
+    -- same component is a separate configuration and is left alone.
+    it("resets one component in the active slot only", function()
+      local widget = core.register(bar("bar", 100, 200))
+      login()
+      core.on_command({ "slot", "create", "raid" })
+      env.fs.put("data/Azureblood/raid/bar/layout.lua", "return { pos = { x = 700, y = 700 } }")
+
+      core.on_command({ "reset", "bar" })
+      assert.is_not_nil(env.fs.files["data/Azureblood/raid/bar/layout.lua"], "another slot must survive")
+      core.on_command({ "slot", "raid" })
+      assert.are.same({ 700, 700 }, widget.pos)
+    end)
+
     it("resets everything at once", function()
-      local one = core.register(fakes.widget("one", slot_defaults(10, 10)))
-      local two = core.register(fakes.widget("two", slot_defaults(20, 20)))
+      local one = core.register(fakes.widget("one", placed(10, 10)))
+      local two = core.register(fakes.widget("two", placed(20, 20)))
       login()
       core.on_command({ "hide", "one" })
       core.on_command({ "hide", "two" })
@@ -715,7 +749,7 @@ describe("core", function()
       move_to(300, 400)
       core.on_command({ "slot", "create", "raid" })
 
-      assert.is_not_nil(env.fs.files["data/Azureblood/bar.lua"]:find("raid", 1, true))
+      assert.is_not_nil(env.fs.files["data/Azureblood/raid/bar/layout.lua"])
       core.on_command({ "slot", "list" })
       assert.is_not_nil(env.said():find("raid", 1, true))
       assert.are.same({ 300, 400 }, widget.pos, "creating must not move anything")
@@ -746,7 +780,7 @@ describe("core", function()
     it("gives a component with no entry for the slot its default layout", function()
       core.on_command({ "slot", "create", "raid" })
       core.on_command({ "slot", "raid" })
-      local late = core.register(fakes.widget("late", slot_defaults(11, 22)))
+      local late = core.register(fakes.widget("late", placed(11, 22)))
       assert.are.same({ 11, 22 }, late.pos)
     end)
 
@@ -761,12 +795,12 @@ describe("core", function()
     end)
 
     it("keeps every component's slots in step", function()
-      local clock = core.register(fakes.widget("clock", slot_defaults(10, 20)))
+      local clock = core.register(fakes.widget("clock", placed(10, 20)))
       core.on_command({ "slot", "create", "raid" })
       core.on_command({ "slot", "raid" })
 
       for _, name in ipairs({ "bar", "clock" }) do
-        assert.is_not_nil(env.fs.files["data/Azureblood/" .. name .. ".lua"]:find("raid", 1, true), name)
+        assert.is_not_nil(env.fs.files["data/Azureblood/raid/" .. name .. "/layout.lua"], name)
       end
 
       move_to(500, 500)
@@ -778,15 +812,15 @@ describe("core", function()
 
       core.on_command({ "slot", "delete", "raid" })
       for _, name in ipairs({ "bar", "clock" }) do
-        assert.is_nil(env.fs.files["data/Azureblood/" .. name .. ".lua"]:find("raid", 1, true), name)
+        assert.is_nil(env.fs.files["data/Azureblood/raid/" .. name .. "/layout.lua"], name)
       end
     end)
 
-    it("matches a hand-edited slot name whatever its case", function()
-      env.fs.put(
-        "data/Azureblood/bar.lua",
-        "return { slots = { default = { pos = { x = 1, y = 2 } }, Raid = { pos = { x = 300, y = 400 } } } }"
-      )
+    -- A slot is a directory now, and one made by hand can be capitalised
+    -- however the player likes.
+    it("matches a hand-made slot directory whatever its case", function()
+      env.fs.put("data/Azureblood/default/bar/layout.lua", "return { pos = { x = 1, y = 2 } }")
+      env.fs.put("data/Azureblood/Raid/bar/layout.lua", "return { pos = { x = 300, y = 400 } }")
       core.on_logout()
       login()
 
@@ -796,7 +830,44 @@ describe("core", function()
 
       core.on_command({ "slot", "default" })
       core.on_command({ "slot", "delete", "RAID" })
-      assert.is_nil(env.fs.files["data/Azureblood/bar.lua"]:find("Raid", 1, true))
+      assert.is_nil(env.fs.files["data/Azureblood/Raid/bar/layout.lua"])
+    end)
+
+    -- The decision behind the whole directory layout: a slot scopes the
+    -- component's own configuration too, not just where it is drawn.
+    it("gives each slot its own component config", function()
+      widget.config.compact = "from-default"
+      widget.save()
+      core.on_command({ "slot", "create", "raid" })
+      core.on_command({ "slot", "raid" })
+      assert.are.equal("from-default", widget.config.compact, "a new slot is a copy of the active one")
+
+      widget.config.compact = "from-raid"
+      widget.save()
+      core.on_command({ "slot", "default" })
+      assert.are.equal("from-default", widget.config.compact)
+      core.on_command({ "slot", "raid" })
+      assert.are.equal("from-raid", widget.config.compact)
+    end)
+
+    -- core.lua and the directory listing are two different sources, and a hand
+    -- edit can disagree with the disk about case. Reading as two slots would
+    -- list the same slot twice and let the active one be deleted.
+    it("treats a stored slot name and its directory as one slot whatever the case", function()
+      env.fs.put("data/Azureblood/Raid/bar/layout.lua", "return { pos = { x = 300, y = 400 } }")
+      env.fs.put("data/Azureblood/core.lua", "return { slot = 'raid' }")
+      core.on_logout()
+      login()
+
+      env.forget()
+      core.on_command({ "slot", "list" })
+      local _, listed = env.said():lower():gsub("raid", "")
+      assert.are.equal(1, listed, "listed twice: " .. env.said())
+      assert.is_not_nil(env.said():lower():find("active"), "and marked active: " .. env.said())
+
+      core.on_command({ "slot", "delete", "RAID" })
+      assert.is_not_nil(env.said():lower():find("active"), "the active slot must not be deletable")
+      assert.is_not_nil(env.fs.files["data/Azureblood/Raid/bar/layout.lua"])
     end)
 
     it("refuses to create a slot whose name differs only by case", function()
@@ -821,7 +892,110 @@ describe("core", function()
     it("deletes a slot", function()
       core.on_command({ "slot", "create", "raid" })
       core.on_command({ "slot", "delete", "raid" })
-      assert.is_nil(env.fs.files["data/Azureblood/bar.lua"]:find("raid", 1, true))
+      assert.is_nil(env.fs.files["data/Azureblood/raid/bar/layout.lua"])
+    end)
+
+    -- `os.remove` refuses a directory outright on Windows, so deleting a slot
+    -- empties its tree and leaves the directories standing. A slot that is
+    -- only empty directories is not a slot.
+    it("stops listing a deleted slot, though its directories survive the delete", function()
+      core.on_command({ "slot", "create", "raid" })
+      core.on_command({ "slot", "delete", "raid" })
+      assert.is_true(env.fs.is_dir("data/Azureblood/raid"), "the directory itself cannot be removed")
+
+      env.forget()
+      core.on_command({ "slot", "list" })
+      assert.is_nil(env.said():find("raid", 1, true), "said: " .. env.said())
+
+      env.forget()
+      core.on_command({ "slot", "create", "raid" })
+      assert.is_nil(env.said():lower():find("already"), "and the name is free again: " .. env.said())
+    end)
+
+    -- What a pre-slot install left beside core.lua: `data/<Char>/crossbar/`
+    -- full of per-job binding files. A slot holds component directories; a
+    -- directory of loose files is something else.
+    it("does not offer a directory of loose files as a slot", function()
+      env.fs.put("data/Azureblood/crossbar/WAR.lua", "return {}")
+      core.on_command({ "slot", "list" })
+      assert.is_nil(env.said():find("crossbar", 1, true), "said: " .. env.said())
+    end)
+
+    -- core.lua is hand-editable and `//hud copy` imports another character's,
+    -- and the name becomes a path segment that `//hud reset` deletes inside.
+    it("refuses a stored slot name that is not a plain word", function()
+      env.fs.put("data/Azureblood/core.lua", "return { slot = '../Bravo' }")
+      core.on_logout()
+      login()
+
+      core.on_command({ "hide", "bar" })
+      assert.is_nil(env.fs.files["data/Azureblood/../Bravo/bar/layout.lua"], "must not escape the character's dir")
+      assert.is_not_nil(env.fs.files["data/Azureblood/default/bar/layout.lua"])
+    end)
+
+    it("says so when the new slot could not be written, instead of claiming success", function()
+      env.fs.fail_write_paths["data/Azureblood/raid/bar/layout.lua"] = true
+      core.on_command({ "slot", "create", "raid" })
+      assert.is_not_nil(env.said():lower():find("could not"), "said: " .. env.said())
+    end)
+
+    it("says so when the active slot could not be written down to be copied", function()
+      env.fs.fail_writes = true
+      core.on_command({ "slot", "create", "raid" })
+      -- The wording matters: lib/settings warns about each failed write through
+      -- the same chat, so "could not" alone would pass without this guard.
+      assert.is_not_nil(env.said():find("nothing to copy", 1, true), "said: " .. env.said())
+      assert.is_nil(env.said():find("created from", 1, true), "and it must not claim success")
+      env.fs.fail_writes = false
+      env.forget()
+      core.on_command({ "slot", "list" })
+      assert.is_nil(env.said():find("raid", 1, true), "an unwritten slot must not be listed")
+    end)
+
+    -- A re-issued switch used to re-attach every component, which on the
+    -- crossbar rebuilds its state and drops a countdown in flight.
+    it("changes nothing when the active slot is switched to again", function()
+      widget.config.compact = "unsaved"
+      core.on_command({ "slot", "default" })
+      assert.are.equal("unsaved", widget.config.compact, "no re-attach, so an unsaved edit survives")
+      assert.is_not_nil(env.said():lower():find("already"), "said: " .. env.said())
+    end)
+
+    it("lists a differently-cased default directory first all the same", function()
+      -- `Battle` sorts before `Default`, so only the hoist can put default first.
+      env.fs.put("data/Azureblood/Default/bar/layout.lua", "return { pos = { x = 1, y = 2 } }")
+      env.fs.put("data/Azureblood/Battle/bar/layout.lua", "return { pos = { x = 3, y = 4 } }")
+      core.on_logout()
+      login()
+
+      env.forget()
+      core.on_command({ "slot", "list" })
+      local said = env.said()
+      assert.is_true(said:lower():find("default", 1, true) < said:find("Battle", 1, true), "said: " .. said)
+    end)
+
+    -- active_slot() answers `default` for a stored value it rejects, so without
+    -- this the bad value sits in core.lua with nothing able to overwrite it.
+    it("repairs an invalid stored slot name when its fallback is switched to", function()
+      env.fs.put("data/Azureblood/core.lua", "return { slot = '../Bravo' }")
+      core.on_logout()
+      login()
+
+      core.on_command({ "slot", "default" })
+      local written = env.fs.files["data/Azureblood/core.lua"]
+      assert.is_nil(written:find("Bravo", 1, true), "wrote: " .. written)
+      assert.is_not_nil(env.said():lower():find("already"), "and it is still a no-op switch")
+    end)
+
+    it("says so when the copy found nothing to write, instead of claiming success", function()
+      local listing = deps.list_dir
+      deps.list_dir = function(path)
+        return path ~= "data/Azureblood/default" and listing(path) or nil
+      end
+
+      core.on_command({ "slot", "create", "raid" })
+      assert.is_nil(env.said():find("created from", 1, true), "said: " .. env.said())
+      assert.is_not_nil(env.said():lower():find("nothing"), "said: " .. env.said())
     end)
 
     it("refuses to delete the default slot", function()
@@ -854,45 +1028,57 @@ describe("core", function()
     local widget
 
     before_each(function()
-      env.fs.put("data/Alpha/bar.lua", "return { slots = { default = { pos = { x = 40, y = 50 } } } }")
+      env.fs.put("data/Alpha/default/bar/layout.lua", "return { pos = { x = 40, y = 50 } }")
       env.fs.put("data/Alpha/core.lua", "return { snap = 25 }")
-      env.fs.put("data/Alpha/bar/extra.lua", "return { deep = true }")
+      env.fs.put("data/Alpha/default/bar/extra.lua", "return { deep = true }")
       widget = core.register(bar("bar", 100, 200))
       login("Azureblood")
     end)
 
     it("copies every file, including a component's own directory", function()
       core.on_command({ "copy", "Alpha", "Bravo" })
-      assert.is_not_nil(env.fs.files["data/Bravo/bar.lua"]:find("x = 40", 1, true))
+      assert.is_not_nil(env.fs.files["data/Bravo/default/bar/layout.lua"]:find("x = 40", 1, true))
       assert.are.equal("return { snap = 25 }", env.fs.files["data/Bravo/core.lua"])
-      assert.are.equal("return { deep = true }", env.fs.files["data/Bravo/bar/extra.lua"])
+      assert.are.equal("return { deep = true }", env.fs.files["data/Bravo/default/bar/extra.lua"])
     end)
 
     it("needs no confirmation", function()
       core.on_command({ "copy", "Alpha", "Bravo" })
-      assert.is_not_nil(env.fs.files["data/Bravo/bar.lua"])
+      assert.is_not_nil(env.fs.files["data/Bravo/default/bar/layout.lua"])
     end)
 
     it("wipes the destination first, so nothing of its own survives", function()
-      env.fs.put("data/Bravo/clock.lua", "return { stale = true }")
-      env.fs.put("data/Bravo/clock/nested.lua", "return { alsostale = true }")
+      env.fs.put("data/Bravo/default/clock/config.lua", "return { stale = true }")
+      env.fs.put("data/Bravo/raid/clock/config.lua", "return { alsostale = true }")
 
       core.on_command({ "copy", "Alpha", "Bravo" })
-      assert.is_nil(env.fs.files["data/Bravo/clock.lua"], "a file the source lacks must not survive")
-      assert.is_nil(env.fs.files["data/Bravo/clock/nested.lua"])
-      assert.is_not_nil(env.fs.files["data/Bravo/bar.lua"])
+      assert.is_nil(env.fs.files["data/Bravo/default/clock/config.lua"], "a file the source lacks must not survive")
+      assert.is_nil(env.fs.files["data/Bravo/raid/clock/config.lua"], "nor a slot the source lacks")
+      assert.is_not_nil(env.fs.files["data/Bravo/default/bar/layout.lua"])
     end)
 
     it("leaves other characters alone", function()
-      env.fs.put("data/Charlie/bar.lua", "return { mine = true }")
+      env.fs.put("data/Charlie/default/bar/config.lua", "return { mine = true }")
       core.on_command({ "copy", "Alpha", "Bravo" })
-      assert.are.equal("return { mine = true }", env.fs.files["data/Charlie/bar.lua"])
+      assert.are.equal("return { mine = true }", env.fs.files["data/Charlie/default/bar/config.lua"])
     end)
 
     it("reloads and re-applies when the destination is the character being played", function()
       core.on_command({ "copy", "Alpha", "Azureblood" })
       assert.are.same({ 40, 50 }, widget.pos)
       assert.is_not_nil(widget.config)
+    end)
+
+    -- settings.reload() re-reads every component under the slot that was active
+    -- a moment ago; the copied core.lua can name another one.
+    it("follows the copied core.lua onto its own active slot", function()
+      env.fs.put("data/Alpha/core.lua", "return { slot = 'raid' }")
+      env.fs.put("data/Alpha/raid/bar/layout.lua", "return { pos = { x = 600, y = 700 } }")
+
+      core.on_command({ "copy", "Alpha", "Azureblood" })
+      assert.are.same({ 600, 700 }, widget.pos)
+      core.on_command({ "slot", "list" })
+      assert.is_not_nil(env.said():find("raid  (active)", 1, true), "said: " .. env.said())
     end)
 
     it("does not disturb the running HUD when copying to someone else", function()
@@ -903,7 +1089,7 @@ describe("core", function()
     it("copies from the character being played too", function()
       core.on_command({ "hide", "bar" })
       core.on_command({ "copy", "Azureblood", "Bravo" })
-      assert.is_not_nil(env.fs.files["data/Bravo/bar.lua"]:find("visible = false", 1, true))
+      assert.is_not_nil(env.fs.files["data/Bravo/default/bar/layout.lua"]:find("visible = false", 1, true))
     end)
 
     it("matches both character names case-insensitively", function()
@@ -916,7 +1102,7 @@ describe("core", function()
       local said = env.said()
       assert.is_not_nil(said:find("Nobody", 1, true))
       assert.is_not_nil(said:find("Alpha", 1, true))
-      assert.is_nil(env.fs.files["data/Bravo/bar.lua"])
+      assert.is_nil(env.fs.files["data/Bravo/default/bar/layout.lua"])
     end)
 
     it("refuses a destination that is not a plain character name", function()
@@ -925,7 +1111,7 @@ describe("core", function()
       for _, bad in ipairs({ "..", ".", "../..", "bar/baz" }) do
         core.on_command({ "copy", "Alpha", bad })
       end
-      assert.is_not_nil(env.fs.files["data/Alpha/bar.lua"], "the source must be untouched")
+      assert.is_not_nil(env.fs.files["data/Alpha/default/bar/layout.lua"], "the source must be untouched")
       assert.is_not_nil(env.said():lower():find("character name"))
     end)
 
@@ -935,7 +1121,7 @@ describe("core", function()
     end)
 
     it("says so when a file could not be copied, instead of claiming success", function()
-      env.fs.fail_write_paths["data/Bravo/bar.lua"] = true
+      env.fs.fail_write_paths["data/Bravo/default/bar/layout.lua"] = true
       core.on_command({ "copy", "Alpha", "Bravo" })
       assert.is_not_nil(env.said():lower():find("could not"))
     end)
@@ -945,7 +1131,7 @@ describe("core", function()
       assert.has_no.errors(function()
         core.on_command({ "copy", "Alpha", "Bravo" })
       end)
-      assert.is_not_nil(env.fs.files["data/Bravo/bar.lua"])
+      assert.is_not_nil(env.fs.files["data/Bravo/default/bar/layout.lua"])
     end)
   end)
   describe("unload", function()
@@ -1199,22 +1385,20 @@ describe("core", function()
   end)
 
   -- Touchpoint 2: a component exposing `anchors() -> {names}` keeps pos and
-  -- scale per anchor, nested under its slot entry; core applies, clamps,
-  -- describes and overlays each anchor on its own. `visible` stays per
-  -- component. Widgets without `anchors()` take the paths above unchanged.
+  -- scale per anchor inside its layout file; core applies, clamps, describes
+  -- and overlays each anchor on its own. `visible` stays per component.
+  -- Widgets without `anchors()` take the paths above unchanged.
   describe("multi-anchor components", function()
     local ANCHORS = { "top", "bottom" }
 
     local function anchored_defaults()
       return {
-        slots = {
-          default = {
-            anchors = {
-              top = { pos = { x = 100, y = 100 }, scale = 1 },
-              bottom = { pos = { x = 400, y = 600 }, scale = 1 },
-            },
-            visible = true,
+        layout = {
+          anchors = {
+            top = { pos = { x = 100, y = 100 }, scale = 1 },
+            bottom = { pos = { x = 400, y = 600 }, scale = 1 },
           },
+          visible = true,
         },
       }
     end
@@ -1234,8 +1418,8 @@ describe("core", function()
 
     it("pulls a stored anchor that is off screen back into reach, alone", function()
       env.fs.put(
-        "data/Azureblood/cross.lua",
-        "return { slots = { default = { anchors = { bottom = { pos = { x = 5000, y = 4000 } } } } } }"
+        "data/Azureblood/default/cross/layout.lua",
+        "return { anchors = { bottom = { pos = { x = 5000, y = 4000 } } } }"
       )
       local widget = core.register(cross())
       login()
@@ -1244,10 +1428,7 @@ describe("core", function()
     end)
 
     it("repairs an anchor scale below the floor in the stored state", function()
-      env.fs.put(
-        "data/Azureblood/cross.lua",
-        "return { slots = { default = { anchors = { top = { scale = 0.05 } } } } }"
-      )
+      env.fs.put("data/Azureblood/default/cross/layout.lua", "return { anchors = { top = { scale = 0.05 } } }")
       local widget = core.register(cross())
       login()
       assert.are.equal(0.25, widget.anchor.top.scale)
@@ -1275,7 +1456,7 @@ describe("core", function()
 
       assert.are.same({ 700, 800 }, widget.anchor.bottom.pos)
       assert.are.same({ 100, 100 }, widget.anchor.top.pos)
-      local written = env.fs.files["data/Azureblood/cross.lua"]
+      local written = env.fs.files["data/Azureblood/default/cross/layout.lua"]
       assert.is_not_nil(written:find("x = 700", 1, true), "wrote: " .. written)
       assert.is_not_nil(written:find("x = 100", 1, true), "the other anchor keeps its place on disk")
     end)
@@ -1287,7 +1468,7 @@ describe("core", function()
       assert.is_true(core.on_mouse(WHEEL, 150, 150, 120))
       assert.are.equal(2.2, widget.anchor.top.scale)
       assert.are.equal(1, widget.anchor.bottom.scale)
-      assert.is_not_nil(env.fs.files["data/Azureblood/cross.lua"]:find("scale = 2.2", 1, true))
+      assert.is_not_nil(env.fs.files["data/Azureblood/default/cross/layout.lua"]:find("scale = 2.2", 1, true))
     end)
 
     it("right-click on any anchor toggles the whole component off", function()
@@ -1296,7 +1477,7 @@ describe("core", function()
       core.on_command({ "layout" })
       assert.is_true(core.on_mouse(RIGHT_DOWN, 450, 650))
       assert.is_true(widget.shown, "still force-shown while positioning")
-      assert.is_not_nil(env.fs.files["data/Azureblood/cross.lua"]:find("visible = false", 1, true))
+      assert.is_not_nil(env.fs.files["data/Azureblood/default/cross/layout.lua"]:find("visible = false", 1, true))
       core.on_command({ "layout" })
       assert.is_false(widget.shown)
     end)
@@ -1329,20 +1510,18 @@ describe("core", function()
     -- framework understood it, so layout repair fabricated and persisted a
     -- spurious top-level pos/scale. CB3 tolerates the residue and sheds it on
     -- the first write.
-    it("drops the CB2 stand-in's stray top-level pos and scale on the first write", function()
+    it("drops a stray top-level pos and scale on the first write", function()
       env.fs.put(
-        "data/Azureblood/cross.lua",
-        "return { slots = { default = { pos = { x = 0, y = 0 }, scale = 1, visible = true, "
+        "data/Azureblood/default/cross/layout.lua",
+        "return { pos = { x = 0, y = 0 }, scale = 1, visible = true, "
           .. "anchors = { top = { pos = { x = 100, y = 100 }, scale = 1 }, "
-          .. "bottom = { pos = { x = 400, y = 600 }, scale = 1 } } } } }"
+          .. "bottom = { pos = { x = 400, y = 600 }, scale = 1 } } }"
       )
-      local widget = core.register(cross())
+      core.register(cross())
       login()
-      assert.is_nil(widget.config.slots.default.pos)
-      assert.is_nil(widget.config.slots.default.scale)
 
       core.on_command({ "hide", "cross" })
-      local written = env.fs.files["data/Azureblood/cross.lua"]
+      local written = env.fs.files["data/Azureblood/default/cross/layout.lua"]
       assert.is_nil(written:find("x = 0", 1, true), "wrote: " .. written)
     end)
 
@@ -1357,9 +1536,9 @@ describe("core", function()
     end)
 
     it("skips a widget whose defaults are anchored but which exposes no anchors()", function()
-      -- The CB2 stand-in's exact shape: anchored defaults, no anchors()
-      -- member. layout.slot strips the top-level pos, so the single-anchor
-      -- apply must skip the mismatch rather than crash on it.
+      -- Anchored defaults with no anchors() member. layout.repair strips the
+      -- top-level pos, so the single-anchor apply must skip the mismatch
+      -- rather than crash on it.
       local widget = core.register(fakes.widget("odd", anchored_defaults()))
       assert.has_no.errors(function()
         login()
@@ -1378,7 +1557,7 @@ describe("core", function()
     end)
 
     it("treats a non-table anchors() answer as a single-anchor component", function()
-      local widget = fakes.widget("odd", slot_defaults(100, 200))
+      local widget = fakes.widget("odd", placed(100, 200))
       widget.anchors = function()
         return 5
       end
@@ -1420,10 +1599,11 @@ describe("core", function()
       login()
       assert.is_not_nil(widget.store)
       assert.is_true(widget.store.save("WAR", { active_set = 2 }))
-      -- Beside the component file, never into it: nothing has persisted
-      -- bar.lua at this point, and a store save must not be what creates it.
-      assert.is_nil(env.fs.files["data/Azureblood/bar.lua"])
-      assert.is_not_nil(env.fs.files["data/Azureblood/bar/WAR.lua"])
+      -- Beside the two files core owns, never into them: nothing has persisted
+      -- either at this point, and a store save must not be what creates one.
+      assert.is_nil(env.fs.files["data/Azureblood/default/bar/config.lua"])
+      assert.is_nil(env.fs.files["data/Azureblood/default/bar/layout.lua"])
+      assert.is_not_nil(env.fs.files["data/Azureblood/default/bar/WAR.lua"])
       assert.are.same({ active_set = 2 }, widget.store.load("WAR"))
     end)
 
@@ -1446,14 +1626,30 @@ describe("core", function()
       login()
       widget.store.save("WAR", { active_set = 5 })
       core.on_command({ "reset", "bar" })
-      assert.is_nil(env.fs.files["data/Azureblood/bar/WAR.lua"], "reset must not leave per-job files behind")
+      assert.is_nil(env.fs.files["data/Azureblood/default/bar/WAR.lua"], "reset must not leave per-job files behind")
       assert.is_nil(widget.store.load("WAR"))
       assert.is_true(widget.store.save("WAR", { active_set = 1 }))
     end)
 
+    it("gives each slot its own store, copied when the slot is created", function()
+      local widget = core.register(store_widget())
+      login()
+      widget.store.save("WAR", { active_set = 5 })
+
+      core.on_command({ "slot", "create", "raid" })
+      assert.is_not_nil(env.fs.files["data/Azureblood/raid/bar/WAR.lua"], "the store copies with the slot")
+
+      core.on_command({ "slot", "raid" })
+      assert.are.same({ active_set = 5 }, widget.store.load("WAR"))
+      widget.store.save("WAR", { active_set = 8 })
+
+      core.on_command({ "slot", "default" })
+      assert.are.same({ active_set = 5 }, widget.store.load("WAR"), "the other slot's bindings are untouched")
+    end)
+
     it("rebuilds the store after //hud copy, so copied files are not shadowed by a stale cache", function()
-      env.fs.put("data/Alpha/bar.lua", "return {}")
-      env.fs.put("data/Alpha/bar/WAR.lua", "return { active_set = 7 }")
+      env.fs.put("data/Alpha/default/bar/config.lua", "return {}")
+      env.fs.put("data/Alpha/default/bar/WAR.lua", "return { active_set = 7 }")
       local widget = core.register(store_widget())
       login()
       widget.store.save("WAR", { active_set = 1 })

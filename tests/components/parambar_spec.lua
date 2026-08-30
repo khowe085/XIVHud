@@ -61,8 +61,8 @@ describe("parambar widget", function()
       assert.are.equal("parambar", widget.name)
     end)
 
-    it("defaults its slot position to the bottom centre of the screen", function()
-      local slot = widget.defaults.slots.default
+    it("defaults its position to the bottom centre of the screen", function()
+      local slot = widget.defaults.layout
       assert.are.equal(724, slot.pos.x)
       assert.are.equal(1020, slot.pos.y)
     end)
