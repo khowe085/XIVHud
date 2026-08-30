@@ -1,8 +1,9 @@
 # Party list on the multi-anchor abstraction - migration plan
 
-Status: draft, 2026-08-29. Worktree `.claude/worktrees/partylist-anchors`, branch
-`work/claude/partylist-anchors`, branched from dev at d6ed15c (the commit that landed
-crossbar, #25). Scope: `src/components/partylist/`, the registration block in
+Status: PA0 landed on dev in PR #26; PA1-PA5 built 2026-08-30 in worktree
+`.claude/worktrees/partylist-anchors-2`, branch `work/claude/partylist-anchors-2`,
+branched from dev at 77a1951. (PA0 was written in `.claude/worktrees/partylist-anchors`
+off dev at d6ed15c, the commit that landed crossbar, #25.) Scope: `src/components/partylist/`, the registration block in
 `src/XIVHud.lua`, and the partylist specs. **No framework change** - `src/lib/` is
 touched only if a decision below says so, and none currently does.
 
@@ -74,7 +75,7 @@ the moved anchor. partylist needs the same defences before it grows anchors.
 
 ## Phases
 
-### PA0 - Change-gate the placement setters (prerequisite, own commit)
+### PA0 - Change-gate the placement setters (prerequisite, own commit) - DONE (#26)
 
 On the **current** three-component shape, so it can be reviewed, verified and reverted
 independently of the restructure.
@@ -229,6 +230,60 @@ Green means `busted` + `luacheck .` + `stylua --check .`. **Green is not loaded*
 nothing here exercises Windower's require resolution, the real prims, or the mouse
 path, so the drag-cost improvement and the layout-mode behaviour both want an
 in-client check before this is called done.
+
+## What was built, and where it left the plan (2026-08-30)
+
+PA1-PA5 are done. Three deviations, all deliberate:
+
+1. **`logic.lua` was touched after all**, in two places, both of them user-visible
+   strings rather than behaviour. Its `NAMES` table is how every message it prints
+   names the list: `alliancelist1` is not a thing any more, and a reply naming it would
+   name a component the user cannot address, so the alliance entries became
+   `partylist alliance1` / `partylist alliance2` - which is also exactly how the user
+   now addresses them. And its `verbs()` hint gained `on, off`, which the widget above
+   answers rather than logic: that hint is the only place the user is ever told a list
+   can be switched at all, now that `//hud hide alliancelist1` is gone, and a
+   replacement nothing mentions is not one. Nothing else in the module changed, and
+   `partylist_logic_spec.lua` needed no edit for either.
+2. **`partylist_logic_spec.lua` did need one edit**, which the plan said should not
+   happen: line 57 builds its fixture straight out of `defaults.lua`, and PA2 changes
+   that module's shape. It now reads `build_defaults(1920, 1080).lists[variant]`. That
+   is the fixture following the defaults, not the logic contract moving - the rule was
+   guarding the latter.
+3. **PA2's per-list settings went under `lists.<anchor>` including the main-only ones.**
+   `hide_solo` and `buffs` sit inside `lists.main` rather than at the top level, because
+   a list's logic instance is handed its own slice whole and that is what keeps
+   `logic.lua` from having to know where it lives.
+
+The command router reads `//hud partylist [<list>] <verb> ...`, with `on|off` as the
+per-list switch and the main-only verbs refused out loud at an alliance list. The three
+new spec blocks (multi-anchor contract, command router, preview against a switched-off
+list) were mutation-checked against three deliberate breakages - preview no longer
+outranking `shown`, the main-only guard removed, and an unnamed list no longer meaning
+main - and each was caught.
+
+### The review gate
+
+Seven blind rounds, a fresh reviewer each time. Round 1 found the one real defect - a
+list entry of the wrong type in `config.lua` (hand edit, or `//hud copy`) was indexed
+rather than replaced, which errors inside core's login path under the guard-wrapped
+prerender, where five errors disable the render loop. Round 2 found that the flag's
+re-read at attach was untested and that the new `on|off` verb appeared in no hint.
+Rounds 3 and 4 returned clean; their optional findings (the `//hud list` half-truth, an
+untested `hide`/`detach` fan-out, the two independent copies of the anchor list, and the
+migration wording) were taken anyway. Rounds 5-7 returned clean, and 6 and 7 each
+mutation-tested the specs independently - twelve deliberate breakages, all caught.
+
+Two findings were decisions rather than defects, and Kevin took both (2026-08-30):
+`range` joins `hidesolo` and `buff` in `MAIN_ONLY`, so an alliance list refuses it out
+loud instead of storing a setting its row layout has no block to draw (inert there since
+the lists were three components); and the per-list flag is `enabled`, reported as
+`enabled`/`disabled`, rather than sharing the framework's `shown` - two independent
+switches under one word is what let `//hud partylist alliance1` answer `shown` for a
+list `//hud hide partylist` was hiding.
+
+**Not verified in a live client.** The drag cost, the layout-mode hit test across three
+anchors and the first-login file migration all want one.
 
 ## What this plan does not do
 

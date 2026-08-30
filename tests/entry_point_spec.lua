@@ -31,6 +31,26 @@ describe("entry point", function()
       assert.is_not_nil(boot.ctxs.targetbar)
       assert.is_not_nil(boot.ctxs.crossbar)
     end)
+
+    --[[ The party list is ONE registration over three anchors. It was three
+         registrations off one factory until 2026-08-30, which is why it could
+         carry no alias: all three would have claimed `pl` and the second would
+         have aborted the load. Only the entry point can say how many times the
+         factory is called, or that nothing picks a variant for it any more. ]]
+    it("builds the party list once, with no variant to pick", function()
+      local built = 0
+      for _, name in ipairs(boot.built) do
+        if name == "partylist" then
+          built = built + 1
+        end
+      end
+      assert.are.equal(1, built)
+      assert.is_nil(boot.ctxs.partylist.variant)
+      for _, name in ipairs(boot.registered) do
+        assert.are_not.equal("alliancelist1", name)
+        assert.are_not.equal("alliancelist2", name)
+      end
+    end)
   end)
 
   --[[ The player service. Which client reads reach the client, and how the
