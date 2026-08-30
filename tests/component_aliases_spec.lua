@@ -70,6 +70,7 @@ describe("component aliases", function()
       ev = "equipviewer",
       tb = "targetbar",
       cb = "crossbar",
+      pl = "partylist",
     }, registry.alias_map())
   end)
 end)
