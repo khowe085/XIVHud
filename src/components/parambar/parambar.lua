@@ -44,15 +44,6 @@ local ASSET_DIR = "assets/ffxiv/"
 local BARS = { "hp", "mp", "tp" }
 local FILL_TEXTURES = { "hp_fg.png", "mp_fg.png", "tp_fg.png" }
 
--- How long after attaching the player may be re-read, if any vital is still
--- missing by then. The client fills vitals in field by field - in a live client
--- HP landed with MP still zero - and MP does not tick on its own outside
--- resting, so a single seed can leave a bar reading 0 until the player happens
--- to cast. The reading stops early once every vital has a number, but a vital
--- that is legitimately zero - no TP, a dead character, a job with no MP - never
--- reports one, so in practice this ceiling is what usually ends it.
-local SEED_SETTLE_SECONDS = 10
-
 local function new(ctx)
   local self = { name = "parambar", alias = "pb" }
 
@@ -67,8 +58,6 @@ local function new(ctx)
   local pos = nil
   local scale = 1
   local visible = false
-  -- Set while the vitals are still arriving; nil once they have settled.
-  local settling_until = nil
   -- Which fills are currently empty; they stay hidden even when the widget as a
   -- whole is shown.
   local empty = { hp = false, mp = false, tp = false }
@@ -201,30 +190,13 @@ local function new(ctx)
     end
   end
 
-  -- get_player() can return nil around zone-in. Re-seeding from nothing would
-  -- zero every vital, and the change events only fire on an actual change — so
-  -- a character standing at full HP would read 0 until something moved.
-  local function seed_from_player()
+  -- get_player() can return nil around zone-in. Polling nothing would zero
+  -- every vital, and the change events only fire on an actual change — so a
+  -- character standing at full HP would read 0 until something moved.
+  local function poll_player()
     local player = ctx.get_player()
     if player and player.vitals then
-      logic.seed(player.vitals)
-    end
-  end
-
-  -- Re-read the player each frame until the vitals have had time to arrive in
-  -- full, then leave it to the change events. Only the gaps are filled, so a
-  -- value an event delivered mid-window is never walked over.
-  local function fill_while_settling()
-    if not settling_until then
-      return
-    end
-    if not logic.awaiting_vitals() or ctx.now() >= settling_until then
-      settling_until = nil
-      return
-    end
-    local player = ctx.get_player()
-    if player and player.vitals then
-      logic.fill_missing(player.vitals)
+      logic.poll(player.vitals)
     end
   end
 
@@ -236,14 +208,12 @@ local function new(ctx)
     logic.set_config(config)
     apply_text_style()
     apply_layout()
-    settling_until = ctx.now() + SEED_SETTLE_SECONDS
-    seed_from_player()
+    -- No read here: set_config re-armed the poll, so the next tick takes one.
   end
 
   function self.detach()
     attached = false
     save = nil
-    settling_until = nil
     self.hide()
   end
 
@@ -278,17 +248,21 @@ local function new(ctx)
     return logic.bounds(pos.x, pos.y, scale)
   end
 
-  -- No arguments is the per-frame tick; otherwise a game event the entry point
-  -- forwarded. Vitals arrive as two independent streams, so a status change
-  -- re-seeds both from the player at once (XIVBar let them drift apart).
+  --[[ No arguments is the per-frame tick; otherwise a game event the entry
+       point forwarded. Vitals arrive as two independent streams that XIVBar let
+       drift apart, so the player is the authority and the change events only
+       carry the bars between polls. A status change — death, resting — reads
+       the player at once rather than waiting the interval out. ]]
   function self.update(event, value)
     if event == nil then
-      fill_while_settling()
+      if attached and logic.due_for_poll(ctx.now()) then
+        poll_player()
+      end
       render()
       return
     end
     if event == "status" then
-      seed_from_player()
+      poll_player()
     else
       logic.set_vital(event, value)
     end

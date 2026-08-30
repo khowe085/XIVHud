@@ -102,7 +102,7 @@ describe("parambar widget", function()
   end)
 
   describe("attaching", function()
-    it("seeds the vitals from the player", function()
+    it("reads the vitals off the player on its first frame", function()
       attach()
       widget.set_pos(0, 0)
       settle()
@@ -112,8 +112,8 @@ describe("parambar widget", function()
 
     -- The client fills vitals in field by field: HP was seen landing in a live
     -- client while MP was still zero, and MP does not tick on its own outside
-    -- resting, so a single seed leaves the MP bar empty until the player casts.
-    it("picks up a vital that lands after the first seed", function()
+    -- resting, so one read leaves the MP bar empty until the player casts.
+    it("picks up a vital that lands after the first read", function()
       player = { vitals = { hp = 1000, hpp = 100, mp = 0, mpp = 0, tp = 0, max_hp = 1000 } }
       attach()
       widget.set_pos(0, 0)
@@ -128,8 +128,8 @@ describe("parambar widget", function()
     end)
 
     -- get_player() is unreadable around zone-in, and the framework attaches the
-    -- widget whether or not it answered: the seed finds nothing, so the fill is
-    -- the only thing that will ever put a number on the bars.
+    -- widget whether or not it answered: the first read finds nothing, so a
+    -- later one is all that will ever put a number on the bars.
     it("fills the bars in when the player was unreadable at attach", function()
       player = nil
       attach()
@@ -144,14 +144,15 @@ describe("parambar widget", function()
       assert.are.equal("500", number(2).last.text)
     end)
 
-    it("stops re-reading the player as soon as every vital is known", function()
+    it("reads the player on its own interval rather than every frame", function()
       attach()
       widget.set_pos(0, 0)
       settle()
+      assert.are.equal(1, reads, "read the client more than once inside one interval")
 
-      local before = reads
+      clock = 0.2
       settle()
-      assert.are.equal(before, reads, "still polling the client with every vital already known")
+      assert.are.equal(2, reads, "never read the client again")
     end)
 
     it("stops re-reading the player when it is detached", function()
@@ -162,11 +163,12 @@ describe("parambar widget", function()
       widget.detach()
 
       local before = reads
+      clock = 10
       settle()
       assert.are.equal(before, reads, "still polling the client for a character it is no longer showing")
     end)
 
-    it("stops re-reading the player once the vitals have had time to settle", function()
+    it("keeps reading the player long after login", function()
       player = { vitals = { hp = 1000, hpp = 100, mp = 0, mpp = 0, tp = 0, max_hp = 1000 } }
       attach()
       widget.set_pos(0, 0)
@@ -175,8 +177,9 @@ describe("parambar widget", function()
 
       player.vitals.mp = 500
       player.vitals.mpp = 100
+      clock = 31
       settle()
-      assert.are.equal("0", number(2).last.text, "still polling the client long after login")
+      assert.are.equal("500", number(2).last.text, "stopped reading the client after login")
     end)
 
     it("survives being attached while the player is unreadable", function()
@@ -314,7 +317,30 @@ describe("parambar widget", function()
       assert.are.equal("1000", number(1).last.text, "a nil player must not blank the bars")
     end)
 
-    it("re-seeds both vitals streams on a status change", function()
+    --[[ The absolute and the percent stream are independent, and the absolute
+         one has been seen carrying a value nothing ever corrects: after a Max
+         HP Down wore off, the HP number sat at max HP while the bar and its
+         colour band tracked the real percent. No event heals that -- only a
+         fresh read of the player does. ]]
+    it("heals a wrong absolute value on the next poll", function()
+      settle()
+      widget.update("hp", 2238)
+      settle()
+      assert.are.equal("2238", number(1).last.text)
+
+      clock = 1
+      settle()
+      assert.are.equal("1000", number(1).last.text, "the client was never re-read")
+    end)
+
+    it("shows a change event without waiting for the next poll", function()
+      settle()
+      widget.update("hp", 900)
+      settle()
+      assert.are.equal("900", number(1).last.text)
+    end)
+
+    it("re-reads both vitals streams on a status change", function()
       widget.update("hp", 9999)
       player.vitals = { hp = 700, hpp = 70, mp = 100, mpp = 20, tp = 0 }
       widget.update("status", 0, 4)
@@ -343,7 +369,7 @@ describe("parambar widget", function()
     end)
 
     it("leaves an empty fill hidden even when the widget is shown", function()
-      widget.update("hpp", 0)
+      player.vitals.hpp = 0
       settle()
       widget.show()
       assert.is_true(background().visible)
