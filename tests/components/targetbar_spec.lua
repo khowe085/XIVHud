@@ -155,6 +155,7 @@ describe("targetbar widget", function()
   describe("construction", function()
     it("is named for its config namespace and command word", function()
       assert.are.equal("targetbar", widget.name)
+      assert.are.equal("tb", widget.alias)
     end)
 
     it("centres its default slot on the row it draws", function()

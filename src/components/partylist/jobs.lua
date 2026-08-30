@@ -40,7 +40,8 @@ local ROLES = {
   MNK = "dd",
   WHM = "healer",
   BLM = "dd",
-  RDM = "healer",
+  -- Diverges from XivParty, which has RDM on healer.
+  RDM = "dd",
   THF = "dd",
   PLD = "tank",
   DRK = "dd",

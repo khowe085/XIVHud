@@ -15,6 +15,10 @@ Every image below is a verbatim, byte-for-byte copy of its source file - no
 image was re-encoded, resized, or otherwise transformed. Paths on the right
 are relative to the xivcrossbar repository root.
 
+The one exception is jobs/, which is NOT from xivcrossbar: it is XivParty
+art composited and resized by XIVHud, and carries its own notice in
+jobs/LICENSE.txt. Nothing in this file covers it.
+
     spells/                              images/icons/spells/ (by recast id)
     abilities/                           images/icons/abilities/ (by recast
                                           id), plus the three named icons from
@@ -32,6 +36,8 @@ are relative to the xivcrossbar repository root.
     *.png (the top-level singles:        images/icons/iconpacks/default/
       attack, disengage, dismount,        (top-level)
       mount, item, map, and the rest)
+    jobs/                                NOT from xivcrossbar - see
+                                          jobs/LICENSE.txt
 
 Square Enix's underlying rights in the game-derived icon artwork are not
 addressed by either of the notices below; the icons are redistributed here as

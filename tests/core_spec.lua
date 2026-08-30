@@ -45,6 +45,34 @@ describe("core", function()
     end)
   end)
 
+  describe("aliases", function()
+    local function aliased(name, alias)
+      local widget = bar(name)
+      widget.alias = alias
+      return widget
+    end
+
+    it("routes a command sent through the alias to the component", function()
+      local widget = aliased("crossbar", "cb")
+      local commanded
+      widget.handle_command = function(args)
+        commanded = args
+        return "done"
+      end
+      core.register(widget)
+      login()
+      core.on_command({ "cb", "set", "3" })
+      assert.are.same({ "set", "3" }, commanded)
+    end)
+
+    it("names the alias in the listing", function()
+      core.register(aliased("crossbar", "cb"))
+      login()
+      core.on_command({ "list" })
+      assert.is_not_nil(env.said():find("crossbar (cb)", 1, true), "said: " .. env.said())
+    end)
+  end)
+
   describe("login and logout", function()
     it("attaches every component to its own config once a character is known", function()
       local widget = core.register(bar())

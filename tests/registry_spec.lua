@@ -3,8 +3,8 @@ local new_registry = require("lib/registry")
 describe("registry", function()
   local warnings, registry
 
-  local function component(name)
-    local c = { name = name, destroyed = 0 }
+  local function component(name, alias)
+    local c = { name = name, alias = alias, destroyed = 0 }
     function c.destroy()
       c.destroyed = c.destroyed + 1
     end
@@ -60,6 +60,65 @@ describe("registry", function()
       end)
     end)
 
+    it("refuses an alias that is not a typeable word of 2 to 4 characters", function()
+      for _, bad in ipairs({ "c", "toolong", "1c", "c b", "c-b" }) do
+        assert.has_error(function()
+          registry.register(component("alpha", bad))
+        end, nil, "expected alias '" .. bad .. "' to be rejected")
+      end
+    end)
+
+    it("refuses a component whose alias is its own name, which would alias a word to itself", function()
+      assert.has_error(function()
+        registry.register(component("cb", "cb"))
+      end)
+    end)
+
+    it("refuses an alias that is not a string at all", function()
+      assert.has_error(function()
+        registry.register(component("alpha", 12))
+      end)
+    end)
+
+    it("takes an alias at either end of the length it allows", function()
+      assert.has_no.errors(function()
+        registry.register(component("alpha", "ab"))
+      end)
+      assert.has_no.errors(function()
+        registry.register(component("bravo", "abcd"))
+      end)
+      assert.has_error(function()
+        registry.register(component("charlie", "abcde"))
+      end)
+    end)
+
+    it("refuses an alias that collides with a reserved verb or 'all'", function()
+      assert.has_error(function()
+        registry.register(component("alpha", "list"))
+      end)
+      assert.has_error(function()
+        registry.register(component("bravo", "all"))
+      end)
+    end)
+
+    it("refuses an alias already claimed by another component", function()
+      registry.register(component("alpha", "al"))
+      assert.has_error(function()
+        registry.register(component("bravo", "AL"))
+      end)
+    end)
+
+    it("refuses an alias that collides with a component name, either way round", function()
+      registry.register(component("alpha", "al"))
+      assert.has_error(function()
+        registry.register(component("al"))
+      end)
+      registry.register(component("bravo"))
+      assert.has_error(function()
+        registry.register(component("charlie", "bravo"))
+      end)
+    end)
+
     it("refuses names that cannot be typed as a single command word", function()
       for _, bad in ipairs({ "", "two words", "9lives", "has-dash" }) do
         assert.has_error(function()
@@ -69,6 +128,24 @@ describe("registry", function()
       assert.has_error(function()
         registry.register({})
       end)
+    end)
+  end)
+
+  describe("aliases", function()
+    it("maps each declared alias to its component, lower cased", function()
+      registry.register(component("crossbar", "CB"))
+      registry.register(component("parambar", "pb"))
+      registry.register(component("plain"))
+      assert.are.same({ cb = "crossbar", pb = "parambar" }, registry.alias_map())
+    end)
+
+    it("hands out a copy, and empties with the registry", function()
+      registry.register(component("crossbar", "cb"))
+      local map = registry.alias_map()
+      map.cb = "hacked"
+      assert.are.equal("crossbar", registry.alias_map().cb)
+      registry.destroy_all()
+      assert.are.same({}, registry.alias_map())
     end)
   end)
 

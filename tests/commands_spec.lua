@@ -8,6 +8,9 @@ describe("commands", function()
       components = function()
         return { "parambar", "clock" }
       end,
+      aliases = function()
+        return { pb = "parambar" }
+      end,
     })
   end)
 
@@ -155,6 +158,31 @@ describe("commands", function()
 
     it("rejects extra arguments", function()
       assert_error(parse("copy", "Azureblood", "Altcharacter", "confirm"), "copy")
+    end)
+  end)
+
+  describe("aliases", function()
+    it("accepts an alias wherever a component name is accepted", function()
+      assert.are.same({ action = "show", component = "parambar" }, parse("show", "pb"))
+      assert.are.same({ action = "hide", component = "parambar" }, parse("hide", "PB"))
+      assert.are.same({ action = "reset", component = "parambar" }, parse("reset", "pb"))
+    end)
+
+    it("routes a passthrough through the alias, under the component's real name", function()
+      assert.are.same(
+        { action = "component", component = "parambar", args = { "width", "150" } },
+        parse("pb", "width", "150")
+      )
+    end)
+
+    it("gets by without an alias dep at all", function()
+      local bare = new_commands({
+        components = function()
+          return { "parambar" }
+        end,
+      })
+      assert.are.equal("component", bare.parse({ "parambar" }).action)
+      assert_error(bare.parse({ "pb" }), "unknown command")
     end)
   end)
 

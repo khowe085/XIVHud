@@ -119,6 +119,7 @@ describe("equipviewer widget", function()
   describe("construction", function()
     it("is named for its config namespace and command word", function()
       assert.equal("equipviewer", widget.name)
+      assert.equal("ev", widget.alias)
     end)
 
     it("builds a panel, a grid of icons, a marker per slot and the ammo count", function()

@@ -1019,6 +1019,9 @@ local function check_assets()
     -- The sword beside the set label, which drew a bare square when its
     -- path went wrong and said nothing about it.
     "icons/weapons/sword.png",
+    -- The pre-rendered job icons, XivParty art rather than the pack -
+    -- their own generation step, so their own sample.
+    "icons/jobs/whm.png",
   }) do
     -- The asset ROOT: these are icons, and `own/` is the chrome beside
     -- them. Prefixing the folder here sent every one of them to

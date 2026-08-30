@@ -252,7 +252,7 @@ local RESOURCE_TABLES = {
 }
 
 local function new(ctx)
-  local self = { name = "crossbar", wants_store = true }
+  local self = { name = "crossbar", alias = "cb", wants_store = true }
 
   -- Per-anchor placement pushed by core.
   local placed = {}
