@@ -13,7 +13,7 @@ local FACTORIES = {
   { module = "components/equipviewer/equipviewer" },
   { module = "components/targetbar/targetbar" },
   { module = "components/crossbar/crossbar" },
-  { module = "components/partylist/partylist", name = "partylist", variant = "main", alias = "pl" },
+  { module = "components/partylist/partylist", name = "partylist", variant = "main" },
   { module = "components/partylist/partylist", name = "alliancelist1", variant = "alliance1" },
   { module = "components/partylist/partylist", name = "alliancelist2", variant = "alliance2" },
 }
@@ -28,7 +28,6 @@ describe("component aliases", function()
     local prims = fakes.prims()
     return require(entry.module)({
       name = entry.name,
-      alias = entry.alias,
       variant = entry.variant,
       new_text = prims.new_text,
       new_image = prims.new_image,
@@ -71,7 +70,6 @@ describe("component aliases", function()
       ev = "equipviewer",
       tb = "targetbar",
       cb = "crossbar",
-      pl = "partylist",
     }, registry.alias_map())
   end)
 end)

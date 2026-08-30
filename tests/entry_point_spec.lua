@@ -21,12 +21,6 @@ describe("entry point", function()
   end)
 
   describe("load", function()
-    it("gives the main party list the alias, and neither alliance list one", function()
-      assert.are.equal("pl", boot.ctxs.partylist.alias)
-      assert.is_nil(boot.ctxs.alliancelist1.alias)
-      assert.is_nil(boot.ctxs.alliancelist2.alias)
-    end)
-
     it("registers the packet dispatch and builds every component", function()
       assert.is_not_nil(boot.handlers["incoming chunk"])
       assert.is_not_nil(boot.ctxs.targetbar)

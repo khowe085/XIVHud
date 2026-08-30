@@ -120,10 +120,12 @@ Per-component isolation: every component owns its own configuration file and can
 Every component also answers to a short **alias** wherever its name is taken -
 `//hud cb list`, `//hud show pb`, `//hud reset tb` - declared as an optional
 `alias` beside the widget's `name` (2-4 letters or digits, starting with a
-letter). The shipped set is `cb` crossbar, `pl` partylist, `pb` parambar, `gt`
-giltracker, `ev` equipviewer, `tb` targetbar; the two alliance lists
-deliberately have none (Kevin's call - they are reached by name, and the trio
-collapses into one anchored component in due course). `//hud list` prints the
+letter). The shipped set is `cb` crossbar, `pb` parambar, `gt` giltracker, `ev`
+equipviewer, `tb` targetbar. The party list has none yet, deliberately: one
+factory backs three registrations (`partylist`, `alliancelist1`,
+`alliancelist2`), so a hardcoded alias would have all three claim the same word
+and the second would abort the load. It takes `pl` when the trio collapses into
+one anchored component - the PA5 step of `.claude/Planning/partylist-anchors.md`. `//hud list` prints the
 alias beside the name, which is the only place they are enumerated: help cannot
 name components it does not know.
 

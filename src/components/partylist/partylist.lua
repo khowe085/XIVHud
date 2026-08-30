@@ -58,7 +58,7 @@ local PARSED_PACKETS = {
 
 local function new(ctx)
   local variant = ctx.variant or "main"
-  local self = { name = ctx.name or "partylist", alias = ctx.alias }
+  local self = { name = ctx.name or "partylist" }
 
   local screen_width, screen_height = (ctx.screen or function() end)()
   self.defaults = build_defaults(screen_width, screen_height, variant)
