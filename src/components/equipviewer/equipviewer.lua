@@ -60,7 +60,7 @@ local ENCUMBRANCE_TEXTURE = "assets/encumbrance/encumbrance.png"
 local PANEL_TEXTURE = "assets/own/panel.png"
 
 local function new(ctx)
-  local self = { name = "equipviewer" }
+  local self = { name = "equipviewer", alias = "ev" }
 
   local screen_width, screen_height = ctx.screen()
   self.defaults = build_defaults(screen_width, screen_height)

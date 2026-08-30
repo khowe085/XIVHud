@@ -85,6 +85,8 @@ local HELP = {
   "  //hud slot delete <name>   remove a slot",
   "  //hud copy <from> <to>     replace one character's config with another's",
   "  //hud <name> ...           pass a command to a component",
+  "  //hud <alias> ...          a component answers to its short name too,",
+  "                            which //hud list prints beside it",
 }
 
 local function new(deps)
@@ -101,6 +103,9 @@ local function new(deps)
   local commands = new_commands({
     components = function()
       return registry and registry.names() or {}
+    end,
+    aliases = function()
+      return registry and registry.alias_map() or {}
     end,
   })
 
@@ -674,22 +679,25 @@ local function new(deps)
   -- per anchor otherwise, since four placements do not fit one chat line.
   local function describe(component)
     local state = state_of(component)
+    -- The alias rides the listing rather than the help text: it is a property
+    -- of the component, and help cannot name components it does not know.
+    local title = component.alias and (component.name .. " (" .. component.alias:lower() .. ")") or component.name
     if not state then
-      return { "  " .. component.name .. " - not loaded" }
+      return { "  " .. title .. " - not loaded" }
     end
     local shown = state.visible == true and "shown" or "hidden"
     local names = anchor_names(component)
     -- A placement apply skipped (anchored defaults, no anchors() member) has
     -- no pos to format; the headline still names the component and its state.
     if not names and type(state.pos) ~= "table" then
-      return { string.format("  %s - %s", component.name, shown) }
+      return { string.format("  %s - %s", title, shown) }
     end
     if not names then
       return {
-        string.format("  %s - %s, pos %d,%d, scale %.2f", component.name, shown, state.pos.x, state.pos.y, state.scale),
+        string.format("  %s - %s, pos %d,%d, scale %.2f", title, shown, state.pos.x, state.pos.y, state.scale),
       }
     end
-    local lines = { string.format("  %s - %s", component.name, shown) }
+    local lines = { string.format("  %s - %s", title, shown) }
     for _, name in ipairs(names) do
       local anchor = state.anchors and state.anchors[name]
       if anchor then

@@ -67,6 +67,10 @@ describe("giltracker widget", function()
       assert.are.equal("giltracker", widget.name)
     end)
 
+    it("answers to a short alias of its own", function()
+      assert.are.equal("gt", widget.alias)
+    end)
+
     it("defaults its slot position to the bottom right of the screen", function()
       local slot = widget.defaults.layout
       assert.are.equal(1575, slot.pos.x)

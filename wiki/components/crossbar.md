@@ -41,6 +41,8 @@ press them yourself.
 ## Commands
 
 All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
+`cb` is the crossbar's short name and stands in for `crossbar` anywhere it is
+taken: `//hud cb set 3`, `//hud show cb`, `//hud reset cb`.
 
 **An address is one word**: `<set><L|R><slot>`, so `1L1` is set 1, left side,
 slot 1, and `2R8` is set 2, right side, slot 8. Four verbs — `bind`, `unbind`,
