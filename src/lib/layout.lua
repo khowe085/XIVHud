@@ -32,10 +32,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        { pos = { x = , y = }, scale = , visible = }
 
      A multi-anchor component (touchpoint 2) declares `anchors` in its layout
-     defaults instead, and pos/scale move under the anchor names; `visible`
-     stays at the top level, because the right-click toggle is per widget:
+     defaults instead, and pos/scale move under the anchor names. `visible`
+     stays at the top level for the widget as a whole, and an anchor may carry
+     one of its own beside its placement - a second, narrower switch:
 
-       { anchors = { main = { pos = , scale = } }, visible = }
+       { anchors = { main = { pos = , scale = , visible = } }, visible = }
+
+     The two are read in OPPOSITE directions, and nothing here writes either.
+     The widget's must be `true` exactly (a broken file must not switch a whole
+     widget on); an anchor's is absent-means-shown, and only an explicit `false`
+     hides one - so repair fabricates no per-anchor key, and a component that
+     wants an anchor off out of the box says so in its own defaults, which the
+     seeding copy carries through.
 
      The slot itself is a directory, not a key in here - lib/settings resolves
      `data/<Character>/<slot>/<component>/layout.lua` and merges the file over

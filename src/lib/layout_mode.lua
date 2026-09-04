@@ -44,11 +44,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        wheel        scale the widget under the cursor, floored at 0.25
        right-click  toggle the widget on or off; disabled widgets stay visible
                     and draggable in layout mode so they can be re-enabled
+       shift-right  toggle just the anchor under the cursor, on a widget that
+                    has anchors; one without them takes the line above
 
      A widget exposing `anchors() -> {names}` (touchpoint 2) is hit-tested per
      anchor: dragging and wheel-scaling address the one anchor under the
-     cursor, whose state is fetched as deps.state(component, anchor). Only the
-     right-click toggle stays whole-widget - `visible` is per component.
+     cursor, whose state is fetched as deps.state(component, anchor). The
+     right-click toggle addresses the whole widget, or one anchor while SHIFT
+     is held: the widget's own `visible` and an anchor's are two switches, and
+     neither reads the other.
 
      A drag captures the mouse: once a grab is live every mouse event belongs to
      the mode, so a stray right-click or wheel cannot reach the game mid-drag. ]]
@@ -56,6 +60,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local MOVE, LEFT_DOWN, LEFT_UP = 0, 1, 2
 local RIGHT_DOWN, RIGHT_UP, WHEEL = 4, 5, 10
 local CONTROL_KEYS = { [29] = true, [157] = true }
+local SHIFT_KEYS = { [42] = true, [54] = true }
 local WHEEL_SCALE_STEP = 100
 
 local function new(deps)
@@ -64,7 +69,16 @@ local function new(deps)
   local active = false
   local drag = nil
   local control_held = false
+  local shift_held = false
   local swallow_right_up = false
+
+  -- Per anchor, ABSENT means shown: an anchor gains the key only once it is
+  -- switched off, so a layout file stays unchanged for every anchor the user
+  -- has never touched. The widget's own flag is read the other way round
+  -- (`== true`), because a broken file must not switch a whole widget on.
+  local function anchor_shown(state)
+    return state.visible ~= false
+  end
 
   local function apply_all()
     for _, component in ipairs(deps.components()) do
@@ -143,6 +157,7 @@ local function new(deps)
     -- either way: a CTRL still physically down re-asserts itself on its next
     -- auto-repeat.
     control_held = false
+    shift_held = false
     apply_all()
     return true
   end
@@ -207,12 +222,20 @@ local function new(deps)
       deps.persist(component)
       return true
     elseif mouse_type == RIGHT_DOWN then
-      local component = hit_test(x, y)
-      local state = component and deps.state(component)
+      local component, anchor = hit_test(x, y)
+      -- SHIFT narrows the toggle to the anchor under the cursor. A widget with
+      -- no anchors has nothing narrower to address, so it keeps the
+      -- whole-widget toggle whether or not the key is down.
+      local narrowed = shift_held and anchor ~= nil
+      local state = component and deps.state(component, narrowed and anchor or nil)
       if not state then
         return false
       end
-      state.visible = not state.visible
+      if narrowed then
+        state.visible = not anchor_shown(state)
+      else
+        state.visible = not state.visible
+      end
       swallow_right_up = true
       deps.apply(component)
       deps.persist(component)
@@ -233,6 +256,8 @@ local function new(deps)
   function self.key(dik, down)
     if CONTROL_KEYS[dik] then
       control_held = down and true or false
+    elseif SHIFT_KEYS[dik] then
+      shift_held = down and true or false
     end
   end
 

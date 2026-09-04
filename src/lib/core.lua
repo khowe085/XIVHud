@@ -75,9 +75,11 @@ local HELP = {
   "XIVHud commands:",
   "  //hud help                 this list",
   "  //hud layout               toggle layout mode: drag to move, wheel to scale,",
-  "                            right-click to toggle, CTRL to ignore the grid",
+  "                            right-click to toggle, SHIFT + right-click for one",
+  "                            piece of a component, CTRL to ignore the grid",
   "  //hud list                 components with their state",
-  "  //hud show|hide <name>     turn a component on or off",
+  "  //hud show|hide <name>     turn a component on or off, or name one of the",
+  "                            anchors //hud list prints to turn just that one",
   "  //hud reset <name|all>     restore configuration defaults",
   "  //hud slot <name>          switch layout slot",
   "  //hud slot list            layout slots, active one marked",
@@ -204,6 +206,15 @@ local function new(deps)
     return state
   end
 
+  --[[ Whether one anchor is switched on. ABSENT means shown, unlike the
+       widget's own `visible`, which must be `true` exactly: an anchor gains
+       the key only when the user switches it off, so a layout file carries
+       nothing for the anchors nobody has touched, and a component that wants
+       one off by default says so in its own layout defaults. ]]
+  local function anchor_shown(anchor)
+    return anchor ~= nil and anchor.visible ~= false
+  end
+
   -- One anchor's pos/scale-bearing state, or the whole slot state when
   -- `anchor` is nil. nil for an anchor the component lists but its defaults
   -- never seeded - a component authoring bug the callers skip over.
@@ -283,7 +294,13 @@ local function new(deps)
       overlay.hide(key)
       return
     end
-    overlay.show(key, x, y, width, height, state.visible == true)
+    -- Both switches light the box: an anchor of a widget the user has switched
+    -- off reads as hidden, which is what it is.
+    local lit = state.visible == true
+    if anchor then
+      lit = lit and anchor_shown(state.anchors and state.anchors[anchor])
+    end
+    overlay.show(key, x, y, width, height, lit)
   end
 
   local function apply_overlay(component, state)
@@ -351,11 +368,35 @@ local function new(deps)
     if visibility.suppressed() then
       component.hide()
     elseif self.layout_active() then
+      -- Force-shows every anchor, the hidden ones included: a hidden anchor
+      -- that stayed hidden here could never be dragged or switched back on.
       component.show()
-    elseif state.visible == true then
-      component.show()
-    else
+    elseif state.visible ~= true then
       component.hide()
+    else
+      --[[ The widget's own switch FIRST, always: a widget hears that it is on
+           screen through the bare show whether or not it has anchors, so one
+           written to the single-anchor contract cannot be left blank by a
+           framework that only ever addressed its anchors. It means the widget
+           is on with every anchor on - which is the whole of what layout mode
+           sends, and how a hidden anchor comes back up there to be dragged -
+           and the pass below then states each anchor explicitly rather than
+           leaving the widget to infer the ones it did not hear about. An
+           anchor with no state entry was never placed either, so it is left
+           alone rather than addressed. ]]
+      component.show()
+      if names and state.anchors then
+        for _, name in ipairs(names) do
+          local anchor = state.anchors[name]
+          if anchor then
+            if anchor_shown(anchor) then
+              component.show(name)
+            else
+              component.hide(name)
+            end
+          end
+        end
+      end
     end
 
     apply_overlay(component, state)
@@ -712,16 +753,55 @@ local function new(deps)
     for _, name in ipairs(names) do
       local anchor = state.anchors and state.anchors[name]
       if anchor then
-        lines[#lines + 1] =
-          string.format("    %s - pos %d,%d, scale %.2f", name, anchor.pos.x, anchor.pos.y, anchor.scale)
+        -- The same word as the headline: it is the same framework switch, one
+        -- scope narrower, and an anchor of a hidden widget reads as on so the
+        -- two lines say what would come back.
+        lines[#lines + 1] = string.format(
+          "    %s - %s, pos %d,%d, scale %.2f",
+          name,
+          anchor_shown(anchor) and "shown" or "hidden",
+          anchor.pos.x,
+          anchor.pos.y,
+          anchor.scale
+        )
       end
     end
     return lines
   end
 
-  local function set_visible(component, visible)
+  --[[ `//hud show|hide <component> [<anchor>]`. Naming an anchor moves that
+       anchor's own switch and leaves the widget's alone; the two are
+       independent, so hiding every anchor still reports the widget as shown.
+       An unusable name is REFUSED rather than stored: it would become a key
+       nothing ever reads, and the component would go on drawing. ]]
+  local function set_visible(component, visible, anchor)
     local state = state_of(component)
-    state.visible = visible
+    if anchor == nil then
+      state.visible = visible
+    else
+      local names = anchor_names(component)
+      if not names then
+        local verb = visible and "show" or "hide"
+        say(("%s has no anchors - use '//hud %s %s'"):format(component.name, verb, component.name))
+        return
+      end
+      local entry = state.anchors and state.anchors[anchor:lower()]
+      if not entry then
+        say(("%s has no anchor '%s' - it has %s"):format(component.name, anchor, table.concat(names, ", ")))
+        return
+      end
+      -- Written both ways round, not cleared: a file that says an anchor is on
+      -- reads the same as one that never mentioned it, and it is the answer to
+      -- a command the user just gave.
+      entry.visible = visible
+      -- The two switches are independent, so switching an anchor on under a
+      -- widget the user has switched off is not an error - but it draws
+      -- nothing, and a command that produces no output and no widget cannot be
+      -- told from one that failed.
+      if visible and state.visible ~= true then
+        say(("%s itself is hidden - '//hud show %s' to bring it back"):format(component.name, component.name))
+      end
+    end
     persist(component)
     apply(component)
   end
@@ -1084,7 +1164,7 @@ local function new(deps)
       end
     elseif action.action == "show" or action.action == "hide" then
       if require_character() then
-        set_visible(registry.get(action.component), action.action == "show")
+        set_visible(registry.get(action.component), action.action == "show", action.anchor)
       end
     elseif action.action == "reset" then
       if require_character() then

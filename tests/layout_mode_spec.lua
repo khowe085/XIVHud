@@ -4,6 +4,7 @@ local new_layout_mode = require("lib/layout_mode")
 -- Windower mouse event types (see the Events wiki).
 local MOVE, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, RIGHT_UP, WHEEL = 0, 1, 2, 4, 5, 10
 local DIK_LCONTROL, DIK_RCONTROL, DIK_SHIFT = 29, 157, 42
+local DIK_RSHIFT = 54
 
 describe("layout_mode", function()
   local components, applied, persisted, mode
@@ -88,6 +89,17 @@ describe("layout_mode", function()
       mode.enter()
       mode.enter()
       assert.are.equal(1, applied.bar)
+    end)
+
+    it("forgets a held SHIFT between sessions too", function()
+      local bar = widget("bar", 100, 200, 200, 100)
+      mode.enter()
+      mode.key(DIK_SHIFT, true)
+      mode.exit()
+
+      mode.enter()
+      mode.mouse(RIGHT_DOWN, 150, 250)
+      assert.is_false(bar.state.visible, "the whole-widget toggle must be back")
     end)
 
     it("forgets a held CTRL between sessions, since the key handler is gone in between", function()
@@ -404,6 +416,13 @@ describe("layout_mode", function()
       assert.are.same({ 100, 100 }, anchor_pos(cross, "top"))
     end)
 
+    it("falls back to the whole widget when SHIFT + right-click lands on one", function()
+      local bar = widget("bar", 500, 500, 100, 100)
+      mode.key(DIK_SHIFT, true)
+      assert.is_true(mode.mouse(RIGHT_DOWN, 550, 550))
+      assert.is_false(bar.state.visible, "a widget with no anchors has nothing narrower to toggle")
+    end)
+
     it("treats a non-table anchors() answer as a single-anchor widget", function()
       local odd = widget("odd", 100, 200, 200, 100)
       odd.anchors = function()
@@ -412,6 +431,60 @@ describe("layout_mode", function()
       assert.is_true(mode.mouse(LEFT_DOWN, 150, 250))
       mode.mouse(MOVE, 400, 500)
       assert.are.same({ 350, 450 }, pos_of(odd))
+    end)
+
+    --[[ SHIFT narrows the right-click toggle to the anchor under the cursor.
+         Absent means shown, so only the anchor actually switched off gains a
+         `visible` key - the rest of the file is unchanged by the gesture. ]]
+    it("hides one anchor with SHIFT held, leaving the widget and its siblings on", function()
+      mode.key(DIK_SHIFT, true)
+      assert.is_true(mode.mouse(RIGHT_DOWN, 150, 425))
+      assert.is_false(cross.state.anchors.bottom.visible)
+      assert.is_true(cross.state.visible, "the widget's own flag must not move")
+      assert.is_nil(cross.state.anchors.top.visible, "the other anchor is untouched")
+      assert.are.equal(1, persisted.cross)
+    end)
+
+    it("brings a hidden anchor back with a second SHIFT + right-click", function()
+      mode.key(DIK_RSHIFT, true)
+      mode.mouse(RIGHT_DOWN, 150, 425)
+      mode.mouse(RIGHT_UP, 150, 425)
+      mode.mouse(RIGHT_DOWN, 150, 425)
+      assert.is_true(cross.state.anchors.bottom.visible)
+      assert.is_true(cross.state.visible)
+    end)
+
+    it("swallows the SHIFT right-click's release, as the plain toggle does", function()
+      mode.key(DIK_SHIFT, true)
+      mode.mouse(RIGHT_DOWN, 150, 425)
+      assert.is_true(mode.mouse(RIGHT_UP, 150, 425))
+    end)
+
+    it("toggles the whole widget again once SHIFT is released", function()
+      mode.key(DIK_SHIFT, true)
+      mode.key(DIK_SHIFT, false)
+      assert.is_true(mode.mouse(RIGHT_DOWN, 150, 425))
+      assert.is_false(cross.state.visible)
+      assert.is_nil(cross.state.anchors.bottom.visible)
+    end)
+
+    it("addresses the anchor the cursor is over, not the one last dragged", function()
+      mode.key(DIK_SHIFT, true)
+      mode.mouse(RIGHT_DOWN, 150, 125)
+      assert.is_false(cross.state.anchors.top.visible)
+      assert.is_nil(cross.state.anchors.bottom.visible)
+    end)
+
+    it("leaves a hidden anchor draggable and scalable", function()
+      mode.key(DIK_SHIFT, true)
+      mode.mouse(RIGHT_DOWN, 150, 425)
+      mode.mouse(RIGHT_UP, 150, 425)
+      mode.mouse(LEFT_DOWN, 150, 425)
+      mode.mouse(MOVE, 650, 725)
+      mode.mouse(LEFT_UP, 650, 725)
+      assert.are.same({ 600, 700 }, anchor_pos(cross, "bottom"))
+      assert.is_true(mode.mouse(WHEEL, 650, 725, 120))
+      assert.are.equal(2.2, cross.state.anchors.bottom.scale)
     end)
 
     it("ignores input on an anchor whose state entry is missing", function()
