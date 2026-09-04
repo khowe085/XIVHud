@@ -863,7 +863,11 @@ end)
 
      Gated on safe_mode alone, targetbar's rule: the icons draw by id and the
      packet is decoded from raw bytes, so the resources only ever name a buff
-     in a command's answer - without them it says `buff 33` instead. ]]
+     in a command's answer - without them it says `buff 33` instead. What a
+     libraries failure DOES cost it is the timers: the `incoming chunk`
+     handler below is registered only with the libraries up (the too-wide
+     gate of issue #14), so the bar then draws icons with no time under
+     them. ]]
 step("building the statusbar component", function()
   if safe_mode then
     return

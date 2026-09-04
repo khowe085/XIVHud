@@ -424,7 +424,14 @@ local function new(deps)
     local lines = {}
     for _, bar in ipairs(BARS) do
       local entry = bar_settings(bar)
-      if entry and (only == nil or only == bar) then
+      if only ~= nil and only ~= bar then
+        entry = nil
+      elseif not entry then
+        -- Named rather than skipped: a listing that leaves a bar out reads
+        -- as "nothing there", which is not what a broken entry means.
+        lines[#lines + 1] = ("%s: settings are not a table - try '//hud reset statusbar'"):format(LABELS[bar])
+      end
+      if entry then
         local capacity = select(3, shape(entry))
         local ids = ids_for(bar, entry)
         if #ids == 0 then
@@ -456,7 +463,9 @@ local function new(deps)
     end
     if engines[verb] then
       if words[2] then
-        return { ("//hud statusbar buff %s takes nothing after the bar - '%s' is not understood"):format(verb, words[2]) },
+        return {
+          ("//hud statusbar buff %s takes nothing after the bar - '%s' is not understood"):format(verb, words[2]),
+        },
           false
       end
       return active(verb)

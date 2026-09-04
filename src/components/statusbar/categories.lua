@@ -234,18 +234,18 @@ function M.category_of(id)
   return "enhancements"
 end
 
+-- One predicate per category, built once: `keep` is asked on every plan.
+local KEEP = {}
+for _, name in ipairs({ "enhancements", "debuffs", "other" }) do
+  KEEP[name] = function(id)
+    return M.category_of(id) == name
+  end
+end
+
 -- The predicate lib/buffs applies before a bar's own list; nil for `all`,
 -- which restricts nothing, and for a name that is not a filter at all.
 function M.keep(name)
-  if name == "all" or name == nil then
-    return nil
-  end
-  if name ~= "enhancements" and name ~= "debuffs" and name ~= "other" then
-    return nil
-  end
-  return function(id)
-    return M.category_of(id) == name
-  end
+  return KEEP[name]
 end
 
 return M

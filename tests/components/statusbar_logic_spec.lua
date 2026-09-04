@@ -498,6 +498,17 @@ describe("statusbar logic", function()
       assert.is_not_nil(said:find("bar2", 1, true))
     end)
 
+    -- Unknown input answers with a hint, never silence: a bar whose entry a
+    -- hand-edited file broke says so in the listing too.
+    it("names a broken bar in the listing rather than skipping it", function()
+      config.bars.bar2 = "nonsense"
+      logic.set_buffs({ HASTE })
+      assert.is_not_nil(say("buff", "bar2"):find("reset", 1, true))
+      local all = say("buff")
+      assert.is_not_nil(all:find("bar2", 1, true))
+      assert.is_not_nil(all:find("haste", 1, true))
+    end)
+
     it("says so when a bar has nothing to draw", function()
       logic.set_buffs({})
       assert.is_not_nil(say("buff"):find("nothing", 1, true))
