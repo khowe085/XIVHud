@@ -476,6 +476,82 @@ describe("crossbar widget", function()
     assert.are.equal(32 + 1 + 1, visible_count(), "the survivor's XHB side returns, panelled, label and all")
   end)
 
+  --[[ Per-anchor visibility. Core sends hide(<anchor>) for one the user has
+       switched off and show(<anchor>) when it comes back; the bare pair is the
+       widget's own switch, and the bare show is also what layout mode
+       force-shows with, so it has to undo every per-anchor hide. ]]
+  describe("one anchor at a time", function()
+    it("takes the set label down on hide('set') and leaves the bar alone", function()
+      local label = prims.texts[#prims.texts]
+      assert.is_true(label.visible)
+      local before = visible_count()
+      widget.hide("set")
+      assert.is_false(label.visible)
+      assert.are.equal(before - 1, visible_count(), "only the label went")
+    end)
+
+    it("brings it back on show('set')", function()
+      local label = prims.texts[#prims.texts]
+      widget.hide("set")
+      widget.show("set")
+      assert.is_true(label.visible)
+    end)
+
+    it("takes the whole XHB down on hide('main')", function()
+      local label = prims.texts[#prims.texts]
+      assert.are.equal(33, visible_count(), "32 XHB slot prims and the set label")
+      widget.hide("main")
+      assert.are.equal(1, visible_count(), "only the set label is left")
+      assert.is_true(label.visible, "and it is the set label, on its own anchor")
+    end)
+
+    -- Core walks the anchors in declared order, so a named show arrives among
+    -- hides for the others; restoring the lot here would put an anchor back on
+    -- screen with the layout file still saying it is off.
+    it("leaves the other hidden anchors alone on a named show", function()
+      local label = prims.texts[#prims.texts]
+      widget.hide("main")
+      widget.hide("set")
+      widget.show("set")
+      assert.is_true(label.visible, "the set label was the one asked for")
+      assert.are.equal(1, visible_count(), "main must stay down")
+    end)
+
+    it("undoes every per-anchor hide on a whole-widget show", function()
+      local before = visible_count()
+      widget.hide("set")
+      widget.hide("main")
+      assert.is_true(visible_count() < before)
+      widget.show()
+      assert.are.equal(before, visible_count())
+    end)
+
+    it("stays hidden as a whole while an anchor is hidden under it", function()
+      widget.hide("set")
+      widget.hide()
+      assert.are.equal(0, visible_count())
+    end)
+
+    it("ignores an anchor name it does not have", function()
+      local before = visible_count()
+      assert.has_no.errors(function()
+        widget.hide("wobble")
+        widget.show("wobble")
+      end)
+      assert.are.equal(before, visible_count())
+    end)
+
+    -- Core clamps a hidden anchor on screen and draws its highlight box from
+    -- these, and layout mode drags it by them.
+    it("still reports bounds for a hidden anchor", function()
+      widget.hide("set")
+      local x, y, width, height = widget.get_bounds("set")
+      assert.is_not_nil(x)
+      assert.is_true(width > 0 and height > 0)
+      assert.is_not_nil(y)
+    end)
+  end)
+
   it("writes the active set between the two crosses, in gold", function()
     --[[ Without this an empty bar gives no sign that a set switch did
          anything, which is how its absence was found in a live client. ]]
@@ -2831,6 +2907,27 @@ describe("crossbar live widget", function()
         assert.is_false(bg.visible)
       end)
 
+      --[[ The indicator is the one anchor whose hide is not answered by
+           refresh() - refresh takes it down with the WIDGET, so the per-anchor
+           hide is served by the next tick reading anchor_at. One frame of
+           latency, and it must actually arrive. ]]
+      it("goes down on the tick after its own anchor is hidden, and comes back", function()
+        local bg, fill = indicator_prims()
+        open_chain(8)
+        env.now = 1.5
+        widget.update()
+        assert.is_true(fill.visible)
+
+        widget.hide("skillchain_indicator")
+        widget.update()
+        assert.is_false(fill.visible)
+        assert.is_false(bg.visible)
+
+        widget.show("skillchain_indicator")
+        widget.update()
+        assert.is_true(fill.visible, "and the chain is still running underneath")
+      end)
+
       it("leaves the hidden indicator alone on every refresh after the first", function()
         -- refresh() takes the indicator down with the widget, and core runs a
         -- refresh per mouse move of a layout-mode drag; the second one has
@@ -4711,6 +4808,31 @@ describe("crossbar live widget", function()
       env.now = 2
       widget.update()
       assert.are.same({ CURE, CURE_PINNED }, env.commands, "one refusal buys one re-send")
+    end)
+
+    --[[ Hiding ONE anchor is not hiding the widget: the tick's visibility gate
+         used to mean "nothing on screen", which a per-anchor hide of `main`
+         also satisfies - and everything below it, the retry included, would
+         have stopped being stepped while the bar was still up and still
+         answering keys. A whole-widget hide still clears it, as ever. ]]
+    it("keeps re-sending after the bar's main anchor alone is hidden", function()
+      live()
+      cast()
+      widget.update("chunk", 0x29, refusal(env.player.id))
+      widget.hide("main")
+      env.now = 1
+      widget.update()
+      assert.are.same({ CURE, CURE_PINNED }, env.commands)
+    end)
+
+    it("still drops what it holds when the whole widget is hidden", function()
+      live()
+      cast()
+      widget.update("chunk", 0x29, refusal(env.player.id))
+      widget.hide()
+      env.now = 1
+      widget.update()
+      assert.are.same({ CURE }, env.commands)
     end)
 
     it("ignores a refusal that names somebody else", function()

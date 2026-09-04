@@ -974,11 +974,10 @@ local function new(deps)
   end
 
   local function verbs()
-    --[[ `on` and `off` belong to the widget above, not to this module, and are
-         named here because this hint is the only place the user is told a list
-         can be switched at all - it is what replaced `//hud hide
-         alliancelist1`, and a replacement nothing mentions is not one. ]]
-    local list = { "on", "off", "spacing", "align", "emptyrows" }
+    -- Switching a list on and off is the framework's (`//hud show|hide
+    -- partylist <list>`), so it is not offered here: a hint naming a verb the
+    -- next line refuses is worse than no hint at all.
+    local list = { "spacing", "align", "emptyrows" }
     if variant == "main" then
       -- `range` joins them: the alliance row layout has no range block, so the
       -- setting could only ever be stored and never drawn.

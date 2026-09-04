@@ -2,6 +2,7 @@ local new_core = require("lib/core")
 local fakes = require("tests/support/fakes")
 
 local MOVE, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, WHEEL = 0, 1, 2, 4, 10
+local DIK_SHIFT = 42
 local EVENT_STATUS = 4
 
 describe("core", function()
@@ -1537,6 +1538,142 @@ describe("core", function()
       assert.is_not_nil(env.fs.files["data/Azureblood/default/cross/layout.lua"]:find("visible = false", 1, true))
       core.on_command({ "layout" })
       assert.is_false(widget.shown)
+    end)
+
+    --[[ Per-anchor visibility. The widget's own `visible` still governs the
+         whole of it; an anchor's is a second, narrower switch stored beside
+         its pos and scale, and ABSENT there means shown. ]]
+    it("takes one hidden anchor down and leaves the rest on screen", function()
+      env.fs.put(
+        "data/Azureblood/default/cross/layout.lua",
+        "return { anchors = { bottom = { pos = { x = 400, y = 600 }, scale = 1, visible = false } } }"
+      )
+      local widget = core.register(cross())
+      login()
+      assert.is_false(widget.anchor.bottom.shown)
+      assert.is_true(widget.anchor.top.shown)
+      assert.is_true(widget.shown, "the widget itself is still on screen")
+    end)
+
+    --[[ The mirror of "anchored defaults, no anchors() member" below: the
+         member is there and the defaults are not anchored, so there is no
+         anchor state to address. Core falls back to the whole-widget show
+         rather than leaving a registered component silently off screen. ]]
+    it("shows a widget that declares anchors its defaults never seeded", function()
+      local widget = core.register(fakes.widget("odd", { layout = { pos = { x = 10, y = 20 }, scale = 1 } }, ANCHORS))
+      login()
+      assert.is_true(widget.shown)
+    end)
+
+    it("takes every anchor down through the widget's own switch", function()
+      local widget = core.register(cross())
+      login()
+      core.on_command({ "hide", "cross" })
+      assert.is_false(widget.shown)
+    end)
+
+    it("force-shows a hidden anchor in layout mode", function()
+      env.fs.put(
+        "data/Azureblood/default/cross/layout.lua",
+        "return { anchors = { bottom = { pos = { x = 400, y = 600 }, scale = 1, visible = false } } }"
+      )
+      local widget = core.register(cross())
+      login()
+      core.on_command({ "layout" })
+      assert.is_true(widget.shown)
+      core.on_command({ "layout" })
+      assert.is_false(widget.anchor.bottom.shown, "and back down when the mode ends")
+    end)
+
+    it("hides and shows one anchor by name from //hud, persisting each", function()
+      local widget = core.register(cross())
+      login()
+      core.on_command({ "hide", "cross", "bottom" })
+      assert.is_false(widget.anchor.bottom.shown)
+      assert.is_true(widget.anchor.top.shown)
+      assert.is_true(widget.shown)
+      local written = env.fs.files["data/Azureblood/default/cross/layout.lua"]
+      assert.is_not_nil(written:find("visible = false", 1, true), "wrote: " .. written)
+
+      core.on_command({ "show", "cross", "bottom" })
+      assert.is_true(widget.anchor.bottom.shown)
+    end)
+
+    -- The two switches are independent, so this is not an error - but a
+    -- command that draws nothing and says nothing is indistinguishable from
+    -- one that failed.
+    it("says the widget itself is off when an anchor is shown under it", function()
+      local widget = core.register(cross())
+      login()
+      core.on_command({ "hide", "cross" })
+      core.on_command({ "show", "cross", "bottom" })
+      local said = env.said()
+      assert.is_not_nil(said:find("//hud show cross", 1, true), "said: " .. said)
+      assert.is_false(widget.shown, "and the widget stays off")
+    end)
+
+    it("says nothing of the sort when the widget is on", function()
+      core.register(cross())
+      login()
+      core.on_command({ "hide", "cross", "bottom" })
+      assert.is_nil(env.said():find("//hud show cross", 1, true), "said: " .. env.said())
+    end)
+
+    it("refuses an anchor name the component does not have", function()
+      core.register(cross())
+      login()
+      core.on_command({ "hide", "cross", "middle" })
+      local said = env.said()
+      assert.is_not_nil(said:find("middle", 1, true), "said: " .. said)
+      assert.is_not_nil(said:find("top", 1, true), "the names it does have are worth saying")
+    end)
+
+    it("refuses an anchor name on a component that has none", function()
+      core.register(fakes.widget("bar"))
+      login()
+      core.on_command({ "hide", "bar", "top" })
+      assert.is_not_nil(env.said():find("no anchors", 1, true), "said: " .. env.said())
+    end)
+
+    it("lists each anchor's own state beside its placement", function()
+      env.fs.put(
+        "data/Azureblood/default/cross/layout.lua",
+        "return { anchors = { bottom = { pos = { x = 400, y = 600 }, scale = 1, visible = false } } }"
+      )
+      core.register(cross())
+      login()
+      core.on_command({ "list" })
+      local said = env.said()
+      assert.is_not_nil(said:find("bottom - hidden", 1, true), "said: " .. said)
+      assert.is_not_nil(said:find("top - shown", 1, true), "said: " .. said)
+    end)
+
+    it("hides one anchor with SHIFT + right-click in layout mode", function()
+      local widget = core.register(cross())
+      login()
+      core.on_command({ "layout" })
+      core.on_keyboard(DIK_SHIFT, true)
+      assert.is_true(core.on_mouse(RIGHT_DOWN, 450, 650))
+      assert.is_true(widget.shown, "still force-shown while positioning")
+      local written = env.fs.files["data/Azureblood/default/cross/layout.lua"]
+      assert.is_not_nil(written:find("visible = false", 1, true), "wrote: " .. written)
+
+      core.on_command({ "layout" })
+      assert.is_false(widget.anchor.bottom.shown)
+      assert.is_true(widget.anchor.top.shown)
+      assert.is_true(widget.shown)
+    end)
+
+    it("greys a hidden anchor's highlight and leaves its siblings lit", function()
+      env.fs.put(
+        "data/Azureblood/default/cross/layout.lua",
+        "return { anchors = { bottom = { pos = { x = 400, y = 600 }, scale = 1, visible = false } } }"
+      )
+      core.register(cross())
+      login()
+      core.on_command({ "layout" })
+      assert.are.equal("cross:top", env.prims.texts[1].last.text)
+      assert.are.equal("cross:bottom (hidden)", env.prims.texts[2].last.text)
     end)
 
     it("draws one highlight per anchor, named for it, and clears them on exit", function()
