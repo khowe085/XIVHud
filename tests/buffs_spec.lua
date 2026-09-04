@@ -519,7 +519,7 @@ describe("lib/buffs", function()
           return table.concat((bar.command(settings, { ... }, 16)), "\n")
         end
         assert.is_not_nil(said("filter", "mode", "whitelist"):find("statusbar bar2 filter is now", 1, true))
-        assert.is_not_nil(said("filter", "clear"):find("statusbar bar2 filter cleared", 1, true))
+        assert.is_not_nil(said("filter", "clear"):find("statusbar bar2 filters cleared", 1, true))
         assert.is_not_nil(said("filter", "add"):find("//hud statusbar bar2 filter add", 1, true))
         assert.is_nil(said("filter", "add"):find("bar2 buff", 1, true))
       end)
@@ -536,6 +536,11 @@ describe("lib/buffs", function()
         local said = table.concat((bar.command(settings, { "filter", "add", "xyzzy" }, 16)), "\n")
         assert.is_not_nil(said:find("//hud statusbar buff find xyzzy", 1, true))
         assert.is_nil(said:find("bar2 buff", 1, true))
+      end)
+
+      it("lists a hand-edited entry that is not a number rather than erroring", function()
+        settings.filters = { "wobble" }
+        assert.is_not_nil(say(16, "filter", "list"):find("wobble", 1, true))
       end)
 
       it("lists the filtered buffs", function()

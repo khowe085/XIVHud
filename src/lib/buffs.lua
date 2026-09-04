@@ -430,14 +430,16 @@ local function new(deps)
       end
       local lines = { ("%s %s (%d):"):format(NAME, settings.filter_mode, #settings.filters) }
       for _, id in ipairs(settings.filters) do
-        lines[#lines + 1] = ("  id %d  %s"):format(id, self.name(id))
+        -- %s, not %d: a hand-edited list can hold anything, and a listing
+        -- that errors inside guard is worse than one that prints it.
+        lines[#lines + 1] = ("  id %s  %s"):format(tostring(id), self.name(id))
       end
       return lines, false
     end
 
     if action == "clear" then
       empty(settings.filters)
-      return { FILTER_PATH .. " cleared" }, true
+      return { FILTER_PATH .. "s cleared" }, true
     end
 
     if action == "mode" then
