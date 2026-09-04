@@ -83,6 +83,7 @@ local function build_stubs(boot, options)
     end,
     ["components/parambar/parambar"] = component("parambar"),
     ["components/partylist/partylist"] = component("partylist"),
+    ["components/statusbar/statusbar"] = component("statusbar"),
     ["components/giltracker/giltracker"] = component("giltracker"),
     ["components/equipviewer/equipviewer"] = component("equipviewer"),
     ["components/targetbar/targetbar"] = component("targetbar"),

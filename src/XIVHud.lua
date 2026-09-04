@@ -197,6 +197,10 @@ end)
 local partylist_packets = step("loading the partylist packet parsers", function()
   return require("components/partylist/packets")
 end)
+
+local new_statusbar = step("loading the statusbar component", function()
+  return require("components/statusbar/statusbar")
+end)
 local new_giltracker = step("loading the giltracker component", function()
   return require("components/giltracker/giltracker")
 end)
@@ -811,6 +815,32 @@ step("building the party list component", function()
     generation = read_generation,
     get_mob_by_target = read_mob_by_target,
     get_info = read_info,
+  }))
+end)
+
+--[[ The status bar: the player's own buffs and debuffs on three anchored bars
+     (`bar1`, `bar2`, `bar3`). Presence comes off the player service; the
+     expiries ride the 0x063 chunk, which the component decodes itself - as
+     does the crossbar's skillchain engine, for the ids alone, which by the
+     rule above should make it a pre-parse here; deferred, see the component's
+     packets.lua. The wall clock is what the packet's timestamps count in.
+
+     Gated on safe_mode alone, targetbar's rule: the icons draw by id and the
+     packet is decoded from raw bytes, so the resources only ever name a buff
+     in a command's answer - without them it says `buff 33` instead. ]]
+step("building the statusbar component", function()
+  if safe_mode then
+    return
+  end
+  core.register(new_statusbar({
+    name = "statusbar",
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
+    resources = libraries_error == nil and res or nil,
+    get_player = read_player,
+    time = os.time,
   }))
 end)
 

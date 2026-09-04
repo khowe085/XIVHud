@@ -388,6 +388,17 @@ describe("lib/buffs", function()
       assert.are.same({ KO, WEAKNESS, DOOM }, engine.plan({ KO, WEAKNESS, DOOM }, settings))
     end)
 
+    -- A caller may hand in a view whose `priority` is another table's field
+    -- (the status bar's shared order under a per-bar filter list), so the
+    -- clear has to happen inside the table rather than by replacing it.
+    it("empties the overrides table it was handed on reset", function()
+      local priority = settings.priority
+      say(16, "top", "doom")
+      say(16, "reset")
+      assert.are.equal(priority, settings.priority)
+      assert.are.same({}, priority)
+    end)
+
     it("drops every override on reset", function()
       say(16, "top", "doom")
       local _, changed = say(16, "reset")
@@ -420,6 +431,27 @@ describe("lib/buffs", function()
       assert.is_false(changed)
       assert.is_not_nil(said:find("rank", 1, true))
       assert.is_nil(said:find("active", 1, true))
+    end)
+
+    -- The status bar refuses `buff filter`, so its hint must not offer it.
+    it("names only the verbs the caller lists, when it gives a list", function()
+      local narrow = new_buffs({ name = "statusbar", resources = RESOURCES, hint_verbs = { "list", "top", "reset" } })
+      local said = table.concat(narrow.command(settings, { "wobble" }, 16), "\n")
+      assert.is_not_nil(said:find("list, top or reset", 1, true))
+      assert.is_nil(said:find("filter", 1, true))
+    end)
+
+    it("names a single verb without an 'or'", function()
+      local one = new_buffs({ name = "x", resources = RESOURCES, hint_verbs = { "list" } })
+      local said = table.concat(one.command(settings, { "wobble" }, 16), "\n")
+      assert.is_not_nil(said:find("takes list", 1, true))
+      assert.is_nil(said:find(" or ", 1, true))
+    end)
+
+    it("falls back to its own verbs when the caller's list is empty", function()
+      local none = new_buffs({ name = "x", resources = RESOURCES, hint_verbs = {} })
+      local said = table.concat(none.command(settings, { "wobble" }, 16), "\n")
+      assert.is_not_nil(said:find("rank", 1, true))
     end)
 
     -- Partylist answers `active` itself, from its roster; the hint should
@@ -459,6 +491,51 @@ describe("lib/buffs", function()
         say(16, "filter", "add", "doom")
         say(16, "filter", "clear")
         assert.are.same({}, settings.filters)
+      end)
+
+      it("empties the filter list it was handed on clear", function()
+        local filters = settings.filters
+        say(16, "filter", "add", "doom")
+        say(16, "filter", "clear")
+        assert.are.equal(filters, settings.filters)
+        assert.are.same({}, filters)
+      end)
+
+      -- The status bar's filters sit at `//hud statusbar <bar> filter`, with
+      -- no `buff` word in the path, so the messages take the path from the
+      -- caller.
+      it("names the filter path the caller gave in its messages", function()
+        local bar = new_buffs({ name = "statusbar bar2", resources = RESOURCES, filter_path = "statusbar bar2 filter" })
+        local said = table.concat(bar.command(settings, { "filter", "mode", "greylist" }, 16), "\n")
+        assert.is_not_nil(said:find("//hud statusbar bar2 filter mode", 1, true))
+        assert.is_nil(said:find("buff filter", 1, true))
+        said = table.concat(bar.command(settings, { "filter", "wobble" }, 16), "\n")
+        assert.is_not_nil(said:find("//hud statusbar bar2 filter takes", 1, true))
+      end)
+
+      it("names the filter path in every filter message", function()
+        local bar = new_buffs({ name = "statusbar bar2", resources = RESOURCES, filter_path = "statusbar bar2 filter" })
+        local function said(...)
+          return table.concat((bar.command(settings, { ... }, 16)), "\n")
+        end
+        assert.is_not_nil(said("filter", "mode", "whitelist"):find("statusbar bar2 filter is now", 1, true))
+        assert.is_not_nil(said("filter", "clear"):find("statusbar bar2 filter cleared", 1, true))
+        assert.is_not_nil(said("filter", "add"):find("//hud statusbar bar2 filter add", 1, true))
+        assert.is_nil(said("filter", "add"):find("bar2 buff", 1, true))
+      end)
+
+      -- The advice in a refusal has to name a command the caller answers:
+      -- the status bar's buff verbs take no bar word.
+      it("points a failed lookup at the buff path the caller gave", function()
+        local bar = new_buffs({
+          name = "statusbar bar2",
+          resources = RESOURCES,
+          filter_path = "statusbar bar2 filter",
+          buff_path = "statusbar buff",
+        })
+        local said = table.concat((bar.command(settings, { "filter", "add", "xyzzy" }, 16)), "\n")
+        assert.is_not_nil(said:find("//hud statusbar buff find xyzzy", 1, true))
+        assert.is_nil(said:find("bar2 buff", 1, true))
       end)
 
       it("lists the filtered buffs", function()

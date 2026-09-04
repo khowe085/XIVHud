@@ -37,6 +37,22 @@ describe("entry point", function()
          carry no alias: all three would have claimed `pl` and the second would
          have aborted the load. Only the entry point can say how many times the
          factory is called, or that nothing picks a variant for it any more. ]]
+    -- The status bar reads the player through the service like everyone
+    -- else, and decodes its own packet against the wall clock the timestamps
+    -- count in - the monotonic `now` the other ctxs carry could not answer.
+    it("builds the status bar over the player service and the wall clock", function()
+      local built = 0
+      for _, name in ipairs(boot.built) do
+        if name == "statusbar" then
+          built = built + 1
+        end
+      end
+      assert.are.equal(1, built)
+      assert.are.equal(boot.ctxs.partylist.get_player, boot.ctxs.statusbar.get_player)
+      assert.is_function(boot.ctxs.statusbar.time)
+      assert.is_not_nil(boot.ctxs.statusbar.resources)
+    end)
+
     it("builds the party list once, with no variant to pick", function()
       local built = 0
       for _, name in ipairs(boot.built) do

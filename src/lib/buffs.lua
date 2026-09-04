@@ -41,19 +41,34 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        deps.resources   the resources table, for res.buffs names
        deps.shipped     the ranked id list; lib/buff_order unless given
        deps.extra_verbs verbs the caller answers itself, named in the hint
+       deps.hint_verbs  the whole list the hint names instead, for a caller
+                        that refuses some of the verbs
+       deps.filter_path where the caller puts the filter verbs, for the
+                        messages ("partylist buff filter" unless given)
+       deps.buff_path   where the caller puts the buff verbs, for the advice
+                        in a refusal ("partylist buff" unless given)
 
      The `settings` every call takes is the caller's own table - `priority`
      (sparse `id -> wanted rank` overrides on the shipped order, so a later
      change to that order carries through instead of being stomped by a copy
      the user made months ago), `filters` (a list of ids) and `filter_mode`
-     (`blacklist` or `whitelist`). The verbs write into it in place, and the
-     caller saves it. `normalize` repairs a hand-edited one first. ]]
+     (`blacklist` or `whitelist`). The verbs write into it in place - the
+     lists included, which are emptied rather than replaced, so a caller may
+     hand in a view composed of another table's fields - and the caller saves
+     it. `normalize` repairs a hand-edited one first. ]]
 
 local shipped_order = require("lib/buff_order")
 
 local EMPTY_SLOT = 255
 local PAGE_SIZE = 20
 local MAX_SEARCH_HITS = 20
+
+-- In place, so a table the caller composed from another's fields stays theirs.
+local function empty(t)
+  for key in pairs(t) do
+    t[key] = nil
+  end
+end
 
 -- Deliberately stricter than tonumber, which also accepts "0x84" and "1e2".
 local function whole_number(word)
@@ -66,6 +81,8 @@ end
 local function new(deps)
   deps = deps or {}
   local NAME = deps.name or "hud"
+  local FILTER_PATH = deps.filter_path or (NAME .. " buff filter")
+  local BUFF_PATH = deps.buff_path or (NAME .. " buff")
   local resources = deps.resources or {}
   local shipped = deps.shipped or shipped_order
 
@@ -207,7 +224,7 @@ local function new(deps)
   -- so an ambiguous name asks which rather than guessing.
   function self.resolve(text)
     if text == nil or text == "" then
-      return nil, { ("//hud %s buff needs a buff id or name"):format(NAME) }
+      return nil, { ("//hud %s needs a buff id or name"):format(BUFF_PATH) }
     end
 
     local id = whole_number(text)
@@ -226,7 +243,7 @@ local function new(deps)
       return hits[1]
     end
     if #hits == 0 then
-      return nil, { ("no buff called '%s' - try '//hud %s buff find %s'"):format(text, NAME, text) }
+      return nil, { ("no buff called '%s' - try '//hud %s find %s'"):format(text, BUFF_PATH, text) }
     end
 
     table.sort(hits)
@@ -419,21 +436,25 @@ local function new(deps)
     end
 
     if action == "clear" then
-      settings.filters = {}
-      return { NAME .. " buff filters cleared" }, true
+      empty(settings.filters)
+      return { FILTER_PATH .. " cleared" }, true
     end
 
     if action == "mode" then
       local mode = words[3] and words[3]:lower()
       if mode ~= "blacklist" and mode ~= "whitelist" then
-        return { ("//hud %s buff filter mode needs blacklist or whitelist"):format(NAME) }, false
+        return { ("//hud %s mode needs blacklist or whitelist"):format(FILTER_PATH) }, false
       end
       settings.filter_mode = mode
-      return { ("%s buff filter is now a %s"):format(NAME, mode) }, true
+      return { ("%s is now a %s"):format(FILTER_PATH, mode) }, true
     end
 
     if action == "add" or action == "remove" then
-      local id, complaint = self.resolve(table.concat(words, " ", 3))
+      local text = table.concat(words, " ", 3)
+      if text == "" then
+        return { ("//hud %s %s needs a buff id or name"):format(FILTER_PATH, action) }, false
+      end
+      local id, complaint = self.resolve(text)
       if not id then
         return complaint, false
       end
@@ -453,16 +474,22 @@ local function new(deps)
       return { ("%s is now filtered"):format(self.name(id)) }, true
     end
 
-    return { ("//hud %s buff filter takes add, remove, clear, list or mode"):format(NAME) }, false
+    return { ("//hud %s takes add, remove, clear, list or mode"):format(FILTER_PATH) }, false
   end
 
   local function verbs_hint()
-    local list = { "list", "find" }
-    for _, verb in ipairs(deps.extra_verbs or {}) do
-      list[#list + 1] = verb
+    local list = deps.hint_verbs
+    if not list or #list == 0 then
+      list = { "list", "find" }
+      for _, verb in ipairs(deps.extra_verbs or {}) do
+        list[#list + 1] = verb
+      end
+      for _, verb in ipairs({ "top", "up", "down", "rank", "reset", "filter" }) do
+        list[#list + 1] = verb
+      end
     end
-    for _, verb in ipairs({ "top", "up", "down", "rank", "reset", "filter" }) do
-      list[#list + 1] = verb
+    if #list == 1 then
+      return list[1]
     end
     return table.concat(list, ", ", 1, #list - 1) .. " or " .. list[#list]
   end
@@ -490,7 +517,7 @@ local function new(deps)
       return rank_buff(settings, words)
     end
     if verb == "reset" then
-      settings.priority = {}
+      empty(settings.priority)
       self.invalidate()
       return { NAME .. " buff order reset to the shipped one" }, true
     end
