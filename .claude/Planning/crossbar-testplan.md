@@ -137,12 +137,17 @@ other; it is now ONE window that walks three steps. Every row below except
 F2, F7 and F14 is new or changed, so the passes recorded against the old
 binder are gone - they were answers about code that no longer exists.
 
+**Amended 2026-08-31.** The one top-left button became two: `[ < back ]`
+stays top left and is not drawn on the first step, and a new `[ X ]` in the
+top right closes from any step. F4, F20 and F24 are about that button, so
+their passes are gone and F36-F38 are new.
+
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
 | F1 | Hold `;` and press `=` | Edit mode says so in chat. Nothing is drawn yet - the window appears when you click a slot | [x] | [ ] |  |
 | F2 | Look at the bar | Slots show `+` for subjob and `*` for context sources | [x] | [ ] | Unchanged by the rewrite; D12 covered here too |
 | F3 | Click an empty slot | One window opens **dead centre**, titled `pick a layer`, listing the whole stack | [x] | [ ] |  |
-| F4 | Look at the top left of it | A button reading `[ close ]` - on the first step there is nothing to go back to | [x] | [ ] |  |
+| F4 | Look at the top left of it | **Nothing** - on the first step there is nothing to go back to, so no back button is drawn | [ ] | [ ] |  |
 | F5 | Read the line under the title | It names the slot you clicked in the form you would type - `1L3` | [x] | [ ] |  |
 | F6 | Click a layer row | The **same** window becomes `pick an action`: categories down the left, actions on the right, and the subhead now names the layer | [x] | [ ] |  |
 | F7 | Go back and click a **context** layer row instead | The bar previews itself as if that buff were up, and the subhead says which | [x] | [ ] | Unchanged by the rewrite |
@@ -158,11 +163,11 @@ binder are gone - they were answers about code that no longer exists.
 | F17 | Scroll up past the first page | It stops there too | [x] | [ ] |  |
 | F18 | Get to the target step, then press back | Back to the action list | [x] | [ ] |  |
 | F19 | Press back again | Back to the layer list, with the layer choice released | [x] | [ ] |  |
-| F20 | Press back once more | The window closes. **Edit mode is still on** | [x] | [ ] |  |
+| F20 | Look at the back button | It is gone again, the layer list having nothing to retreat to | [ ] | [ ] |  |
 | F21 | Click a slot, then drag the window by its **title strip** | It moves with the cursor, keeping the grab point under it | [x] | [ ] |  |
 | F22 | Try to push it off each edge of the screen | It stays fully on screen | [x] | [ ] |  |
 | F23 | Leave it somewhere off-centre, close edit mode, reopen it and click a slot | It opens where you left it, not back in the middle | [x] | [ ] |  |
-| F24 | Press the back button and drag from it | The window does not move - back is checked first, so a slip onto it is still back | [x] | [ ] |  |
+| F24 | On the **action** step, press the back button and drag from it | The window does not move - back is checked first, so a slip onto it is still back | [ ] | [ ] |  |
 | F25 | With no window open, tap `` ` `` | The set changes, in edit mode | [x] | [ ] |  |
 | F26 | Hold `` ` `` and press a number | It jumps to that set | [x] | [ ] |  |
 | F27 | Click a slot, then change set | The window is put away - it remembered the old set's address - and edit mode stays on | [x] | [ ] |  |
@@ -174,6 +179,9 @@ binder are gone - they were answers about code that no longer exists.
 | F33 | Press `=` | Edit mode closes | [x] | [ ] |  |
 | F34 | Open and close it a few times, watching the frame it opens on | No stutter or hitch as it appears | [x] | [ ] |  |
 | F35 | Read the window at arm's length | 18pt is comfortably readable, and 920x600 fits your resolution | [x] | [ ] |  |
+| F36 | Look at the top right of the window | A button reading `[ X ]`, level with where back sits | [ ] | [ ] |  |
+| F37 | Press it | The window closes from whichever step you were on. **Edit mode is still on** | [ ] | [ ] |  |
+| F38 | Press it and drag from it | The window does not move - the X is inside the title strip and is checked before it | [ ] | [ ] |  |
 
 ## G. Counters and the skillchain indicator
 
