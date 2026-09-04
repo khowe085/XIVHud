@@ -212,6 +212,14 @@ describe("statusbar logic", function()
       assert.are.same({ "10", "20" }, { cells[1].timer, cells[2].timer })
     end)
 
+    it("draws nothing for a slot the packet marked as having no expiry", function()
+      logic.set_buffs({ HASTE, HASTE })
+      logic.apply_durations({ { id = HASTE, expires = false }, { id = HASTE, expires = 1010 } })
+      local cells = logic.plan("bar1").cells
+      assert.is_nil(cells[1].timer)
+      assert.are.equal("10", cells[2].timer)
+    end)
+
     it("replaces the last packet's expiries wholesale", function()
       logic.apply_durations({ { id = HASTE, expires = 1059 } })
       logic.apply_durations({ { id = SLEEP, expires = 1030 } })
@@ -470,6 +478,17 @@ describe("statusbar logic", function()
       assert.is_not_nil(said:find("bar2", 1, true))
       local bar2 = said:match("bar2[^\n]*\n([^\n]*)")
       assert.is_not_nil(bar2 and bar2:find("sleep", 1, true))
+    end)
+
+    -- Three bars of 32 buffs is a wall of chat; a bar word AFTER buff
+    -- narrows the listing, which is not the shared-order verbs taking one.
+    it("narrows the listing to one bar named after buff", function()
+      logic.set_buffs({ HASTE, SLEEP, FOOD })
+      local said = say("buff", "bar2")
+      assert.is_not_nil(said:find("bar2", 1, true))
+      assert.is_nil(said:find("bar1", 1, true))
+      assert.is_not_nil(said:find("sleep", 1, true))
+      assert.is_nil(said:find("haste", 1, true))
     end)
 
     it("says so when a bar has nothing to draw", function()

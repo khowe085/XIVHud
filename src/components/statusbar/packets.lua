@@ -63,8 +63,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      UNVERIFIED in a live client, and read defensively: the empty-slot marker
      in this packet's id array (0xFF and 0xFFFF are both taken as empty; KO is
      the real id 0 and is kept), and what Time holds for a buff with no
-     expiry - whatever it decodes to, logic.lua draws no timer for an expiry
-     that has passed or that sits implausibly far off. ]]
+     expiry. A raw 0 or 0xFFFFFFFF is answered as `expires = false` - no
+     expiry - rather than decoded: on the nearest wrap either lands on a
+     fixed date, which for a few days every 2.27 years would sit inside the
+     plausible band and count down under a timerless buff. Whatever else the
+     client may send there, logic.lua draws no timer for an expiry that has
+     passed or that sits implausibly far off. ]]
 
 local M = {}
 
@@ -80,6 +84,7 @@ local TIMES_AT = 0x48 + 1
 local LENGTH = 0x48 + SLOTS * 4
 
 local EMPTY = { [0xFF] = true, [0xFFFF] = true }
+local NO_EXPIRY = { [0] = true, [0xFFFFFFFF] = true }
 
 local function u16(data, at)
   local low, high = data:byte(at, at + 1)
@@ -98,8 +103,9 @@ function M.expiry(raw, now)
   return base + wraps * PERIOD
 end
 
--- The occupied slots in order, each `{ id = , expires = }`; nil for another
--- order of 0x063 or a packet too short to hold the arrays.
+-- The occupied slots in order, each `{ id = , expires = }` with `expires`
+-- false where the slot carries no timestamp; nil for another order of 0x063
+-- or a packet too short to hold the arrays.
 function M.parse_buff_durations(data, now)
   if type(data) ~= "string" or #data < LENGTH then
     return nil
@@ -112,7 +118,8 @@ function M.parse_buff_durations(data, now)
   for slot = 0, SLOTS - 1 do
     local id = u16(data, IDS_AT + slot * 2)
     if not EMPTY[id] then
-      list[#list + 1] = { id = id, expires = M.expiry(u32(data, TIMES_AT + slot * 4), now) }
+      local raw = u32(data, TIMES_AT + slot * 4)
+      list[#list + 1] = { id = id, expires = not NO_EXPIRY[raw] and M.expiry(raw, now) }
     end
   end
   return list

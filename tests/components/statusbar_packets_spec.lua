@@ -89,6 +89,19 @@ describe("statusbar packets", function()
     assert.is_true(math.abs(recent[1].expires - (NOW - 100)) < 1)
   end)
 
+  -- A zero timestamp is the natural sentinel for a buff with no expiry; on
+  -- the nearest wrap it decodes to some fixed date, which for a few days
+  -- every 2.27 years would sit inside the plausible band and count down.
+  it("reads a zero timestamp as no expiry at all", function()
+    local body = packet(0x09, { { id = 33, expires = NOW + 60 } })
+    local zeroed = body:sub(1, 0x48) .. u32(0) .. body:sub(0x48 + 5)
+    local parsed = packets.parse_buff_durations(zeroed, NOW)
+    assert.are.equal(33, parsed[1].id)
+    assert.is_false(parsed[1].expires)
+    local maxed = body:sub(1, 0x48) .. u32(0xFFFFFFFF) .. body:sub(0x48 + 5)
+    assert.is_false(packets.parse_buff_durations(maxed, NOW)[1].expires)
+  end)
+
   it("keeps a real KO (id 0) rather than mistaking it for empty", function()
     local parsed = packets.parse_buff_durations(packet(0x09, { { id = 0, expires = NOW + 60 } }), NOW)
     assert.are.equal(0, parsed[1].id)

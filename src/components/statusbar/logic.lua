@@ -315,8 +315,7 @@ local function new(deps)
         text_size = math.max(1, math.floor(TIMER_FONT * scale + 0.5)),
       }
     end
-    local _, _, width, height = self.bounds(bar, x, y, scale)
-    return { cells = cells, width = width, height = height }
+    return { cells = cells }
   end
 
   --[[ Commands ------------------------------------------------------------ ]]
@@ -415,12 +414,13 @@ local function new(deps)
   end
 
   -- What each bar draws right now, past its capacity: how you name a buff
-  -- you just saw rather than one you can already name.
-  local function active()
+  -- you just saw rather than one you can already name. `only` narrows it to
+  -- one bar: three bars of 32 is a wall of chat.
+  local function active(only)
     local lines = {}
     for _, bar in ipairs(BARS) do
       local entry = bar_settings(bar)
-      if entry then
+      if entry and (only == nil or only == bar) then
         local plan = self.plan(bar)
         local ids = engines[bar].plan(source(), view_of(entry), { keep = categories.keep(entry.filter) })
         if #ids == 0 then
@@ -449,6 +449,9 @@ local function new(deps)
     local verb = words[1] and words[1]:lower() or nil
     if verb == nil then
       return active()
+    end
+    if engines[verb] then
+      return active(verb)
     end
     if verb == "filter" then
       return { "a filter list belongs to one bar: //hud statusbar [<bar>] filter add|remove|clear|list|mode" }, false

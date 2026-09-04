@@ -50,7 +50,7 @@ describe("entry point", function()
       end
       assert.are.equal(1, built)
       assert.are.equal(boot.ctxs.partylist.get_player, boot.ctxs.statusbar.get_player)
-      assert.is_function(boot.ctxs.statusbar.time)
+      assert.are.equal(os.time, boot.ctxs.statusbar.time)
       assert.is_not_nil(boot.ctxs.statusbar.resources)
     end)
 

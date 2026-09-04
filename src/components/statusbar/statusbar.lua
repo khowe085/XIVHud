@@ -69,6 +69,14 @@ local function new(ctx)
   local attached = false
   local save = nil
 
+  --[[ The plan is only rebuilt when something it reads could have changed:
+       the player's buff list is a table the service hands out unchanged for
+       an interval, the timer text moves at most once a second, and a packet,
+       a command or a placement marks it stale. A settled bar costs one clock
+       read and three comparisons a frame. ]]
+  local last_buffs, last_second = nil, nil
+  local stale = true
+
   local bars = {}
   for _, anchor in ipairs(ANCHORS) do
     bars[anchor] = { pos = nil, scale = 1, visible = false, icons = {}, texts = {}, drawn = {} }
@@ -261,6 +269,7 @@ local function new(ctx)
   function self.detach()
     attached = false
     save = nil
+    stale = true
     logic.apply_durations({})
     logic.set_buffs(nil)
     for _, anchor in ipairs(ANCHORS) do
@@ -344,13 +353,21 @@ local function new(ctx)
       local parsed = packets.parse_buff_durations(second, clock())
       if parsed then
         logic.apply_durations(parsed)
+        stale = true
       end
       return
     end
     if event == nil and attached then
       local player = ctx.get_player()
-      logic.set_buffs(player and player.buffs or nil)
-      logic.set_time(clock())
+      local buffs = player and player.buffs or nil
+      local now = clock()
+      local this_second = math.floor(now)
+      if not stale and buffs == last_buffs and this_second == last_second then
+        return
+      end
+      last_buffs, last_second, stale = buffs, this_second, false
+      logic.set_buffs(buffs)
+      logic.set_time(now)
       paint_all()
     end
   end
