@@ -209,6 +209,9 @@ end)
 local new_crossbar = step("loading the crossbar component", function()
   return require("components/crossbar/crossbar")
 end)
+local new_speedcheck = step("loading the speedcheck component", function()
+  return require("components/speedcheck/speedcheck")
+end)
 local new_expbar = step("loading the expbar component", function()
   return require("components/expbar/expbar")
 end)
@@ -759,6 +762,23 @@ step("building the giltracker component", function()
   }))
 end)
 
+--[[ Gated on safe_mode alone, like parambar: the movement speed is one field
+     of the mob table, so nothing here needs the resource or packet
+     libraries. ]]
+step("building the speedcheck component", function()
+  if safe_mode then
+    return
+  end
+  core.register(new_speedcheck({
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    get_mob_by_target = read_mob_by_target,
+    generation = read_generation,
+    asset = asset,
+  }))
+end)
+
 step("building the equipviewer component", function()
   -- Same gate as giltracker: everything this component learns arrives through
   -- parse_packet, and without the packets library there is nothing it could
@@ -993,6 +1013,9 @@ local function check_assets()
     expected[#expected + 1] = texture
   end
   expected[#expected + 1] = "assets/gil/gil.png"
+  -- speedcheck names one buff icon outright, so the directory sample above
+  -- does not speak for it.
+  expected[#expected + 1] = "assets/xiv/buffIcons/330.png"
   expected[#expected + 1] = "assets/barfiller/bar_bg.png"
   expected[#expected + 1] = "assets/barfiller/bar_fg.png"
   expected[#expected + 1] = "assets/encumbrance/encumbrance.png"
