@@ -87,6 +87,7 @@ local function build_stubs(boot, options)
     ["components/equipviewer/equipviewer"] = component("equipviewer"),
     ["components/targetbar/targetbar"] = component("targetbar"),
     ["components/crossbar/crossbar"] = component("crossbar"),
+    ["components/speedcheck/speedcheck"] = component("speedcheck"),
   }
 
   for name, failure in pairs(options.require_fails or {}) do
