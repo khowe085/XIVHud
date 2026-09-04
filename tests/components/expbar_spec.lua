@@ -129,7 +129,7 @@ describe("expbar widget", function()
 
     it("centres its default slot under the parameter bar", function()
       local slot = widget.defaults.layout
-      assert.are.equal(755, slot.pos.x)
+      assert.are.equal(807, slot.pos.x)
       assert.are.equal(1048, slot.pos.y)
     end)
 
@@ -214,11 +214,11 @@ describe("expbar widget", function()
     it("lays the bar out under the header", function()
       attach()
       widget.set_pos(100, 200)
-      assert.are.same({ 120, 200 }, { header().x, header().y })
-      -- The bar is flush with the header, not with the icon left of it.
-      assert.are.same({ 120, 218 }, { background().x, background().y })
-      assert.are.same({ 122, 218 }, { fill().x, fill().y })
-      assert.are.same({ 390, 5 }, { background().width, background().height })
+      assert.are.same({ 119, 200 }, { header().x, header().y })
+      -- The bar is flush with the header; the icon stands left of both rows.
+      assert.are.same({ 119, 213 }, { background().x, background().y })
+      assert.are.same({ 121, 213 }, { fill().x, fill().y })
+      assert.are.same({ 286, 5 }, { background().width, background().height })
     end)
   end)
 
@@ -233,8 +233,9 @@ describe("expbar widget", function()
       tick()
       assert.are.equal("addons/XIVHud/assets/xiv/jobIcons/war.png", icon_glyph().last.path)
       assert.are.same({ 100, 200 }, { icon_glyph().x, icon_glyph().y })
-      assert.are.same({ 16, 16 }, { icon_glyph().width, icon_glyph().height })
-      assert.are.equal(120, header().x)
+      -- Square, spanning the header row, the gap and the bar.
+      assert.are.same({ 18, 18 }, { icon_glyph().width, icon_glyph().height })
+      assert.are.equal(119, header().x)
     end)
 
     it("re-points the glyph on a job change", function()
@@ -284,7 +285,7 @@ describe("expbar widget", function()
     it("fills the bar toward the packet's percentage", function()
       chunk(CHAR_STATS, char_stats(2500, 5000))
       tick(200)
-      assert.are.equal(193, fill().width)
+      assert.are.equal(141, fill().width)
       assert.are.equal(5, fill().height)
     end)
 
@@ -351,7 +352,7 @@ describe("expbar widget", function()
       tick(200)
       widget.set_scale(2)
       tick()
-      assert.are.equal(772, fill().width)
+      assert.are.equal(564, fill().width)
       assert.are.equal(10, fill().height)
     end)
 
@@ -360,7 +361,7 @@ describe("expbar widget", function()
       tick(200)
       chunk(ACTION_MESSAGE, { Message = 8, ["Param 1"] = 2500, ["Param 2"] = 0 })
       tick(200)
-      assert.are.equal(193, fill().width)
+      assert.are.equal(141, fill().width)
     end)
   end)
 
@@ -397,7 +398,6 @@ describe("expbar widget", function()
     it("draws from the config it is handed, not from its defaults", function()
       local config = copy(widget.defaults)
       config.bar = { width = 200, height = 9, inset = 4 }
-      config.header_height = 30
       config.gap = 6
       config.font_size = 20
       config.text_color = { a = 128, r = 1, g = 2, b = 3 }
@@ -415,13 +415,15 @@ describe("expbar widget", function()
       assert.are.equal(128, header().last.alpha)
       assert.are.equal(5, header().last.stroke_width)
       assert.are.equal(64, header().last.stroke_alpha)
-      assert.are.same({ 120, 236 }, { background().x, background().y })
+      -- font 20 draws a 26px line, so the bar sits 32 below the origin, and
+      -- both clear the icon the defaults derived at the shipped font.
+      assert.are.same({ 119, 232 }, { background().x, background().y })
       assert.are.same({ 200, 9 }, { background().width, background().height })
-      assert.are.equal(124, fill().x)
+      assert.are.equal(123, fill().x)
       assert.are.equal(192, fill().width)
       assert.are.same({ 7, 8, 9 }, fill().last.color)
       local _, _, width, height = widget.get_bounds()
-      assert.are.same({ 220, 45 }, { width, height })
+      assert.are.same({ 219, 41 }, { width, height })
     end)
   end)
 
@@ -480,7 +482,7 @@ describe("expbar widget", function()
       tick()
 
       assert.are.equal("WAR75/SAM37 JP: 342 MP: 12 EXP/hr: 32.4k", header().last.text)
-      assert.are.equal(234, fill().width)
+      assert.are.equal(171, fill().width)
     end)
   end)
 
@@ -489,7 +491,7 @@ describe("expbar widget", function()
       attach()
       widget.set_pos(100, 200)
       local x, y, width, height = widget.get_bounds()
-      assert.are.same({ 100, 200, 410, 23 }, { x, y, width, height })
+      assert.are.same({ 100, 200, 305, 18 }, { x, y, width, height })
     end)
 
     it("has no bounds before it is placed", function()

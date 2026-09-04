@@ -95,6 +95,8 @@ local SAMPLE = {
   percent = 0.6,
 }
 
+local measure = require("components/expbar/measure")
+
 local MODE_NAMES = { exp = "experience", limit = "limit points", ep = "exemplar points" }
 
 -- The job the sample header names, so layout mode draws an icon too.
@@ -435,10 +437,12 @@ local function new(config)
     return { size = icon.size or 0, gap = icon.gap or 0 }
   end
 
-  -- The header band is as tall as the taller of the text and the icon, so an
-  -- icon sized past the band pushes the bar down rather than drawing over it.
-  local function band_height()
-    return math.max(config.header_height or 0, icon_metrics().size)
+  --[[ How tall the widget is: the two rows, or the icon standing beside them
+       if a hand-edited config has made it taller than what it spans. The icon
+       no longer sits INSIDE the header band - it covers both rows, which is
+       what a live client wanted of it (Kevin, 2026-09-04). ]]
+  local function total_height()
+    return math.max(measure.rows_height(config), icon_metrics().size)
   end
 
   local function metrics()
@@ -461,12 +465,12 @@ local function new(config)
   function self.geometry(x, y, scale)
     local bar = metrics()
     local icon = icon_metrics()
-    local bar_y = y + (band_height() + (config.gap or 0)) * scale
-    --[[ The header and the bar share a left edge, with the icon hanging off to
-         the left of both. The indent holds whether or not a glyph is drawn: a
-         job the client has not named yet must not slide the line left and back
-         again, and the bar must not move under it. ]]
+    --[[ The icon stands at the origin and spans both rows; the header and the
+         bar share a left edge past it. That indent holds whether or not a
+         glyph is drawn, so a job the client has not named yet cannot slide
+         them left and back again. ]]
     local left = x + (icon.size + icon.gap) * scale
+    local bar_y = y + (measure.text_height(config) + (config.gap or 0)) * scale
     return {
       icon = { x = x, y = y, size = icon.size * scale },
       header = { x = left, y = y },
@@ -480,13 +484,12 @@ local function new(config)
     }
   end
 
-  -- The reserved box: as wide as the bar plus the icon left of it, and as tall
-  -- as the header band, the gap and the bar together.
+  -- The reserved box: the bar plus the icon standing left of it, and as tall
+  -- as the two rows the icon spans.
   function self.bounds(x, y, scale)
     local bar = metrics()
     local icon = icon_metrics()
-    local height = band_height() + (config.gap or 0) + bar.height
-    return x, y, (icon.size + icon.gap + bar.width) * scale, height * scale
+    return x, y, (icon.size + icon.gap + bar.width) * scale, total_height() * scale
   end
 
   -- Forces the next tick to re-push the bar. The widget calls this after a

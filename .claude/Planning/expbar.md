@@ -31,22 +31,33 @@ Decided with Kevin, 2026-09-04:
 ## What it draws
 
 ```
-[icon] WAR99/SAM49 (ML23) JP: 342 MP: 12 EP/hr: 12.6k
-       [=====================================--------]
++----+ WAR99/SAM49 (ML23) JP: 342 MP: 12 EP/hr: 12.6k
+|icon|
++----+ [==============================----------]
 ```
 
-The header and the bar share a left edge and the icon hangs off to the left of
-both (Kevin, 2026-09-04). The widget's origin is the icon's left, so the box core
+**Settled in a live client** (Kevin, 2026-09-04). The header and the bar share a
+left edge; the icon stands to the left of both and SPANS them, square and as tall
+as the two rows together. The widget's origin is the icon's left, so the box core
 clamps against is the bar plus that icon, and nothing draws left of the origin.
+The font is 8pt: 11 drew far too large.
 
-The bar stops a little past the longest line the header can print - its width is
-DERIVED, not barfiller's fixed 472 (Kevin, 2026-09-04). `measure.lua` owns that
-sum: the widest header at `font_size * text_width_ratio` per character, plus an
-overhang; the widget is wider than its bar by the icon and gap left of it. At the
-shipped font the bar is 390 and the widget 410, and `expbar_logic_spec` drives the real header to its longest
+Two measures are DERIVED rather than chosen, both in `measure.lua`. The bar stops
+a little past the longest line the header can print - the widest header at
+`font_size * text_width_ratio` per character, plus an overhang - and the icon is
+the height of the two rows it spans (`text_height + gap + bar height`), so it
+grows with the font instead of being written down beside it and drifting. At the
+shipped 8pt the bar is 286, the icon 18 and the widget 305, and `expbar_logic_spec` drives the real header to its longest
 and measures it against the sample the sum is built on, so the two cannot drift.
-The ratio (0.68) is an estimate - Windower cannot be asked how wide a string
-draws - and is config precisely so a live client can settle it.
+`text_width_ratio` (0.68) and `text_height_ratio` (1.3) are estimates - Windower
+cannot be asked how wide or how tall a string draws - and are config precisely so
+a live client can settle them. The height one places the bar under the header and
+sizes the icon, so it is the one to nudge if the rows sit wrong.
+
+The icon's own art carries a gap of its own, and a different one per job: of its
+64px square WHM's glyph starts 18px in and WAR's 4px, about 5px against 1px of
+apparent space at this size. `job_icon.gap` is 1 because of that - nothing here
+can even it out without cropping the art per job.
 
 One text and three images: the main job's glyph, the bar frame and its fill. The
 header is one of three strings; the bar is one of three fills; both come from the

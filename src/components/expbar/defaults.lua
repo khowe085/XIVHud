@@ -33,11 +33,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      - the default slot just puts the widget along the bottom of the screen,
      where FFXIV draws this bar and where barfiller centres its own.
 
-     The bar's WIDTH is derived rather than chosen (see measure.lua): it is
-     flush with the header's left edge and runs a little past the longest line
-     that header can print. The widget is wider than its bar by the job icon,
-     which hangs off to the left of both, and that total is what the default
-     slot centres. ]]
+     Two things are DERIVED rather than chosen (see measure.lua): the bar's
+     width, which is flush with the header and runs a little past the longest
+     line it can print, and the job icon's size, which is the height of the two
+     rows it stands beside and spans. The widget is wider than its bar by that
+     icon, and that total is what the default slot centres. ]]
 
 local measure = require("components/expbar/measure")
 
@@ -48,19 +48,29 @@ local ANCHOR_FROM_BOTTOM = 32
 return function(screen_width, screen_height)
   local config = {
     font = "sans-serif",
-    font_size = 11,
+    -- 8pt: 11 drew far too large in a live client (Kevin, 2026-09-04).
+    font_size = 8,
     -- The crossbar's gold, so the line matches the job glyph beside it and the
     -- gold of the bar's own fill below.
     text_color = { a = 255, r = 255, g = 215, b = 0 },
     -- XIVBar's stroke values.
     text_stroke = { width = 2, a = 150, r = 80, g = 70, b = 30 },
-    -- The band the header is drawn in; the bar sits under it, or under the job
-    -- icon where that is the taller of the two.
-    header_height = 16,
+    --[[ The gap between the bottom of the header band and the top of the bar.
+         The band itself is not configured: it is the taller of the header and
+         the icon, both derived, so nothing here can disagree with the font
+         size the way a written-down band height would. ]]
     gap = 2,
-    -- The main job's icon, drawn left of the header. XivParty's glyphs are
-    -- gold with a dark outline, so they are drawn on their own.
-    job_icon = { size = 16, gap = 4 },
+    --[[ The main job's icon: left of both rows, and as tall as the two of them
+         together - `size` is derived below. XivParty's glyphs are gold with a
+         dark outline, so they are drawn on their own.
+
+         `gap` is 1 because the ART already carries a gap of its own, and a
+         different one per job: of its 64px square WHM's glyph starts 18px in
+         and WAR's 4px, which at this size is ~5px against ~1px of apparent
+         space before the text. Nothing here can even that out - it would take
+         cropping the art per job - so the configured gap is kept to almost
+         nothing and the drawn one varies with the job. ]]
+    job_icon = { gap = 1 },
     --[[ barfiller's own 5px bar with its fill inset 2px, but NOT its fixed 472
          width: the bar starts where the header does and runs `overhang` past
          the longest line it can print, and `width` is derived from exactly that
@@ -71,9 +81,11 @@ return function(screen_width, screen_height)
          afterwards wants its `width` changed with it, or a
          `//hud reset expbar` to derive both again. ]]
     bar = { height = 5, inset = 2, overhang = 8 },
-    -- How wide a character draws, as a fraction of the font size. See
-    -- measure.lua: the one number in here only a live client can settle.
+    -- How wide and how tall a character draws, as fractions of the font size.
+    -- See measure.lua: the two numbers in here only a live client can settle.
+    -- The height is what the icon's bottom is aligned against.
     text_width_ratio = 0.68,
+    text_height_ratio = 1.3,
     --[[ White, which MODULATES barfiller's fill to itself: the art is already
          a gold gradient (255,245,191 down to 214,111,0), the same gold as the
          job glyph and the header text. One colour rather than one per mode -
@@ -88,7 +100,8 @@ return function(screen_width, screen_height)
   }
 
   config.bar.width = measure.bar_width(config)
-  -- Centred on the WIDGET, which the icon makes wider than the bar.
+  -- Square, and exactly as tall as the rows beside it.
+  config.job_icon.size = measure.rows_height(config)
   config.layout.pos.x = math.max(0, math.floor((screen_width or 0) / 2 - measure.widget_width(config) / 2))
   return config
 end
