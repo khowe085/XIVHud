@@ -456,7 +456,7 @@ local function new(deps)
     end
     if engines[verb] then
       if words[2] then
-        return { ("//hud statusbar buff %s takes nothing after the bar - '%s' was dropped"):format(verb, words[2]) },
+        return { ("//hud statusbar buff %s takes nothing after the bar - '%s' is not understood"):format(verb, words[2]) },
           false
       end
       return active(verb)
