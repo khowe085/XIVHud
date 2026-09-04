@@ -102,13 +102,25 @@ local function new(initial_config)
     return x, y, math.max(0, -x), math.max(0, -y)
   end
 
+  -- What the number is held clear of the icon's foot by. Nothing to clear when
+  -- the icon is switched off, so the number takes the whole box.
+  local function gap(scale)
+    if icon_size(scale) <= 0 then
+      return 0
+    end
+    return (config.text_gap or 0) * scale
+  end
+
+  --[[ The two are STACKED, icon over number, so the box is as tall as both of
+       them and as wide as the wider. The number used to be drawn on the art;
+       it moved below it 2026-09-04 (Kevin, from a live client). ]]
   local function box(scale)
     local text_width = reserved_width(scale)
     local text_height = scaled_font_size(scale) * TEXT_HEIGHT_RATIO
     local art = icon_size(scale)
     local nudge_x, nudge_y = correction(scale)
     local width = math.max(art, text_width) + math.abs(nudge_x)
-    local height = math.max(art, text_height) + math.abs(nudge_y)
+    local height = art + gap(scale) + text_height + math.abs(nudge_y)
     return width, height, text_width, text_height, art
   end
 
@@ -162,27 +174,26 @@ local function new(initial_config)
        the two is narrower is the one that moves. ]]
   function self.geometry(x, y, scale)
     local nudge_x, nudge_y, pad_x, pad_y = correction(scale)
-    local width, height, _, text_height, art = box(scale)
-    --[[ The GLYPHS are what has to land over the art, so the number is centred
+    local width, _, _, text_height, art = box(scale)
+    --[[ The GLYPHS are what has to line up with the art, so the number is centred
          on the width of the string actually drawn - a prim is left-justified
          (right_justified offsets by the screen width, see giltracker), so
          nothing else would put it there. The BOX stays measured against the
          reserved width, which is what keeps the icon still while the value
          moves. ]]
     local text_width = text_width_of(#self.text(), scale)
-    -- The box the two prims are centred inside is the one the correction has
+    -- The box the two prims are placed inside is the one the correction has
     -- not been added to yet; `pad` is its left and top edge inside the bounds.
     local inner_width = width - math.abs(nudge_x)
-    local inner_height = height - math.abs(nudge_y)
     return {
       icon = {
         x = x + pad_x + (inner_width - art) / 2,
-        y = y + pad_y + (inner_height - art) / 2,
+        y = y + pad_y,
         size = art,
       },
       text = {
         x = x + pad_x + (inner_width - text_width) / 2 + nudge_x,
-        y = y + pad_y + (inner_height - text_height) / 2 + nudge_y,
+        y = y + pad_y + art + gap(scale) + nudge_y,
         size = scaled_font_size(scale),
         width = text_width,
         height = text_height,

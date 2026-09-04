@@ -38,11 +38,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local FONT_SIZE = 10
 local ICON_SIZE = 32
+-- Between the foot of the icon and the top of the number's line box.
+local TEXT_GAP = 2
 
 -- giltracker's own anchor, so the two widgets share a left edge; this one sits
 -- a row above it.
 local ANCHOR_FROM_RIGHT = 345
-local ANCHOR_FROM_BOTTOM = 75
+-- Far enough up that the whole stack - icon, gap and number - clears the gil
+-- tracker's own row rather than landing on it.
+local ANCHOR_FROM_BOTTOM = 90
 
 -- Builds a fresh defaults table for a screen of the given size.
 return function(screen_width, screen_height)
@@ -58,6 +62,7 @@ return function(screen_width, screen_height)
     -- Centring is estimated from the font size (no prim can be measured), so
     -- these are the knobs for correcting it against a live client.
     text_offset = { x = 0, y = 0 },
+    text_gap = TEXT_GAP,
     bg = { visible = false, a = 100, r = 0, g = 0, b = 0 },
     icon = {
       visible = true,

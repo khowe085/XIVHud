@@ -6,8 +6,9 @@ from `dev` at 5773707. Sibling precedent and the model copied: `src/components/g
 
 ## Goal
 
-The player's **movement speed** as a signed percentage, drawn **over** Bolter's Roll's
-status icon. A re-implementation of the Windower `SpeedChecker` addon (BSD © 2013-2014
+The player's **movement speed** as a signed percentage, drawn **under** Bolter's Roll's
+status icon. (It was drawn *over* the icon as first built and through PR #38's review; Kevin
+moved it below the art on 2026-09-04, from a live client.) A re-implementation of the Windower `SpeedChecker` addon (BSD © 2013-2014
 Windower) as a framework component.
 
 Kevin's decisions, 2026-09-04, before any code:
@@ -75,6 +76,9 @@ Decisions taken while building, none of them the reference's:
   scope change to the player service by then, so nothing stale is drawn; before the first read the text is `--%`, which is
   deliberately not `+0%` — the widget would otherwise claim base speed on the strength of
   never having looked.
+- **The two are stacked, icon over number**, held apart by `text_gap` (2px, scaled). The box
+  is as tall as both of them and as wide as the wider, and the default anchor sits far enough up
+  that the whole stack clears the gil tracker's row.
 - **The BOX is a reserved width; the NUMBER is centred on what it actually draws.** The box is
   measured against the widest string the number ever takes (`-100%`), which is what keeps the
   icon and the origin still as digits come and go — giltracker's rule, applied to an overlay

@@ -58,7 +58,7 @@ describe("speedcheck widget", function()
     it("defaults its slot position to the bottom right, a row above the gil tracker", function()
       local slot = widget.defaults.layout
       assert.are.equal(1575, slot.pos.x)
-      assert.are.equal(1005, slot.pos.y)
+      assert.are.equal(990, slot.pos.y)
     end)
 
     it("builds one number and one icon", function()
@@ -121,16 +121,17 @@ describe("speedcheck widget", function()
       widget.set_pos(100, 200)
     end)
 
-    --[[ Exact, not "somewhere inside the box": the number is drawn ON the art,
-         so a placement that is merely in bounds can still be off the icon. The
-         values are logic's, at the default 10pt font over the 32px icon. ]]
+    --[[ Exact, not "somewhere inside the box": the number is drawn UNDER the
+         art, so a placement that is merely in bounds can still overlap it or
+         drift off its centre. The values are logic's, at the default 10pt font
+         under the 32px icon. ]]
     it("places both prims where logic puts them", function()
       assert.are.equal(102.75, icon().x)
       assert.are.equal(200, icon().y)
       assert.are.equal(32, icon().width)
       assert.are.equal(32, icon().height)
       assert.are.equal(107.5, number().x)
-      assert.are.equal(208.5, number().y)
+      assert.are.equal(234, number().y)
       assert.are.equal(10, number().font_size)
     end)
 
@@ -170,6 +171,9 @@ describe("speedcheck widget", function()
       assert.are.equal(widget.defaults.font_size * 2, number().font_size)
       assert.are.equal(105.5, icon().x)
       assert.are.equal(115, number().x)
+      -- The gap under the icon scales with everything else, or the number
+      -- would climb back onto the art as the widget grew.
+      assert.are.equal(268, number().y)
     end)
   end)
 

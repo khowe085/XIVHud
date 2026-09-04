@@ -97,25 +97,41 @@ describe("speedcheck logic", function()
       local geometry = logic.geometry(100, 200, 1)
       local width = select(3, logic.bounds(100, 200, 1))
       assert.are.equal(100 + (width - config.icon.size) / 2, geometry.icon.x)
+      -- The icon is the top of the stack, so it sits on the origin itself.
       assert.are.equal(200, geometry.icon.y)
       assert.are.equal(config.icon.size, geometry.icon.size)
     end)
 
-    --[[ The number is drawn ON the icon, so it is the GLYPHS that have to land
-         over the art. A prim is left-justified (right_justified would offset it
-         by the screen width - see giltracker), so this is the only thing that
-         puts it there. ]]
-    it("centres the number over the icon rather than beside it", function()
+    --[[ The number is drawn UNDER the icon, so it is the GLYPHS that have to
+         line up with the art. A prim is left-justified (right_justified would
+         offset it by the screen width - see giltracker), so this is the only
+         thing that puts it there. ]]
+    it("puts the number under the icon, lined up on its centre", function()
       logic.set_speed(5)
       local geometry = logic.geometry(100, 200, 1)
       local _, _, _, height = logic.bounds(100, 200, 1)
       assert.are.equal(
         geometry.icon.x + geometry.icon.size / 2,
         geometry.text.x + geometry.text.width / 2,
-        "the number's own centre must land on the icon's"
+        "the number's own centre must line up with the icon's"
       )
-      assert.is_true(geometry.text.y > 200, "the number must sit inside the icon, not above the origin")
+      assert.is_true(
+        geometry.text.y >= geometry.icon.y + geometry.icon.size,
+        "the number must clear the bottom of the icon, not overlap it"
+      )
       assert.is_true(geometry.text.y + geometry.text.height <= 200 + height + 0.001)
+    end)
+
+    it("holds the number clear of the icon by the configured gap", function()
+      local geometry = logic.geometry(100, 200, 1)
+      assert.are.equal(geometry.icon.y + geometry.icon.size + config.text_gap, geometry.text.y)
+    end)
+
+    it("closes the gap up with the icon when the icon is switched off", function()
+      config.icon.visible = false
+      logic.set_config(config)
+      local geometry = logic.geometry(100, 200, 1)
+      assert.are.equal(200, geometry.text.y)
     end)
 
     it("re-centres the number as the value changes width", function()
@@ -225,10 +241,11 @@ describe("speedcheck logic", function()
       assert.are.equal(200, y)
     end)
 
-    it("covers the icon and the number both", function()
+    it("covers the icon and the number both, stacked", function()
       local _, _, width, height = logic.bounds(100, 200, 1)
+      local geometry = logic.geometry(100, 200, 1)
       assert.is_true(width >= config.icon.size)
-      assert.is_true(height >= config.icon.size)
+      assert.are.equal(config.icon.size + config.text_gap + geometry.text.height, height)
     end)
 
     it("grows with the scale", function()
