@@ -131,7 +131,7 @@ describe("speedcheck widget", function()
       assert.are.equal(32, icon().width)
       assert.are.equal(32, icon().height)
       assert.are.equal(107.5, number().x)
-      assert.are.equal(234, number().y)
+      assert.are.equal(231, number().y)
       assert.are.equal(10, number().font_size)
     end)
 
@@ -173,7 +173,7 @@ describe("speedcheck widget", function()
       assert.are.equal(115, number().x)
       -- The gap under the icon scales with everything else, or the number
       -- would climb back onto the art as the widget grew.
-      assert.are.equal(268, number().y)
+      assert.are.equal(262, number().y)
     end)
   end)
 

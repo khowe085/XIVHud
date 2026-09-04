@@ -38,8 +38,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local FONT_SIZE = 10
 local ICON_SIZE = 32
--- Between the foot of the icon and the top of the number's line box.
-local TEXT_GAP = 2
+-- Between the foot of the icon and the top of the number's LINE box, which is
+-- taller than the glyphs in it (TEXT_HEIGHT_RATIO is ascender to descender), so
+-- a gap of zero already reads as a gap on screen. Negative pulls the number up
+-- into the icon's own transparent foot, which is where it looks right - the
+-- value is Kevin's, from a live client.
+local TEXT_GAP = -1
 
 -- giltracker's own anchor, so the two widgets share a left edge; this one sits
 -- a row above it.

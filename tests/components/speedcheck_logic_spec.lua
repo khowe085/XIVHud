@@ -115,9 +115,13 @@ describe("speedcheck logic", function()
         geometry.text.x + geometry.text.width / 2,
         "the number's own centre must line up with the icon's"
       )
+      --[[ Stacked, not overlaid: the number's top is in the bottom quarter of
+           the art at worst. The gap is allowed to be slightly negative - the
+           line box is taller than the glyphs in it - so this is deliberately
+           not "clears the icon entirely". ]]
       assert.is_true(
-        geometry.text.y >= geometry.icon.y + geometry.icon.size,
-        "the number must clear the bottom of the icon, not overlap it"
+        geometry.text.y > geometry.icon.y + geometry.icon.size * 0.75,
+        "the number must sit under the icon, not on it"
       )
       assert.is_true(geometry.text.y + geometry.text.height <= 200 + height + 0.001)
     end)

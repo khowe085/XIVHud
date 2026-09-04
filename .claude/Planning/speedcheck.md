@@ -76,7 +76,7 @@ Decisions taken while building, none of them the reference's:
   scope change to the player service by then, so nothing stale is drawn; before the first read the text is `--%`, which is
   deliberately not `+0%` — the widget would otherwise claim base speed on the strength of
   never having looked.
-- **The two are stacked, icon over number**, held apart by `text_gap` (2px, scaled). The box
+- **The two are stacked, icon over number**, held apart by `text_gap` (-1px, scaled - the number's LINE box is taller than the glyphs in it, so it is pulled up into the icon's transparent foot; the value is Kevin's, from a live client). The box
   is as tall as both of them and as wide as the wider, and the default anchor sits far enough up
   that the whole stack clears the gil tracker's row.
 - **The BOX is a reserved width; the NUMBER is centred on what it actually draws.** The box is
