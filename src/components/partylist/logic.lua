@@ -43,7 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local layouts = require("components/partylist/layout")
 local job_table = require("components/partylist/jobs")
-local shipped_buff_order = require("components/partylist/buff_order")
+local new_buffs = require("lib/buffs")
 
 local EASE = 0.1
 local FULL_TP = 1000
@@ -131,9 +131,13 @@ local function new(deps)
     return preview_bag or live
   end
 
-  local buff_ranks = nil
-  local buff_ordered = nil
   local trust_cache = {}
+
+  -- How a message names this list, which is also how the user addresses it:
+  -- the three are one component now, told apart by the anchor word.
+  local NAMES = { main = "partylist", alliance1 = "partylist alliance1", alliance2 = "partylist alliance2" }
+  local NAME = NAMES[variant] or NAMES.main
+  local buff_engine = new_buffs({ name = NAME, resources = resources, extra_verbs = { "active" } })
 
   -- Bar animation state, keyed by list position. A slot whose occupant changes
   -- restarts rather than easing the new member's bar down from the old one's.
@@ -161,9 +165,9 @@ local function new(deps)
   end
 
   -- The effective buff order is derived from a 621-entry list plus the user's
-  -- overrides, so it is built once and kept until something changes it.
+  -- overrides, so lib/buffs builds it once and keeps it until told otherwise.
   function self.invalidate_buff_order()
-    buff_ranks, buff_ordered = nil, nil
+    buff_engine.invalidate()
   end
 
   -- Forces every bar to re-push next tick. The widget calls this after a
@@ -613,27 +617,10 @@ local function new(deps)
     return level and (name .. " " .. tostring(level)) or name
   end
 
-  --[[ Config files are hand-editable Lua, so `buffs` can be any shape at all --
-       the defaults merge only fills a key that is *missing*. Callers index
-       .priority and .filters, so a broken table degrades to an empty one and
-       `usable` tells the command layer to say so rather than write into it. ]]
+  -- lib/buffs repairs a hand-edited `buffs` table in place, and hands back a
+  -- throwaway (deliberately not written back) when it is not a table at all.
   local function buff_settings()
-    local settings = config.buffs
-    if type(settings) ~= "table" then
-      -- A throwaway, deliberately not written back: whatever the user put
-      -- there is theirs to fix, and `//hud reset` is how.
-      return { priority = {}, filters = {}, filter_mode = "blacklist" }
-    end
-    if type(settings.priority) ~= "table" then
-      settings.priority = {}
-    end
-    if type(settings.filters) ~= "table" then
-      settings.filters = {}
-    end
-    if settings.filter_mode ~= "whitelist" then
-      settings.filter_mode = "blacklist"
-    end
-    return settings
+    return buff_engine.normalize(config.buffs)
   end
 
   -- Whether writing to the buff settings would actually stick.
@@ -641,56 +628,8 @@ local function new(deps)
     return type(config.buffs) == "table"
   end
 
-  --[[ The effective order: the shipped list with the user's overrides lifted
-       out and re-inserted at the rank each was given. Storing overrides as
-       `id -> wanted rank` rather than as a whole reordered list is what lets a
-       later change to the shipped order carry through instead of being stomped
-       by a copy the user made months ago.
-
-       Returns `id -> rank`; an id in neither the list nor the overrides has no
-       rank and sorts last. ]]
   local function buff_order()
-    if buff_ranks then
-      return buff_ranks, buff_ordered
-    end
-
-    local overrides = buff_settings().priority or {}
-    local moved = {}
-    for id, rank in pairs(overrides) do
-      if type(id) == "number" and type(rank) == "number" then
-        moved[#moved + 1] = { id = id, rank = rank }
-      end
-    end
-    -- Descending on the id, because each insert at a given rank displaces the
-    -- previous occupant down one: inserting the higher id first leaves the
-    -- lower one holding the contested rank.
-    table.sort(moved, function(a, b)
-      if a.rank ~= b.rank then
-        return a.rank < b.rank
-      end
-      return a.id > b.id
-    end)
-
-    local is_moved = {}
-    for _, entry in ipairs(moved) do
-      is_moved[entry.id] = true
-    end
-
-    local order = {}
-    for _, id in ipairs(shipped_buff_order) do
-      if not is_moved[id] then
-        order[#order + 1] = id
-      end
-    end
-    for _, entry in ipairs(moved) do
-      table.insert(order, math.max(1, math.min(entry.rank, #order + 1)), entry.id)
-    end
-
-    buff_ranks, buff_ordered = {}, order
-    for rank, id in ipairs(order) do
-      buff_ranks[id] = rank
-    end
-    return buff_ranks, buff_ordered
+    return buff_engine.order(buff_settings().priority)
   end
 
   -- Never more than the layout has icon prims for: a hand-edited max_icons of
@@ -708,18 +647,7 @@ local function new(deps)
     return math.min(tonumber(buff_settings().max_icons) or 0, icon_slots())
   end
 
-  local function filter_set()
-    local settings = buff_settings()
-    local set = {}
-    for _, id in ipairs(settings.filters or {}) do
-      set[id] = true
-    end
-    return set, settings.filter_mode == "whitelist"
-  end
-
   -- The member's buffs, filtered, sorted by priority and cut to the cap.
-  -- Unranked ids tie on rank, so the id breaks the tie and the icon order
-  -- stays put between frames instead of flickering.
   local function buff_plan(member, outside_zone)
     if not layout.row.buff_icons then
       return nil
@@ -729,29 +657,7 @@ local function new(deps)
     end
 
     local source = is_main_player(member) and bag().player.buffs or bag().buffs[member_id(member)]
-    local blocked, whitelist = filter_set()
-    local ids = {}
-    for _, id in ipairs(source or {}) do
-      -- 255 is the empty-slot marker in get_player().buffs.
-      if id ~= 255 and (blocked[id] == true) == whitelist then
-        ids[#ids + 1] = id
-      end
-    end
-
-    local ranks = buff_order()
-    table.sort(ids, function(a, b)
-      local rank_a, rank_b = ranks[a] or math.huge, ranks[b] or math.huge
-      if rank_a ~= rank_b then
-        return rank_a < rank_b
-      end
-      return a < b
-    end)
-
-    local limit = cap()
-    while #ids > limit do
-      table.remove(ids)
-    end
-    return ids
+    return buff_engine.plan(source, buff_settings(), { cap = cap() })
   end
 
   --[[ How many icon rows a buff list occupies. The widget anchors the grid to
@@ -949,13 +855,6 @@ local function new(deps)
        buff you cannot see is a buff you cannot promote, and only the first ten
        are ever drawn. ]]
 
-  -- How a message names this list, which is also how the user addresses it:
-  -- the three are one component now, told apart by the anchor word.
-  local NAMES = { main = "partylist", alliance1 = "partylist alliance1", alliance2 = "partylist alliance2" }
-  local NAME = NAMES[variant] or NAMES.main
-  local PAGE_SIZE = 20
-  local MAX_SEARCH_HITS = 20
-
   -- Deliberately stricter than tonumber, which also accepts "0x84" and "1e2".
   local function whole_number(word)
     if type(word) ~= "string" or not word:match("^%-?%d+$") then
@@ -969,8 +868,7 @@ local function new(deps)
   end
 
   local function buff_name(id)
-    local entry = (resources.buffs or {})[id]
-    return entry and entry.en or ("buff " .. tostring(id))
+    return buff_engine.name(id)
   end
 
   local function verbs()
@@ -1086,139 +984,6 @@ local function new(deps)
 
   --[[ Buff verbs ]]
 
-  -- `<id|name>`: digits are an id, anything else is matched case-insensitively
-  -- against res.buffs. Several buffs share a name -- sleep is both 2 and 19 --
-  -- so an ambiguous name asks which rather than guessing.
-  local function resolve_buff(text)
-    if text == nil or text == "" then
-      return nil, { ("//hud %s buff needs a buff id or name"):format(NAME) }
-    end
-
-    local id = whole_number(text)
-    if id and id >= 0 then
-      return id
-    end
-
-    local wanted = text:lower()
-    local hits = {}
-    for buff_id, entry in pairs(resources.buffs or {}) do
-      if type(entry) == "table" and type(entry.en) == "string" and entry.en:lower() == wanted then
-        hits[#hits + 1] = buff_id
-      end
-    end
-    if #hits == 1 then
-      return hits[1]
-    end
-    if #hits == 0 then
-      return nil, { ("no buff called '%s' - try '//hud %s buff find %s'"):format(text, NAME, text) }
-    end
-
-    table.sort(hits)
-    local ids = {}
-    for index, buff_id in ipairs(hits) do
-      ids[index] = tostring(buff_id)
-    end
-    return nil,
-      {
-        ("'%s' is the name of %d buffs - say which id:"):format(text, #hits),
-        "  " .. table.concat(ids, ", "),
-      }
-  end
-
-  -- Everything a listing can show: the ranked order first, then every buff the
-  -- resources know that nothing has ranked. Nothing is silently left out.
-  local function full_listing()
-    local ranks, order = buff_order()
-    local listing = {}
-    for index, id in ipairs(order) do
-      listing[index] = id
-    end
-
-    local unranked = {}
-    for id in pairs(resources.buffs or {}) do
-      if not ranks[id] then
-        unranked[#unranked + 1] = id
-      end
-    end
-    table.sort(unranked)
-
-    local first_unranked = #listing + 1
-    for _, id in ipairs(unranked) do
-      listing[#listing + 1] = id
-    end
-    return listing, first_unranked
-  end
-
-  local function shown_slots()
-    local _, order = buff_order()
-    local lines = { ("%s draws the first %d of these:"):format(NAME, cap()) }
-    for rank = 1, math.min(cap(), #order) do
-      lines[#lines + 1] = ("  %2d. %s (%d)"):format(rank, buff_name(order[rank]), order[rank])
-    end
-    return lines, false
-  end
-
-  local function list_page(word)
-    local listing, first_unranked = full_listing()
-    local pages = math.max(1, math.ceil(#listing / PAGE_SIZE))
-    local page = math.max(1, math.min(whole_number(word) or 1, pages))
-    local first = (page - 1) * PAGE_SIZE + 1
-    local last = math.min(first + PAGE_SIZE - 1, #listing)
-
-    local lines = { ("%s buff order - page %d/%d"):format(NAME, page, pages) }
-    for rank = first, last do
-      if rank == first_unranked then
-        lines[#lines + 1] = "  --- unranked below; these sort after everything above ---"
-      end
-      lines[#lines + 1] = ("  %3d. %s (%d)"):format(rank, buff_name(listing[rank]), listing[rank])
-      if rank == cap() then
-        lines[#lines + 1] = ("  --- cut: only the %d above are ever drawn ---"):format(cap())
-      end
-    end
-    lines[#lines + 1] = ("  '//hud %s buff list <page>' for another page"):format(NAME)
-    return lines, false
-  end
-
-  local function find_buffs(text)
-    if text == "" then
-      return { ("//hud %s buff find needs something to search for"):format(NAME) }, false
-    end
-
-    local ranks = buff_order()
-    local wanted = text:lower()
-    local hits = {}
-    for id, entry in pairs(resources.buffs or {}) do
-      if type(entry) == "table" and type(entry.en) == "string" and entry.en:lower():find(wanted, 1, true) then
-        hits[#hits + 1] = { id = id, rank = ranks[id] }
-      end
-    end
-    if #hits == 0 then
-      return { ("no buff has '%s' in its name"):format(text) }, false
-    end
-
-    table.sort(hits, function(a, b)
-      if (a.rank or math.huge) ~= (b.rank or math.huge) then
-        return (a.rank or math.huge) < (b.rank or math.huge)
-      end
-      return a.id < b.id
-    end)
-
-    local lines = { ("buffs matching '%s':"):format(text) }
-    for index = 1, math.min(#hits, MAX_SEARCH_HITS) do
-      local hit = hits[index]
-      lines[#lines + 1] = ("  rank %s  id %d  %s%s"):format(
-        hit.rank and tostring(hit.rank) or "-",
-        hit.id,
-        buff_name(hit.id),
-        (hit.rank and hit.rank <= cap()) and "  (drawn)" or ""
-      )
-    end
-    if #hits > MAX_SEARCH_HITS then
-      lines[#lines + 1] = ("  %d more - refine the search"):format(#hits - MAX_SEARCH_HITS)
-    end
-    return lines, false
-  end
-
   -- The buffs a member has right now, all of them, past the icon cap. This is
   -- how you name a buff you just saw rather than one you can already name.
   local function active_buffs(who)
@@ -1256,135 +1021,13 @@ local function new(deps)
     if #ids == 0 then
       return { ("%s has no buffs"):format(label) }, false
     end
-
-    table.sort(ids, function(a, b)
-      if (ranks[a] or math.huge) ~= (ranks[b] or math.huge) then
-        return (ranks[a] or math.huge) < (ranks[b] or math.huge)
-      end
-      return a < b
-    end)
+    buff_engine.sort(ids, ranks)
 
     local lines = { ("%s has %d buff(s):"):format(label, #ids) }
     for _, id in ipairs(ids) do
       lines[#lines + 1] = ("  rank %s  id %d  %s"):format(ranks[id] and tostring(ranks[id]) or "-", id, buff_name(id))
     end
     return lines, false
-  end
-
-  -- A rank past the end of the order is clamped by buff_order(), so storing and
-  -- reporting the number the user typed would be two different lies.
-  --[[ A rank past the end of the order is clamped, so storing and reporting
-       the number the user typed would be two different lies.
-
-       Any other override already at or below the wanted rank moves down one.
-       Without that, two overrides claim the same rank and the id tie-break
-       decides -- so `buff top` on one buff and then another would report a
-       promotion that silently did not happen. ]]
-  local function set_rank(id, rank)
-    local _, order = buff_order()
-    local landed = math.max(1, math.min(rank, #order))
-    local overrides = buff_settings().priority
-
-    for other, other_rank in pairs(overrides) do
-      if other ~= id and other_rank >= landed then
-        overrides[other] = other_rank + 1
-      end
-    end
-    overrides[id] = landed
-
-    self.invalidate_buff_order()
-    return { ("%s moved to rank %d"):format(buff_name(id), landed) }, true
-  end
-
-  local function move_buff(verb, words)
-    local id, complaint = resolve_buff(words)
-    if not id then
-      return complaint, false
-    end
-
-    if verb == "top" then
-      return set_rank(id, 1)
-    end
-
-    local ranks, order = buff_order()
-    -- An unranked buff sits notionally past the end, so "up" pulls it in.
-    local rank = ranks[id] or (#order + 1)
-    if verb == "up" then
-      if rank <= 1 then
-        return { ("%s is already at the top"):format(buff_name(id)) }, false
-      end
-      return set_rank(id, rank - 1)
-    end
-    if rank >= #order then
-      return { ("%s is already at the bottom"):format(buff_name(id)) }, false
-    end
-    return set_rank(id, rank + 1)
-  end
-
-  local function rank_buff(args)
-    local rank = whole_number(args[#args])
-    if not rank or rank < 1 then
-      return { ("//hud %s buff rank needs a buff and a rank of at least 1"):format(NAME) }, false
-    end
-    local words = table.concat(args, " ", 3, #args - 1)
-    local id, complaint = resolve_buff(words)
-    if not id then
-      return complaint, false
-    end
-    return set_rank(id, rank)
-  end
-
-  local function filter_command(args)
-    local settings = buff_settings()
-    local action = args[3] and args[3]:lower() or "list"
-
-    if action == "list" then
-      if #settings.filters == 0 then
-        return { ("%s filters nothing (%s mode)"):format(NAME, settings.filter_mode) }, false
-      end
-      local lines = { ("%s %s (%d):"):format(NAME, settings.filter_mode, #settings.filters) }
-      for _, id in ipairs(settings.filters) do
-        lines[#lines + 1] = ("  id %d  %s"):format(id, buff_name(id))
-      end
-      return lines, false
-    end
-
-    if action == "clear" then
-      settings.filters = {}
-      return { NAME .. " buff filters cleared" }, true
-    end
-
-    if action == "mode" then
-      local mode = args[4] and args[4]:lower()
-      if mode ~= "blacklist" and mode ~= "whitelist" then
-        return { ("//hud %s buff filter mode needs blacklist or whitelist"):format(NAME) }, false
-      end
-      settings.filter_mode = mode
-      return { ("%s buff filter is now a %s"):format(NAME, mode) }, true
-    end
-
-    if action == "add" or action == "remove" then
-      local id, complaint = resolve_buff(table.concat(args, " ", 4))
-      if not id then
-        return complaint, false
-      end
-      for index, filtered in ipairs(settings.filters) do
-        if filtered == id then
-          if action == "add" then
-            return { ("%s is already filtered"):format(buff_name(id)) }, false
-          end
-          table.remove(settings.filters, index)
-          return { ("%s is no longer filtered"):format(buff_name(id)) }, true
-        end
-      end
-      if action == "remove" then
-        return { ("%s is not filtered"):format(buff_name(id)) }, false
-      end
-      settings.filters[#settings.filters + 1] = id
-      return { ("%s is now filtered"):format(buff_name(id)) }, true
-    end
-
-    return { ("//hud %s buff filter takes add, remove, clear, list or mode"):format(NAME) }, false
   end
 
   local function buff_command(args)
@@ -1395,37 +1038,16 @@ local function new(deps)
       return { ("%s buff settings are not a table - try '//hud reset %s'"):format(NAME, NAME) }, false
     end
 
-    local verb = args[2] and args[2]:lower() or nil
-    if not verb then
-      return shown_slots()
-    end
-    if verb == "list" then
-      return list_page(args[3])
-    end
-    if verb == "find" then
-      return find_buffs(table.concat(args, " ", 3))
-    end
-    if verb == "active" then
+    -- `active` reads the roster, which is this component's alone; every
+    -- other verb edits settings the lib owns the grammar of.
+    if args[2] and args[2]:lower() == "active" then
       return active_buffs(args[3])
     end
-    if verb == "top" or verb == "up" or verb == "down" then
-      return move_buff(verb, table.concat(args, " ", 3))
+    local words = {}
+    for index = 2, #args do
+      words[index - 1] = args[index]
     end
-    if verb == "rank" then
-      return rank_buff(args)
-    end
-    if verb == "reset" then
-      buff_settings().priority = {}
-      self.invalidate_buff_order()
-      return { NAME .. " buff order reset to the shipped one" }, true
-    end
-    if verb == "filter" then
-      return filter_command(args)
-    end
-    return {
-      ("//hud %s buff takes list, find, active, top, up, down, rank, reset or filter"):format(NAME),
-    },
-      false
+    return buff_engine.command(buff_settings(), words, cap())
   end
 
   -- Returns the lines to print and whether anything changed, so the widget

@@ -93,7 +93,7 @@ local function list_defaults(name)
       max_icons = 16,
       filter_mode = "blacklist", -- buffs.filterMode
       filters = {}, -- buffs.filters, as ids rather than a semicolon string
-      -- Sparse `id -> rank` overrides on top of buff_order.lua, so a later
+      -- Sparse `id -> rank` overrides on top of lib/buff_order.lua, so a later
       -- change to the shipped order does not stomp the user's edits.
       priority = {},
     }
