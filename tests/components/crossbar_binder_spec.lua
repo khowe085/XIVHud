@@ -212,9 +212,27 @@ local function pick(binder, env, label)
   end
 end
 
---- The back button walks a step in reverse, and closes from the first.
+--- The back button walks a step in reverse; the first step does not draw it.
 local function back(binder, env)
   click(binder, centre(env.binder.window().back))
+end
+
+--- The close button, in the top right, closes outright from any step.
+local function close_button(binder, env)
+  click(binder, centre(env.binder.window().close))
+end
+
+--- The one visible text prim carrying `label`, or nil where none is drawn.
+--- Destroyed prims are skipped: the fake keeps them in the list with their
+--- last state, so a binder that has been closed and reopened would otherwise
+--- answer with a prim that is no longer on screen.
+local function shown_text(env, label)
+  for _, prim in ipairs(env.prims.texts) do
+    if prim.visible and prim.destroyed == 0 and prim.last.text == label then
+      return prim
+    end
+  end
+  return nil
 end
 
 local function open_stack(binder, env, side, slot)
@@ -1339,10 +1357,11 @@ describe("crossbar binder", function()
       assert.are.same({ window.x, window.y }, { binder.window().x, binder.window().y })
     end)
 
-    it("walks back a step at a time, and closes from the first", function()
+    it("walks back a step at a time, and closes from the X", function()
       --[[ Every step needs a way out that is not "click empty space and
            hope" - which on a screen this full is also the gesture that
-           clears a slot (Kevin, 2026-08-22). ]]
+           clears a slot (Kevin, 2026-08-22). Back retreats one step; the X
+           in the top right closes outright (Kevin, 2026-08-31). ]]
       local binder, env = build()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
@@ -1355,9 +1374,111 @@ describe("crossbar binder", function()
       back(binder, env)
       assert.is_not_nil(binder.layer_view(), "back to the layers")
       assert.is_nil(binder.layer(), "and the layer choice is released with it")
-      back(binder, env)
-      assert.is_nil(binder.window(), "and from the first step it closes")
+      close_button(binder, env)
+      assert.is_nil(binder.window(), "and the X closes the window")
       assert.are.same({}, env.said, "walking back binds nothing and says nothing")
+    end)
+
+    it("closes from the X on a later step too, without binding anything", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      assert.is_not_nil(binder.catalog_view(), "two steps in")
+      close_button(binder, env)
+      assert.is_nil(binder.window(), "the X does not retreat, it closes")
+      assert.are.same({}, env.said)
+    end)
+
+    it("draws no back button on the first step, and nothing hit-testable where it was", function()
+      --[[ The first step has nothing to retreat to, so back is not drawn
+           there rather than sitting dead (Kevin, 2026-08-31). The space it
+           leaves is inert panel, NOT empty space - a click there must not
+           read as the gesture that clears a slot. ]]
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      assert.is_nil(binder.window().back, "no back rect on the first step")
+      local window = binder.window()
+      click(binder, window.x + 20, window.y + 20)
+      assert.is_not_nil(binder.window(), "a click where back used to be leaves the window open")
+
+      click(binder, centre(row_named(env, "base")))
+      assert.is_not_nil(binder.window().back, "and it returns once there is a step to retreat to")
+    end)
+
+    it("takes the back button down again when it retreats to the first step", function()
+      -- Hidden, not merely left unaddressed: a stale `[ < back ]` painted
+      -- over the first step is the dead-looking button this change removed.
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      assert.is_not_nil(shown_text(env, "[ < back ]"), "drawn on the second step")
+      back(binder, env)
+      assert.is_nil(binder.window().back, "the first step has no rect for it")
+      assert.is_nil(shown_text(env, "[ < back ]"), "nor a prim left painted where it was")
+    end)
+
+    it("takes both controls off screen with the window, edit mode still up", function()
+      -- The X closes the WINDOW; edit mode and its prims outlive it, so
+      -- every one of them has to be hidden or it floats over the bar.
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      assert.is_not_nil(shown_text(env, "[ X ]"), "up while the window is")
+      close_button(binder, env)
+      assert.is_true(binder.active(), "edit mode outlives the window")
+      assert.is_nil(binder.window())
+      assert.is_nil(shown_text(env, "[ X ]"), "no orphan control left over the bar")
+      assert.is_nil(shown_text(env, "[ < back ]"))
+    end)
+
+    it("drops the hovered details and the layer preview when the X closes the window", function()
+      -- Back cleared both on its way out and the X replaces it on the first
+      -- step, so what a closed window was describing - and the buff list it
+      -- had the bar previewing - go with it.
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "ctx:light-arts")))
+      binder.mouse(MOVE, centre(entry_named(env, "Berserk")))
+      assert.is_not_nil(binder.details(), "the column is describing a row")
+      assert.is_not_nil(last_preview(env), "and the bar is previewing the layer")
+
+      env.previews = {}
+      close_button(binder, env)
+      assert.is_nil(binder.details(), "the details go with the window")
+      assert.are.equal(1, #env.previews, "the preview is handed back")
+      assert.is_nil(last_preview(env), "to the live buff list")
+    end)
+
+    it("closes from the target step, the one with a bind half-made", function()
+      -- The only step holding a `pending` record: closing must drop it
+      -- rather than commit it.
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Berserk")))
+      assert.is_not_nil(binder.target_view(), "three steps in")
+      close_button(binder, env)
+      assert.is_nil(binder.window())
+      assert.are.same({}, env.said, "nothing was bound on the way out")
+      assert.are.same({ type = "ja", action = "Provoke" }, env.files.WAR.sets[1].left[3], "and the slot is untouched")
+    end)
+
+    it("puts the X in the top right, level with back, and labels both", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      assert.is_not_nil(shown_text(env, "[ X ]"), "the X is up from the first step")
+      assert.is_nil(shown_text(env, "[ close ]"), "which replaced the old top-left label")
+      assert.is_nil(shown_text(env, "[ < back ]"), "and back is not drawn there")
+
+      click(binder, centre(row_named(env, "base")))
+      local window = binder.window()
+      assert.is_not_nil(shown_text(env, "[ < back ]"), "back is up on the second step")
+      assert.is_not_nil(shown_text(env, "[ X ]"), "and the X stays on every step")
+      assert.are.equal(window.back.y, window.close.y, "both sit on the header row")
+      assert.are.equal(
+        window.back.x - window.x,
+        window.x + window.width - (window.close.x + window.close.width),
+        "the X is inset from the right edge exactly as back is from the left"
+      )
     end)
 
     it("binds the target picked on the third step", function()
@@ -1504,11 +1625,28 @@ describe("crossbar binder", function()
 
     it("does not drag from the back button", function()
       -- Back is checked first, so a slip on it must still be back rather
-      -- than a grab of the window behind it.
+      -- than a grab of the window behind it. Read on the second step: the
+      -- first does not draw back at all.
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local before = binder.window()
+      local x, y = centre(before.back)
+      binder.mouse(LEFT_DOWN, x, y, 0)
+      binder.mouse(MOVE, x - 200, y - 150, 0)
+      assert.is_not_nil(binder.window(), "still open")
+      assert.are.same({ before.x, before.y }, { binder.window().x, binder.window().y }, "and it did not move")
+      assert.is_nil(env.window_pos, "nothing was saved")
+    end)
+
+    it("does not drag from the close button", function()
+      -- The X sits INSIDE the header strip, so it has to be checked before
+      -- it: a slip on the one control that always gets you out must not
+      -- become a grab of the window behind it.
       local binder, env = build()
       open_stack(binder, env, "left", 3)
       local before = binder.window()
-      local x, y = centre(before.back)
+      local x, y = centre(before.close)
       binder.mouse(LEFT_DOWN, x, y, 0)
       binder.mouse(MOVE, x - 200, y - 150, 0)
       assert.is_not_nil(binder.window(), "still open")
