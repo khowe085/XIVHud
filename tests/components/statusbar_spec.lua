@@ -435,6 +435,42 @@ describe("statusbar widget", function()
       assert.are.same({}, texts_shown())
     end)
 
+    -- Core attaches over a character switch without a logout event, so the
+    -- expiries - keyed by buff id, the same on every character - would carry
+    -- across. A re-attach for the same character (a slot switch) must keep
+    -- them: nothing re-sends the packet.
+    it("forgets the timers when a different character attaches", function()
+      attach()
+      env.player.buffs = { HASTE }
+      widget.update("chunk", 0x063, durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+      widget.update()
+      assert.are.equal(1, #texts_shown())
+      attach()
+      widget.update()
+      assert.are.equal(1, #texts_shown(), "a re-attach for the same character keeps them")
+      env.player = { name = "Bea", buffs = { HASTE } }
+      attach()
+      widget.update()
+      assert.are.same({}, texts_shown())
+    end)
+
+    -- Core's apply sends the bare show first and restates each anchor after
+    -- it, so a bar that is off is shown and hidden inside one apply; it must
+    -- not grow prims for the moment in between.
+    it("builds no prims for a bar shown and hidden inside one apply", function()
+      env.player.buffs = { HASTE, KO }
+      attach()
+      widget.update()
+      assert.are.equal(2, #prims.images)
+      -- What core's apply sends, with the buffs already read.
+      widget.show()
+      widget.hide("bar2")
+      widget.hide("bar3")
+      widget.update()
+      assert.are.equal(2, #prims.images)
+      assert.are.equal(2, #icons_shown())
+    end)
+
     it("destroys every prim it made", function()
       attach()
       env.player.buffs = { HASTE, KO }

@@ -178,7 +178,7 @@ local function new(deps)
   -- `store_view` copies both back after a command. One view per entry is
   -- kept while nothing about it has changed, rather than a table per paint;
   -- a repair the lib makes is written back into the entry at once, so it is
-  -- saved with the config and not redone every frame.
+  -- not redone every frame and rides the next save.
   local function view_of(entry)
     local held = views[entry]
     if
@@ -256,6 +256,11 @@ local function new(deps)
     return self.timer_text(expires - now)
   end
 
+  -- Every id a bar would draw, past its capacity: filtered and in order.
+  local function ids_for(bar, entry)
+    return engines[bar].plan(source(), view_of(entry), { keep = categories.keep(entry.filter) })
+  end
+
   --[[ What a bar draws: `cells` in fill order (left to right, top row first),
        each with its id, grid position and timer text; `total` is how many
        passed the filter before the capacity cut them. ]]
@@ -263,12 +268,11 @@ local function new(deps)
     local entry = bar_settings(bar)
     local cols, rows, capacity = shape(entry)
     local plan = { cols = cols, rows = rows, capacity = capacity, total = 0, cells = {} }
-    local engine = engines[bar]
-    if not entry or not engine then
+    if not entry or not engines[bar] then
       return plan
     end
 
-    local ids = engine.plan(source(), view_of(entry), { keep = categories.keep(entry.filter) })
+    local ids = ids_for(bar, entry)
     plan.total = #ids
     local seen = {}
     for index = 1, math.min(#ids, capacity) do
@@ -421,8 +425,8 @@ local function new(deps)
     for _, bar in ipairs(BARS) do
       local entry = bar_settings(bar)
       if entry and (only == nil or only == bar) then
-        local plan = self.plan(bar)
-        local ids = engines[bar].plan(source(), view_of(entry), { keep = categories.keep(entry.filter) })
+        local capacity = select(3, shape(entry))
+        local ids = ids_for(bar, entry)
         if #ids == 0 then
           lines[#lines + 1] = ("%s (%s): nothing to draw"):format(LABELS[bar], tostring(entry.filter))
         else
@@ -430,13 +434,13 @@ local function new(deps)
             LABELS[bar],
             tostring(entry.filter),
             #ids,
-            math.min(#ids, plan.capacity)
+            math.min(#ids, capacity)
           )
           for index, id in ipairs(ids) do
             lines[#lines + 1] = ("  %s (%d)%s"):format(
               engines[bar].name(id),
               id,
-              index > plan.capacity and "  (not drawn)" or ""
+              index > capacity and "  (not drawn)" or ""
             )
           end
         end

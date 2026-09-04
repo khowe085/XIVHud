@@ -63,7 +63,11 @@ local function new(ctx)
   local screen_width, screen_height = (ctx.screen or function() end)()
   self.defaults = build_defaults(screen_width, screen_height)
 
-  local clock = ctx.time or os.time
+  -- The wall clock, which the packet's timestamps count in; without one
+  -- every expiry is in the past and no timer is drawn, the crossbar's rule.
+  local clock = ctx.time or function()
+    return 0
+  end
   local logic = new_logic({ config = self.defaults, resources = ctx.resources or {} })
 
   local attached = false
@@ -76,6 +80,13 @@ local function new(ctx)
        read and three comparisons a frame. ]]
   local last_buffs, last_second = nil, nil
   local stale = true
+  -- Whose expiries the packet map holds: the character the client named
+  -- when the packet landed. Core attaches over a character switch without a
+  -- logout event, and buff ids are the same on every character, so an attach
+  -- for a DIFFERENT name drops them; one for the same name (a slot switch,
+  -- or the attach a packet arrived just ahead of) keeps them, since nothing
+  -- re-sends the packet.
+  local expiries_of = nil
 
   local bars = {}
   for _, anchor in ipairs(ANCHORS) do
@@ -259,8 +270,15 @@ local function new(ctx)
         config.bars[anchor] = seed.bars[anchor]
       end
     end
+    local player = ctx.get_player()
+    local name = player and player.name or nil
+    if name ~= expiries_of then
+      logic.apply_durations({})
+      expiries_of = name
+    end
     logic.set_config(config)
     attached = true
+    stale = true
     paint_all()
   end
 
@@ -270,6 +288,7 @@ local function new(ctx)
     attached = false
     save = nil
     stale = true
+    expiries_of = nil
     logic.apply_durations({})
     logic.set_buffs(nil)
     for _, anchor in ipairs(ANCHORS) do
@@ -302,20 +321,24 @@ local function new(ctx)
 
   --[[ Core sends the widget's own switch with no anchor and one bar's with
        its name; a whole-widget show is also what layout mode force-shows with,
-       so it has to bring back every bar a per-anchor hide took down. ]]
+       so it has to bring back every bar a per-anchor hide took down. A show
+       does not paint: core's apply sends the bare show first and restates
+       each anchor after it, so a bar that is off is shown and hidden inside
+       one apply, and painting in between would grow its prims for nothing.
+       The next tick paints what is still shown; a hide is immediate. ]]
   function self.show(anchor)
     if anchor ~= nil then
       local bar = bar_at(anchor)
       if bar then
         bar.visible = true
-        paint(anchor)
+        stale = true
       end
       return
     end
     for _, name in ipairs(ANCHORS) do
       bars[name].visible = true
     end
-    paint_all()
+    stale = true
   end
 
   function self.hide(anchor)
@@ -353,6 +376,8 @@ local function new(ctx)
       local parsed = packets.parse_buff_durations(second, clock())
       if parsed then
         logic.apply_durations(parsed)
+        local player = ctx.get_player()
+        expiries_of = player and player.name or nil
         stale = true
       end
       return
