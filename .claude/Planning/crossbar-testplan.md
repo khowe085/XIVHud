@@ -82,11 +82,15 @@ These bindings are used by every later section — leave them in place.
 | C23 | `//hud crossbar bind 1L8 ma "Dia" t` then `unbind 1L8` | Bound, then the slot empties | [x] | [ ] |  |
 | C24 | `//hud crossbar bind 1Ly ma "Cure" me` | **Refused** - a slot is 1-8. The controller button names went with the address change (2026-08-22): there is no controller for them to name | [x] | [ ] |  |
 | C25 | Type `/ma "Cure" <YourName>` straight into the game | It casts — a name in angle brackets IS a target | [x] | [ ] | Confirmed - the game accepts a bare player name in angle brackets as a target, so #20 is a parser change and not a non-feature |
-| C26 | `//hud crossbar bind 2L1 ma "Cure IV" me "Cure 4" "cure"` | Bound with the label `Cure 4` and the pack's `cure` art. **This is the row that settles how Windower splits an addon command**: the label grammar assumes the words arrive space-split with their quote characters intact. Were quoted runs grouped and unquoted instead, this binds an action called `Cure IV Cure 4` or is refused - loudly either way, never silently | [ ] | [ ] |  |
-| C27 | `//hud crossbar bind 2L2 ja "Berserk" "" "attack"` | Bound with the pack's `attack` art and Berserk's own name under it - `""` is the empty alias slot | [ ] | [ ] |  |
-| C28 | `//hud crossbar bind 2L3 ma "Cure IV" "nosuchart"` | **Refused**, naming `icons/custom/nosuchart.png`, and slot 3 stays empty - a bad icon refuses the whole bind | [ ] | [ ] |  |
-| C29 | `//hud crossbar bind 2R1 ct "/p pulling" "Pull"` | Bound; the slot reads `Pull` and pressing it says `/p pulling` - and NOT `/p pulling "Pull"` | [ ] | [ ] |  |
+| C26 | `//hud crossbar bind 2L1 ma "Cure IV" me alias=Cure 4 icon=heal` | Bound with the label `Cure 4` and the pack's `heal` art. **This is the row that settled how Windower splits an addon command** | [x] | [ ] | ANSWERED 2026-08-30, against the assumption: Windower GROUPS a quoted run into one argument and STRIPS the quote characters. The positional quote-delimited grammar could therefore never fire in a client - `//hud crossbar bind 1R1 ex "jc RDM/DRK" "RDM/DRK" "jobs/rdm"` bound an action called `jc RDM/DRK RDM/DRK jobs/rdm` with no label at all, reported as a success. Grammar re-based on the `alias=` / `icon=` markers; the row above is the new spelling |
+| C27 | `//hud crossbar bind 2L2 ja "Berserk" icon=attack` | Bound with the pack's `attack` art and Berserk's own name under it - an icon with no alias needs no empty slot held open now | [ ] | [ ] |  |
+| C28 | `//hud crossbar bind 2L3 ma "Cure IV" icon=nosuchart` | **Refused**, naming `icons/custom/nosuchart.png`, and slot 3 stays empty - a bad icon refuses the whole bind | [ ] | [ ] |  |
+| C29 | `//hud crossbar bind 2R1 ct p pulling alias=Pull` | Bound; the slot reads `Pull` and pressing it says `/p pulling` - and NOT `/p pulling alias=Pull`. The line is stored without its leading slash, which `actions` adds | [ ] | [ ] |  |
 | C30 | `//hud crossbar list 2` then retype one listed row at a free address | The two slots hold identical records - a listed row is what you would type to reproduce it | [ ] | [ ] |  |
+| C31 | `//hud crossbar bind 2R2 ex "jc RDM/DRK" alias=RDM/DRK icon=jobs/rdm` | Bound; the slot reads `RDM/DRK` over the job icon, and pressing it runs `jc RDM/DRK` and nothing more - the reported defect, in the form that replaced it | [ ] | [ ] |  |
+| C32 | `//hud crossbar bind 2R3 ma "Cure IV" alias=Big Heal` | Bound with the label `Big Heal`: a marker's value runs to the next marker or the end of the line, so an alias with spaces needs no quotes | [ ] | [ ] |  |
+| C33 | `//hud crossbar bind 2R4 ma "Cure IV" alias=Heal p1` | **Refused**, naming `p1` - a target after the labels would vanish into the alias and bind a cure aimed at nothing | [ ] | [ ] |  |
+| C34 | `//hud crossbar bind 2R5 ct ma "Cure IV" <t>` then press it | It CASTS: a word reaches the addon with a space in it only where the user quoted it, so the quotes are put back and the line says `/ma "Cure IV" <t>` rather than `/ma Cure IV <t>` | [ ] | [ ] |  |
 
 ## D. Sets and layers
 
@@ -144,12 +148,17 @@ other; it is now ONE window that walks three steps. Every row below except
 F2, F7 and F14 is new or changed, so the passes recorded against the old
 binder are gone - they were answers about code that no longer exists.
 
+**Amended 2026-08-31.** The one top-left button became two: `[ < back ]`
+stays top left and is not drawn on the first step, and a new `[ X ]` in the
+top right closes from any step. F4, F20 and F24 are about that button, so
+their passes are gone and F36-F38 are new.
+
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
 | F1 | Hold `;` and press `=` | Edit mode says so in chat. Nothing is drawn yet - the window appears when you click a slot | [x] | [ ] |  |
 | F2 | Look at the bar | Slots show `+` for subjob, `^` for the weapon layer and `*` for context sources | [x] | [ ] | Unchanged by the rewrite; D12 covered here too |
 | F3 | Click an empty slot | One window opens **dead centre**, titled `pick a layer`, listing the whole stack | [x] | [ ] |  |
-| F4 | Look at the top left of it | A button reading `[ close ]` - on the first step there is nothing to go back to | [x] | [ ] |  |
+| F4 | Look at the top left of it | **Nothing** - on the first step there is nothing to go back to, so no back button is drawn | [ ] | [ ] |  |
 | F5 | Read the line under the title | It names the slot you clicked in the form you would type - `1L3` | [x] | [ ] |  |
 | F6 | Click a layer row | The **same** window becomes `pick an action`: categories down the left, actions on the right, and the subhead now names the layer | [x] | [ ] |  |
 | F7 | Go back and click a **context** layer row instead | The bar previews itself as if that buff were up, and the subhead says which | [x] | [ ] | Unchanged by the rewrite |
@@ -165,11 +174,11 @@ binder are gone - they were answers about code that no longer exists.
 | F17 | Scroll up past the first page | It stops there too | [x] | [ ] |  |
 | F18 | Get to the target step, then press back | Back to the action list | [x] | [ ] |  |
 | F19 | Press back again | Back to the layer list, with the layer choice released | [x] | [ ] |  |
-| F20 | Press back once more | The window closes. **Edit mode is still on** | [x] | [ ] |  |
+| F20 | Look at the back button | It is gone again, the layer list having nothing to retreat to | [ ] | [ ] |  |
 | F21 | Click a slot, then drag the window by its **title strip** | It moves with the cursor, keeping the grab point under it | [x] | [ ] |  |
 | F22 | Try to push it off each edge of the screen | It stays fully on screen | [x] | [ ] |  |
 | F23 | Leave it somewhere off-centre, close edit mode, reopen it and click a slot | It opens where you left it, not back in the middle | [x] | [ ] |  |
-| F24 | Press the back button and drag from it | The window does not move - back is checked first, so a slip onto it is still back | [x] | [ ] |  |
+| F24 | On the **action** step, press the back button and drag from it | The window does not move - back is checked first, so a slip onto it is still back | [ ] | [ ] |  |
 | F25 | With no window open, tap `` ` `` | The set changes, in edit mode | [x] | [ ] |  |
 | F26 | Hold `` ` `` and press a number | It jumps to that set | [x] | [ ] |  |
 | F27 | Click a slot, then change set | The window is put away - it remembered the old set's address - and edit mode stays on | [x] | [ ] |  |
@@ -181,6 +190,9 @@ binder are gone - they were answers about code that no longer exists.
 | F33 | Press `=` | Edit mode closes | [x] | [ ] |  |
 | F34 | Open and close it a few times, watching the frame it opens on | No stutter or hitch as it appears | [x] | [ ] |  |
 | F35 | Read the window at arm's length | 18pt is comfortably readable, and 920x600 fits your resolution | [x] | [ ] |  |
+| F36 | Look at the top right of the window | A button reading `[ X ]`, level with where back sits | [ ] | [ ] |  |
+| F37 | Press it | The window closes from whichever step you were on. **Edit mode is still on** | [ ] | [ ] |  |
+| F38 | Press it and drag from it | The window does not move - the X is inside the title strip and is checked before it | [ ] | [ ] |  |
 
 ## G. Counters and the skillchain indicator
 

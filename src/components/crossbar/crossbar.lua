@@ -273,6 +273,18 @@ local function new(ctx)
 
   -- Per-anchor placement pushed by core.
   local placed = {}
+  --[[ The anchors core has switched off, one at a time. Kept apart from
+       `placed` because a hidden anchor is still PLACED: core clamps it on
+       screen from get_bounds and layout mode drags it, so only the drawing
+       reads below go through anchor_at. ]]
+  local hidden_anchors = {}
+
+  local function anchor_at(anchor)
+    if hidden_anchors[anchor] then
+      return nil
+    end
+    return placed[anchor]
+  end
 
   local screen_width, screen_height = ctx.screen()
   self.defaults = build_defaults(screen_width, screen_height)
@@ -1342,7 +1354,7 @@ local function new(ctx)
     end
     shown_groups = {}
     for _, group in ipairs(GROUPS) do
-      local entry = placed[group.anchor]
+      local entry = anchor_at(group.anchor)
       local shown
       if group.key == "expanded" then
         shown = plan.expanded ~= nil
@@ -1409,7 +1421,7 @@ local function new(ctx)
     local panel_shown = false
     if plan.panel ~= nil then
       local anchor = plan.panel.bar == "wxhb" and ("wxhb_" .. plan.panel.side) or "main"
-      local entry = placed[anchor]
+      local entry = anchor_at(anchor)
       if entry ~= nil and entry.pos ~= nil then
         local rect = render.panel_pos(plan.panel.bar, plan.panel.side)
         prims.panel.pos(entry.pos.x + rect.x * entry.scale, entry.pos.y + rect.y * entry.scale)
@@ -1425,7 +1437,7 @@ local function new(ctx)
          which is true whether or not a side is held, so it is shown
          whenever the widget is - and it is not a panel, so nothing about
          the hold state moves it. ]]
-    local set_at = placed.set
+    local set_at = anchor_at("set")
     if not hidden and set_at ~= nil and set_at.pos ~= nil then
       prims.set_label.pos(set_at.pos.x, set_at.pos.y)
       prims.set_label.size(math.floor(SET_LABEL_SIZE * set_at.scale + 0.5))
@@ -1443,7 +1455,7 @@ local function new(ctx)
          - the same state that picks which set rotation is live - so it
          lights on `draw` even with nothing targeted, which is what makes
          that press visible at all. ]]
-    local weapon_at = placed.weapon
+    local weapon_at = anchor_at("weapon")
     if not hidden and weapon_at ~= nil and weapon_at.pos ~= nil and bindings.weapon_state() == "drawn" then
       local icon_size = render.set_icon_size() * weapon_at.scale
       prims.set_icon.pos(weapon_at.pos.x, weapon_at.pos.y)
@@ -2722,7 +2734,7 @@ local function new(ctx)
       return
     end
     local pair = prims.indicator
-    local entry = placed.skillchain_indicator
+    local entry = anchor_at("skillchain_indicator")
     local cfg = type(config.skillchain) == "table" and config.skillchain or {}
     local plan = nil
     if entry ~= nil and entry.pos ~= nil and cfg.indicator ~= false then
@@ -3009,15 +3021,16 @@ local function new(ctx)
     if prims == nil or scoped_main == nil then
       return
     end
-    local any_shown = false
-    for _, group in ipairs(GROUPS) do
-      if shown_groups[group.key] then
-        any_shown = true
-        break
-      end
-    end
-    if not any_shown then
-      -- Hidden or suppressed: zero client reads.
+    --[[ Hidden or suppressed: zero client reads. The test is the WIDGET's own
+         switch, deliberately - it was "is any group on screen" until
+         2026-08-31, which a per-anchor hide of `main` also satisfies, and
+         everything below here stopped dead on `//hud hide crossbar main`:
+         the skillchain indicator froze on its own anchor (this tick is the
+         only thing that draws it) and a pending re-send was neither stepped
+         nor dropped. Hiding one anchor is not hiding the bar. A whole-widget
+         hide still clears both - hide() drops the retry, refresh() takes the
+         indicator down - which is what this gate was written for. ]]
+    if not visible then
       return
     end
     -- The skillchain surface: the indicator from the window state, and the
@@ -3695,9 +3708,27 @@ local function new(ctx)
        work below is the way back from hidden - a user hide, or core's
        suppression - and `visible` is the one thing that says which this is.
        Preview and edit-mode toggles do their own repainting, so nothing
-       else rides on this call. ]]
-  function self.show()
+       else rides on this call.
+
+       An anchor name narrows the call to that anchor. The BARE form is the
+       widget's own switch and puts every anchor back up: it is what layout
+       mode force-shows with, and a hidden anchor that stayed hidden there
+       could never be dragged or switched back on. ]]
+  function self.show(anchor)
+    local restored = false
+    if anchor == nil then
+      restored = next(hidden_anchors) ~= nil
+      hidden_anchors = {}
+    elseif hidden_anchors[anchor] then
+      hidden_anchors[anchor] = nil
+      restored = true
+    end
     if visible then
+      if restored then
+        -- Repaint rather than refresh, for the reason below: the anchor's
+        -- groups painted nothing while they were down.
+        repaint()
+      end
       return
     end
     visible = true
@@ -3713,7 +3744,19 @@ local function new(ctx)
     repaint()
   end
 
-  function self.hide()
+  function self.hide(anchor)
+    --[[ One anchor going down takes nothing else with it: the widget is still
+         on screen and still the owner of its keys, so none of the teardown
+         below applies - a retry or a trip is not a property of the anchor the
+         user just switched off. ]]
+    if anchor ~= nil then
+      if hidden_anchors[anchor] then
+        return
+      end
+      hidden_anchors[anchor] = true
+      refresh()
+      return
+    end
     visible = false
     -- Suppression (a cutscene, zoning) and a user hide both arrive here,
     -- and a cast held through either would fire into a moment that has

@@ -76,8 +76,21 @@ describe("commands", function()
       assert_error(parse("show", "nope"), "nope")
     end)
 
-    it("rejects more than one component", function()
-      assert_error(parse("show", "parambar", "clock"), "single")
+    --[[ The second word is an anchor of that component. The parser does not
+         know which anchors a component has - it knows names and aliases and
+         nothing else - so an unusable one is refused by core, where the widget
+         is, and where the real names can be said back. ]]
+    it("takes an anchor after the component, keeping the word as typed", function()
+      assert.are.same(
+        { action = "hide", component = "parambar", anchor = "alliance1" },
+        parse("hide", "ParamBar", "alliance1")
+      )
+      assert.are.same({ action = "show", component = "parambar", anchor = "Main" }, parse("show", "pb", "Main"))
+    end)
+
+    it("rejects more than a component and an anchor", function()
+      assert_error(parse("show", "parambar", "clock", "extra"), "anchor")
+      assert_error(parse("hide", "parambar", "clock", "extra"), "anchor")
     end)
   end)
 

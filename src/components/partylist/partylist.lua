@@ -35,11 +35,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      the contract by anchor. A list still knows only its own variant, which
      picks which party keys it reads and which of the two row layouts it draws.
 
-     The framework's `visible` is per widget, so a right-click in layout mode
-     toggles all three together; the per-list on/off is this component's own
-     `enabled` -- its own word, deliberately, since `shown` is what the
-     framework's switch is called -- and preview outranks it so a disabled list
-     can still be dragged back into place.
+     Per-list visibility is the framework's: core sends `show(<list>)` and
+     `hide(<list>)` for one anchor's own switch, and the bare pair for the
+     widget as a whole. A right-click in layout mode still toggles all three
+     together; SHIFT + right-click, and `//hud show|hide partylist <list>`,
+     address one. The component holds no on/off of its own beside it.
 
      This file owns prims and nothing else. What to draw comes from logic.lua,
      whether to draw comes from the framework. A row's prims are built when a
@@ -74,15 +74,6 @@ local function new_list(ctx, variant, defaults)
   local layout = layouts[variant == "main" and "main" or "alliance"]
   local config = defaults
   local logic = new_logic({ variant = variant, config = config, resources = ctx.resources or {} })
-  --[[ This list's own on/off, replacing XIVParty's hideAlliance. Apart from
-       `visible`, which is the framework's and governs all three lists at once -
-       and deliberately not sharing its word, so a report can never say a list
-       is on while the widget it belongs to is off.
-
-       `== true` rather than a nil-tolerant test, the way the framework reads
-       `visible`: the defaults always carry the key, so anything else in it is a
-       broken file, and a broken file must not switch a list ON. ]]
-  local enabled = config.enabled == true
 
   local attached = false
   -- The service's read counter as of the last roster rebuild; nil until the
@@ -102,16 +93,17 @@ local function new_list(ctx, variant, defaults)
     height = margin.top + layout.row_height + margin.bottom,
   }
 
-  --[[ Whether this list puts anything on screen at all. The reasons do not
-       rank the same way: the framework's `visible` and hide_solo both silence
-       it outright, while `enabled` -- the user's own per-list toggle -- is
-       overruled by preview, or a disabled list could never be dragged back
-       into place. An unplaced list is silenced too: nothing has told it where
-       it is, so its background would go up at whatever position its prims were
-       created with. Core places every anchor before it shows one, so that last
-       term is a defence rather than a live path. ]]
+  --[[ Whether this list puts anything on screen at all. `visible` is what the
+       framework last said about THIS list - core pushes the anchor's own
+       switch through show/hide, and force-shows every one of them in layout
+       mode, so a list switched off is still draggable without this knowing
+       why. hide_solo silences it independently. An unplaced list is silenced
+       too: nothing has told it where it is, so its background would go up at
+       whatever position its prims were created with. Core places every anchor
+       before it shows one, so that last term is a defence rather than a live
+       path. ]]
   local function drawing()
-    return visible and pos ~= nil and not suppressed and (enabled or preview)
+    return visible and pos ~= nil and not suppressed
   end
 
   -- The art overhangs its column rectangle, so the widget's own origin is the
@@ -755,7 +747,6 @@ local function new_list(ctx, variant, defaults)
   function self.attach(loaded_config)
     config = loaded_config
     attached = true
-    enabled = config.enabled == true
     -- Forget the last read: a relog inside one interval would otherwise keep
     -- the previous character's roster until the service next reads.
     last_generation = nil
@@ -811,8 +802,6 @@ local function new_list(ctx, variant, defaults)
     preview = on
     logic.set_preview(on)
     apply_box(logic.tick())
-    -- Preview outranks `enabled`: a list the user switched off must still draw
-    -- in layout mode, or there would be no way to drag it back on screen.
     apply_visibility()
     if pos then
       apply_layout()
@@ -827,24 +816,6 @@ local function new_list(ctx, variant, defaults)
   function self.hide()
     visible = false
     apply_visibility()
-  end
-
-  -- The user's own on/off for this list, answering whether it moved: every
-  -- other verb plumbs the same flag back, and the outer widget writes the one
-  -- file all three share only when something in it actually changed.
-  function self.set_enabled(on)
-    on = on == true
-    if enabled == on then
-      return false
-    end
-    enabled = on
-    config.enabled = enabled
-    apply_visibility()
-    return true
-  end
-
-  function self.enabled()
-    return enabled
   end
 
   -- The origin set_pos was given, exactly: core clamps the widget on screen by
@@ -992,11 +963,29 @@ local function new(ctx)
     each("set_preview", on)
   end
 
-  function self.show()
+  --[[ Core sends the widget's own switch with no anchor and one list's with
+       its name; a whole-widget show is also what layout mode force-shows with,
+       so it has to bring back every list a per-anchor hide took down. An
+       anchor that is not ours costs nothing, as everywhere else here. ]]
+  function self.show(anchor)
+    if anchor ~= nil then
+      local list = list_at(anchor)
+      if list then
+        list.show()
+      end
+      return
+    end
     each("show")
   end
 
-  function self.hide()
+  function self.hide(anchor)
+    if anchor ~= nil then
+      local list = list_at(anchor)
+      if list then
+        list.hide()
+      end
+      return
+    end
     each("hide")
   end
 
@@ -1016,17 +1005,17 @@ local function new(ctx)
     each("destroy")
   end
 
-  --[[ `//hud partylist [<list>] <verb> ...`, the list word leading so it reads
-       the same as the on/off verb and leaves the verb grammar behind it
-       untouched. Absent, the main party is addressed - which is what every
-       line that worked before this component was merged still means. ]]
-  -- What `//hud partylist <list>` reports: the list's own settings, and whether
-  -- it is switched on at all - which is the first thing anyone asking about a
-  -- blank list needs to hear.
+  --[[ `//hud partylist [<list>] <verb> ...`, the list word leading so the verb
+       grammar behind it is untouched. Absent, the main party is addressed -
+       which is what every line that worked before this component was merged
+       still means. ]]
+  -- What `//hud partylist <list>` reports: the list's own settings. Whether it
+  -- is on screen at all is the framework's answer now, and `//hud list` prints
+  -- it per anchor.
   local function status_of(anchor)
-    local lines = lists[anchor].command({})
-    lines[#lines + 1] = ("  %s"):format(lists[anchor].enabled() and "enabled" or "disabled")
-    return lines
+    -- Parenthesised: `command` answers (lines, changed), and a report has no
+    -- second value to hand its caller.
+    return (lists[anchor].command({}))
   end
 
   local function status_all()
@@ -1037,13 +1026,6 @@ local function new(ctx)
       end
     end
     return lines
-  end
-
-  local function set_enabled(anchor, on)
-    if lists[anchor].set_enabled(on) and save then
-      save()
-    end
-    return { ("partylist %s %s"):format(anchor, on and "enabled" or "disabled") }
   end
 
   function self.handle_command(args)
@@ -1067,11 +1049,15 @@ local function new(ctx)
     if verb == nil then
       return status_of(anchor or "main")
     end
-    -- The per-list switch, which is what `//hud show|hide alliancelist1` was
-    -- before the three became one widget. Unnamed it means the main party,
-    -- like every other verb here.
+    --[[ The per-list switch moved to the framework on 2026-08-31, and it
+         answered here the day before - so it is pointed at its replacement by
+         name rather than left to the generic verb hint, which cannot mention
+         a `//hud` verb this component knows nothing about. ]]
     if verb == "on" or verb == "off" then
-      return set_enabled(anchor or "main", verb == "on")
+      return {
+        ("//hud partylist %s is the framework's now:"):format(verb),
+        ("  //hud %s partylist %s"):format(verb == "on" and "show" or "hide", anchor or "main"),
+      }
     end
 
     -- Kept loud rather than silently applied to main: the asymmetry is real,

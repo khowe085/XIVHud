@@ -255,12 +255,11 @@ describe("crossbar commands", function()
     end)
 
     it("refuses a bare word that is not one of the game's targets", function()
-      -- Where the word cannot be part of the name - after a closing quote,
-      -- or as ra's only argument - an unrecognised one is a typo, not a
-      -- target: binding it would build a command that silently never fires.
+      -- Where the word cannot be part of the name - as ra's only argument,
+      -- ra taking none - an unrecognised one is a typo, not a target:
+      -- binding it would build a command that silently never fires.
       local commands, world = build()
       for _, words in ipairs({
-        { "bind", "1L3", "ma", '"Cure IV"', "Kevin" },
         { "bind", "1L3", "ra", "Kevin" },
       }) do
         local reply, _, repaint = commands.command(words)
@@ -291,22 +290,32 @@ describe("crossbar commands", function()
       assert.are.same({ type = "warp" }, world.files.SCH.sets[1].left[8])
     end)
 
-    it("refuses an unterminated quote on a ct or ex line", function()
+    it("unwraps only a matched pair, never two quotes that are not one", function()
+      --[[ `"/p a" "b"` opens and closes with a quote without those two
+           being a pair, and stripping them deletes characters out of the
+           middle of a line the user typed. Only the client that hands
+           quotes through can produce this shape at all, which is the one
+           this unwrapping exists for - corrupting it there would be worse
+           than never unwrapping. ]]
       local commands, world = build()
-      for _, kind in ipairs({ "ct", "ex" }) do
-        local reply, _, repaint = commands.command({ "bind", "1R1", kind, '"sea', "all" })
-        assert.is_string(reply, kind)
-        assert.is_falsy(repaint, kind)
-      end
-      assert.is_nil(stored(world, "SCH", 1, "right", 1))
+      commands.command({ "bind", "1R1", "ct", '"/p a"', '"b"' })
+      commands.command({ "bind", "1R2", "ct", '"/p a"', '"b"', "alias=X" })
+      commands.command({ "alias", "1R1", '"Big"', "and", '"Small"' })
+      assert.equal('"/p a" "b"', stored(world, "SCH", 1, "right", 2).action)
+      assert.equal('"Big" and "Small"', stored(world, "SCH", 1, "right", 1).alias)
     end)
 
-    it("refuses a ct or ex line that is nothing but a quote", function()
+    it("keeps an unbalanced quote in a ct or ex line", function()
+      -- A quote is a character now, not grammar: the client strips the pair
+      -- that used to delimit a line, and `alias=` is what ends one. A chat
+      -- line refused for carrying a quote would be a line nobody can say.
       local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "1R1", "ct", '"' })
-      assert.is_string(reply)
-      assert.is_falsy(repaint)
-      assert.is_nil(stored(world, "SCH", 1, "right", 1))
+      for slot, kind in ipairs({ "ct", "ex" }) do
+        commands.command({ "bind", "1R" .. slot, kind, '"sea', "all" })
+        assert.equal('"sea all', stored(world, "SCH", 1, "right", slot).action, kind)
+      end
+      commands.command({ "bind", "1R3", "ct", '"' })
+      assert.equal('"', stored(world, "SCH", 1, "right", 3).action)
     end)
 
     it("trims a quoted ct or ex line the way it trims a name", function()
@@ -378,25 +387,23 @@ describe("crossbar commands", function()
     end)
 
     it("does not let a lone opening quote close itself", function()
-      -- The span needs two characters before it can close, or `" Cure IV"`
-      -- would read as an empty name plus a target called Cure.
+      -- The wrapper is read over the whole name, so the opening quote is
+      -- not asked to close on itself: `" Cure IV"` is one delimited name,
+      -- not an empty one plus a target called Cure.
       local commands, world = build()
       commands.command({ "bind", "1L1", "ma", '"', "Cure", 'IV"' })
       assert.are.same({ type = "ma", action = "Cure IV" }, stored(world, "SCH", 1, "left", 1))
     end)
 
-    it("refuses an unterminated quote instead of storing it", function()
+    it("refuses a quote left in a game action's name", function()
+      -- The pair is read only where it wraps the WHOLE name. Half of one is
+      -- no name at all - nothing in the game is called `"Cure IV` - so it is
+      -- refused rather than bound as something that can never fire. A ct or
+      -- ex line is the opposite case and keeps every quote it was given.
       local commands, world = build()
       local reply, _, repaint = commands.command({ "bind", "1L3", "ma", '"Cure', "IV" })
       assert.is_string(reply)
-      assert.is_falsy(repaint)
-      assert.is_nil(stored(world, "SCH", 1, "left", 3))
-    end)
-
-    it("refuses trailing words after a quoted name and its target", function()
-      local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "1L3", "ma", '"Cure', 'IV"', "t", "please" })
-      assert.is_string(reply)
+      assert.is_not_nil(reply:find("quote", 1, true), reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3))
     end)
@@ -440,15 +447,20 @@ describe("crossbar commands", function()
     end)
   end)
 
-  --[[ The optional trailing labels: an alias and an icon, each QUOTED. The
-       quotes are the whole grammar -- an action name may be several words,
-       so nothing else could tell `Healer` in `ma Cure IV Healer` from
-       another word of the name. An empty alias slot (`""`) is how an icon
-       is given without one. ]]
+  --[[ The optional trailing labels: an alias and an icon, each opened by its
+       own MARKER, `alias=` and `icon=`. Windower groups a quoted run into one
+       argument and strips the quote characters before an addon sees a word
+       (settled in a live client 2026-08-30, testplan row C26), so a quote can
+       never say which word is a label - it is gone by the time we are asked.
+       The marker is what survives the trip, and it ends the action name,
+       which is the one thing the quotes used to do.
+
+       A value runs to the next marker or the end of the line, so all three
+       shapes `alias="My Alias"` could arrive in read as the same alias. ]]
   describe("bind with an alias and an icon", function()
-    it("reads a quoted alias after a quoted name and its target", function()
+    it("reads a marked alias after a name and its target", function()
       local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "1L1", "ma", '"Cure', 'IV"', "p1", '"Cure', '4"' })
+      local reply, _, repaint = commands.command({ "bind", "1L1", "ma", "Cure IV", "p1", "alias=Cure 4" })
       assert.are.same(
         { type = "ma", action = "Cure IV", target = "p1", alias = "Cure 4" },
         world.files.SCH.sets[1].left[1],
@@ -457,65 +469,89 @@ describe("crossbar commands", function()
       assert.is_true(repaint)
     end)
 
-    it("takes a quoted word in the target position as the target", function()
-      -- A quoted span there spells a TARGET, not a label: the target may be
-      -- quoted (`ra "t"` is the oldest spelling of it), and a name whose
-      -- target vanished into an alias binds a command aimed at nothing.
+    it("reads one alias however the client split the words", function()
+      -- The three shapes `alias="My Alias"` can arrive in. Only the first is
+      -- what a live client hands over today; reading the other two costs
+      -- nothing and means the grammar does not rest on that staying true.
       local commands, world = build()
-      commands.command({ "bind", "1L1", "ma", '"Cure IV"', '"p1"' })
-      commands.command({ "bind", "1L2", "ma", "Cure", "IV", '"p1"' })
-      commands.command({ "bind", "1L3", "ma", '"Cure IV"', '"t"', '"Cure 4"' })
-      assert.are.same({ type = "ma", action = "Cure IV", target = "p1" }, stored(world, "SCH", 1, "left", 1))
-      assert.are.same({ type = "ma", action = "Cure IV", target = "p1" }, stored(world, "SCH", 1, "left", 2))
+      commands.command({ "bind", "1L1", "ra", "t", "alias=My Alias" })
+      commands.command({ "bind", "1L2", "ra", "t", 'alias="My', 'Alias"' })
+      commands.command({ "bind", "1L3", "ra", "t", "alias=My", "Alias" })
+      for slot = 1, 3 do
+        assert.are.same({ type = "ra", target = "t", alias = "My Alias" }, stored(world, "SCH", 1, "left", slot), slot)
+      end
+    end)
+
+    it("matches a marker case-insensitively, as it matches every verb", function()
+      local commands, world = build({ icons = { ["icons/custom/cure.png"] = true } })
+      commands.command({ "bind", "1L1", "ma", "Cure IV", "Alias=Cure 4", "ICON=cure" })
       assert.are.same(
-        { type = "ma", action = "Cure IV", target = "t", alias = "Cure 4" },
-        stored(world, "SCH", 1, "left", 3)
+        { type = "ma", action = "Cure IV", alias = "Cure 4", icon = "cure" },
+        stored(world, "SCH", 1, "left", 1)
       )
     end)
 
-    it("reads a quoted word that spells no target as the alias", function()
-      -- The other half of the rule above, and the reason a BARE word there
-      -- is still refused: quotes are how the user says "this is a label",
-      -- so a quoted one is never the mistyped target it used to be.
+    it("ends the action name at the first marker", function()
+      -- What the quotes used to do, and the reason a ONE-WORD name can carry
+      -- a label now: `ma Cure "C"` and `ma Cure C` arrive identically, so
+      -- nothing but the marker could have told them apart.
       local commands, world = build()
-      commands.command({ "bind", "1L1", "ma", '"Cure IV"', '"Kevin"' })
-      commands.command({ "bind", "1L5", "ra", '"Kevin"' })
-      assert.are.same({ type = "ma", action = "Cure IV", alias = "Kevin" }, stored(world, "SCH", 1, "left", 1))
-      assert.are.same({ type = "ra", alias = "Kevin" }, stored(world, "SCH", 1, "left", 5))
+      commands.command({ "bind", "1L1", "ma", "Cure", "IV", "alias=Big Cure" })
+      commands.command({ "bind", "1L2", "ma", "Cure", "alias=C" })
+      assert.are.same({ type = "ma", action = "Cure IV", alias = "Big Cure" }, stored(world, "SCH", 1, "left", 1))
+      assert.are.same({ type = "ma", action = "Cure", alias = "C" }, stored(world, "SCH", 1, "left", 2))
     end)
 
-    it("keeps a quoted ct or ex line whole when its interior quotes are not labels", function()
-      -- `/ma "Cure IV" <t>` is the ordinary shape of a chat line, and its
-      -- interior quote closes before the last word: the labels are read
-      -- only where what follows the line IS a label, and the line takes
-      -- every word again where it is not.
+    it("puts the user's own quoting back into a ct or ex line", function()
+      --[[ An argument can only CARRY whitespace where the user quoted it -
+           the client groups a quoted run and strips the quotes - so a word
+           with a space in it is one they delimited, and the line has to
+           reach the game with those quotes or it will not cast. Without
+           this, `ct ma "Cure IV" <t>` says `/ma Cure IV <t>`. ]]
       local commands, world = build()
-      commands.command({ "bind", "1R6", "ct", '"/ma', '"Cure', 'IV"', '<t>"' })
-      commands.command({ "bind", "1R7", "ex", '"exec', "say", '"hi"', 'done"' })
-      assert.equal('/ma "Cure IV" <t>', stored(world, "SCH", 1, "right", 6).action)
-      assert.equal('exec say "hi" done', stored(world, "SCH", 1, "right", 7).action)
-      assert.is_nil(stored(world, "SCH", 1, "right", 6).alias)
+      commands.command({ "bind", "1R1", "ct", "ma", "Cure IV", "<t>" })
+      commands.command({ "bind", "1R2", "ex", "gs", "c", "set TP", "alias=TP set" })
+      assert.equal('ma "Cure IV" <t>', stored(world, "SCH", 1, "right", 1).action)
+      assert.are.same({ type = "ex", action = 'gs c "set TP"', alias = "TP set" }, stored(world, "SCH", 1, "right", 2))
+      -- A word with no space in it was never distinguishable from a bare
+      -- one by the time we are asked, so it keeps none: harmless, the game
+      -- needing no quotes around a single word.
+      commands.command({ "bind", "1R3", "ct", "ma", "Cure", "<t>" })
+      assert.equal("ma Cure <t>", stored(world, "SCH", 1, "right", 3).action)
+      -- A whole line quoted as ONE run is re-quoted and then unwrapped
+      -- again: the pair it gets back is its own, so it keeps neither.
+      commands.command({ "bind", "1R4", "ct", "sea all linkshell" })
+      assert.equal("sea all linkshell", stored(world, "SCH", 1, "right", 4).action)
     end)
 
-    it("ends a quoted ct line at its first closing quote", function()
-      -- The quotes delimit the line, so the first one to close ends it and
-      -- what follows is a label. An UNdelimited line keeps every quote in
-      -- it (the test below), which is the form for a line with quotes.
-      local commands, world = build()
-      commands.command({ "bind", "1R5", "ct", '"/p', 'say"', '"Say"' })
-      assert.are.same({ type = "ct", action = "/p say", alias = "Say" }, stored(world, "SCH", 1, "right", 5))
-      -- A line that ENDS in a quoted word closes on that word twice, so its
-      -- tail reads as a label carrying the line's own closing quote. A label
-      -- never contains one, which is the tell: the line keeps every word,
-      -- exactly as the undelimited form of it does.
-      commands.command({ "bind", "1R6", "ct", '"/p', "say", '"hi"', '"there""' })
-      commands.command({ "bind", "1R7", "ct", "/p", "say", '"hi"', '"there"' })
+    it("labels a ct or ex line, and leaves an unmarked one whole", function()
+      -- The marker is also what delimits a whole-line type, which nothing
+      -- else could: a chat line may end in anything, quotes included.
+      local commands, world = build({ icons = { ["assets/icons/jobs/rdm.png"] = true } })
+      commands.command({ "bind", "1R1", "ex", "jc RDM/DRK", "alias=RDM/DRK", "icon=jobs/rdm" })
+      commands.command({ "bind", "1R2", "ct", "p", "say", '"hi"', "there" })
       assert.are.same(
-        { type = "ct", action = '/p say "hi" "there"' },
-        stored(world, "SCH", 1, "right", 6),
-        "no alias, and nothing cut off the line"
+        { type = "ex", action = "jc RDM/DRK", alias = "RDM/DRK", icon = "jobs/rdm" },
+        stored(world, "SCH", 1, "right", 1)
       )
-      assert.are.same({ type = "ct", action = '/p say "hi" "there"' }, stored(world, "SCH", 1, "right", 7))
+      assert.are.same({ type = "ct", action = 'p say "hi" there' }, stored(world, "SCH", 1, "right", 2))
+    end)
+
+    it("labels the types that take no action name", function()
+      local commands, world = build({ icons = { ["assets/icons/items/warp-ring.png"] = true } })
+      commands.command({ "bind", "1L8", "warp", "alias=Warp", "icon=items/warp-ring" })
+      commands.command({ "bind", "1L5", "ra", "alias=Shoot" })
+      assert.are.same({ type = "warp", alias = "Warp", icon = "items/warp-ring" }, stored(world, "SCH", 1, "left", 8))
+      assert.are.same({ type = "ra", alias = "Shoot" }, stored(world, "SCH", 1, "left", 5))
+    end)
+
+    it("labels an open screen", function()
+      local commands, world = build({ icons = { ["icons/custom/chart.png"] = true } })
+      commands.command({ "bind", "1R3", "open", "map", "alias=Map", "icon=chart" })
+      assert.are.same(
+        { type = "open", action = "map", alias = "Map", icon = "chart" },
+        stored(world, "SCH", 1, "right", 3)
+      )
     end)
 
     it("points at the opener list when open is given more than a name", function()
@@ -527,16 +563,237 @@ describe("crossbar commands", function()
       assert.is_nil(stored(world, "SCH", 1, "right", 3))
     end)
 
+    it("takes an icon without an alias, and an empty marker as neither", function()
+      -- No positional slot to hold open any more, so `icon=` alone is the
+      -- whole of it - and a marker with nothing after it says nothing.
+      local commands, world = build({ icons = { ["icons/custom/rage.png"] = true } })
+      commands.command({ "bind", "1L2", "ja", "Berserk", "icon=rage" })
+      commands.command({ "bind", "1L3", "ja", "Berserk", "alias=", "icon=rage" })
+      assert.are.same({ type = "ja", action = "Berserk", icon = "rage" }, stored(world, "SCH", 1, "left", 2))
+      assert.are.same({ type = "ja", action = "Berserk", icon = "rage" }, stored(world, "SCH", 1, "left", 3))
+    end)
+
+    it("refuses the whole bind when the icon names no art", function()
+      local commands, world = build()
+      local reply, _, repaint = commands.command({ "bind", "1L1", "ja", "Berserk", "icon=nosuchart" })
+      assert.is_string(reply)
+      assert.is_not_nil(reply:find("icons/custom/nosuchart.png", 1, true), reply)
+      assert.is_falsy(repaint)
+      assert.is_nil(stored(world, "SCH", 1, "left", 1))
+      assert.are.same({}, world.saved, "a refused bind writes nothing at all")
+    end)
+
+    it("refuses a target that arrived after the labels, where one was possible", function()
+      --[[ The value runs to the next marker, so a late target would vanish
+           into the alias and bind an action aimed at nothing - reported as a
+           success, which is the outcome worth refusing over. It is refused
+           only where the target is a WORD OF ITS OWN: a value the client
+           handed over whole is one the user delimited, and `alias=Cure p1`
+           in one piece is an alias someone meant to write. ]]
+      local commands, world = build()
+      local late = text_of(commands.command({ "bind", "1L3", "ma", "Cure IV", "alias=Heal", "p1" }))
+      assert.is_not_nil(late:find("p1", 1, true), late)
+      assert.is_not_nil(late:find("in front", 1, true), late)
+      -- Never advice that lands on another refusal: quoting the label is the
+      -- way to keep it, so the refusal spells the quoted form out.
+      assert.is_not_nil(late:find('alias="Heal p1"', 1, true), late)
+      assert.is_nil(stored(world, "SCH", 1, "left", 3))
+      commands.command({ "bind", "1L4", "ra", "t", "alias=Cure p1" })
+      assert.are.same({ type = "ra", target = "t", alias = "Cure p1" }, stored(world, "SCH", 1, "left", 4))
+    end)
+
+    it("leaves a target word alone in a label on a type that takes no target", function()
+      --[[ `Follow me` and `Heal me` are ordinary aliases. Refusing them
+           where a target is IMPOSSIBLE would close a loop: the type refuses
+           a bare `me` in front of the labels too, so there would be nowhere
+           left to put it - and on a ct line, moving it in front is a
+           silently DIFFERENT bind, the word being part of what gets said. ]]
+      local commands, world = build()
+      -- Split the way a client splits an UNQUOTED value, which is the shape
+      -- the user types and the only one the guard could ever fire on.
+      commands.command({ "bind", "1L1", "warp", "alias=Warp", "me" })
+      commands.command({ "bind", "1R1", "ct", "follow", "alias=Follow", "me" })
+      commands.command({ "bind", "1R2", "open", "map", "alias=Show", "me" })
+      assert.are.same({ type = "warp", alias = "Warp me" }, stored(world, "SCH", 1, "left", 1))
+      assert.are.same({ type = "ct", action = "follow", alias = "Follow me" }, stored(world, "SCH", 1, "right", 1))
+      assert.are.same({ type = "open", action = "map", alias = "Show me" }, stored(world, "SCH", 1, "right", 2))
+    end)
+
+    it("says one target only when one is already in front", function()
+      --[[ Never advice that lands on a WORSE bind: told to move `me` in
+           front of a target that is already there, the words in between
+           become part of the name and `ma Cure IV p1 <me>` binds a spell
+           that does not exist, reported as a success. So the second target
+           is one to drop, or to keep in the label deliberately. ]]
+      local commands, world = build()
+      local twice = text_of(commands.command({ "bind", "1L3", "ma", "Cure IV", "p1", "alias=Heal", "me" }))
+      local ra = text_of(commands.command({ "bind", "1L5", "ra", "t", "alias=Shoot", "me" }))
+      -- An ICON has no such way out: `icon="cure p1"` names no art, so the
+      -- refusal that offered it would send the user to another refusal.
+      local art = text_of(commands.command({ "bind", "1L6", "ma", "Cure IV", "icon=cure", "p1" }))
+      assert.is_not_nil(art:find("in front of icon=", 1, true), art)
+      assert.is_nil(art:find('icon="cure p1"', 1, true), art)
+      -- In front of the FIRST marker, not the one the target landed in:
+      -- moving it in front of the second lands on this refusal again.
+      local second = text_of(commands.command({ "bind", "1L7", "ma", "Cure IV", "alias=Heal", "icon=cure", "p1" }))
+      assert.is_not_nil(second:find("in front of alias=", 1, true), second)
+      for _, reply in ipairs({ twice, ra }) do
+        assert.is_not_nil(reply:find("one target", 1, true), reply)
+        assert.is_nil(reply:find("in front", 1, true), "it must not send them back to a worse bind: " .. reply)
+      end
+      assert.is_not_nil(twice:find('alias="Heal me"', 1, true), twice)
+      assert.is_nil(stored(world, "SCH", 1, "left", 3))
+      assert.is_nil(stored(world, "SCH", 1, "left", 5))
+    end)
+
+    it("refuses a bind whose action name is only a marker", function()
+      -- The marker ends the name, so a line starting with one leaves no
+      -- name at all. The type's own validation says so.
+      local commands, world = build()
+      local reply, _, repaint = commands.command({ "bind", "1L3", "ma", "alias=X" })
+      assert.is_string(reply)
+      assert.is_falsy(repaint)
+      assert.is_nil(stored(world, "SCH", 1, "left", 3))
+    end)
+
+    it("reads only alias= and icon= as markers", function()
+      --[[ The one predicate that tells a marker from an ordinary word
+           carrying an `=`. Without it a chat line saying `HP=50` loses
+           everything after `HP` to a bogus label, reported as a success -
+           and every type would gain labels nobody asked for. ]]
+      local commands, world = build()
+      commands.command({ "bind", "1R1", "ct", "p", "HP=50", "now" })
+      commands.command({ "bind", "1L1", "ma", "Cure", "IV", "hp=50" })
+      assert.are.same({ type = "ct", action = "p HP=50 now" }, stored(world, "SCH", 1, "right", 1))
+      assert.equal("Cure IV hp=50", stored(world, "SCH", 1, "left", 1).action)
+    end)
+
+    it("refuses either marker twice", function()
+      local commands, world = build({ icons = { ["icons/custom/a.png"] = true, ["icons/custom/b.png"] = true } })
+      for _, words in ipairs({
+        { "bind", "1L3", "ma", "Cure IV", "alias=A", "alias=B" },
+        { "bind", "1L3", "ma", "Cure IV", "icon=a", "icon=b" },
+      }) do
+        local reply, _, repaint = commands.command(words)
+        assert.is_not_nil(text_of(reply):find("only", 1, true), text_of(reply))
+        assert.is_falsy(repaint, words[5])
+      end
+      assert.is_nil(stored(world, "SCH", 1, "left", 3))
+      -- The repeat alone is what to drop: naming the rest of the line would
+      -- tell the user to throw away a marker that is doing its job.
+      local trailing = text_of(commands.command({ "bind", "1L3", "ma", "Cure IV", "alias=A", "alias=B", "icon=a" }))
+      assert.is_not_nil(trailing:find("drop alias=B", 1, true), trailing)
+      assert.is_nil(trailing:find("icon=a", 1, true), trailing)
+    end)
+
+    it("trims a value the client handed over with the spaces still in it", function()
+      -- A grouping client strips the quotes and keeps what was inside them,
+      -- so ` cure ` arrives as one argument. Stored untrimmed it names no
+      -- art, and an action name carrying the whitespace can never fire.
+      local commands, world = build({ icons = { ["icons/custom/cure.png"] = true } })
+      commands.command({ "bind", "1L1", "ma", " Cure IV ", "icon= cure " })
+      commands.command({ "bind", "1L2", "ws", "Savage Blade" })
+      commands.command({ "alias", "1L2", " Big Hit " })
+      commands.command({ "icon", "1L2", " cure " })
+      assert.are.same({ type = "ma", action = "Cure IV", icon = "cure" }, stored(world, "SCH", 1, "left", 1))
+      assert.are.same(
+        { type = "ws", action = "Savage Blade", alias = "Big Hit", icon = "cure" },
+        stored(world, "SCH", 1, "left", 2)
+      )
+    end)
+
+    it("takes the markers in either order", function()
+      local commands, world = build({ icons = { ["icons/custom/cure.png"] = true } })
+      commands.command({ "bind", "1L1", "ma", "Cure IV", "icon=cure", "alias=Cure 4" })
+      assert.are.same(
+        { type = "ma", action = "Cure IV", alias = "Cure 4", icon = "cure" },
+        stored(world, "SCH", 1, "left", 1)
+      )
+    end)
+
+    it("says what a bare trailing word needed", function()
+      local commands, world = build()
+      local bare = text_of(commands.command({ "bind", "1L4", "warp", "Home" }))
+      local shot = text_of(commands.command({ "bind", "1L5", "ra", "t", "junk" }))
+      -- The actionable form, not the grammar in the abstract: a message
+      -- naming `alias=` alone is satisfied by any prose that mentions it.
+      assert.is_not_nil(bare:find('alias="Home"', 1, true), bare)
+      assert.is_not_nil(shot:find('alias="junk"', 1, true), shot)
+      local screen = text_of(commands.command({ "bind", "1R1", "open", "map", "extra" }))
+      assert.is_not_nil(screen:find('alias="extra"', 1, true), screen)
+      --[[ Quoted, because that is the form that works in ONE hop: the words
+           it names may end in a target token, and a bare `alias=junk me`
+           lands on the late-target refusal. A client that groups the quoted
+           run and one that splits it both read the label the same. ]]
+      -- ...and not offered at all where an alias is already on the line:
+      -- a second one is refused, so the advice would be a second refusal.
+      local taken = text_of(commands.command({ "bind", "1L4", "warp", "Home", "alias=Warp" }))
+      assert.is_not_nil(taken:find("drop Home", 1, true), taken)
+      assert.is_nil(taken:find('alias="Home"', 1, true), taken)
+      -- An EMPTY alias stores no label, so writing one is still the way out.
+      local empty = text_of(commands.command({ "bind", "1L4", "warp", "Home", "alias=" }))
+      assert.is_not_nil(empty:find('alias="Home"', 1, true), empty)
+      local pair = text_of(commands.command({ "bind", "1L6", "ra", "t", "junk", "me" }))
+      assert.is_not_nil(pair:find('alias="junk me"', 1, true), pair)
+      -- ra's ONE-word case went to the target advice alone, which tells a
+      -- type that takes no name to quote the name: `ra Shoot` is what the
+      -- old positional grammar's muscle memory types for a label.
+      local named = text_of(commands.command({ "bind", "1L7", "ra", "Shoot" }))
+      assert.is_not_nil(named:find('alias="Shoot"', 1, true), named)
+      assert.is_nil(stored(world, "SCH", 1, "left", 4))
+      assert.is_nil(stored(world, "SCH", 1, "left", 5))
+    end)
+
+    it("points at the label grammar when it cannot tell a name from a target", function()
+      -- The likeliest "I meant that as a label" mistake, and the one the old
+      -- positional grammar refused outright. Every other refusal in the
+      -- parser names the marker; this one said only "quote the name".
+      local commands = build()
+      local caution = text_of(commands.command({ "bind", "1L3", "ma", "Cure", "IV", "Healer" }))
+      assert.is_not_nil(caution:find('alias="Healer"', 1, true), caution)
+    end)
+
+    it("trims a whole-line type the way every other name is trimmed", function()
+      local commands, world = build()
+      commands.command({ "bind", "1R1", "ct", "p", "" })
+      assert.equal("p", stored(world, "SCH", 1, "right", 1).action)
+    end)
+
+    it("takes an empty argument as no word at all", function()
+      --[[ The old grammar's spelling for "an icon with no alias" was an
+           empty span, so `ja "Berserk" "" "attack"` is what an existing user
+           retypes. The bind it makes is junk either way - that is the cost
+           of replacing a grammar - but it must not be junk with a DOUBLE
+           space in it, nor second-guessed against an empty word, which cut
+           the shorter reading mid-name (`Savag`). ]]
+      local commands, world = build()
+      local legacy = text_of(commands.command({ "bind", "1L2", "ja", "Berserk", "", "attack" }))
+      assert.equal("Berserk attack", stored(world, "SCH", 1, "left", 2).action)
+      assert.is_not_nil(legacy:find("read 'Berserk'", 1, true), legacy)
+      local empty = text_of(commands.command({ "bind", "1L3", "ws", "Savage", "" }))
+      assert.equal("Savage", stored(world, "SCH", 1, "left", 3).action)
+      assert.is_nil(empty:find("read ", 1, true), "nothing was swallowed, so nothing to second-guess: " .. empty)
+    end)
+
+    it("second-guesses the name the client's own spaces were trimmed from", function()
+      --[[ The name is trimmed and the swallowed word is measured against
+           it, so a word arriving with the user's spaces still on it (a
+           grouped quoted run, `ws Savage "Blade "`) used to cut the shorter
+           reading mid-word and offer `Savag`. ]]
+      local commands = build()
+      local reply = text_of(commands.command({ "bind", "1L3", "ws", "Savage", "Blade " }))
+      assert.is_not_nil(reply:find("read 'Savage'", 1, true), reply)
+    end)
+
     it("leaves the swallowed-word check reading the name alone", function()
-      -- The labels and `absorbed` come out of one call now: a label must
-      -- not change which words the name is second-guessed over.
+      -- A label must not change which words the name is second-guessed over.
       local commands, world = build({ known = { ["Savage Blade"] = true } })
-      local reply, _, repaint = commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "Zeid", '"SB"' })
+      local reply, _, repaint = commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "Zeid", "alias=SB" })
       assert.is_string(reply)
       assert.is_not_nil(reply:find("is not an action", 1, true), reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3))
-      commands.command({ "bind", "1L4", "ws", "Savage", "Blade", "t", '"SB"' })
+      commands.command({ "bind", "1L4", "ws", "Savage", "Blade", "t", "alias=SB" })
       assert.are.same(
         { type = "ws", action = "Savage Blade", target = "t", alias = "SB" },
         stored(world, "SCH", 1, "left", 4)
@@ -545,124 +802,24 @@ describe("crossbar commands", function()
 
     it("leaves a bind's icon in place when the alias verb edits the entry", function()
       local commands, world = build({ icons = { ["icons/custom/cure.png"] = true } })
-      commands.command({ "bind", "1L1", "ma", '"Cure IV"', '"Cure 4"', '"cure"' })
-      commands.command({ "alias", "1L1", '"Cure V"' })
+      commands.command({ "bind", "1L1", "ma", "Cure IV", "alias=Cure 4", "icon=cure" })
+      commands.command({ "alias", "1L1", "Cure V" })
       assert.are.same(
         { type = "ma", action = "Cure IV", alias = "Cure V", icon = "cure" },
         stored(world, "SCH", 1, "left", 1)
       )
     end)
 
-    it("reads an icon after the alias", function()
-      local commands, world = build({ icons = { ["icons/custom/cure.png"] = true } })
-      commands.command({ "bind", "1L1", "ma", '"Cure IV"', '"Cure 4"', '"cure"' })
-      assert.are.same(
-        { type = "ma", action = "Cure IV", alias = "Cure 4", icon = "cure" },
-        stored(world, "SCH", 1, "left", 1)
-      )
-    end)
-
-    it('takes an empty slot on either side as "not this one"', function()
-      local commands, world = build({ icons = { ["icons/custom/rage.png"] = true } })
-      commands.command({ "bind", "1L2", "ja", '"Berserk"', '""', '"rage"' })
-      commands.command({ "bind", "1L3", "ja", '"Berserk"', '"Rage"', '""' })
-      assert.are.same({ type = "ja", action = "Berserk", icon = "rage" }, stored(world, "SCH", 1, "left", 2))
-      assert.are.same({ type = "ja", action = "Berserk", alias = "Rage" }, stored(world, "SCH", 1, "left", 3))
-    end)
-
-    it("reads a quoted alias after an unquoted multi-word name", function()
-      local commands, world = build()
-      local reply = commands.command({ "bind", "1L3", "ma", "Cure", "IV", '"Cure', '4"' })
-      assert.are.same(
-        { type = "ma", action = "Cure IV", alias = "Cure 4" },
-        stored(world, "SCH", 1, "left", 3),
-        text_of(reply)
-      )
-    end)
-
-    it("refuses a bare word where a label belongs", function()
-      local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "1L3", "ma", '"Cure IV"', '"Cure 4"', "please" })
-      assert.is_string(reply)
-      assert.is_falsy(repaint)
-      assert.is_nil(stored(world, "SCH", 1, "left", 3))
-    end)
-
-    it("labels the types that take no action name", function()
-      local commands, world = build({ icons = { ["assets/icons/items/warp-ring.png"] = true } })
-      commands.command({ "bind", "1L8", "warp", '"Warp"', '"items/warp-ring"' })
-      assert.are.same({ type = "warp", alias = "Warp", icon = "items/warp-ring" }, stored(world, "SCH", 1, "left", 8))
-    end)
-
-    it("keeps ra's target a target, quoted or not, and labels what follows", function()
-      local commands, world = build()
-      commands.command({ "bind", "1L5", "ra", "t", '"Shoot"' })
-      commands.command({ "bind", "1L6", "ra", '"t"', '"Shoot"' })
-      assert.are.same({ type = "ra", target = "t", alias = "Shoot" }, stored(world, "SCH", 1, "left", 5))
-      assert.are.same({ type = "ra", target = "t", alias = "Shoot" }, stored(world, "SCH", 1, "left", 6))
-    end)
-
-    it("labels a ct or ex line the user quoted", function()
-      local commands, world = build()
-      for slot, kind in ipairs({ "ct", "ex" }) do
-        commands.command({ "bind", "1R" .. slot, kind, '"/p', 'pulling"', '"Pull"' })
-        assert.are.same(
-          { type = kind, action = "/p pulling", alias = "Pull" },
-          stored(world, "SCH", 1, "right", slot),
-          kind
-        )
-      end
-    end)
-
-    it("leaves a quoted word inside an unquoted ct line alone", function()
-      -- The line was never delimited, so it still takes the whole rest of
-      -- it: a quoted word there is part of what gets said, not a label.
-      local commands, world = build()
-      commands.command({ "bind", "1R2", "ct", "party", "I", "am", '"here"' })
-      assert.are.same({ type = "ct", action = 'party I am "here"' }, stored(world, "SCH", 1, "right", 2))
-    end)
-
-    it("labels an open screen", function()
-      local commands, world = build({ icons = { ["icons/custom/chart.png"] = true } })
-      commands.command({ "bind", "1R3", "open", "map", '"Map"', '"chart"' })
-      assert.are.same(
-        { type = "open", action = "map", alias = "Map", icon = "chart" },
-        stored(world, "SCH", 1, "right", 3)
-      )
-    end)
-
-    it("refuses the whole bind when the icon names no art", function()
-      local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "1L1", "ja", '"Berserk"', '""', '"nosuchart"' })
-      assert.is_string(reply)
-      assert.is_not_nil(reply:find("icons/custom/nosuchart.png", 1, true), reply)
-      assert.is_falsy(repaint)
-      assert.is_nil(stored(world, "SCH", 1, "left", 1))
-      assert.are.same({}, world.saved, "a refused bind writes nothing at all")
-    end)
-
-    it("refuses a third label and an unterminated one", function()
-      local commands, world = build()
-      for _, words in ipairs({
-        { "bind", "1L3", "ma", '"Cure IV"', '"Cure 4"', '"cure"', '"more"' },
-        { "bind", "1L3", "ma", '"Cure IV"', '"Cure' },
-      }) do
-        local reply, _, repaint = commands.command(words)
-        assert.is_string(reply, words[5])
-        assert.is_falsy(repaint, words[5])
-      end
-      assert.is_nil(stored(world, "SCH", 1, "left", 3))
-    end)
-
     it("lists what would reproduce the bind, icon and all", function()
       --[[ The listing prints the record in the words `bind` takes, so a row
-           retyped BINDS THE SAME THING - which is what makes the icon a
-           positional label there rather than a named one: `icon "cure"`
-           reads back as a bare word the action name swallows. ]]
+           retyped BINDS THE SAME THING. The row is split on whitespace here,
+           which is the WORST the client could do to it: the quotes a value
+           is printed with survive that split, and the marker reassembles
+           what they hold either way. ]]
       local commands, world = build({ icons = { ["icons/custom/cure.png"] = true } })
-      commands.command({ "bind", "1L1", "ma", "Cure", "IV", "<p1>", '"Cure 4"', '"cure"' })
+      commands.command({ "bind", "1L1", "ma", "Cure", "IV", "<p1>", "alias=Cure 4", "icon=cure" })
       local listed = text_of(commands.command({ "list", "1" }))
-      assert.is_not_nil(listed:find('"Cure 4" "cure"', 1, true), listed)
+      assert.is_not_nil(listed:find('alias="Cure 4" icon="cure"', 1, true), listed)
       local words = { "bind", "1L2" }
       for word in listed:match("1L1%s+(.-)%s+%["):gmatch("%S+") do
         words[#words + 1] = word
@@ -672,112 +829,62 @@ describe("crossbar commands", function()
       assert.equal("cure", stored(world, "SCH", 1, "left", 2).icon)
     end)
 
-    it("lists a labelled chat line so that retyping the row binds the same line", function()
-      --[[ A chat line is the one action name `bind` does not delimit for
-           itself, so the row has to - and a line carrying quotes of its own
-           is where that turns into a real parse: the line ends at the quote
-           the LABELS follow, not at the first one to close. ]]
-      local commands, world = build()
-      commands.command({ "bind", "1R1", "ct", '"/p', 'pulling"', '"Pull"' })
-      commands.command({ "bind", "1R3", "ct", "/p", '"Odin"', "up" })
-      commands.command({ "alias", "1R3", '"Greet"' })
+    it("lists an icon with no alias so that retyping the row binds the same thing", function()
+      -- The one shape the round trip above does not reach: `record_label`
+      -- skips the alias branch entirely, and the icon has to stand alone.
+      local commands, world = build({ icons = { ["icons/custom/rage.png"] = true } })
+      commands.command({ "bind", "1L2", "ja", "Berserk", "icon=rage" })
       local listed = text_of(commands.command({ "list", "1" }))
-      for from, to in pairs({ ["1R1"] = 2, ["1R3"] = 4 }) do
-        local words = { "bind", "1R" .. to }
-        for word in listed:match(from .. "%s+(.-)%s+%["):gmatch("%S+") do
-          words[#words + 1] = word
-        end
-        commands.command(words)
-        assert.are.same(
-          stored(world, "SCH", 1, "right", tonumber(from:sub(3))),
-          stored(world, "SCH", 1, "right", to),
-          table.concat(words, " ")
-        )
+      assert.is_not_nil(listed:find('icon="rage"', 1, true), listed)
+      local words = { "bind", "1L3" }
+      for word in listed:match("1L2%s+(.-)%s+%["):gmatch("%S+") do
+        words[#words + 1] = word
       end
-      assert.are.same({ type = "ct", action = '/p "Odin" up', alias = "Greet" }, stored(world, "SCH", 1, "right", 4))
+      commands.command(words)
+      assert.are.same({ type = "ja", action = "Berserk", icon = "rage" }, stored(world, "SCH", 1, "left", 3))
     end)
 
-    it("ends a quoted line at the quote its labels follow, not the first one", function()
+    it("lists a chat line carrying quotes so that retyping the row says the same line", function()
+      -- The headline of the re-quoting: `record_label` prints the action
+      -- unquoted, and re-entry has to put the same quotes back.
       local commands, world = build()
-      commands.command({ "bind", "1R1", "ct", '"/p', '"Odin"', 'up"', '"Greet"' })
-      assert.are.same({ type = "ct", action = '/p "Odin" up', alias = "Greet" }, stored(world, "SCH", 1, "right", 1))
-    end)
-
-    it("says a target arrived too late rather than telling you to quote it", function()
-      -- Quoting it, as the plain complaint advises, lands on the icon
-      -- refusal instead: the word is a target, and a target has a place.
-      local commands = build()
-      local reply = text_of(commands.command({ "bind", "1L3", "ma", '"Cure IV"', '"Heal"', "p1" }))
-      assert.is_not_nil(reply:find("before the alias", 1, true), reply)
-      assert.is_not_nil(reply:find("p1", 1, true), reply)
-    end)
-
-    it("lists an icon with no alias as the empty slot bind takes", function()
-      local commands = build({ icons = { ["icons/custom/rage.png"] = true } })
-      commands.command({ "bind", "1L2", "ja", '"Berserk"', '""', '"rage"' })
+      commands.command({ "bind", "1R1", "ct", "ma", "Cure IV", "<t>", "alias=Cure" })
       local listed = text_of(commands.command({ "list", "1" }))
-      assert.is_not_nil(listed:find('"" "rage"', 1, true), listed)
-    end)
-
-    it("keeps asking past a quote a label would have to carry", function()
-      --[[ `/p "a" "b"` closes three times before its labels, and the tail
-           after the FIRST close reads as two labels plus a third - which is
-           only an overflow where all three are labels anyone would write. A
-           label carrying a quote says the line runs on, so the search does
-           too. ]]
-      local commands, world = build({ icons = { ["icons/custom/attack.png"] = true } })
-      commands.command({ "bind", "1R1", "ct", '"/p', '"a"', '"b""', '"Pull"', '"attack"' })
-      commands.command({ "bind", "1R2", "ct", '"/p', '"a"', '"b"', '"c"', '"d""' })
+      local words = { "bind", "1R2" }
+      for word in listed:match("1R1%s+(.-)%s+%["):gmatch("%S+") do
+        words[#words + 1] = word
+      end
+      commands.command(words)
       assert.are.same(
-        { type = "ct", action = '/p "a" "b"', alias = "Pull", icon = "attack" },
-        stored(world, "SCH", 1, "right", 1)
+        { type = "ct", action = 'ma "Cure IV" <t>', alias = "Cure" },
+        stored(world, "SCH", 1, "right", 2),
+        table.concat(words, " ")
       )
-      assert.are.same({ type = "ct", action = '/p "a" "b" "c" "d"' }, stored(world, "SCH", 1, "right", 2))
     end)
 
-    it("names the fix when a target lands after the labels or twice", function()
-      -- Never advice that lands back on the same refusal: a target already
-      -- in front cannot be moved there, so a second one is one to drop.
-      local commands = build()
-      local late = text_of(commands.command({ "bind", "1L5", "ra", '"Shoot"', "t" }))
-      local twice = text_of(commands.command({ "bind", "1L3", "ma", '"Cure IV"', "t", "p1" }))
-      local twice_ra = text_of(commands.command({ "bind", "1L6", "ra", "t", "p1" }))
-      local junk = text_of(commands.command({ "bind", "1L7", "ra", "t", "junk" }))
-      assert.is_not_nil(late:find("in front", 1, true), late)
-      assert.is_not_nil(twice:find("one target", 1, true), twice)
-      assert.is_not_nil(twice_ra:find("one target", 1, true), twice_ra)
-      assert.is_not_nil(junk:find("junk", 1, true), junk)
-      assert.is_not_nil(junk:find("quote", 1, true), junk)
-    end)
-
-    it("refuses a third label on a quoted ct line rather than mangling it", function()
-      -- The tail IS labels, so the count is the complaint: falling back to
-      -- the whole-line reading would store an unbalanced quote as a chat
-      -- line and call it a success.
-      local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "1R1", "ct", '"/p hi"', '"a"', '"x"', '"c"' })
-      assert.is_string(reply)
-      assert.is_falsy(repaint)
-      assert.is_nil(stored(world, "SCH", 1, "right", 1))
-    end)
-
-    it("says what an unquoted trailing word needed, on either kind of line", function()
-      local commands, world = build()
-      local line = commands.command({ "bind", "1R2", "ct", '"/p hi"', "Pull" })
-      local bare = commands.command({ "bind", "1L4", "warp", "Home" })
-      assert.is_not_nil(text_of(line):find("quote"), text_of(line))
-      assert.is_not_nil(text_of(bare):find("Home", 1, true), text_of(bare))
-      assert.is_not_nil(text_of(bare):find("alias", 1, true), text_of(bare))
-      assert.is_nil(stored(world, "SCH", 1, "right", 2))
-      assert.is_nil(stored(world, "SCH", 1, "left", 4))
+    it("lists a labelled chat line so that retyping the row binds the same line", function()
+      -- A chat line ends at the marker, so the row needs no quoting of its
+      -- own for its labels to read as labels.
+      local commands, world = build({ icons = { ["icons/custom/attack.png"] = true } })
+      commands.command({ "bind", "1R1", "ct", "p", "pulling", "alias=Pull", "icon=attack" })
+      local listed = text_of(commands.command({ "list", "1" }))
+      local words = { "bind", "1R2" }
+      for word in listed:match("1R1%s+(.-)%s+%["):gmatch("%S+") do
+        words[#words + 1] = word
+      end
+      commands.command(words)
+      assert.are.same(
+        { type = "ct", action = "p pulling", alias = "Pull", icon = "attack" },
+        stored(world, "SCH", 1, "right", 2)
+      )
     end)
 
     it("echoes the alias and the icon it stored", function()
       local commands, world = build({ icons = { ["icons/custom/cure.png"] = true } })
-      local reply = commands.command({ "bind", "1L1", "ma", '"Cure IV"', "p1", '"Cure 4"', '"cure"' })
+      local reply = commands.command({ "bind", "1L1", "ma", "Cure IV", "p1", "alias=Cure 4", "icon=cure" })
       local told = text_of(reply)
-      assert.is_not_nil(told:find('"Cure 4"', 1, true), told)
-      assert.is_not_nil(told:find("cure", 1, true), told)
+      assert.is_not_nil(told:find('alias="Cure 4"', 1, true), told)
+      assert.is_not_nil(told:find('icon="cure"', 1, true), told)
       assert.equal("Cure 4", stored(world, "SCH", 1, "left", 1).alias)
     end)
 
@@ -786,8 +893,8 @@ describe("crossbar commands", function()
       local told = text_of(commands.command({ "help" }))
       local line = told:match("[^\n]*crossbar bind[^\n]*")
       assert.is_not_nil(line, told)
-      assert.is_not_nil(line:find('"<alias>"', 1, true), line)
-      assert.is_not_nil(line:find('"<icon>"', 1, true), line)
+      assert.is_not_nil(line:find("alias=<name>", 1, true), line)
+      assert.is_not_nil(line:find("icon=<name>", 1, true), line)
     end)
   end)
 
@@ -812,13 +919,16 @@ describe("crossbar commands", function()
       -- supported and name only readings that work.
       local commands = build({ known = { ["Savage Blade"] = true } })
       local refusal = commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "Kevin" })
-      local quoted = commands.command({ "bind", "1L3", "ws", '"Savage', 'Blade"', "Kevin" })
-      for _, reply in ipairs({ refusal, quoted }) do
-        assert.is_string(reply)
-        assert.is_not_nil(reply:find("not supported yet", 1, true), reply)
-        assert.is_nil(reply:find("aimed at", 1, true), "it must not send them back to the refused form: " .. reply)
-      end
-      assert.is_not_nil(refusal:find("quote the whole name", 1, true), refusal)
+      assert.is_string(refusal)
+      assert.is_not_nil(refusal:find("not supported yet", 1, true), refusal)
+      assert.is_nil(refusal:find("aimed at", 1, true), "it must not send them back to the refused form: " .. refusal)
+      --[[ And no longer "quote the whole name": the addon has just
+           established that the whole name is NOT an action, and quoting it
+           now reaches the parser as one word that binds - a command that can
+           never fire. What is left are the two readings that work. ]]
+      assert.is_nil(refusal:find("quote the whole name", 1, true), refusal)
+      assert.is_not_nil(refusal:find("a10-a15", 1, true), refusal)
+      assert.is_not_nil(refusal:find('alias="Kevin"', 1, true), refusal)
     end)
 
     it("takes the whole phrase when that is what the client knows", function()
@@ -920,13 +1030,11 @@ describe("crossbar commands", function()
       assert.are.equal(2, world.saved.SCH, "the bind, then the alias - both written")
     end)
 
-    it("refuses an unterminated quote like bind does", function()
+    it("keeps an unbalanced quote in the name, as bind does", function()
       local commands, world = build()
       commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
-      local reply, _, repaint = commands.command({ "alias", "1L3", '"Big', "Hit" })
-      assert.is_string(reply)
-      assert.is_falsy(repaint)
-      assert.is_nil(stored(world, "SCH", 1, "left", 3).alias)
+      commands.command({ "alias", "1L3", '"Big', "Hit" })
+      assert.equal('"Big Hit', stored(world, "SCH", 1, "left", 3).alias)
     end)
 
     it("clears the override when the name is omitted", function()

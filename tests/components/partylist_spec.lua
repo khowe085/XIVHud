@@ -130,11 +130,9 @@ describe("partylist widget", function()
     -- which keeps a block about one list counting only that list's prims.
     widget.set_scale(1, anchor)
     widget.set_pos(100, 200, anchor)
-    -- The alliance lists ship switched off, so a block about one has to turn
-    -- it on the way a user would.
-    if anchor ~= "main" then
-      widget.handle_command({ anchor, "on" })
-    end
+    -- A bare show is the widget's own switch, and puts every list up: the
+    -- alliance lists ship hidden through the framework's per-anchor `visible`,
+    -- which is core's to push and not this widget's to hold.
     widget.show()
     return widget
   end
@@ -1138,10 +1136,30 @@ describe("partylist widget", function()
     end)
   end)
   --[[ The three lists are ONE registered component with three anchors, so the
-       framework places each of them independently while owning a single
-       `visible` flag for the widget. Everything here is the anchor half of the
-       widget contract; the per-list on/off that replaced `//hud hide
-       alliancelist1` is with the commands. ]]
+       framework places each of them independently, and switches each of them
+       on and off independently too. Everything here is the anchor half of the
+       widget contract. ]]
+  --[[ The alliance lists ship switched off - most play is a single party, and
+       two empty boxes read as a bug. That is a per-anchor `visible` in the
+       LAYOUT defaults now, which core reads and pushes, rather than a config
+       flag the component enforced itself. ]]
+  describe("the shipped per-anchor visibility", function()
+    it("ships both alliance lists hidden and the main party shown", function()
+      build()
+      local anchors = widget.defaults.layout.anchors
+      assert.is_false(anchors.alliance1.visible)
+      assert.is_false(anchors.alliance2.visible)
+      assert.is_nil(anchors.main.visible, "absent means shown")
+    end)
+
+    it("keeps no on/off flag of its own in the config defaults", function()
+      build()
+      for _, name in ipairs({ "main", "alliance1", "alliance2" }) do
+        assert.is_nil(widget.defaults.lists[name].enabled, name .. " must not carry a second switch")
+      end
+    end)
+  end)
+
   describe("multi-anchor contract", function()
     it("declares its three anchors, main first", function()
       build()
@@ -1263,8 +1281,6 @@ describe("partylist widget", function()
   describe("the framework's whole-widget calls", function()
     local function all_three_drawing()
       build()
-      widget.handle_command({ "alliance1", "on" })
-      widget.handle_command({ "alliance2", "on" })
       for _, name in ipairs({ "alliance1", "alliance2" }) do
         widget.set_scale(1, name)
         widget.set_pos(700, 200, name)
@@ -1294,6 +1310,91 @@ describe("partylist widget", function()
       nothing_visible()
     end)
 
+    --[[ Per-anchor visibility is the framework's now: core sends hide(<list>)
+         for a list switched off in the layout file and show(<list>) for one
+         that is on, and the component's own `enabled` flag is gone with the
+         commands that wrote it. ]]
+    it("takes one list off screen on hide(<list>) and leaves the others", function()
+      all_three_drawing()
+      widget.hide("alliance1")
+      settle(2)
+      local drawn = {}
+      for _, prim in ipairs(prims.texts) do
+        if prim.visible then
+          drawn[tostring(prim.last.text)] = true
+        end
+      end
+      assert.is_nil(drawn.Zeid, "alliance1 was hidden")
+      assert.is_true(drawn.Ayame)
+      assert.is_true(drawn.Curilla)
+    end)
+
+    it("brings one list back on show(<list>)", function()
+      all_three_drawing()
+      widget.hide("alliance1")
+      settle(2)
+      widget.show("alliance1")
+      settle(2)
+      local drawn = false
+      for _, prim in ipairs(prims.texts) do
+        drawn = drawn or (prim.visible and prim.last.text == "Zeid")
+      end
+      assert.is_true(drawn)
+    end)
+
+    -- Core walks the anchors in declared order, so a show for one arrives
+    -- among hides for the others: restoring the lot on a NAMED show would put
+    -- a list back on screen with the file still saying it is off.
+    it("leaves the other hidden lists alone on a named show", function()
+      all_three_drawing()
+      widget.hide("alliance1")
+      widget.hide("alliance2")
+      widget.show("alliance2")
+      settle(2)
+      local drawn = {}
+      for _, prim in ipairs(prims.texts) do
+        if prim.visible then
+          drawn[tostring(prim.last.text)] = true
+        end
+      end
+      assert.is_true(drawn.Curilla, "alliance2 was the one asked for")
+      assert.is_nil(drawn.Zeid, "alliance1 must stay down")
+    end)
+
+    -- A whole-widget show is what core sends in layout mode, and it has to
+    -- undo a per-anchor hide or a hidden list could never be dragged back.
+    it("brings every list back on a whole-widget show", function()
+      all_three_drawing()
+      widget.hide("alliance1")
+      widget.hide("alliance2")
+      widget.show()
+      settle(2)
+      local drawn = {}
+      for _, prim in ipairs(prims.texts) do
+        if prim.visible then
+          drawn[tostring(prim.last.text)] = true
+        end
+      end
+      assert.is_true(drawn.Zeid)
+      assert.is_true(drawn.Curilla)
+    end)
+
+    -- An anchor name that is not ours has to cost nothing, the way every other
+    -- anchor-addressed call on this widget treats one.
+    it("ignores a show or hide for an anchor it does not have", function()
+      all_three_drawing()
+      assert.has_no.errors(function()
+        widget.hide("wobble")
+        widget.show("wobble")
+      end)
+      settle(2)
+      local drawn = false
+      for _, prim in ipairs(prims.texts) do
+        drawn = drawn or (prim.visible and prim.last.text == "Zeid")
+      end
+      assert.is_true(drawn, "no list may go down for a name that addresses none of them")
+    end)
+
     it("takes every list off screen on detach", function()
       all_three_drawing()
       widget.detach()
@@ -1308,7 +1409,6 @@ describe("partylist widget", function()
       widget.detach()
       local before = env.saves
       widget.handle_command({ "spacing", "4" })
-      widget.handle_command({ "alliance1", "on" })
       assert.are.equal(before, env.saves)
     end)
 
@@ -1319,7 +1419,6 @@ describe("partylist widget", function()
     -- next is the silent failure this repo keeps being bitten by.
     it("draws a list the moment it is placed, without waiting to be shown again", function()
       build()
-      widget.handle_command({ "alliance1", "on" })
       widget.show()
       env.party = { a10 = member("Zeid", 3) }
       settle(2)
@@ -1350,7 +1449,6 @@ describe("partylist widget", function()
          the rest of this file relies on to mean "on screen". ]]
     it("draws nothing for a list that has been shown but never placed", function()
       build()
-      widget.handle_command({ "alliance1", "on" })
       widget.show()
       for _, prim in ipairs(prims.all) do
         if prim.visible then
@@ -1362,10 +1460,9 @@ describe("partylist widget", function()
 
   --[[ `//hud partylist [<list>] <verb> ...`. The list word leads, and its
        absence means the main party - so every line that worked while the three
-       were separate components still means what it did. The per-list on/off
-       replaces `//hud show|hide alliancelist1`, which cannot exist any more:
-       the framework's `visible` is per widget and nothing in `//hud` addresses
-       an anchor. ]]
+       were separate components still means what it did. Switching one list on
+       and off is NOT here: `//hud show|hide partylist <list>` is the
+       framework's, addressing the anchor. ]]
   describe("the command router", function()
     local function said(args)
       return table.concat(widget.handle_command(args), "\n")
@@ -1385,32 +1482,28 @@ describe("partylist widget", function()
       assert.are.equal(0, widget.defaults.lists.main.item_spacing)
     end)
 
-    it("switches one list on and off, and persists it", function()
+    -- The per-list on/off is the framework's now (`//hud show|hide partylist
+    -- <list>`, and SHIFT + right-click in layout mode), so the verb that used
+    -- to write it is gone rather than kept as a second switch beside it.
+    --[[ It worked yesterday, so it is worth naming where it went rather than
+         answering with the generic hint - which cannot name it either, since
+         `//hud show|hide` is the framework's and this module knows nothing
+         about it. ]]
+    it("points its removed on|off verb at the framework's switch", function()
       build()
-      local before = env.saves
-      said({ "alliance1", "on" })
-      assert.is_true(widget.defaults.lists.alliance1.enabled)
-      assert.is_true(env.saves > before)
-      said({ "alliance1", "off" })
-      assert.is_false(widget.defaults.lists.alliance1.enabled)
+      local reply = said({ "alliance1", "off" })
+      assert.is_not_nil(reply:find("//hud hide partylist alliance1", 1, true), "said: " .. reply)
+      assert.is_not_nil(said({ "on" }):find("//hud show partylist main", 1, true))
+      assert.is_nil(said({ "alliance1" }):find("enabled", 1, true))
     end)
 
-    it("stops drawing a list that has been switched off", function()
-      build("alliance1")
-      env.party = { a10 = member("Zeid", 3) }
-      settle(2)
-      local drawn = false
-      for _, prim in ipairs(prims.texts) do
-        drawn = drawn or (prim.visible and prim.last.text == "Zeid")
-      end
-      assert.is_true(drawn, "the list has to be on screen before it can be switched off")
-
-      said({ "alliance1", "off" })
-      for _, prim in ipairs(prims.texts) do
-        if prim.last.text == "Zeid" then
-          assert.is_false(prim.visible)
-        end
-      end
+    -- A hint that offers a verb the next line refuses is worse than no hint.
+    it("stops offering on and off in the verb hint", function()
+      build()
+      local hint = said({ "alliance1", "wobble" })
+      assert.is_nil(hint:find("on,", 1, true), "hint: " .. hint)
+      assert.is_nil(hint:find("off,", 1, true), "hint: " .. hint)
+      assert.is_not_nil(hint:find("spacing", 1, true))
     end)
 
     -- The asymmetry is real - 0x076 carries the main party alone and the
@@ -1461,48 +1554,9 @@ describe("partylist widget", function()
       local all = said({})
       assert.is_not_nil(all:find("partylist alliance1", 1, true))
       assert.is_not_nil(all:find("partylist alliance2", 1, true))
-      assert.is_not_nil(all:find("disabled", 1, true))
       local one = said({ "alliance2" })
       assert.is_not_nil(one:find("partylist alliance2", 1, true))
       assert.is_nil(one:find("alliance1", 1, true))
-    end)
-
-    -- Every other verb plumbs `changed` back so an unchanged setting writes no
-    -- file; the switch has to do the same.
-    it("writes no config when the switch is already where it is asked to be", function()
-      build()
-      said({ "alliance1", "on" })
-      local after_change = env.saves
-      said({ "alliance1", "on" })
-      assert.are.equal(after_change, env.saves)
-      said({ "alliance1", "off" })
-      assert.is_true(env.saves > after_change)
-    end)
-
-    it("takes a bare on|off as the main party's", function()
-      build()
-      said({ "off" })
-      assert.is_false(widget.defaults.lists.main.enabled)
-      said({ "on" })
-      assert.is_true(widget.defaults.lists.main.enabled)
-    end)
-
-    --[[ Deliberately NOT "shown"/"hidden": that is the framework's word for the
-         whole widget (`//hud hide partylist`, and what `//hud list` prints), and
-         one word for two independent switches is how a report ends up saying a
-         list is on while nothing is on screen. ]]
-    it("says whether the list it reports on is enabled, in words the framework does not use", function()
-      build()
-      local reply = said({ "alliance1" })
-      assert.is_nil(reply:find("hidden", 1, true))
-      assert.is_nil(reply:find("shown", 1, true))
-    end)
-
-    it("says whether the list it reports on is switched on", function()
-      build()
-      assert.is_not_nil(said({ "alliance1" }):find("disabled", 1, true))
-      said({ "alliance1", "on" })
-      assert.is_not_nil(said({ "alliance1" }):find("enabled", 1, true))
     end)
 
     it("answers an unknown verb with the hint it always did", function()
@@ -1512,25 +1566,27 @@ describe("partylist widget", function()
   end)
 
   --[[ PA4: a list switched off must still be draggable, or it can never be
-       positioned again. Core force-shows the COMPONENT in layout mode and
-       knows nothing about this component's own per-list flag, so preview
-       outranking `shown` is the component's half of that force-show. ]]
-  describe("preview against a switched-off list", function()
-    it("draws a list that is off while previewing, and stops when it ends", function()
+       positioned again. In layout mode core sends the WIDGET's show - never a
+       per-anchor one - so a hidden list comes back up with the rest, and its
+       bounds have to be right whether or not it is drawing. ]]
+  describe("layout mode against a switched-off list", function()
+    it("draws a list that is off once the widget is force-shown, and stops after", function()
       build("alliance1")
-      widget.handle_command({ "alliance1", "off" })
+      widget.hide("alliance1")
       env.party = { a10 = member("Zeid", 3) }
       settle(2)
 
+      widget.show()
       widget.set_preview(true)
       settle(2)
       local drawn = false
       for _, prim in ipairs(prims.texts) do
         drawn = drawn or (prim.visible and type(prim.last.text) == "string" and prim.last.text ~= "")
       end
-      assert.is_true(drawn, "a switched-off list must draw while previewing")
+      assert.is_true(drawn, "a switched-off list must draw in layout mode")
 
       widget.set_preview(false)
+      widget.hide("alliance1")
       for _, prim in ipairs(prims.texts) do
         assert.is_false(prim.visible)
       end
@@ -1538,7 +1594,7 @@ describe("partylist widget", function()
 
     it("reports bounds for a switched-off list, so it can still be dragged", function()
       build("alliance1")
-      widget.handle_command({ "alliance1", "off" })
+      widget.hide("alliance1")
       local x, y, width = widget.get_bounds("alliance1")
       assert.are.same({ 100, 200 }, { x, y })
       assert.is_true(width > 0)
@@ -1587,29 +1643,6 @@ describe("partylist widget", function()
       end
     end)
 
-    --[[ The round trip of this change's headline behaviour: the flag is saved
-         to config.lua, and a relog, a `//hud slot` switch and the reload after
-         `//hud copy` all come back through attach. Read it there or the list
-         comes up in whatever state the factory happened to leave it in, with
-         the file saying otherwise. ]]
-    it("takes each list's on/off state from the config it is attached to", function()
-      attach({ lists = { main = { enabled = false }, alliance1 = { enabled = true } } })
-      widget.set_scale(1, "alliance1")
-      widget.set_pos(400, 200, "alliance1")
-      env.party = { p0 = member("Ayame", 1), a10 = member("Zeid", 3) }
-      settle(2)
-
-      local main_drawn, ally_drawn = false, false
-      for _, prim in ipairs(prims.texts) do
-        if prim.visible then
-          main_drawn = main_drawn or prim.last.text == "Ayame"
-          ally_drawn = ally_drawn or prim.last.text == "Zeid"
-        end
-      end
-      assert.is_false(main_drawn, "main was switched off in the config")
-      assert.is_true(ally_drawn, "alliance1 was switched on in the config")
-    end)
-
     -- Writing into the defaults instead would make every command a silent
     -- no-op: save() serialises the config it was attached to, which would never
     -- have seen the change.
@@ -1619,9 +1652,9 @@ describe("partylist widget", function()
       widget.handle_command({ "spacing", "4" })
       assert.are.equal(4, config.lists.main.item_spacing)
       assert.are.equal(0, widget.defaults.lists.main.item_spacing)
-      widget.handle_command({ "alliance1", "on" })
-      assert.is_true(config.lists.alliance1.enabled)
-      assert.is_false(widget.defaults.lists.alliance1.enabled)
+      widget.handle_command({ "alliance1", "spacing", "9" })
+      assert.are.equal(9, config.lists.alliance1.item_spacing)
+      assert.are.equal(0, widget.defaults.lists.alliance1.item_spacing)
     end)
   end)
 end)

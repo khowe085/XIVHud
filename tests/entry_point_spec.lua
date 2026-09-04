@@ -30,6 +30,7 @@ describe("entry point", function()
       assert.is_not_nil(boot.handlers["incoming chunk"])
       assert.is_not_nil(boot.ctxs.targetbar)
       assert.is_not_nil(boot.ctxs.crossbar)
+      assert.is_not_nil(boot.ctxs.speedcheck)
     end)
 
     --[[ The party list is ONE registration over three anchors. It was three
@@ -65,6 +66,10 @@ describe("entry point", function()
       assert.are.equal(boot.ctxs.parambar.get_player, boot.ctxs.targetbar.get_player)
       assert.are.equal(boot.ctxs.partylist.get_party, boot.ctxs.targetbar.get_party)
       assert.are.equal(boot.ctxs.partylist.get_mob_by_target, boot.ctxs.crossbar.get_mob_by_target)
+      --[[ speedcheck reads the mob table on the TICK, which is only affordable
+           because this is the service's memoized lookup rather than a client
+           read of its own. ]]
+      assert.are.equal(boot.ctxs.targetbar.get_mob_by_target, boot.ctxs.speedcheck.get_mob_by_target)
     end)
 
     --[[ The two widgets that gate a rebuild on the counter go quiet without it -
@@ -93,6 +98,9 @@ describe("entry point", function()
       assert.is_function(boot.ctxs.partylist.generation)
       assert.is_function(boot.ctxs.targetbar.generation)
       assert.is_function(boot.ctxs.crossbar.generation)
+      -- speedcheck polls the mob table on its tick and has nothing else to
+      -- pace it: without the counter it would read the client every frame.
+      assert.is_function(boot.ctxs.speedcheck.generation)
       assert.are.equal(boot.ctxs.partylist.generation, boot.ctxs.targetbar.generation)
       assert.are.equal(boot.ctxs.partylist.generation, boot.ctxs.crossbar.generation)
       assert.is_number(boot.ctxs.targetbar.generation())

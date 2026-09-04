@@ -36,10 +36,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      The three lists are one component with three anchors, so each list's own
      display settings are namespaced under `lists.<anchor>`: the anchor name is
      the single key across the config, the code, the command word and the
-     layout-mode label. XIVParty's hideAlliance is `lists.<anchor>.enabled` here -
-     the framework's `visible` governs the whole widget, so the per-list on/off
-     has to be the component's own, and carries its own word for the same
-     reason: `shown` is what the framework's switch is called. ]]
+     layout-mode label. XIVParty's hideAlliance is the framework's PER-ANCHOR
+     `visible` - `layout.anchors.<name>.visible`, seeded false for the two
+     alliance lists below - so there is no second on/off in here to disagree
+     with it. ]]
 
 -- XIVParty's relative first-run anchors, resolution independent.
 local ANCHORS = {
@@ -71,11 +71,6 @@ local function list_defaults(name)
     item_spacing = 0, -- party.itemSpacing
     align_bottom = false, -- party.alignBottom
     show_empty_rows = false, -- party.showEmptyRows
-    -- The alliance lists start switched off: most play is a single party,
-    -- and two empty boxes on screen would read as a bug. Deliberately not
-    -- called `shown`: the framework has a `visible` of its own over the whole
-    -- widget, and one word for two switches makes a report that cannot be read.
-    enabled = name == "main", -- party.hideAlliance, inverted and per list
   }
 
   if name == "main" then
@@ -121,6 +116,13 @@ return function(screen_width, screen_height)
       },
       scale = scale,
     }
+    -- XIVParty's hideAlliance: most play is a single party, and two empty
+    -- boxes on screen would read as a bug. Only the anchors that start off
+    -- carry the key - absent means shown, so main says nothing. Written as a
+    -- statement because `cond and false or nil` yields nil for both answers.
+    if name ~= "main" then
+      anchors[name].visible = false
+    end
   end
 
   -- No top-level pos or scale: layout.repair keys the anchored branch off the
