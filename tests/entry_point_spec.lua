@@ -30,6 +30,7 @@ describe("entry point", function()
       assert.is_not_nil(boot.handlers["incoming chunk"])
       assert.is_not_nil(boot.ctxs.targetbar)
       assert.is_not_nil(boot.ctxs.crossbar)
+      assert.is_not_nil(boot.ctxs.speedcheck)
     end)
 
     --[[ The party list is ONE registration over three anchors. It was three
@@ -69,6 +70,37 @@ describe("entry point", function()
     end)
   end)
 
+  --[[ The exp bar reads packets nothing else does, and asks the client for the
+       last of two of them at attach. Neither the dep nor its pcall is visible
+       from the component's own spec. ]]
+  describe("the exp bar", function()
+    it("reads the player through the service, like every other component", function()
+      assert.are.equal(boot.ctxs.parambar.get_player, boot.ctxs.expbar.get_player)
+    end)
+
+    it("shares the one packet parser", function()
+      assert.are.equal(boot.ctxs.giltracker.parse_packet, boot.ctxs.expbar.parse_packet)
+    end)
+
+    it("hands over the last packet the client sent, without its timestamp", function()
+      boot.last_incoming[0x061] = "the char stats bytes"
+      assert.are.same({ "the char stats bytes" }, { boot.ctxs.expbar.last_incoming(0x061) })
+      assert.are.same({ 0x061 }, boot.last_incoming_asked)
+    end)
+
+    it("answers nil rather than throwing where windower.packets is not there", function()
+      boot.last_incoming_raises = true
+      assert.is_nil(boot.ctxs.expbar.last_incoming(0x061))
+    end)
+
+    it("sits out when the packets library did not load", function()
+      local without = harness.boot({ require_fails = { packets = "no packets library" } })
+      assert.is_nil(without.ctxs.expbar)
+      -- The bar that needs no library is still there.
+      assert.is_not_nil(without.ctxs.targetbar)
+    end)
+  end)
+
   --[[ The player service. Which client reads reach the client, and how the
        vitals events reconcile against them, is a decision made here and nowhere
        else -- a component is handed a getter and cannot tell what is behind it. ]]
@@ -81,6 +113,10 @@ describe("entry point", function()
       assert.are.equal(boot.ctxs.parambar.get_player, boot.ctxs.targetbar.get_player)
       assert.are.equal(boot.ctxs.partylist.get_party, boot.ctxs.targetbar.get_party)
       assert.are.equal(boot.ctxs.partylist.get_mob_by_target, boot.ctxs.crossbar.get_mob_by_target)
+      --[[ speedcheck reads the mob table on the TICK, which is only affordable
+           because this is the service's memoized lookup rather than a client
+           read of its own. ]]
+      assert.are.equal(boot.ctxs.targetbar.get_mob_by_target, boot.ctxs.speedcheck.get_mob_by_target)
     end)
 
     --[[ The two widgets that gate a rebuild on the counter go quiet without it -
@@ -91,6 +127,9 @@ describe("entry point", function()
       assert.is_function(boot.ctxs.partylist.generation)
       assert.is_function(boot.ctxs.targetbar.generation)
       assert.is_function(boot.ctxs.crossbar.generation)
+      -- speedcheck polls the mob table on its tick and has nothing else to
+      -- pace it: without the counter it would read the client every frame.
+      assert.is_function(boot.ctxs.speedcheck.generation)
       assert.are.equal(boot.ctxs.partylist.generation, boot.ctxs.targetbar.generation)
       assert.are.equal(boot.ctxs.partylist.generation, boot.ctxs.crossbar.generation)
       assert.is_number(boot.ctxs.targetbar.generation())

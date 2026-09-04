@@ -213,6 +213,12 @@ end)
 local new_crossbar = step("loading the crossbar component", function()
   return require("components/crossbar/crossbar")
 end)
+local new_speedcheck = step("loading the speedcheck component", function()
+  return require("components/speedcheck/speedcheck")
+end)
+local new_expbar = step("loading the expbar component", function()
+  return require("components/expbar/expbar")
+end)
 
 -- Every Windower handler goes through this, so a bug degrades to a message and
 -- a dead handler rather than an unexplained freeze.
@@ -657,6 +663,19 @@ local function parse_action(data)
   return ok and act or nil
 end
 
+--[[ The last packet the client sent with this id, for the exp bar: it is
+     attached on login and on every slot switch, and neither 0x061 nor 0x063 is
+     re-sent on request. Core API, like parse_action, and indexed INSIDE the
+     closure for the same reason - `pcall(windower.packets.last_incoming, id)`
+     would evaluate the index before the protected call. Only the data is
+     passed on; the timestamp beside it is the client's, not the addon's. ]]
+local function last_incoming(id)
+  local ok, data = pcall(function()
+    return windower.packets.last_incoming(id)
+  end)
+  return ok and data or nil
+end
+
 -- Whether the chat box has focus, for the crossbar's chat guard. Runs on
 -- every key event inside a guarded handler, so it must be nil-tolerant by
 -- construction - an input spike once died on exactly this call unguarded.
@@ -747,6 +766,23 @@ step("building the giltracker component", function()
   }))
 end)
 
+--[[ Gated on safe_mode alone, like parambar: the movement speed is one field
+     of the mob table, so nothing here needs the resource or packet
+     libraries. ]]
+step("building the speedcheck component", function()
+  if safe_mode then
+    return
+  end
+  core.register(new_speedcheck({
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    get_mob_by_target = read_mob_by_target,
+    generation = read_generation,
+    asset = asset,
+  }))
+end)
+
 step("building the equipviewer component", function()
   -- Same gate as giltracker: everything this component learns arrives through
   -- parse_packet, and without the packets library there is nothing it could
@@ -821,9 +857,9 @@ end)
 --[[ The status bar: the player's own buffs and debuffs on three anchored bars
      (`bar1`, `bar2`, `bar3`). Presence comes off the player service; the
      expiries ride the 0x063 chunk, which the component decodes itself - as
-     does the crossbar's skillchain engine, for the ids alone, which by the
-     rule above should make it a pre-parse here; deferred, see the component's
-     packets.lua. The wall clock is what the packet's timestamps count in.
+     do the crossbar's skillchain engine (this order, ids alone) and expbar
+     (order 2), which by the rule above should make it a pre-parse here;
+     deferred, see the component's packets.lua. The wall clock is what the packet's timestamps count in.
 
      Gated on safe_mode alone, targetbar's rule: the icons draw by id and the
      packet is decoded from raw bytes, so the resources only ever name a buff
@@ -950,6 +986,26 @@ step("building the crossbar component", function()
   }))
 end)
 
+--[[ Gated on libraries_error as well as safe_mode, like giltracker and the
+     equip viewer: `get_player()` carries no experience and no master level, so
+     everything this component draws arrives through parse_packet and there is
+     nothing useful it could do without the packets library. ]]
+step("building the expbar component", function()
+  if safe_mode or libraries_error then
+    return
+  end
+  core.register(new_expbar({
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
+    now = os.clock,
+    get_player = read_player,
+    parse_packet = parse_packet,
+    last_incoming = last_incoming,
+  }))
+end)
+
 -- A component that consumes input needs its handler for as long as it is
 -- registered, not just during layout mode. Decided from the registry rather
 -- than hardcoded, so a component dropping out (safe mode, a failed step)
@@ -987,6 +1043,11 @@ local function check_assets()
     expected[#expected + 1] = texture
   end
   expected[#expected + 1] = "assets/gil/gil.png"
+  -- speedcheck names one buff icon outright, so the directory sample above
+  -- does not speak for it.
+  expected[#expected + 1] = "assets/xiv/buffIcons/330.png"
+  expected[#expected + 1] = "assets/barfiller/bar_bg.png"
+  expected[#expected + 1] = "assets/barfiller/bar_fg.png"
   expected[#expected + 1] = "assets/encumbrance/encumbrance.png"
   expected[#expected + 1] = "assets/own/panel.png"
   for _, texture in ipairs({ "BarBG.png", "Bar.png", "BarFG.png", "CastBG.png", "CastBar.png", "CastFG.png" }) do

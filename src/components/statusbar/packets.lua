@@ -30,11 +30,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      list of your buffs WITH their expiry times - the only place a duration
      is ever reported (get_player().buffs and 0x076 carry ids alone).
 
-     Decoded from the raw bytes here. The packet has a second reader - the
+     Decoded from the raw bytes here. The packet id has other readers - the
      crossbar's skillchain engine, a transcription of the SkillChains addon,
-     reads the id array alone off the same raw bytes to know which of your
-     buffs affect a chain - so by the entry point's rule (one decode for an
-     id with more than one reader) this SHOULD be pre-parsed there. It is
+     reads this order's id array alone off the same raw bytes to know which
+     of your buffs affect a chain, and expbar reads order 2 (limit points
+     and merits) - so by the entry point's rule (one decode for an id with
+     more than one reader) this SHOULD be pre-parsed there. It is
      not, yet: the crossbar's decode is inside the transcribed module and
      takes raw data, so sharing one parse means rewiring it, which is
      deferred as an open item rather than done in the status bar's own

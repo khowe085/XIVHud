@@ -88,6 +88,8 @@ local function build_stubs(boot, options)
     ["components/equipviewer/equipviewer"] = component("equipviewer"),
     ["components/targetbar/targetbar"] = component("targetbar"),
     ["components/crossbar/crossbar"] = component("crossbar"),
+    ["components/speedcheck/speedcheck"] = component("speedcheck"),
+    ["components/expbar/expbar"] = component("expbar"),
   }
 
   for name, failure in pairs(options.require_fails or {}) do
@@ -172,6 +174,17 @@ local function build_windower(boot)
           error("cannot read that packet")
         end
         return boot.action
+      end,
+      --[[ The client answers (data, timestamp); the addon passes on the data
+           alone. `boot.last_incoming_raises` stands in for a client where
+           windower.packets is not there at all, which is the case the pcall
+           around it exists for. ]]
+      last_incoming = function(id)
+        boot.last_incoming_asked[#boot.last_incoming_asked + 1] = id
+        if boot.last_incoming_raises then
+          error("no such packet table")
+        end
+        return boot.last_incoming[id], 12345
       end,
     },
     --[[ The four reads the player service caches are counted, because how many
@@ -297,6 +310,10 @@ function M.boot(options)
     -- What the fake windower.packets.parse_action answers with.
     action = { category = 8, param = 0, targets = {} },
     action_raises = false,
+    -- What the fake windower.packets.last_incoming answers with, per id.
+    last_incoming = {},
+    last_incoming_asked = {},
+    last_incoming_raises = false,
     player = { name = "Tester", vitals = { hp = 1000, hpp = 100, mp = 500, mpp = 100, tp = 0 } },
     party = {},
     mobs = { t = { id = 7 } },

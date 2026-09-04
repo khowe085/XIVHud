@@ -15,6 +15,8 @@ local FACTORIES = {
   { module = "components/crossbar/crossbar" },
   { module = "components/partylist/partylist" },
   { module = "components/statusbar/statusbar" },
+  { module = "components/speedcheck/speedcheck" },
+  { module = "components/expbar/expbar" },
 }
 
 describe("component aliases", function()
@@ -71,6 +73,8 @@ describe("component aliases", function()
       cb = "crossbar",
       pl = "partylist",
       sb = "statusbar",
+      sc = "speedcheck",
+      eb = "expbar",
     }, registry.alias_map())
   end)
 end)
