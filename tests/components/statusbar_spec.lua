@@ -454,6 +454,17 @@ describe("statusbar widget", function()
       assert.are.same({}, texts_shown())
     end)
 
+    it("draws the incoming character's buffs from the attach, not the outgoing one's", function()
+      attach()
+      env.player.buffs = { HASTE }
+      widget.update()
+      env.player = { name = "Bea", buffs = { KO } }
+      attach()
+      local shown = icons_shown()
+      assert.are.equal(1, #shown)
+      assert.are.equal(KO, shown[1].id)
+    end)
+
     -- Core's apply sends the bare show first and restates each anchor after
     -- it, so a bar that is off is shown and hidden inside one apply; it must
     -- not grow prims for the moment in between.

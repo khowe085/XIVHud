@@ -455,6 +455,10 @@ local function new(deps)
       return active()
     end
     if engines[verb] then
+      if words[2] then
+        return { ("//hud statusbar buff %s takes nothing after the bar - '%s' was dropped"):format(verb, words[2]) },
+          false
+      end
       return active(verb)
     end
     if verb == "filter" then

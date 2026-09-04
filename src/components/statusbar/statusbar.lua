@@ -276,6 +276,10 @@ local function new(ctx)
       logic.apply_durations({})
       expiries_of = name
     end
+    -- The incoming character's list, not the outgoing one's, which logic
+    -- still holds when core attaches over a switch with no logout event.
+    logic.set_buffs(player and player.buffs or nil)
+    logic.set_time(clock())
     logic.set_config(config)
     attached = true
     stale = true

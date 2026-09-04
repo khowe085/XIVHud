@@ -491,6 +491,13 @@ describe("statusbar logic", function()
       assert.is_nil(said:find("haste", 1, true))
     end)
 
+    it("refuses words after the bar in a buff listing rather than dropping them", function()
+      local said, changed = say("buff", "bar2", "list")
+      assert.is_false(changed)
+      assert.is_not_nil(said:find("list", 1, true))
+      assert.is_not_nil(said:find("bar2", 1, true))
+    end)
+
     it("says so when a bar has nothing to draw", function()
       logic.set_buffs({})
       assert.is_not_nil(say("buff"):find("nothing", 1, true))
