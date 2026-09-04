@@ -1,0 +1,87 @@
+Third-party notices for the expbar component.
+
+This file collects the upstream notices the source transcribed into this
+component's Lua depends on (BSD clause 1 also keeps each such notice in the
+derived source file itself). The bar art the component draws is not here: it
+sits under src/assets/barfiller/ with its own notice, as every other bundled
+image does.
+
+Source transcribed into this component's Lua
+--------------------------------------------------------------------------------
+
+    logic.lua        the point-tracking approach, from the PointWatch addon,
+                     BSD (c) 2014 Byrthnoth: which packets carry experience,
+                     exemplar points, limit points and merits (0x061 and
+                     0x063 order 2), the action-message ids that carry each
+                     gain, the rate registry (a ten-minute window
+                     extrapolated to the hour off its oldest sample), the
+                     limit-point wrapping rule, and the exemplar message
+                     pair 809/810, which no resource file vouches for
+    logic.lua        the bar itself, from the BarFiller addon, BSD (c) 2015
+                     Morath86: the 472x5 frame with its fill inset two
+                     pixels, the exponential ease toward the target width,
+                     and the experience-chain message (253) PointWatch has
+                     no entry for
+
+Neither addon's code is copied verbatim; both are re-implemented against this
+framework's contracts, and the defects listed in .claude/Planning/expbar.md
+are deliberately not reproduced.
+
+PointWatch
+--------------------------------------------------------------------------------
+
+Copyright © 2014, Byrthnoth
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of <addon name> nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL <your name> BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+BarFiller
+--------------------------------------------------------------------------------
+
+Copyright © 2015, Morath86
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of BarFiller nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL Morath86 BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

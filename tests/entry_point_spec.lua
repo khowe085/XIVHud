@@ -54,6 +54,37 @@ describe("entry point", function()
     end)
   end)
 
+  --[[ The exp bar reads packets nothing else does, and asks the client for the
+       last of two of them at attach. Neither the dep nor its pcall is visible
+       from the component's own spec. ]]
+  describe("the exp bar", function()
+    it("reads the player through the service, like every other component", function()
+      assert.are.equal(boot.ctxs.parambar.get_player, boot.ctxs.expbar.get_player)
+    end)
+
+    it("shares the one packet parser", function()
+      assert.are.equal(boot.ctxs.giltracker.parse_packet, boot.ctxs.expbar.parse_packet)
+    end)
+
+    it("hands over the last packet the client sent, without its timestamp", function()
+      boot.last_incoming[0x061] = "the char stats bytes"
+      assert.are.same({ "the char stats bytes" }, { boot.ctxs.expbar.last_incoming(0x061) })
+      assert.are.same({ 0x061 }, boot.last_incoming_asked)
+    end)
+
+    it("answers nil rather than throwing where windower.packets is not there", function()
+      boot.last_incoming_raises = true
+      assert.is_nil(boot.ctxs.expbar.last_incoming(0x061))
+    end)
+
+    it("sits out when the packets library did not load", function()
+      local without = harness.boot({ require_fails = { packets = "no packets library" } })
+      assert.is_nil(without.ctxs.expbar)
+      -- The bar that needs no library is still there.
+      assert.is_not_nil(without.ctxs.targetbar)
+    end)
+  end)
+
   --[[ The player service. Which client reads reach the client, and how the
        vitals events reconcile against them, is a decision made here and nowhere
        else -- a component is handed a getter and cannot tell what is behind it. ]]

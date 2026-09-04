@@ -212,6 +212,9 @@ end)
 local new_speedcheck = step("loading the speedcheck component", function()
   return require("components/speedcheck/speedcheck")
 end)
+local new_expbar = step("loading the expbar component", function()
+  return require("components/expbar/expbar")
+end)
 
 -- Every Windower handler goes through this, so a bug degrades to a message and
 -- a dead handler rather than an unexplained freeze.
@@ -656,6 +659,19 @@ local function parse_action(data)
   return ok and act or nil
 end
 
+--[[ The last packet the client sent with this id, for the exp bar: it is
+     attached on login and on every slot switch, and neither 0x061 nor 0x063 is
+     re-sent on request. Core API, like parse_action, and indexed INSIDE the
+     closure for the same reason - `pcall(windower.packets.last_incoming, id)`
+     would evaluate the index before the protected call. Only the data is
+     passed on; the timestamp beside it is the client's, not the addon's. ]]
+local function last_incoming(id)
+  local ok, data = pcall(function()
+    return windower.packets.last_incoming(id)
+  end)
+  return ok and data or nil
+end
+
 -- Whether the chat box has focus, for the crossbar's chat guard. Runs on
 -- every key event inside a guarded handler, so it must be nil-tolerant by
 -- construction - an input spike once died on exactly this call unguarded.
@@ -940,6 +956,26 @@ step("building the crossbar component", function()
   }))
 end)
 
+--[[ Gated on libraries_error as well as safe_mode, like giltracker and the
+     equip viewer: `get_player()` carries no experience and no master level, so
+     everything this component draws arrives through parse_packet and there is
+     nothing useful it could do without the packets library. ]]
+step("building the expbar component", function()
+  if safe_mode or libraries_error then
+    return
+  end
+  core.register(new_expbar({
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
+    now = os.clock,
+    get_player = read_player,
+    parse_packet = parse_packet,
+    last_incoming = last_incoming,
+  }))
+end)
+
 -- A component that consumes input needs its handler for as long as it is
 -- registered, not just during layout mode. Decided from the registry rather
 -- than hardcoded, so a component dropping out (safe mode, a failed step)
@@ -980,6 +1016,8 @@ local function check_assets()
   -- speedcheck names one buff icon outright, so the directory sample above
   -- does not speak for it.
   expected[#expected + 1] = "assets/xiv/buffIcons/330.png"
+  expected[#expected + 1] = "assets/barfiller/bar_bg.png"
+  expected[#expected + 1] = "assets/barfiller/bar_fg.png"
   expected[#expected + 1] = "assets/encumbrance/encumbrance.png"
   expected[#expected + 1] = "assets/own/panel.png"
   for _, texture in ipairs({ "BarBG.png", "Bar.png", "BarFG.png", "CastBG.png", "CastBar.png", "CastFG.png" }) do
