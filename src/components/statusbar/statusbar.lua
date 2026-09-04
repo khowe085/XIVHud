@@ -41,9 +41,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      Presence is read off ctx.get_player() every tick (the service caches the
      client read and refreshes it on every buff event); the expiries arrive
      on the 0x063 chunk, already decoded once by the entry point for its
-     three readers. A tick that changes nothing pushes nothing: each cell
-     remembers what it last drew, so a settled bar costs a plan and a
-     comparison. ]]
+     three readers - and, at attach, off the last 0x063 the client sent
+     (ctx.last_incoming, through the same parse), since nothing re-sends it
+     after a reload until a buff changes and order 9 is what usually sits
+     there. A tick that changes nothing pushes nothing: each cell remembers
+     what it last drew, so a settled bar costs a plan and a comparison. ]]
 
 local new_logic = require("components/statusbar/logic")
 local build_defaults = require("components/statusbar/defaults")
@@ -64,11 +66,10 @@ local function new(ctx)
   local screen_width, screen_height = (ctx.screen or function() end)()
   self.defaults = build_defaults(screen_width, screen_height)
 
-  -- The wall clock, which the packet's timestamps count in; without one
-  -- every expiry is in the past and no timer is drawn, the crossbar's rule.
-  local clock = ctx.time or function()
-    return 0
-  end
+  -- The wall clock, which the packet's timestamps count in. Without one no
+  -- expiry is ever taken: the wrap would resolve against nothing, and a
+  -- slice of raw values would count down as garbage.
+  local clock = ctx.time
   local logic = new_logic({ config = self.defaults, resources = ctx.resources or {} })
 
   local attached = false
@@ -252,6 +253,35 @@ local function new(ctx)
     return ANCHORS
   end
 
+  -- The expiries the client last sent, if it can be asked and the answer
+  -- is this order: what makes timers survive a reload. Either ctx member
+  -- absent, or another order last, seeds nothing - the chunk stream fills
+  -- in on the next buff change either way.
+  local function take_durations(parsed)
+    if not clock then
+      return false
+    end
+    local durations = packets.buff_durations(parsed, clock())
+    if not durations then
+      return false
+    end
+    logic.apply_durations(durations)
+    local player = ctx.get_player()
+    expiries_of = player and player.name or nil
+    stale = true
+    return true
+  end
+
+  local function seed_durations()
+    if not ctx.last_incoming or not ctx.parse_packet then
+      return
+    end
+    local data = ctx.last_incoming(packets.BUFF_DURATIONS)
+    if data then
+      take_durations(ctx.parse_packet(data))
+    end
+  end
+
   --[[ A config file is code and is hand-editable, and `//hud copy` imports
        another character's, so a bar entry can be any shape at all by the time
        it reaches here. Anything unusable is replaced with a FRESH copy of the
@@ -280,8 +310,9 @@ local function new(ctx)
     -- The incoming character's list, not the outgoing one's, which logic
     -- still holds when core attaches over a switch with no logout event.
     logic.set_buffs(player and player.buffs or nil)
-    logic.set_time(clock())
+    logic.set_time(clock and clock() or 0)
     logic.set_config(config)
+    seed_durations()
     attached = true
     stale = true
     paint_all()
@@ -301,9 +332,14 @@ local function new(ctx)
     end
   end
 
+  -- Core pushes both for every anchor on every layout-mode mouse move; an
+  -- unchanged one is not worth a re-plan.
   function self.set_pos(x, y, anchor)
     local bar = bar_at(anchor)
     if not bar then
+      return
+    end
+    if bar.pos and bar.pos.x == x and bar.pos.y == y then
       return
     end
     bar.pos = { x = x, y = y }
@@ -312,7 +348,7 @@ local function new(ctx)
 
   function self.set_scale(scale, anchor)
     local bar = bar_at(anchor)
-    if not bar then
+    if not bar or bar.scale == scale then
       return
     end
     bar.scale = scale
@@ -379,19 +415,13 @@ local function new(ctx)
   -- scoped, so one landing just ahead of the attach is that character's.
   function self.update(event, first, _second, third)
     if event == "chunk" and first == packets.BUFF_DURATIONS then
-      local durations = packets.buff_durations(third, clock())
-      if durations then
-        logic.apply_durations(durations)
-        local player = ctx.get_player()
-        expiries_of = player and player.name or nil
-        stale = true
-      end
+      take_durations(third)
       return
     end
     if event == nil and attached then
       local player = ctx.get_player()
       local buffs = player and player.buffs or nil
-      local now = clock()
+      local now = clock and clock() or 0
       local this_second = math.floor(now)
       if not stale and buffs == last_buffs and this_second == last_second then
         return

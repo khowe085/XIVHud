@@ -52,6 +52,10 @@ describe("entry point", function()
       assert.are.equal(1, built)
       assert.are.equal(boot.ctxs.partylist.get_player, boot.ctxs.statusbar.get_player)
       assert.are.equal(os.time, boot.ctxs.statusbar.time)
+      -- The seed at attach: the last 0x063 the client sent, parsed the same
+      -- way the chunk handler parses it.
+      assert.are.equal(boot.ctxs.expbar.last_incoming, boot.ctxs.statusbar.last_incoming)
+      assert.are.equal(boot.ctxs.expbar.parse_packet, boot.ctxs.statusbar.parse_packet)
       assert.is_not_nil(boot.ctxs.statusbar.resources)
     end)
 

@@ -39,9 +39,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
      Two sources, matched by id rather than by slot: presence is the player's
      list (live the moment the client fills it in, and refreshed on every buff
-     event by the service), and the expiries are the last 0x063 seen, which
-     nothing re-sends after a reload until a buff changes. So icons can be up
-     without timers, which is the honest state; the reverse never happens. ]]
+     event by the service), and the expiries are the last 0x063 seen - the
+     widget seeds them at attach from the last one the client sent, since
+     nothing re-sends it after a reload until a buff changes. So icons can be
+     up without timers, which is the honest state; the reverse never
+     happens. ]]
 
 local new_buffs = require("lib/buffs")
 local categories = require("components/statusbar/categories")

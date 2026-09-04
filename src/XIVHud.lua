@@ -880,6 +880,10 @@ step("building the statusbar component", function()
     resources = libraries_error == nil and res or nil,
     get_player = read_player,
     time = os.time,
+    -- The seed at attach: the last 0x063 the client sent, parsed the same
+    -- way the chunk handler parses it - timers after a reload.
+    last_incoming = last_incoming,
+    parse_packet = parse_packet,
   }))
 end)
 

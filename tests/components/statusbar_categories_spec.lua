@@ -32,6 +32,22 @@ describe("statusbar categories", function()
     end
   end)
 
+  -- The debuff set is a hand copy of the shipped order's opening section;
+  -- pinning where that section ends is what catches a debuff added to the
+  -- order later and landing on the enhancements bar.
+  it("holds exactly the debuff section that opens the shipped order", function()
+    local section_end = 91
+    for rank = 1, section_end do
+      assert.is_true(categories.DEBUFFS[buff_order[rank]] == true, "rank " .. rank .. " is not a debuff")
+    end
+    assert.is_nil(categories.DEBUFFS[buff_order[section_end + 1]], "the section ends at rank " .. section_end)
+    local count = 0
+    for _ in pairs(categories.DEBUFFS) do
+      count = count + 1
+    end
+    assert.are.equal(section_end, count)
+  end)
+
   it("curates only ids the shipped order ranks", function()
     local ranked = {}
     for _, id in ipairs(buff_order) do

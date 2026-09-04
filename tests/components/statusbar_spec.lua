@@ -25,11 +25,11 @@ end
 describe("statusbar widget", function()
   local prims, env, widget, config, saves
 
-  local function build()
+  local function build(without)
     prims = fakes.prims()
-    env = { clock = 1788000000, player = { name = "Ayame", buffs = {} } }
+    env = { clock = 1788000000, player = { name = "Ayame", buffs = {} }, last = {}, parses = 0 }
     saves = 0
-    widget = new_statusbar({
+    local ctx = {
       name = "statusbar",
       new_text = prims.new_text,
       new_image = prims.new_image,
@@ -46,7 +46,20 @@ describe("statusbar widget", function()
       time = function()
         return env.clock
       end,
-    })
+      -- What the client last sent under an id, and the parse the entry
+      -- point would run on it: the seed at attach.
+      last_incoming = function(id)
+        return env.last[id]
+      end,
+      parse_packet = function(data)
+        env.parses = env.parses + 1
+        return type(data) == "table" and data or nil
+      end,
+    }
+    for _, key in ipairs(without or {}) do
+      ctx[key] = nil
+    end
+    widget = new_statusbar(ctx)
     return widget
   end
 
@@ -220,6 +233,16 @@ describe("statusbar widget", function()
       assert.are.same({ 300, 60 }, { icons_shown()[1].x, icons_shown()[1].y })
     end)
 
+    -- Core pushes both for every anchor on every layout-mode mouse move.
+    it("costs nothing on a placement push that changes nothing", function()
+      env.player.buffs = { HASTE }
+      widget.update()
+      local before = calls()
+      widget.set_pos(100, 50, "bar1")
+      widget.set_scale(1, "bar1")
+      assert.are.equal(before, calls())
+    end)
+
     it("copes with a player the client cannot name yet", function()
       env.player = nil
       widget.update()
@@ -302,6 +325,49 @@ describe("statusbar widget", function()
       widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }, 0x05))
       widget.update("chunk", 0x076, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
       widget.update("chunk", 0x063, "raw", nil)
+      widget.update()
+      assert.are.same({}, texts_shown())
+    end)
+
+    -- Without a wall clock the wrap would resolve against zero and a slice
+    -- of raw values would count down as garbage; no clock means no timers.
+    it("draws no text when the ctx has no wall clock", function()
+      build({ "time" })
+      attach()
+      env.player.buffs = { HASTE }
+      widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+      widget.update()
+      assert.are.equal(1, #icons_shown())
+      assert.are.same({}, texts_shown())
+    end)
+
+    -- Nothing re-sends the packet after a reload until a buff changes, but
+    -- the client keeps the last one sent under its id, and order 9 is what
+    -- usually sits there: the attach seeds from it, through the same parse
+    -- the entry point would run.
+    it("seeds the timers at attach from the last packet the client sent", function()
+      env.last[0x063] = durations_packet({ { id = HASTE, expires = env.clock + 59 } })
+      attach()
+      widget.update()
+      assert.are.equal("59", texts_shown()[1].text)
+      assert.are.equal(1, env.parses)
+    end)
+
+    it("seeds nothing when the last packet was another order, or there was none", function()
+      env.last[0x063] = durations_packet({ { id = HASTE, expires = env.clock + 59 } }, 0x02)
+      attach()
+      widget.update()
+      assert.are.same({}, texts_shown())
+      env.last[0x063] = nil
+      build()
+      attach()
+      widget.update()
+      assert.are.same({}, texts_shown())
+    end)
+
+    it("copes with a ctx that cannot answer the last packet", function()
+      build({ "last_incoming", "parse_packet" })
+      attach()
       widget.update()
       assert.are.same({}, texts_shown())
     end)
