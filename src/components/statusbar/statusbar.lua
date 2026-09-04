@@ -40,9 +40,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
      Presence is read off ctx.get_player() every tick (the service caches the
      client read and refreshes it on every buff event); the expiries arrive
-     on the 0x063 chunk, decoded here from the raw bytes since nothing else
-     reads it. A tick that changes nothing pushes nothing: each cell remembers
-     what it last drew, so a settled bar costs a plan and a comparison. ]]
+     on the 0x063 chunk, already decoded once by the entry point for its
+     three readers. A tick that changes nothing pushes nothing: each cell
+     remembers what it last drew, so a settled bar costs a plan and a
+     comparison. ]]
 
 local new_logic = require("components/statusbar/logic")
 local build_defaults = require("components/statusbar/defaults")
@@ -371,15 +372,16 @@ local function new(ctx)
 
   -- No arguments is the per-frame tick: read the player, move the clock,
   -- repaint what changed. Otherwise a game event the entry point forwarded;
-  -- only the 0x063 chunk matters, and only its order 9. The chunk is kept
-  -- whether or not this is attached yet: nothing re-sends it until a buff
-  -- changes, and core dispatches it only for a character already scoped, so
-  -- one landing just ahead of the attach is that character's.
-  function self.update(event, first, second)
+  -- only the 0x063 chunk matters, and only its order 9, read off the table
+  -- the entry point parsed (`third`; nil when that parse failed). The chunk
+  -- is kept whether or not this is attached yet: nothing re-sends it until a
+  -- buff changes, and core dispatches it only for a character already
+  -- scoped, so one landing just ahead of the attach is that character's.
+  function self.update(event, first, _second, third)
     if event == "chunk" and first == packets.BUFF_DURATIONS then
-      local parsed = packets.parse_buff_durations(second, clock())
-      if parsed then
-        logic.apply_durations(parsed)
+      local durations = packets.buff_durations(third, clock())
+      if durations then
+        logic.apply_durations(durations)
         local player = ctx.get_player()
         expiries_of = player and player.name or nil
         stale = true

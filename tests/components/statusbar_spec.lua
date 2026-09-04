@@ -10,28 +10,16 @@ local RESOURCES = {
 
 local EPOCH = 1009810800
 
-local function u16(value)
-  return string.char(value % 256, math.floor(value / 256) % 256)
-end
-
-local function u32(value)
-  local bytes = {}
-  for index = 1, 4 do
-    bytes[index] = string.char(value % 256)
-    value = math.floor(value / 256)
-  end
-  return table.concat(bytes)
-end
-
--- A 0x063 order 9 packet carrying the given `{ id = , expires = }` entries.
+-- A 0x063 order 9 packet carrying the given `{ id = , expires = }` entries,
+-- as the entry point's packets.parse hands it over.
 local function durations_packet(entries, kind)
-  local ids, times = {}, {}
+  local parsed = { Order = kind or 0x09 }
   for slot = 1, 32 do
     local entry = entries[slot]
-    ids[slot] = u16(entry and entry.id or 255)
-    times[slot] = u32(entry and math.floor(((entry.expires - EPOCH) * 60) % 2 ^ 32) or 0)
+    parsed["Buffs " .. slot] = entry and entry.id or 255
+    parsed["Time " .. slot] = entry and math.floor(((entry.expires - EPOCH) * 60) % 2 ^ 32) or 0
   end
-  return string.char(0x63, 0, 0, 0) .. u16(kind or 0x09) .. u16(0xC4) .. table.concat(ids) .. table.concat(times)
+  return parsed
 end
 
 describe("statusbar widget", function()
@@ -202,7 +190,7 @@ describe("statusbar widget", function()
     -- that has drawn must not re-hide its prims sixty times a second.
     it("costs nothing on a tick while hidden", function()
       env.player.buffs = { HASTE, KO }
-      widget.update("chunk", 0x063, durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+      widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
       widget.update()
       widget.hide()
       local before = calls()
@@ -274,7 +262,7 @@ describe("statusbar widget", function()
     it("writes the remaining time under an icon once the client reports it", function()
       widget.update()
       assert.are.same({}, texts_shown())
-      widget.update("chunk", 0x063, durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+      widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
       widget.update()
       local shown = texts_shown()
       assert.are.equal(1, #shown)
@@ -284,7 +272,7 @@ describe("statusbar widget", function()
     end)
 
     it("counts down as the clock moves", function()
-      widget.update("chunk", 0x063, durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+      widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
       widget.update()
       env.clock = env.clock + 30
       widget.update()
@@ -292,7 +280,7 @@ describe("statusbar widget", function()
     end)
 
     it("clears the text when the timer runs out but the buff has not gone", function()
-      widget.update("chunk", 0x063, durations_packet({ { id = HASTE, expires = env.clock + 5 } }))
+      widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 5 } }))
       widget.update()
       env.clock = env.clock + 10
       widget.update()
@@ -304,22 +292,23 @@ describe("statusbar widget", function()
     -- between the character being scoped and the attach must be kept.
     it("keeps a packet that arrives before the attach", function()
       widget.detach()
-      widget.update("chunk", 0x063, durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+      widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
       attach()
       widget.update()
       assert.are.equal("59", texts_shown()[1].text)
     end)
 
-    it("ignores the other orders of the packet, and other packets", function()
-      widget.update("chunk", 0x063, durations_packet({ { id = HASTE, expires = env.clock + 59 } }, 0x05))
-      widget.update("chunk", 0x076, durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+    it("ignores the other orders of the packet, other packets, and a failed parse", function()
+      widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }, 0x05))
+      widget.update("chunk", 0x076, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+      widget.update("chunk", 0x063, "raw", nil)
       widget.update()
       assert.are.same({}, texts_shown())
     end)
 
     it("draws no text while the timers are switched off", function()
       widget.handle_command({ "timers", "off" })
-      widget.update("chunk", 0x063, durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+      widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
       widget.update()
       assert.are.same({}, texts_shown())
     end)
@@ -332,7 +321,7 @@ describe("statusbar widget", function()
     before_each(function()
       attach()
       env.player.buffs = { KO, HASTE }
-      widget.update("chunk", 0x063, durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+      widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
       widget.update()
       assert.are.equal(1, #texts_shown())
     end)
@@ -423,7 +412,7 @@ describe("statusbar widget", function()
     it("hides everything on detach and forgets the timers", function()
       attach()
       env.player.buffs = { HASTE }
-      widget.update("chunk", 0x063, durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+      widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
       widget.update()
       widget.detach()
       assert.are.same({}, icons_shown())
@@ -442,7 +431,7 @@ describe("statusbar widget", function()
     it("forgets the timers when a different character attaches", function()
       attach()
       env.player.buffs = { HASTE }
-      widget.update("chunk", 0x063, durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
+      widget.update("chunk", 0x063, "raw", durations_packet({ { id = HASTE, expires = env.clock + 59 } }))
       widget.update()
       assert.are.equal(1, #texts_shown())
       attach()

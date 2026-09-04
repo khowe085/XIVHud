@@ -30,24 +30,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      list of your buffs WITH their expiry times - the only place a duration
      is ever reported (get_player().buffs and 0x076 carry ids alone).
 
-     Decoded from the raw bytes here. The packet id has other readers - the
-     crossbar's skillchain engine, a transcription of the SkillChains addon,
-     reads this order's id array alone off the same raw bytes to know which
-     of your buffs affect a chain, and expbar reads order 2 (limit points
-     and merits) - so by the entry point's rule (one decode for an id with
-     more than one reader) this SHOULD be pre-parsed there. It is
-     not, yet: the crossbar's decode is inside the transcribed module and
-     takes raw data, so sharing one parse means rewiring it, which is
-     deferred as an open item rather than done in the status bar's own
-     change. Layout verified against Windower/Lua@dev packets/fields.lua on
-     2026-09-04:
+     It arrives here already decoded: the packet id has three readers (the
+     crossbar's skillchain engine for this order's ids, expbar for order 2,
+     and this), so the entry point parses it ONCE through Windower's
+     packets.parse and dispatches the table, the rule every multi-reader id
+     follows. That parser's field definition for 0x063 switches on the order
+     byte and, for order 9 (verified against Windower/Lua@dev
+     packets/fields.lua on 2026-09-04), reads
 
-       fields.incoming[0x063] switches on data:byte(5)      -- offset 0x04
-       [0x09] = { _unknown1 const 0x00C4                     -- 0x06
-                  Buffs  unsigned short[32]  fn=buff         -- 0x08
-                  Time   unsigned int[32]    fn=bufftime }   -- 0x48
+       Buffs  unsigned short[32]  fn=buff       -- 0x08
+       Time   unsigned int[32]    fn=bufftime   -- 0x48
 
-     and the timestamp decode, verbatim:
+     which packets.parse stores raw under the labels `Buffs 1`..`Buffs 32`
+     and `Time 1`..`Time 32` (its `fn` formatters run only when a packet is
+     printed - verified in packets.lua the same day). This module turns those
+     into `{ id = , expires = }` pairs; the timestamp decode is Windower's,
+     verbatim:
 
        bufftime = function(ts)
          return fn(1009810800 + (ts / 60) + 0x100000000 / 60 * 10)
@@ -61,14 +59,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      a fraction of the 2.27-year period.
 
      UNVERIFIED in a live client, and read defensively: the empty-slot marker
-     in this packet's id array (0xFF and 0xFFFF are both taken as empty; KO is
-     the real id 0 and is kept), and what Time holds for a buff with no
-     expiry. A raw 0 or 0xFFFFFFFF is answered as `expires = false` - no
-     expiry - rather than decoded: on the nearest wrap either lands on a
-     fixed date, which for a few days every 2.27 years would sit inside the
-     plausible band and count down under a timerless buff. Whatever else the
-     client may send there, logic.lua draws no timer for an expiry that has
-     passed or that sits implausibly far off. ]]
+     in the id array (0xFF and 0xFFFF are both taken as empty; KO is the real
+     id 0 and is kept), and what Time holds for a buff with no expiry. A raw
+     0 or 0xFFFFFFFF is answered as `expires = false` - no expiry - rather
+     than decoded: on the nearest wrap either lands on a fixed date, which
+     for a few days every 2.27 years would sit inside the plausible band and
+     count down under a timerless buff. Whatever else the client may send
+     there, logic.lua draws no timer for an expiry that has passed or that
+     sits implausibly far off. ]]
 
 local M = {}
 
@@ -78,23 +76,9 @@ local DURATIONS_ORDER = 0x09
 local EPOCH = 1009810800
 local PERIOD = 2 ^ 32 / 60
 local SLOTS = 32
--- 1-based string offsets of the two arrays, and the length that holds both.
-local IDS_AT = 0x08 + 1
-local TIMES_AT = 0x48 + 1
-local LENGTH = 0x48 + SLOTS * 4
 
 local EMPTY = { [0xFF] = true, [0xFFFF] = true }
 local NO_EXPIRY = { [0] = true, [0xFFFFFFFF] = true }
-
-local function u16(data, at)
-  local low, high = data:byte(at, at + 1)
-  return low + high * 256
-end
-
-local function u32(data, at)
-  local a, b, c, d = data:byte(at, at + 3)
-  return a + b * 256 + c * 65536 + d * 16777216
-end
 
 -- The unix expiry a raw timestamp means, on the wrap nearest to `now`.
 function M.expiry(raw, now)
@@ -104,21 +88,25 @@ function M.expiry(raw, now)
 end
 
 -- The occupied slots in order, each `{ id = , expires = }` with `expires`
--- false where the slot carries no timestamp; nil for another order of 0x063
--- or a packet too short to hold the arrays.
-function M.parse_buff_durations(data, now)
-  if type(data) ~= "string" or #data < LENGTH then
+-- false where the slot carries no timestamp; nil for another order of 0x063,
+-- a parse that failed, or a table without the arrays. A slot the parse did
+-- not fill ends the walk rather than erroring.
+function M.buff_durations(parsed, now)
+  if type(parsed) ~= "table" or parsed.Order ~= DURATIONS_ORDER then
     return nil
   end
-  if data:byte(5) ~= DURATIONS_ORDER then
+  if type(parsed["Buffs 1"]) ~= "number" then
     return nil
   end
 
   local list = {}
-  for slot = 0, SLOTS - 1 do
-    local id = u16(data, IDS_AT + slot * 2)
+  for slot = 1, SLOTS do
+    local id = parsed["Buffs " .. slot]
+    local raw = parsed["Time " .. slot]
+    if type(id) ~= "number" or type(raw) ~= "number" then
+      break
+    end
     if not EMPTY[id] then
-      local raw = u32(data, TIMES_AT + slot * 4)
       list[#list + 1] = { id = id, expires = not NO_EXPIRY[raw] and M.expiry(raw, now) }
     end
   end

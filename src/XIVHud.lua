@@ -856,18 +856,17 @@ end)
 
 --[[ The status bar: the player's own buffs and debuffs on three anchored bars
      (`bar1`, `bar2`, `bar3`). Presence comes off the player service; the
-     expiries ride the 0x063 chunk, which the component decodes itself - as
-     do the crossbar's skillchain engine (this order, ids alone) and expbar
-     (order 2), which by the rule above should make it a pre-parse here;
-     deferred, see the component's packets.lua. The wall clock is what the packet's timestamps count in.
+     expiries ride the 0x063 chunk, which the chunk handler below pre-parses
+     once for its three readers. The wall clock is what the packet's
+     timestamps count in.
 
      Gated on safe_mode alone, targetbar's rule: the icons draw by id and the
      packet is decoded from raw bytes, so the resources only ever name a buff
      in a command's answer - without them it says `buff 33` instead. What a
      libraries failure DOES cost it is the timers: the `incoming chunk`
-     handler below is registered only with the libraries up (the too-wide
-     gate of issue #14), so the bar then draws icons with no time under
-     them. ]]
+     handler below is registered only with the libraries up - and this one
+     is not too wide a gate for it, the pre-parse being packets.parse - so
+     the bar then draws icons with no time under them. ]]
 step("building the statusbar component", function()
   if safe_mode then
     return
@@ -1284,13 +1283,21 @@ windower.register_event(
      Pre-existing, and not this change's to fix. ]]
 if not safe_mode and not libraries_error then
   local ACTION_CHUNK = 0x028
+  --[[ 0x063, the character update: one id over several orders, and three
+       readers - the crossbar's skillchain engine (order 9's buff ids), expbar
+       (order 2's limit points and merits) and the status bar (order 9's ids
+       with their expiries). Windower's field definition for it switches on
+       the order byte, so one packets.parse serves every order and every
+       reader; until 2026-09-04 each of the three decoded it again. ]]
+  local CHAR_UPDATE_CHUNK = 0x063
   local structured = partylist_packets
       and {
         [partylist_packets.ALLIANCE] = true,
         [partylist_packets.PARTY_MEMBER] = true,
         [partylist_packets.CHAR] = true,
+        [CHAR_UPDATE_CHUNK] = true,
       }
-    or {}
+    or { [CHAR_UPDATE_CHUNK] = true }
   windower.register_event(
     "incoming chunk",
     guard.wrap("incoming chunk", function(id, original)

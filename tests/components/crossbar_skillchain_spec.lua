@@ -420,13 +420,14 @@ describe("crossbar skillchain", function()
       return "HDRX" .. u32le(1) .. u32le(target_id) .. u32le(buff_id) .. string.rep("\0", 8) .. u16le(message or 206)
     end
 
-    -- 0x63 subtype 9: the full buff list, 32 u16 ids from offset 9.
+    -- 0x63 order 9 as the entry point's packets.parse hands it over: the
+    -- order word and the 32 ids under Windower's array labels.
     local function buff_refresh(subtype, buff_ids)
-      local body = "HDRX" .. string.char(subtype) .. "\0\0\0"
+      local packet = { Order = subtype }
       for n = 1, 32 do
-        body = body .. u16le(buff_ids[n] or 0)
+        packet["Buffs " .. n] = buff_ids[n] or 0
       end
-      return body
+      return packet
     end
 
     local function gain(buff_id)
@@ -453,27 +454,35 @@ describe("crossbar skillchain", function()
     end)
 
     it("rebuilds the buff set from a subtype-9 refresh", function()
-      sc.on_chunk(0x63, buff_refresh(9, { 470 }))
+      sc.on_chunk(0x63, "raw", buff_refresh(9, { 470 }))
       cast()
       assert.are.equal(3, (sc.window()))
     end)
 
     it("a refresh without the buff clears it; other subtypes change nothing", function()
       gain(470)
-      sc.on_chunk(0x63, buff_refresh(9, {}))
+      sc.on_chunk(0x63, "raw", buff_refresh(9, {}))
       cast()
       assert.are.same({ 0, 0 }, { sc.window() })
-      sc.on_chunk(0x63, buff_refresh(5, { 470 }))
+      sc.on_chunk(0x63, "raw", buff_refresh(5, { 470 }))
       cast()
       assert.are.same({ 0, 0 }, { sc.window() })
     end)
 
-    it("ignores a short subtype-9 refresh outright", function()
+    -- The entry point's parse is pcall'd and hands over nil when it failed;
+    -- the raw bytes ride alongside but are not decoded here a second time.
+    it("ignores a refresh the entry point could not parse, raw bytes or not", function()
       gain(470)
-      -- 40 bytes: the subtype says buff list, the length can't hold one.
-      sc.on_chunk(0x63, "HDRX" .. string.char(9) .. string.rep("\0", 35))
+      sc.on_chunk(0x63, "HDRX" .. string.char(9) .. string.rep("\0", 35), nil)
       cast()
       -- Ignored means the buff survived - and nothing threw on the way.
+      assert.are.equal(3, (sc.window()))
+    end)
+
+    it("ignores a parsed table that carries no buff list", function()
+      gain(470)
+      sc.on_chunk(0x63, "raw", { Order = 9 })
+      cast()
       assert.are.equal(3, (sc.window()))
     end)
 
@@ -486,11 +495,11 @@ describe("crossbar skillchain", function()
 
     it("survives short data, wrong types and a missing player", function()
       sc.on_chunk(0x29, "x")
-      sc.on_chunk(0x63, "ab")
+      sc.on_chunk(0x63, "ab", "not a table")
       sc.on_chunk(0x29, nil)
       env.player = nil
       sc.on_chunk(0x29, wear_off(42, 470))
-      sc.on_chunk(0x63, buff_refresh(9, { 470 }))
+      sc.on_chunk(0x63, "raw", buff_refresh(9, { 470 }))
       assert.are.same({ 0, 0 }, { sc.window() })
     end)
   end)

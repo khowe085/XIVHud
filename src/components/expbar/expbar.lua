@@ -53,7 +53,8 @@ local JOB_ICON_DIR = "assets/xiv/jobIcons/"
 
 -- The two packets that carry state rather than a change, and so are worth
 -- asking the client for at attach.
-local SEEDED_PACKETS = { 0x061, 0x063 }
+local CHAR_UPDATE = 0x063
+local SEEDED_PACKETS = { 0x061, CHAR_UPDATE }
 
 local function new(ctx)
   local self = { name = "expbar", alias = "eb" }
@@ -300,8 +301,11 @@ local function new(ctx)
 
   --[[ The per-frame tick draws; a chunk is read only for the three ids the
        logic asks for. Packets are ignored while detached: nothing is on screen
-       then, and the points they carry belong to whoever logs in next. ]]
-  function self.update(event, first, second)
+       then, and the points they carry belong to whoever logs in next. 0x063
+       arrives already parsed - three components read it, so the entry point
+       decodes it once and hands the table over as `third`; the other two ids
+       are this widget's alone and are parsed here. ]]
+  function self.update(event, first, second, third)
     if not attached then
       return
     end
@@ -313,7 +317,8 @@ local function new(ctx)
     end
 
     if event == "chunk" and logic.wants_chunk(first) then
-      logic.on_packet(first, ctx.parse_packet(second), ctx.now())
+      local packet = first == CHAR_UPDATE and third or ctx.parse_packet(second)
+      logic.on_packet(first, packet, ctx.now())
     end
   end
 

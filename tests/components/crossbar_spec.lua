@@ -3227,12 +3227,13 @@ describe("crossbar live widget", function()
         return string.char(v % 256, math.floor(v / 256) % 256)
       end
 
+      -- 0x63 order 9 as the entry point's packets.parse hands it over.
       local function buff_refresh(buff_id)
-        local body = "HDRX" .. string.char(9) .. "\0\0\0"
+        local packet = { Order = 9 }
         for n = 1, 32 do
-          body = body .. u16le(n == 1 and buff_id or 0)
+          packet["Buffs " .. n] = n == 1 and buff_id or 0
         end
-        return body
+        return packet
       end
 
       it("reads the target from the client once per tick, never once per slot", function()
@@ -3253,7 +3254,7 @@ describe("crossbar live widget", function()
 
       it("feeds 0x63 through: a spell under Immanence opens the indicator", function()
         local _, fill = indicator_prims()
-        widget.update("chunk", 0x63, buff_refresh(470))
+        widget.update("chunk", 0x63, "raw", buff_refresh(470))
         widget.update("chunk", 0x028, "raw action bytes", {
           category = 4,
           param = 144,

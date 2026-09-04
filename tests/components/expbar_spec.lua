@@ -56,7 +56,13 @@ describe("expbar widget", function()
     end
   end
 
+  -- 0x063 reaches the widget already parsed by the entry point (three
+  -- components read it); the other two ids it parses itself.
   local function chunk(id, packet)
+    if id == CHAR_UPDATE then
+      widget.update("chunk", id, "raw bytes for " .. id, packet)
+      return
+    end
     parsed[id] = packet
     widget.update("chunk", id, "raw bytes for " .. id)
   end
@@ -371,13 +377,13 @@ describe("expbar widget", function()
       widget.set_pos(100, 200)
     end)
 
-    it("parses only the three ids it reads", function()
+    it("parses only the two ids it alone reads; 0x063 arrives parsed", function()
       chunk(UNHANDLED, { Order = 2 })
       assert.are.equal(0, #parses)
       chunk(CHAR_STATS, char_stats(1, 2))
       chunk(CHAR_UPDATE, { Order = 2 })
       chunk(ACTION_MESSAGE, { Message = 8, ["Param 1"] = 1, ["Param 2"] = 0 })
-      assert.are.equal(3, #parses)
+      assert.are.equal(2, #parses)
     end)
 
     it("survives a packet it could not parse", function()

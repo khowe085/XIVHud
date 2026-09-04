@@ -17,6 +17,7 @@ local ACTION = 0x028
 local ALLIANCE, PARTY_MEMBER, CHAR = 0x0C8, 0x0DD, 0x0DF
 -- Read raw by the party list; no field definition to parse it with.
 local PARTY_BUFFS = 0x076
+local CHAR_UPDATE = 0x063
 
 describe("entry point", function()
   local boot
@@ -396,6 +397,20 @@ describe("entry point", function()
       end
 
       assert.are.equal(3, #boot.parsed_packets)
+      assert.are.equal(0, #boot.action_parses)
+    end)
+
+    -- Three readers - the crossbar's skillchain engine, expbar and the status
+    -- bar - so it is decoded once here rather than once each, through the
+    -- same packets.parse the party ids use (its field definition switches on
+    -- the order byte, so every order comes through it).
+    it("pre-parses the 0x063 character update once, for its three readers", function()
+      boot.chunk(CHAR_UPDATE, "char update bytes")
+
+      local dispatch = boot.last_dispatch("chunk")
+      assert.are.equal("char update bytes", dispatch[2])
+      assert.are.same({ packet = "char update bytes" }, dispatch[3])
+      assert.are.equal(1, #boot.parsed_packets)
       assert.are.equal(0, #boot.action_parses)
     end)
 

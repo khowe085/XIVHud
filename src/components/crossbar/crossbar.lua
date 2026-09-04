@@ -3560,7 +3560,7 @@ local function new(ctx)
             skillchain.on_action(parsed)
           end
         elseif SC_CHUNKS[a] then
-          skillchain.on_chunk(a, original)
+          skillchain.on_chunk(a, original, parsed)
         end
       end
     end
