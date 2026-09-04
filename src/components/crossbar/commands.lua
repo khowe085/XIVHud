@@ -55,7 +55,9 @@ local SLOT_COUNT = 8
 -- Slots 1-4 are the face cross, 5-8 the D-pad, both clockwise from the top
 -- (the component's own slot map). Nobody should have to memorise the indices.
 --[[ An address is ONE word: `<set><L|R><slot>` - `1L1`, `2R8` - and may
-     carry a layer prefix, `sub:1L1` or `ctx:light-arts:1L1`.
+     carry a layer prefix, `sub:1L1`, `wpn:1L1` or `ctx:light-arts:1L1`.
+     Neither `sub:` nor `wpn:` names its layer: each addresses what is worn
+     or held right now, which is the only one the bar is showing.
 
      It was three words (`1 l 1`) until 2026-08-22. The side was the
      problem: a lower-case `l` beside digits is indistinguishable from a
@@ -68,7 +70,7 @@ local SLOT_COUNT = 8
      down left`). There is no controller - Windower cannot see one - so
      naming its buttons in a hint only invited the question of which pad
      was meant. Slots are 1-8. ]]
-local ADDRESS_FORM = "<set><L|R><slot> - 1L1, 2R8, sub:1L6, ctx:<name>:1L3"
+local ADDRESS_FORM = "<set><L|R><slot> - 1L1, 2R8, sub:1L6, wpn:1L6, ctx:<name>:1L3"
 
 -- The four configurable views, CLI spelling -> config key. Matched
 -- case-insensitively; the upper-case spelling is the one shown, for the
@@ -120,7 +122,7 @@ local HELP = {
   "  //hud crossbar invisible",
   "  //hud crossbar warp [all]",
   "  //hud crossbar edit",
-  "  an address is <set><L|R><slot> - 1L1, 2R8 - and takes sub: or ctx:<name>: in front",
+  "  an address is <set><L|R><slot> - 1L1, 2R8 - and takes sub:, wpn: or ctx:<name>: in front",
   -- The quotes are the grammar, not decoration: an action name may be
   -- several words, so nothing else could tell a label from one of them.
   '  a bind\'s alias and icon must be quoted - give "" as the alias for an icon without one',
@@ -1162,6 +1164,11 @@ local function new(deps)
   --- `context list` -- the code-defined roster in stack order, active
   --- entries marked. There is nothing to author here: users bind INTO a
   --- context, they do not define one.
+  ---
+  --- Job-gated (Kevin, 2026-09-04): only the contexts the scoped job can
+  --- reach are listed, since a context follows the job whose buff it
+  --- watches and offering the rest invites a bind into a layer that could
+  --- never fire.
   local function context(args)
     if #args > 2 then
       return hint("context list - the roster is code-defined")
@@ -1170,13 +1177,24 @@ local function new(deps)
     if sub ~= "list" then
       return hint("context list - the roster is code-defined")
     end
+    local available = {}
+    for _, name in ipairs(bindings().available_contexts()) do
+      available[name] = true
+    end
+    local job, sub_job = bindings().job()
+    if next(available) == nil then
+      local scope = job == nil and "no job loaded yet" or ("none on " .. job .. (sub_job and "/" .. sub_job or ""))
+      return hint("crossbar contexts: " .. scope .. " - a context follows the job whose buff it watches")
+    end
     local active = {}
     for _, name in ipairs(bindings().active_contexts()) do
       active[name] = true
     end
     local lines = { "crossbar contexts (stack order, last wins):" }
     for _, entry in ipairs(roster) do
-      lines[#lines + 1] = ("  %-15s %s%s"):format(entry.name, entry.label, active[entry.name] and " [active]" or "")
+      if available[entry.name] then
+        lines[#lines + 1] = ("  %-15s %s%s"):format(entry.name, entry.label, active[entry.name] and " [active]" or "")
+      end
     end
     return lines
   end

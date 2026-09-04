@@ -47,7 +47,15 @@ local function build(opts)
       return config
     end,
   })
-  bindings.set_job("WAR", "NIN")
+  --[[ WAR/SCH by default: the roster is job-gated now, and a WAR that reaches
+       no context at all would leave most of the panel below untestable. The
+       WAR-keyed files are unaffected - a context override lives in the MAIN
+       job's file either way - and a test about the subjob row itself asks
+       for `sub = "NIN"`. ]]
+  bindings.set_job("WAR", opts.sub or "SCH")
+  if opts.weapon then
+    bindings.set_weapon_type(opts.weapon)
+  end
 
   local env = {
     said = {},
@@ -296,7 +304,7 @@ describe("crossbar binder", function()
 
   describe("the stack panel", function()
     it("opens on a slot click, listing the whole stack", function()
-      local binder, env = build()
+      local binder, env = build({ weapon = "Great Axe" })
       open_stack(binder, env, "left", 3)
       local panel = binder.layer_view()
       assert.is_not_nil(panel, "the clicked slot opened its stack")
@@ -307,11 +315,90 @@ describe("crossbar binder", function()
       assert.are.same({
         "base",
         "sub",
+        "wpn",
         "ctx:light-arts",
         "ctx:dark-arts",
         "ctx:addendum-white",
         "ctx:addendum-black",
-      }, sources, "shared/base, the worn subjob, then every roster context")
+      }, sources, "shared/base, the worn subjob, the weapon in hand, then the contexts this job reaches")
+    end)
+
+    -- The weapon row is the class in HAND, so there is nothing to offer
+    -- until the client has answered with one.
+    it("leaves the weapon row out while nothing is equipped", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      assert.is_nil(row_named(env, "wpn"))
+    end)
+
+    it("names the weapon row for the class in hand", function()
+      local binder, env = build({ weapon = "Great Axe" })
+      open_stack(binder, env, "left", 3)
+      assert.are.equal("wpn:Great Axe", row_named(env, "wpn").label)
+    end)
+
+    --[[ Hidden AND inert (Kevin, 2026-09-04): a context that cannot fire on
+         this job is not a layer the player has any business binding into. ]]
+    --[[ A cursor outlives a bind by design, so it can outlive the LAYER
+         it points at: a subjob change can take a context out of reach, and
+         unequipping takes the weapon row away. The cursor, the preview and
+         the header all have to come down with the row, or the bar shows a
+         layer's world under a header naming it while the write is refused. ]]
+    it("drops a cursor whose layer the job no longer reaches", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "ctx:light-arts")))
+      assert.are.equal("ctx:light-arts", binder.layer())
+      env.bindings.set_job("WAR", "NIN")
+      binder.refresh()
+      assert.is_nil(binder.layer(), "the cursor went with the row")
+      assert.is_nil(last_preview(env), "and so did the preview")
+      assert.are.equal("LIVE", binder.window().viewing, "the header no longer claims a context")
+    end)
+
+    it("drops a cursor on the weapon row when the hand empties", function()
+      local binder, env = build({ weapon = "Great Axe" })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "wpn")))
+      assert.are.equal("wpn", binder.layer())
+      env.bindings.set_weapon_type(nil)
+      binder.refresh()
+      assert.is_nil(binder.layer())
+    end)
+
+    --[[ `wpn:` addresses whatever is in your hand, so the class under the
+         cursor can change while the panel is open - GearSwap or a game
+         macro is enough. The write follows the hand, which is the point of
+         the layer; what must not happen is the header and the confirmation
+         going on naming the class you were holding when you clicked. ]]
+    it("renames the cursor when the class in hand changes under it", function()
+      local binder, env = build({ weapon = "Great Axe" })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "wpn")))
+      env.bindings.set_weapon_type("Sword")
+      binder.refresh()
+      pick(binder, env, "Berserk")
+      assert.are.same({ type = "ja", action = "Berserk" }, env.files.WAR.weapons.Sword[1].left[3])
+      assert.is_nil(env.files.WAR.weapons["Great Axe"], "the write followed the hand")
+      local said = env.said[#env.said]
+      assert.is_not_nil(said:find("wpn:Sword", 1, true), "and so did what it said: " .. said)
+    end)
+
+    it("keeps a cursor whose layer is still offered", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "ctx:light-arts")))
+      env.bindings.set_job("WHM", "SCH")
+      binder.refresh()
+      assert.are.equal("ctx:light-arts", binder.layer(), "SCH is still within reach")
+    end)
+
+    it("lists no context the scoped job cannot reach", function()
+      local binder, env = build({ sub = "NIN" })
+      open_stack(binder, env, "left", 3)
+      for _, row in ipairs(binder.layer_view().rows) do
+        assert.is_nil(row.source:match("^ctx:"), row.source .. " is offered on WAR/NIN")
+      end
     end)
 
     it("shows each row's own entry, or a dash", function()
@@ -714,6 +801,16 @@ describe("crossbar binder", function()
       assert.is_nil(entry.record.alias, "and so did the catalog")
     end)
 
+    it("binds through the weapon row into the class in hand", function()
+      local binder, env = build({ weapon = "Great Axe" })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "wpn")))
+      pick(binder, env, "Berserk")
+      assert.are.same({ type = "ja", action = "Berserk" }, env.files.WAR.weapons["Great Axe"][1].left[3])
+      -- And the base it covers is untouched underneath.
+      assert.are.same({ type = "ja", action = "Provoke" }, env.files.WAR.sets[1].left[3])
+    end)
+
     it("labels and writes an empty shared set's base row as shared", function()
       -- The set's own flag is the truth, not whether a layer happens to
       -- hold an entry: an empty shared set would otherwise say `base` while
@@ -745,7 +842,7 @@ describe("crossbar binder", function()
           },
         },
       }
-      local binder, env = build({ files = files })
+      local binder, env = build({ files = files, sub = "NIN" })
       open_stack(binder, env, "left", 3)
       local row = row_named(env, "sub")
       assert.are.equal("sub:NIN", row.label, "the worn subjob names the row")
@@ -1139,6 +1236,7 @@ describe("crossbar binder", function()
       assert.are.equal("", binder.mark("base"))
       assert.are.equal("", binder.mark("shared"))
       assert.are.equal("+", binder.mark("sub"))
+      assert.are.equal("^", binder.mark("wpn"))
       assert.are.equal("*", binder.mark("ctx:light-arts"))
       assert.are.equal("", binder.mark(nil))
     end)

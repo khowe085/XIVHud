@@ -892,6 +892,17 @@ step("building the crossbar component", function()
     get_items = function(...)
       return windower.ffxi.get_items(...)
     end,
+    -- What is in the main hand, for the weapon binding layer. The SAME
+    -- accessor equipviewer takes, so the addon has one reading of the
+    -- equipment table rather than two that could disagree about what an
+    -- empty slot looks like.
+    get_equipment = get_equipment,
+    --[[ And the same decode equipviewer reads that packet with, so the
+         crossbar can ask WHICH slot an Equip packet moved by field name
+         rather than by an offset of its own. Not among the ids the dispatch
+         pre-parses: only this component wants it, so parsing it once here
+         would be a decode every other component pays for. ]]
+    parse_packet = parse_packet,
     -- Argument-agnostic on purpose: set_equip's exact arity is a CB5,
     -- in-client question, and a wrapper must not encode a guess.
     set_equip = function(...)
@@ -999,9 +1010,15 @@ local function check_assets()
     -- openers.lua: every icon its entries carry.
     "icons/item.png",
     "icons/map.png",
-    -- contexts.lua: the arts/addendum book icons.
+    -- contexts.lua: the icons the roster entries name - the arts/addendum
+    -- books, and BLU's job icon for unbridled (the shipped ability sheet is
+    -- keyed by recast id, which nothing here can look up). Load-checked with
+    -- the rest though no surface draws a roster icon yet: the field is what
+    -- the roster carries, and art that is missing should say so at load
+    -- rather than the day something starts drawing it.
     "icons/abilities/book_white.png",
     "icons/abilities/book_black.png",
+    "icons/jobs/blu.png",
     -- actions.lua built-ins: mr, warp, and draw's three states.
     "icons/mounts/mount-roulette.png",
     "icons/spells/00261.png",
