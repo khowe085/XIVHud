@@ -3223,10 +3223,6 @@ describe("crossbar live widget", function()
     end)
 
     describe("the buff and zone chunks", function()
-      local function u16le(v)
-        return string.char(v % 256, math.floor(v / 256) % 256)
-      end
-
       -- 0x63 order 9 as the entry point's packets.parse hands it over.
       local function buff_refresh(buff_id)
         local packet = { Order = 9 }
