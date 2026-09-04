@@ -85,9 +85,11 @@ local SLOT_COUNT = 8
        catalog -> what to put there
        target  -> what it aims at, for the types that take one
 
-     `back` in the top left walks the steps in reverse and closes the window
-     from the first, so every dead end has a way out that is not "click
-     somewhere empty and hope". ]]
+     `back` in the top left walks the steps in reverse and is not drawn on
+     the first, which has nothing to retreat to; `close` in the top right
+     shuts the window from any step. Two controls rather than one that
+     changed its label (Kevin, 2026-08-31), so every dead end has a way out
+     that is not "click somewhere empty and hope". ]]
 local STEP_LAYER, STEP_CATALOG, STEP_TARGET = "layer", "catalog", "target"
 
 local FONT_SIZE = 18
@@ -99,6 +101,7 @@ local WINDOW_HEIGHT = 600
 local CATEGORY_WIDTH = 210
 local DETAILS_WIDTH = 280
 local BACK_WIDTH = 90
+local CLOSE_WIDTH = 50
 -- The title line and the line under it naming the slot and the choice so far.
 local HEADER_ROWS = 2
 --[[ Rows are derived from the window rather than fixed, so changing its
@@ -393,6 +396,7 @@ local function new(deps)
     prims = {
       window_bg = image(PANEL_TEXTURE),
       back = text(),
+      close = text(),
       title = text(),
       subhead = text(),
       categories = texts(CATEGORY_ROWS),
@@ -412,6 +416,7 @@ local function new(deps)
     end
     kill(prims.window_bg)
     kill(prims.back)
+    kill(prims.close)
     kill(prims.title)
     kill(prims.subhead)
     kill(prims.pager)
@@ -504,11 +509,22 @@ local function new(deps)
     local y = position ~= nil and position.y or math.max(0, math.floor(screen_height / 2 - WINDOW_HEIGHT / 2))
     local frame = { x = x, y = y, width = WINDOW_WIDTH, height = WINDOW_HEIGHT }
     frame.back = { x = frame.x + PAD, y = frame.y + PAD, width = BACK_WIDTH, height = ROW_HEIGHT }
+    -- Inset from the right edge exactly as back is from the left, so the two
+    -- controls read as a pair however wide the window is.
+    frame.close = {
+      x = frame.x + WINDOW_WIDTH - PAD - CLOSE_WIDTH,
+      y = frame.y + PAD,
+      width = CLOSE_WIDTH,
+      height = ROW_HEIGHT,
+    }
     frame.title = { x = frame.back.x + BACK_WIDTH + GAP, y = frame.y + PAD }
     --[[ The drag handle: the top strip, back button excluded, which is
          checked first so a slip onto it is still back. It spans the rest of
          the width rather than only the title text, because a handle you
-         have to aim at is worse than no handle. ]]
+         have to aim at is worse than no handle. Close sits INSIDE it and is
+         checked first for the same reason. The strip does NOT reclaim the
+         width back leaves on the first step (Kevin, 2026-08-31): that top
+         left corner simply drags nothing there. ]]
     frame.header = {
       x = frame.back.x + BACK_WIDTH,
       y = frame.y,
@@ -541,6 +557,11 @@ local function new(deps)
     end
     local frame = build_frame()
     frame.step = step
+    if step == STEP_LAYER then
+      -- Not merely hidden: an undrawn control that still answered the hit
+      -- test would swallow clicks on the first step for good.
+      frame.back = nil
+    end
     frame.address = { set = slot.set, side = slot.side, slot = slot.slot }
     -- Which stacked state the bar is being shown as: a context layer
     -- previews itself, so the window has to say which one you are looking
@@ -924,6 +945,7 @@ local function new(deps)
     if window == nil then
       prims.window_bg.hide()
       prims.back.hide()
+      prims.close.hide()
       prims.title.hide()
       prims.subhead.hide()
       prims.pager.hide()
@@ -937,12 +959,18 @@ local function new(deps)
     end
 
     draw_backdrop(prims.window_bg, window)
-    -- The first step's back closes the window, and the label says so rather
-    -- than leaving a dead-looking button on the only screen it cannot
-    -- retreat from.
-    prims.back.text(window.step == STEP_LAYER and "[ close ]" or "[ < back ]")
-    prims.back.pos(window.back.x, window.back.y)
-    prims.back.show()
+    -- The first step has nothing to retreat to, so back is absent there
+    -- rather than drawn dead; the X is up on every step.
+    if window.back ~= nil then
+      prims.back.text("[ < back ]")
+      prims.back.pos(window.back.x, window.back.y)
+      prims.back.show()
+    else
+      prims.back.hide()
+    end
+    prims.close.text("[ X ]")
+    prims.close.pos(window.close.x, window.close.y)
+    prims.close.show()
     local title, subhead = header_text(window)
     prims.title.text(title)
     prims.title.pos(window.title.x, window.title.y)
@@ -1040,9 +1068,12 @@ local function new(deps)
        would simply vanish. ]]
   local function hit(x, y)
     if window ~= nil and inside(x, y, window) then
-      -- Back is checked before anything else in the window, so no row can
-      -- ever be laid over the one control that gets you out.
-      if inside(x, y, window.back) then
+      -- The two ways out are checked before anything else in the window, so
+      -- no row - and no drag handle - can ever be laid over them.
+      if inside(x, y, window.close) then
+        return { kind = "close", rect = window.close }
+      end
+      if window.back ~= nil and inside(x, y, window.back) then
         return { kind = "back", rect = window.back }
       end
       if inside(x, y, window.header) then
@@ -1205,6 +1236,10 @@ local function new(deps)
 
   local function close_panel()
     slot, cursor, pending, step = nil, nil, nil, nil
+    -- The details column describes what the cursor is over, and there is no
+    -- longer anything to be over. Cleared HERE rather than in each caller,
+    -- so the X, an empty-space click and back's first step cannot drift.
+    details, hovered = nil, nil
     apply_preview()
   end
 
@@ -1216,10 +1251,10 @@ local function new(deps)
     details, hovered = nil, nil
   end
 
-  --[[ Back walks the wizard in reverse, and from the first step it closes
-       the window (Kevin, 2026-08-22). Every step therefore has a way out
-       that is not "click empty space and hope" - which on a full screen is
-       also the gesture that clears a slot. ]]
+  --[[ Back walks the wizard in reverse. It is not drawn on the first step
+       (Kevin, 2026-08-31), which is what the X in the top right is for:
+       every step has a way out that is not "click empty space and hope" -
+       which on a full screen is also the gesture that clears a slot. ]]
   local function go_back()
     if step == STEP_TARGET then
       step, page, pending = STEP_CATALOG, 1, nil
@@ -1227,6 +1262,9 @@ local function new(deps)
       cursor, step, page = nil, STEP_LAYER, 1
       apply_preview()
     else
+      -- Unreachable while the first step draws no back button, and kept
+      -- rather than trimmed: the answer to an unexpected step must not be a
+      -- wizard that swallowed the click and went nowhere.
       close_panel()
     end
     details, hovered = nil, nil
@@ -1237,6 +1275,8 @@ local function new(deps)
       close_panel()
     elseif target.kind == "back" then
       go_back()
+    elseif target.kind == "close" then
+      close_panel()
     elseif target.kind == "slot" then
       select_slot(target)
     elseif target.kind == "row" then
@@ -1352,7 +1392,6 @@ local function new(deps)
       return
     end
     close_panel()
-    details, hovered = nil, nil
     redraw()
   end
 

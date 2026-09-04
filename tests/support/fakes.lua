@@ -302,6 +302,27 @@ function M.widget(name, defaults, anchor_names)
       end
       return placed.pos[1], placed.pos[2], w.width, w.height
     end
+
+    --[[ Per-anchor visibility, recorded strictly as it arrives: `w.shown` is
+         the answer to "did the framework show the WIDGET", `w.anchor[n].shown`
+         to "did it show this anchor". Nothing here infers one from the other,
+         so a core that stopped announcing the widget itself fails a test
+         rather than passing on the fake's good manners. ]]
+    function w.show(anchor)
+      if anchor == nil then
+        w.shown = true
+        return
+      end
+      entry(anchor).shown = true
+    end
+
+    function w.hide(anchor)
+      if anchor == nil then
+        w.shown = false
+        return
+      end
+      entry(anchor).shown = false
+    end
   end
 
   return w

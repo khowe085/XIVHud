@@ -95,7 +95,9 @@ local function new(deps)
     return nil
   end
 
-  local function parse_target(words, verb, allow_all)
+  -- `//hud reset <component|all>`. show|hide has a parser of its own below,
+  -- since it takes an anchor after the name and reset does not.
+  local function parse_target(words, verb)
     local target = words[2]
     if not target then
       return fail("'//hud " .. verb .. "' needs a component name")
@@ -103,7 +105,7 @@ local function new(deps)
     if #words > 2 then
       return fail("'//hud " .. verb .. "' takes a single component name")
     end
-    if allow_all and target:lower() == "all" then
+    if target:lower() == "all" then
       return { action = verb, component = "all" }
     end
     local component = resolve_component(target)
@@ -111,6 +113,25 @@ local function new(deps)
       return fail("no component named '" .. target .. "'")
     end
     return { action = verb, component = component }
+  end
+
+  --[[ `//hud show|hide <component> [<anchor>]`. The anchor word is passed
+       through as typed and NOT validated here: the parser knows component
+       names and aliases, and nothing about the anchors a widget declares, so
+       core refuses an unusable one where it can say the real names back. ]]
+  local function parse_visibility(words, verb)
+    local target = words[2]
+    if not target then
+      return fail("'//hud " .. verb .. "' needs a component name")
+    end
+    if #words > 3 then
+      return fail("'//hud " .. verb .. "' takes a component name and at most one anchor")
+    end
+    local component = resolve_component(target)
+    if not component then
+      return fail("no component named '" .. target .. "'")
+    end
+    return { action = verb, component = component, anchor = words[3] }
   end
 
   local function parse_slot(words)
@@ -182,9 +203,9 @@ local function new(deps)
     elseif verb == "list" then
       return no_extra(words, "list") or { action = "list" }
     elseif verb == "show" or verb == "hide" then
-      return parse_target(words, verb, false)
+      return parse_visibility(words, verb)
     elseif verb == "reset" then
-      return parse_target(words, "reset", true)
+      return parse_target(words, "reset")
     elseif verb == "slot" then
       return parse_slot(words)
     elseif verb == "copy" then

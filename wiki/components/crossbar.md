@@ -71,7 +71,7 @@ left-hand cross is slots 1–4 and the right-hand cross 5–8.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar bind <address> <type> [<action>] [<target>] ["<alias>"] ["<icon>"]` | bind a slot, labelling it in the same command if you want |
+| `//hud crossbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>]` | bind a slot, labelling it in the same command if you want |
 | `//hud crossbar unbind <address>` | clear a slot in one layer — the one you addressed |
 | `//hud crossbar alias <address> [<name>]` | change the label under a slot — omit `<name>` to clear it |
 | `//hud crossbar icon <address> [<icon>]` | change a slot's icon — omit `<icon>` to clear it |
@@ -115,18 +115,21 @@ the ones that work:
 Leave it off for anything that does not need one. Each may be written bare or
 in angle brackets — `t` and `<t>` are the same thing.
 
-**Wrap `<action>` in quotes** if it contains a space — and quote it whenever
-its last word could be mistaken for something else, because the quotes settle
-the question outright. Unquoted, the last word is a target only when it is one
-of the tokens above; anything else is taken as part of the action's name, so
-`ws Savage Blade Zeid` binds a weaponskill called "Savage Blade Zeid". Where
-the addon can tell the shorter name is a real action and the longer one is
-not, it refuses instead of binding something that could never fire, and where
-it cannot tell it says which reading it took.
+**Wrap `<action>` in quotes** if it contains a space. Unquoted, the last word
+is a target only when it is one of the tokens above; anything else is taken as
+part of the action's name, so `ws Savage Blade Zeid` binds a weaponskill
+called "Savage Blade Zeid". Where the addon can tell the shorter name is a
+real action and the longer one is not, it refuses instead of binding something
+that could never fire, and where it cannot tell it says which reading it took.
 
-**A quoted word after the action is a target or a label**, never part of the
-name: quoting is how you say where the name ends. `ma Cure "IV"` binds a
-spell called "Cure" with the alias "IV", where `ma Cure IV` binds "Cure IV".
+**What quoting does is group, not delimit.** A quoted run reaches the addon as
+one word with its quotes taken off, so quoting a *whole* name keeps it whole —
+`ws "Savage Blade Zeid"` binds that three-word name outright, and that is the
+way to bind a name the addon would otherwise second-guess. Quoting only part
+of one settles nothing: `ws "Savage Blade" Zeid` and `ws Savage Blade Zeid`
+arrive as the same words. Nor can a quote mark a label — by the time the addon
+is asked, `"IV"` and `IV` are the same word. That is what `alias=` and `icon=`
+are for.
 
 **A player's name is not a target.** Use a token above — `t` for whoever you
 have targeted, `p1`–`p5` for a party member.
@@ -159,29 +162,51 @@ icon of its own:
 ```
 
 **`bind` takes both on the end**, so a slot can be labelled by the command
-that binds it — each quoted, the alias first:
+that binds it — each opened by its own marker:
 
 ```
-//hud crossbar bind 1L3 ja "Addendum: White" "AW"
-//hud crossbar bind 4L1 ct "/heal" "Rest" "heal"
-//hud crossbar bind 2R1 item "Warp Ring" "" "items/warp-ring"   -- an icon, no alias
+//hud crossbar bind 1L3 ja "Addendum: White" alias=AW
+//hud crossbar bind 4L1 ct heal alias=Rest icon=heal
+//hud crossbar bind 2R1 item "Warp Ring" icon=items/warp-ring   -- an icon, no alias
+//hud crossbar bind 1R1 ex "jc RDM/DRK" alias=RDM/DRK icon=jobs/rdm
 ```
 
-The quotes are what tells a label from another word of the action's name, and
-`""` in the alias slot is how you give an icon without one. Three things
-follow from that:
+A marker's value runs to the next marker or the end of the line, so an alias
+with spaces needs no quotes of its own: `alias=Big Hit` is one alias. Both are
+matched in any case, take either order, and either may be left out — an icon
+with no alias is just `icon=<name>` with no `alias=` beside it. What follows
+from that:
 
-- A quoted word that spells a **target** token is still the target — `ra "t"`
-  aims, it does not alias — so on a type that takes a target, `me`, `t`,
-  `pet`, `p1` and the rest cannot be aliases here; use the `alias` verb for
-  those. On a type that takes none (`draw`, `warp`, `mr`…) they alias fine.
+- **The marker ends the action name**, which is what lets a one-word name
+  carry a label: `ma Cure alias=C` binds Cure under the label "C", where
+  `ma Cure C` binds a spell called "Cure C".
+- On a `ct` or `ex` line the marker is the only thing that ends the line, so
+  the line keeps every word up to it: `ct p pulling alias=Pull` says
+  `/p pulling` under the label "Pull". (A `ct` line is written without its
+  leading slash — the addon adds it.) A line that needs a literal `alias=` or
+  `icon=` in it must be quoted as a whole: `ct "p alias=x"` says `/p alias=x`,
+  where the unquoted `ct p alias=x` says `/p` under the label "x".
+- **A quoted phrase inside a `ct` or `ex` line survives**, even though
+  Windower strips the quotes before the addon sees them: a word can only
+  reach the addon with a space in it if you quoted it, so the addon puts the
+  quotes back. `ct ma "Cure IV" <t>` says `/ma "Cure IV" <t>`, and
+  `ex gs c "set TP"` runs with its grouping intact. What cannot survive is
+  quoting around a *single* word — `ct ma "Cure" <t>` says `/ma Cure <t>`,
+  which the game reads the same way anyway.
+- The other half of that: **a phrase you quote in a chat line is said with
+  the quotes on it.** `ct p "Hello there"` says `/p "Hello there"`. Leave
+  chat text unquoted — `ct p Hello there` says `/p Hello there` — and keep
+  the quotes for the places the game itself wants them, like a spell name.
+  Quotes around the *whole* line are the one exception and come off again:
+  `ct "sea all linkshell"` says `/sea all linkshell`, the spelling the old
+  grammar needed.
+- A **target** goes in front of the labels. One that turns up after them as a
+  word of its own is refused rather than quietly folded into the alias, since
+  an aim that vanished into a label would bind an action pointed at nothing.
+  An alias you really do want to end in `p1` can be quoted (`alias="Cure p1"`)
+  or given with the `alias` verb.
 - An icon the addon cannot find **refuses the whole bind**, rather than
   binding the action and dropping the art quietly.
-- On a `ct` or `ex` line, quote the line itself as well, or the labels are
-  read as part of what gets said. A line carrying quotes of its own is fine —
-  it ends at the quote its labels follow, so `ct "/p "Odin" up" "Greet"` says
-  `/p "Odin" up` under the label "Greet". Without labels after it, an
-  unquoted line is the simpler spelling and keeps every word.
 
 The `alias` and `icon` verbs follow the same layer prefixes as `bind`, so aliasing
 `ctx:light-arts:1` relabels only what that context puts in the slot. Both need

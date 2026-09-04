@@ -191,6 +191,34 @@ describe("layout", function()
       assert.are.equal(1, state.anchors.indicator.scale)
     end)
 
+    --[[ Per-anchor visibility. ABSENT means shown, so repair fabricates
+         nothing: an anchor carries the key only once it has been switched off,
+         and a component whose defaults hide an anchor says so itself. ]]
+    it("never fabricates a per-anchor visible", function()
+      local state = layout.repair({}, anchored_defaults())
+      assert.is_nil(state.anchors.main.visible)
+      assert.is_nil(state.anchors.indicator.visible)
+    end)
+
+    it("keeps a stored per-anchor visible, either way round", function()
+      local state = layout.repair({
+        anchors = {
+          main = { pos = { x = 1, y = 2 }, scale = 1, visible = false },
+          indicator = { pos = { x = 3, y = 4 }, scale = 1, visible = true },
+        },
+      }, anchored_defaults())
+      assert.is_false(state.anchors.main.visible)
+      assert.is_true(state.anchors.indicator.visible)
+    end)
+
+    it("seeds a missing anchor from a default that hides it", function()
+      local defaults = anchored_defaults()
+      defaults.anchors.indicator.visible = false
+      local state = layout.repair({}, defaults)
+      assert.is_false(state.anchors.indicator.visible)
+      assert.is_nil(state.anchors.main.visible)
+    end)
+
     it("seeds a repaired anchor with a copy, not a reference to the defaults", function()
       local defaults = anchored_defaults()
       local state = layout.repair({}, defaults)
