@@ -410,6 +410,17 @@ in defect 1 above.
 
 ## Follow-ups (not built)
 
+- **Merit points read 0 until the server re-sends 0x063 order 2.** It comes when
+  limit points move and in the bursts sent for a zone or the status menu, never
+  on request; `last_incoming` is keyed by id alone, so the seed at attach nearly
+  always catches order 5 or 9 instead. A merit-capped character earning no limit
+  points reads 0 for the whole session until they zone or open the status menu.
+  Seen in a live client 2026-09-04 (75 merits shown as 0, corrected the moment
+  the status menu opened). **pointwatch behaves identically**, and Kevin's call
+  was to leave it: the fix is to hold the two state packets from before the
+  attach and adopt them after it, which is real machinery for a display that
+  self-corrects on the next zone.
+
 - **Listen on the `action message` event instead of parsing every 0x02D.** The
   component parses each one to read nine message ids out of it, and action
   messages are among the highest-frequency inbound packets in an alliance zone.

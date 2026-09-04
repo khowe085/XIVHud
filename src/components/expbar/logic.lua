@@ -329,8 +329,17 @@ local function new(config)
     return true
   end
 
+  --[[ One packet id over five layouts; only order 2 carries limit points.
+
+       The server sends it when limit points MOVE, and in the bursts it sends
+       for a zone or the status menu - not on request, and `last_incoming` is
+       keyed by id alone, so the seed at attach nearly always catches one of the
+       other orders instead. A merit-capped character earning no limit points
+       therefore reads 0 merits until something makes the server re-send it:
+       opening the status menu does, so does zoning. Confirmed in a live client
+       2026-09-04, and pointwatch behaves the same way - left alone on Kevin's
+       call rather than fixed by holding packets from before the attach. ]]
   local function on_char_update(packet)
-    -- One packet id over five layouts; only order 2 carries limit points.
     if whole(packet.Order) ~= LIMIT_POINT_ORDER then
       return false
     end

@@ -48,18 +48,21 @@ local ANCHOR_FROM_BOTTOM = 32
 return function(screen_width, screen_height)
   local config = {
     font = "sans-serif",
-    -- 8pt: 11 drew far too large in a live client (Kevin, 2026-09-04).
-    font_size = 8,
+    -- 6pt. 11 drew far too large in a live client, then 8 (Kevin, 2026-09-04).
+    font_size = 6,
     -- The crossbar's gold, so the line matches the job glyph beside it and the
     -- gold of the bar's own fill below.
     text_color = { a = 255, r = 255, g = 215, b = 0 },
     -- XIVBar's stroke values.
     text_stroke = { width = 2, a = 150, r = 80, g = 70, b = 30 },
-    --[[ The gap between the bottom of the header band and the top of the bar.
-         The band itself is not configured: it is the taller of the header and
-         the icon, both derived, so nothing here can disagree with the font
-         size the way a written-down band height would. ]]
-    gap = 2,
+    --[[ The margin between the foot of the header and the top of the bar - 3,
+         being the 2 the rows were first drawn at plus the 1 a live client
+         wanted (Kevin, 2026-09-04).
+
+         The rows themselves are not configured: the header's height is derived
+         from the font and the icon spans both rows, so nothing here can
+         disagree with the font size the way a written-down band height would. ]]
+    gap = 3,
     --[[ The main job's icon: left of both rows, and as tall as the two of them
          together - `size` is derived below. XivParty's glyphs are gold with a
          dark outline, so they are drawn on their own.
