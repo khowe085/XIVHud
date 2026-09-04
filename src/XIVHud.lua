@@ -861,8 +861,8 @@ end)
      timestamps count in.
 
      Gated on safe_mode alone, targetbar's rule: the icons draw by id and the
-     packet is decoded from raw bytes, so the resources only ever name a buff
-     in a command's answer - without them it says `buff 33` instead. What a
+     packet arrives parsed, so the resources only ever name a buff in a
+     command's answer - without them it says `buff 33` instead. What a
      libraries failure DOES cost it is the timers: the `incoming chunk`
      handler below is registered only with the libraries up - and this one
      is not too wide a gate for it, the pre-parse being packets.parse - so
@@ -1305,7 +1305,10 @@ if not safe_mode and not libraries_error then
       if id == ACTION_CHUNK then
         parsed = parse_action(original)
       elseif structured[id] then
-        parsed = packets.parse("incoming", original)
+        -- pcall'd, like parse_action: a packet the library cannot read is a
+        -- nil `parsed` with the bytes still dispatched, never a handler
+        -- failure that guard would count towards disabling the whole thing.
+        parsed = parse_packet(original)
       end
       core.dispatch("chunk", id, original, parsed)
     end)

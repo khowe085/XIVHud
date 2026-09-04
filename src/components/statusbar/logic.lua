@@ -312,6 +312,9 @@ local function new(deps)
         x = cell_x,
         y = cell_y,
         size = ICON_SIZE * scale,
+        -- Left-aligned under the icon, not centred as XIV draws it: Windower
+        -- cannot measure a string, so centring would be an estimate from
+        -- the font size (speedcheck's approach) - a live-client call.
         text_x = cell_x,
         text_y = cell_y + ICON_SIZE * scale,
         -- Whole pixels: a fractional font size is not something a prim can

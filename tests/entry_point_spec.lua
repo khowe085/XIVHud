@@ -414,6 +414,25 @@ describe("entry point", function()
       assert.are.equal(0, #boot.action_parses)
     end)
 
+    -- Both pre-parses are pcall'd: a packet the library cannot read costs
+    -- the frame nothing, the raw bytes still go out, and `parsed` is nil -
+    -- the contract every reader is written to. Unprotected, five bad packets
+    -- would have guard disable the whole chunk handler for the session.
+    it("dispatches a packets.parse failure as a nil `parsed`, without throwing", function()
+      boot.parse_raises = true
+
+      assert.has_no.errors(function()
+        boot.chunk(CHAR_UPDATE, "unreadable")
+        boot.chunk(ALLIANCE, "unreadable")
+      end)
+
+      local dispatch = boot.last_dispatch("chunk")
+      assert.are.equal(3, dispatch.n)
+      assert.are.equal("unreadable", dispatch[2])
+      assert.is_nil(dispatch[3])
+      assert.are.equal("", boot.said():match("error in the incoming chunk handler") or "")
+    end)
+
     it("parses nothing for an id no component has a definition for", function()
       boot.chunk(PARTY_BUFFS, "buff bytes")
 

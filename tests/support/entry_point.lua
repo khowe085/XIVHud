@@ -69,6 +69,11 @@ local function build_stubs(boot, options)
     packets = {
       parse = function(direction, data)
         boot.parsed_packets[#boot.parsed_packets + 1] = { direction = direction, data = data }
+        -- The library throws on bytes it cannot read; `parse_raises` stands
+        -- in for that.
+        if boot.parse_raises then
+          error("cannot parse " .. tostring(data))
+        end
         return { packet = data }
       end,
     },
@@ -310,6 +315,7 @@ function M.boot(options)
     -- What the fake windower.packets.parse_action answers with.
     action = { category = 8, param = 0, targets = {} },
     action_raises = false,
+    parse_raises = false,
     -- What the fake windower.packets.last_incoming answers with, per id.
     last_incoming = {},
     last_incoming_asked = {},
