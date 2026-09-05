@@ -62,6 +62,7 @@ local openers = require("components/crossbar/openers")
 local new_skillchain = require("components/crossbar/skillchain")
 local new_retry = require("components/crossbar/retry")
 local new_travel = require("components/crossbar/travel")
+local new_wsgate = require("components/crossbar/wsgate")
 local new_catalog = require("components/crossbar/catalog")
 local new_binder = require("components/crossbar/binder")
 local new_weapon = require("components/crossbar/weapon")
@@ -609,6 +610,22 @@ local function new(ctx)
     statuses = resources ~= nil and resources.statuses or nil,
   })
 
+  --[[ The weaponskill gate: a `ws` press the game could never honour is
+       refused before anything is sent. Its config is read through a closure
+       for the same reason the two above are - `//hud crossbar wsgate off`
+       and a new reach both reach it the moment the write lands - and the
+       resource table goes in whole so it can resolve `Engaged` by name
+       rather than trusting a number.
+
+       No clock: the in-flight lock that needed one was cut against a live
+       client, TP recovery having turned out to outlast it. ]]
+  local wsgate = new_wsgate({
+    config = function()
+      return config.wsgate
+    end,
+    statuses = resources ~= nil and resources.statuses or nil,
+  })
+
   --[[ The item-icon extraction pipeline (lib/icon_cache): built only when
        the ctx carries the file surface; a config-level game_path override
        wins over the client's own answer, equipviewer's convention.
@@ -763,6 +780,13 @@ local function new(ctx)
     end,
     file_exists = file_exists,
     validate = actions.validate,
+    --[[ The current target, for the weaponskill gate's readout alone: it
+         prints the distance and the model size beside the reach so the
+         reach can be settled by reading rather than guessing. `<t>` is the
+         gate's own default token, and the read is memoized for the frame. ]]
+    get_target = function()
+      return ctx.get_mob_by_target ~= nil and ctx.get_mob_by_target("t") or nil
+    end,
     action_exists = function(kind, name)
       local table_name = RESOURCE_TABLES[kind]
       if resources == nil or table_name == nil then
@@ -2127,6 +2151,60 @@ local function new(ctx)
     return nil
   end
 
+  --[[ Which mob the gate may look up for a press, or nil for "do not look".
+
+       The PINNED PAIR and nothing else - the two tokens this repo has read
+       `get_mob_by_target` for, exactly as the cast retry's own pinning is
+       scoped. A weaponskill bound to <st>, <p3> or a scan cannot be
+       resolved here, and reading <t> in its place would refuse a press on a
+       mob it never aimed at: an empty <t> says nothing about <bt>. A record
+       with no token at all aims at the current target, which IS <t>. ]]
+  local function gate_token(record)
+    local token = record.target
+    if token == nil then
+      return "t"
+    end
+    token = type(token) == "string" and token:lower() or nil
+    return token ~= nil and PINNED_TARGETS[token] and token or nil
+  end
+
+  --[[ What the weaponskill gate needs, gathered through the player service
+       rather than the client: the mob read is memoized for the frame, so the
+       party list and the targetbar asking for the same one cost nothing.
+       `skill` is the weapon class the weaponskill belongs to - the gate
+       skips the distance test for the ranged ones.
+
+       The mob itself never leaves this function: the gate wants its
+       distance and its bulk, the two rules that read the rest of it having
+       been cut against a live client. A token the gate will not look up, or
+       a ctx with no mob lookup at all, simply yields neither, and the reach
+       rule sits out. ]]
+  local function gate_facts(record)
+    -- For a weaponskill alone: every other type would pay a resource lookup
+    -- and up to two mob reads for facts nothing downstream consults.
+    if record.type ~= "ws" then
+      return nil
+    end
+    local player = get_player()
+    local vitals = player ~= nil and player.vitals or nil
+    local meta = meta_for(record)
+    local token = ctx.get_mob_by_target ~= nil and gate_token(record) or nil
+    local target = token ~= nil and ctx.get_mob_by_target(token) or nil
+    return {
+      tp = vitals ~= nil and vitals.tp or nil,
+      status = player ~= nil and player.status or nil,
+      -- Amnesia stops a weaponskill outright, and the buffs are already
+      -- read here every frame for the context layers.
+      buffs = player ~= nil and player.buffs or nil,
+      skill = meta ~= nil and meta.weapon or nil,
+      distance_squared = target ~= nil and target.distance or nil,
+      -- The mob's bulk, which the reach grows with past a pivot: a big
+      -- monster is struck from further out because you cannot get close to
+      -- it. See wsgate.lua's size_pivot.
+      model_size = target ~= nil and target.model_size or nil,
+    }
+  end
+
   local function fire_slot(slot)
     if scoped_main == nil or machine == nil then
       return
@@ -2141,6 +2219,24 @@ local function new(ctx)
       -- a newer slot press, though, so it drops whatever the cast retry was
       -- watching - nothing may outlive the moment it belonged to.
       retry.sent(nil)
+      return
+    end
+    --[[ The weaponskill gate, BEFORE the flash and before resolve: a press
+         the game could never honour is a complete no-op - no command, no
+         hint, no flash, and nothing downstream disturbed. The cast retry
+         keeps whatever it was watching, deliberately: unlike the empty slot
+         above, this press did not happen at all, so the moment it would
+         have belonged to has not moved on.
+
+         THE DIM AND THE DEAD PRESS ARE NOT ONE RULE HERE, unlike the mount
+         slot's. `render.cost` dims a weaponskill short of its 1000 TP and
+         nothing else, so that one refusal has a signal on screen while the
+         other two - disengaged, and out of reach - turn down a slot drawn
+         bright.
+         Kevin's call to leave it that way for now; it is written down here
+         rather than papered over, because the mount slot's rule was learned
+         the hard way and this is a deliberate exception to it. ]]
+    if not wsgate.allow(record, gate_facts(record)) then
       return
     end
     flash(group_key, slot)
