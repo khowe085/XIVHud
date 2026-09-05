@@ -290,10 +290,11 @@ far off the mob was) before doing anything else.
 | K2.3 | At 1000+ TP, engaged, in range, press it once | It fires exactly as it always did | [ ] | [ ] |  |
 | K2.4 | At 1000+ TP with nothing targeted, press it | Nothing is sent | [ ] | [ ] |  |
 | K2.5 | At 1000+ TP with a PARTY MEMBER selected, press it | Nothing is sent | [ ] | [ ] |  |
-| K2.6 | Stand well back from a mob (past melee) and press it | Nothing is sent. **Then walk in a step at a time and note the closest distance that was still refused** | [ ] | [ ] |  |
-| K2.7 | Do K2.6 again with a mob much larger than you | The reach grows with the mob - it fires from further out | [ ] | [ ] |  |
+| K2.6 | Stand well back from a mob (past melee) and press it | Nothing is sent. **Then walk in a step at a time and note the closest distance that was still refused** - it should track the target bar's own reading, `melee_range` being that same distance | [ ] | [ ] |  |
+| K2.7 | Do K2.6 again with a mob much larger than you, and on a long-reach weapon (polearm, scythe) if you have one | The reach does NOT grow with the mob - model sizes were dropped so the setting could stay in the units you read. If a big mob or a long weapon is refused at a distance that would have worked, raise it with `wsgate range` and note both numbers | [ ] | [ ] |  |
 | K2.8 | Fire one weaponskill, then mash the slot while it resolves | Exactly one goes out | [ ] | [ ] |  |
 | K2.9 | Fire one, wait for it to land, then press again | The second fires - the lock released on the finish, not on the clock | [ ] | [ ] |  |
+| K2.9b | `//hud crossbar wsgate range 3`, then repeat K2.6 | The reach the gate wants is what you just set - it refuses from closer in. `//hud crossbar wsgate` reports it | [ ] | [ ] |  |
 | K2.10 | `//hud crossbar wsgate off`, then repeat K2.2 | The press goes out and the game refuses it, as it did before this feature | [ ] | [ ] |  |
 | K2.11 | Bind a weaponskill to `<bt>`, engage, clear your tab target, press it | It fires - the gate reads the token the bind aims at | [ ] | [ ] |  |
 | K2.12 | On a job with a ranged weaponskill (bow, gun, or a boomerang), press it from ranged distance | It fires - ranged weaponskills are never distance-gated | [ ] | [ ] |  |
@@ -364,7 +365,7 @@ question the code currently guesses at, listed in
 | O6 | Type `/item "Echo Drops" <a real mob id>` using a number, not a token | Does the game accept a bare numeric target? | [x] | [ ] | Answered by K6 - the cast retry re-sends the pinned mob id in place of <t> and lands on the original mob, so the game does accept a bare numeric target |
 | O7 | On a job with /COR, try to spend a **master** card (Trump Card) | Can a subjob COR burn one? | [ ] | [x] | Not run |
 | O9 | **NOT ENGAGED**, at 1000+ TP with a mob targeted in range, type `/ws "<a weaponskill>" <t>` BY HAND (not from the bar) | Does the game refuse it, or does it engage and fire? | [x] | [ ] | Answered by Kevin, 2026-09-05: the game does not allow a weaponskill while not engaged, so the gate's engagement rule refuses only what the game refuses anyway |
-| O10 | Note the closest distance K2.6 still refused at, and the mob's apparent size | Settles `melee_range`, which ships at a deliberately loose 6 - TIGHTEN it to what you saw, never raise it to that | [ ] | [ ] | Not run |
+| O10 | Note the closest distance K2.6 still refused at | Settles `melee_range` | [x] | [ ] | Answered by Kevin, 2026-09-05: a weaponskill landed at a target bar 3 and at 4, and at 6 it fired and spent the whole 3000 TP. Shipped at 4, expressed as the target bar's own distance with no model sizes added, strictly greater so 4 itself still fires |
 | O11 | After K2.9, roughly how long between the press and the weaponskill landing? | Sanity-checks the 1s `in_flight` backstop against a real resolve | [ ] | [ ] | Not run |
 | O8 | If you own a trainer's whistle, look at its name in your key items | Does it start with the same music-note character the mounts do? | [ ] | [x] | Do not own a trainer's whistle |
 

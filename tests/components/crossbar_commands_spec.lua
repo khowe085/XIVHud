@@ -1969,6 +1969,54 @@ describe("crossbar commands", function()
   end)
 
   describe("wsgate", function()
+    it("reports the melee reach beside the switch", function()
+      -- The reach is the one rule still guessed at, so the report has to
+      -- name it: a player settling it in a live client needs to see what it
+      -- is now without opening the file.
+      local commands, world = build()
+      local shipped = require("components/crossbar/wsgate")({}).defaults().melee_range
+      local reply = commands.command({ "wsgate" })
+      assert.is_not_nil(reply:find(tostring(shipped), 1, true), reply)
+      world.config.wsgate = { enabled = true, melee_range = 4.5, in_flight = 1 }
+      reply = commands.command({ "wsgate" })
+      assert.is_not_nil(reply:find("4.5", 1, true), reply)
+    end)
+
+    it("sets the melee reach, and reports it on its own", function()
+      local commands, world = build()
+      local reply, save_config = commands.command({ "wsgate", "range", "4.5" })
+      assert.is_string(reply)
+      assert.is_true(save_config)
+      assert.are.equal(4.5, world.config.wsgate.melee_range)
+      local reported = commands.command({ "wsgate", "range" })
+      assert.is_not_nil(reported:find("4.5", 1, true), reported)
+    end)
+
+    it("leaves the switch alone when it sets the reach", function()
+      local commands, world = build()
+      world.config.wsgate = { enabled = false, melee_range = 6, in_flight = 1 }
+      commands.command({ "wsgate", "range", "3" })
+      assert.is_false(world.config.wsgate.enabled, "setting the reach is not switching it on")
+      assert.are.equal(1, world.config.wsgate.in_flight)
+    end)
+
+    it("refuses a reach that would break the gate, writing nothing", function()
+      --[[ The module falls back to the shipped reach for any of these, so a
+           stored one would be silently ignored - worse than a refusal,
+           because the player would believe it took. ]]
+      local commands, world = build()
+      for _, bad in ipairs({ "close", "0", "-1", "1/0", "" }) do
+        local reply, save_config = commands.command({ "wsgate", "range", bad })
+        assert.is_string(reply, bad)
+        assert.is_falsy(save_config, bad)
+        assert.is_nil(world.config.wsgate, bad)
+      end
+      local reply, save_config = commands.command({ "wsgate", "range", "4", "5" })
+      assert.is_string(reply)
+      assert.is_falsy(save_config)
+      assert.is_nil(world.config.wsgate)
+    end)
+
     it("reports ON with no argument and no block in the config", function()
       --[[ The opposite of the cast retry's report, and the whole reason the
            two are not one verb: a config written before this feature

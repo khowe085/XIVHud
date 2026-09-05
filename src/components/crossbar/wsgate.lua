@@ -128,26 +128,34 @@ local function new(deps)
            number nobody has measured, and it ships loose for that reason.
            Row O10 is how it gets settled. ]]
       enabled = true,
-      --[[ Yalms of reach, added to BOTH models - the shape
-           targetbar/logic.lua's casting_state uses.
+      --[[ Yalms of reach: THE DISTANCE THE TARGET BAR PRINTS, and nothing
+           added to it (Kevin, 2026-09-05).
 
-           A GUESS, and the one number here that is. Nothing in this repo
-           and nothing offline gives an authoritative weaponskill reach: the
-           targetbar ports DistancePlus' magic, ninjutsu and ranged bands
-           and has no melee band at all. Config, to be settled in a live
-           client the way expbar's text_width_ratio was.
+           It was `reach + both model sizes` at first, copying
+           targetbar/logic.lua's casting_state - which made the number
+           unsettable from a live client, since the number a player reads
+           off the target bar was not the number the setting meant. A reach
+           of 6 let a weaponskill go at a target bar 6, which is how that
+           was found. The model sizes are gone: a mob the size of a house
+           is measured exactly like a rabbit, which is wrong in principle
+           and tunable in practice, and tunable won.
 
-           The two directions are NOT symmetric, and the shipped value sits
-           on the harmless side of that on purpose (Kevin, 2026-09-05): too
-           loose lets a press through to a game that refuses it exactly as
-           it did before this existed, while too tight is a button that
-           silently does nothing. Six puts the cutoff near seven yalms with
-           two half-yalm models - past any melee reach, including the
-           polearm one constant cannot otherwise suit - so it starts by
-           catching the obvious misses only. Testplan row O10 records the
-           closest distance actually refused; TIGHTEN to that, do not raise
-           to it. ]]
-      melee_range = 6,
+           WHICH DIRECTION IS SAFE also changed once a client answered. It
+           shipped loose on the reasoning that a press let through reaches
+           a game that refuses it harmlessly - and the game does NOT refuse
+           it. Kevin's weaponskill fired at a target bar 6 and spent the
+           whole 3000 TP for nothing. So too loose is the EXPENSIVE
+           failure and too tight is merely a dead button, the reverse of
+           what was written here first, and this rule is the most valuable
+           of the six rather than the most expendable.
+
+           FOUR, from a live client (Kevin, 2026-09-05): a weaponskill
+           landed at a target bar 3 and at 4, and was thrown away at 6. It
+           is the furthest distance that still FIRES rather than the first
+           one refused, which is why the comparison below is strictly
+           greater - a player types the number they watched work.
+           `//hud crossbar wsgate range <yalms>` moves it live. ]]
+      melee_range = 4,
       --[[ Seconds the in-flight lock survives with nothing reported. The
            ORDINARY release is our own finish packet; this is only for the
            one that never comes - and it is deliberately SHORT (Kevin,
@@ -178,6 +186,13 @@ local function new(deps)
   --- a guard the player never switched off.
   function self.enabled()
     return settings().enabled ~= false
+  end
+
+  --[[ The reach in force, shipped value and all. Public because the CLI
+       reports and sets it: a second reading of the fallback over there
+       could report a number that is not the one being measured against. ]]
+  function self.melee_range()
+    return positive(settings().melee_range, self.defaults().melee_range)
   end
 
   --[[ Engaged, resolved from the resource table rather than trusted from
@@ -254,16 +269,13 @@ local function new(deps)
     end
 
     if not RANGED_SKILLS[type(facts.skill) == "string" and facts.skill:lower() or ""] then
-      local self_size = tonumber(facts.self_size)
-      local target_size = tonumber(target.model_size)
       -- The mob table reports the SQUARE of the distance; targetbar/logic.lua
-      -- takes the same root off the same field.
+      -- takes the same root off the same field, and prints what comes out -
+      -- which is the number `melee_range` is expressed in.
       local squared = tonumber(target.distance)
-      if self_size ~= nil and target_size ~= nil and squared ~= nil then
-        local reach = positive(settings().melee_range, self.defaults().melee_range)
-        if math.sqrt(math.max(squared, 0)) >= reach + self_size + target_size then
-          return false
-        end
+      -- Strictly greater: AT the reach still fires. See melee_range above.
+      if squared ~= nil and math.sqrt(math.max(squared, 0)) > self.melee_range() then
+        return false
       end
     end
 

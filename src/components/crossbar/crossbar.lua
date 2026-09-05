@@ -2168,10 +2168,10 @@ local function new(ctx)
   end
 
   --[[ What the weaponskill gate needs, gathered through the player service
-       rather than the client: both mob reads are memoized for the frame, so
-       the party list and the targetbar asking for the same ones cost
-       nothing. `skill` is the weapon class the weaponskill belongs to - the
-       gate skips the distance test for the ranged ones.
+       rather than the client: the mob read is memoized for the frame, so the
+       party list and the targetbar asking for the same one cost nothing.
+       `skill` is the weapon class the weaponskill belongs to - the gate
+       skips the distance test for the ranged ones.
 
        `target_read` is what separates "looked, and nothing is selected"
        from "never looked": only the first may refuse. It is false for a
@@ -2188,11 +2188,9 @@ local function new(ctx)
     local vitals = player ~= nil and player.vitals or nil
     local meta = meta_for(record)
     local token = ctx.get_mob_by_target ~= nil and gate_token(record) or nil
-    local me = token ~= nil and ctx.get_mob_by_target("me") or nil
     return {
       tp = vitals ~= nil and vitals.tp or nil,
       status = player ~= nil and player.status or nil,
-      self_size = me ~= nil and me.model_size or nil,
       skill = meta ~= nil and meta.weapon or nil,
       target = token ~= nil and ctx.get_mob_by_target(token) or nil,
       target_read = token ~= nil,

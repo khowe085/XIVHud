@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      rather than author, and the widget owns execution. ]]
 
 local roster = require("components/crossbar/contexts")
+local new_wsgate = require("components/crossbar/wsgate")
 
 -- The component's own asset root, for the shipped half of an icon name.
 -- The asset ROOT, not one folder in it: what hangs off this is `own/` for
@@ -114,6 +115,7 @@ local HELP = {
   "  //hud crossbar cycle <set> drawn|sheathed|both|none",
   "  //hud crossbar retry [on|off] - re-send an action the game refused as too soon",
   "  //hud crossbar wsgate [on|off] - drop a weaponskill press the game would refuse",
+  "  //hud crossbar wsgate range <yalms> - how close it wants you for a melee weaponskill",
   "  //hud crossbar copy <JOB>",
   "  //hud crossbar context list",
   "  //hud crossbar open [<name>]",
@@ -1145,23 +1147,68 @@ local function new(deps)
     return hint("cast retry: " .. (on and "on" or "off")), true, false
   end
 
+  --[[ The gate itself, over the LIVE config, so the CLI reports the very
+       numbers the widget's own instance measures against: the shipped
+       posture and the reach's fallback live in the module, and a second
+       reading of either here could report a value that is not in force. ]]
+  local gate = new_wsgate({
+    config = function()
+      local live = config()
+      return type(live) == "table" and live.wsgate or nil
+    end,
+  })
+
+  local WSGATE_FORM = "wsgate [on|off] - or wsgate range <yalms>"
+
+  --- How the gate's state reads out, switch and reach together. The reach is
+  --- the one rule still guessed at, so a player settling it in a live client
+  --- must be able to see it without opening the file.
+  local function wsgate_state()
+    return "weaponskill gate: "
+      .. (gate.enabled() and "on" or "off")
+      .. ", melee reach "
+      .. tostring(gate.melee_range())
+      .. " yalms"
+  end
+
+  --- `wsgate range [<yalms>]` -- the melee reach. No argument reports.
+  local function wsgate_range(args)
+    if #args > 3 then
+      return hint(WSGATE_FORM)
+    end
+    if args[3] == nil then
+      return hint("weaponskill gate melee reach: " .. tostring(gate.melee_range()) .. " yalms")
+    end
+    --[[ Refused rather than stored: the module falls back to the shipped
+         reach for a value it cannot use, so writing one would leave the
+         player believing a number that is not being measured against. Zero
+         is not an off switch here - `wsgate off` is. ]]
+    local yalms = tonumber(args[3])
+    if yalms == nil or yalms ~= yalms or yalms <= 0 or yalms == math.huge then
+      return hint("wsgate range <yalms> - a distance greater than zero")
+    end
+    config_table("wsgate").melee_range = yalms
+    return hint("weaponskill gate melee reach: " .. tostring(yalms) .. " yalms"), true, false
+  end
+
   --- `wsgate [on|off]` -- the weaponskill gate. No argument reports.
   local function wsgate(args)
-    if #args > 2 then
-      return hint("wsgate [on|off]")
+    if args[2] ~= nil and args[2]:lower() == "range" then
+      return wsgate_range(args)
     end
-    local live = config()
+    if #args > 2 then
+      return hint(WSGATE_FORM)
+    end
+    --[[ A config written before the feature existed has no block at all,
+         and reads as ON - the shipped posture, and the OPPOSITE of the cast
+         retry's report beside it. Reporting off there would describe a
+         guard that is in fact running. Nothing is written to say so. ]]
     if args[2] == nil then
-      --[[ A config written before the feature existed has no block at all,
-           and reads as ON - the shipped posture, and the OPPOSITE of the
-           cast retry's report beside it. Reporting off there would describe
-           a guard that is in fact running. Nothing is written to say so. ]]
-      local block = type(live.wsgate) == "table" and live.wsgate or {}
-      return hint("weaponskill gate: " .. (block.enabled ~= false and "on" or "off"))
+      return hint(wsgate_state())
     end
     local on = parse_switch(args[2])
     if on == nil then
-      return hint("wsgate [on|off]")
+      return hint(WSGATE_FORM)
     end
     -- Through config_table, so only the switch is touched: the melee reach
     -- is settled in a live client and must survive the switch.

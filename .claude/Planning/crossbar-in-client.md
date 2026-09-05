@@ -343,17 +343,33 @@ the wrong answer here would have made every out-of-combat weaponskill press
 a dead button with no message, since a gate refusal is silent by design.
 Testplan row O9 is answered; K2.4 and K2.3 still exercise the rule.
 
-**Q. What is a weaponskill's real reach, and does our own 0x028 release the
-lock?** Two numbers ship as guesses. `melee_range` (3.0 yalms, added to both
-model sizes) has nothing behind it - the DistancePlus port in the targetbar
-carries magic, ninjutsu and ranged bands and no melee one, so this was
-invented. `in_flight` (1s) is the backstop for a finish packet that never
-comes; the ordinary release is our own category-3 `0x028` matched on
-`actor_id`, and NOBODY HAS READ THAT PACKET IN A CLIENT - the same caveat the
-cast retry's refusal ids carry. A wrong match costs the player their
-weaponskill for a second after every press, which is why the span is short
-rather than the three seconds that would have covered a GearSwap ability
-chain. Rows K2.8, K2.9, O10 and O11.
+**Q. PARTLY ANSWERED (Kevin, 2026-09-05): a weaponskill's reach, and the
+game's own behaviour past it.**
+
+Three readings, all in the distance the target bar prints: a weaponskill
+landed at **3** and at **4**, and at **6** it FIRED AND SPENT THE WHOLE 3000
+TP. So `melee_range` ships at 4, expressed as that same distance with nothing
+added to it, and the comparison is strictly greater so the number a player
+watched work is the number they can type.
+
+The 6 is the important half. The gate was designed on the assumption that a
+press let through reaches a game that refuses it harmlessly, which made the
+range rule the most expendable of the six and argued for shipping it loose.
+The game does not refuse it. Too loose costs 3000 TP; too tight costs a dead
+button. The rule is now the most valuable of the six, and the reasoning in
+`wsgate.lua` is written the other way round.
+
+STILL OPEN, the other half: whether our own category-3 `0x028` matched on
+`actor_id` releases the in-flight lock. Nobody has read that packet in a
+client - the same caveat the cast retry's refusal ids carry - and a wrong
+match costs the player their weaponskill for `in_flight` after every press,
+which is why that span is one second. Rows K2.8, K2.9 and O11.
+
+Also open: whether 4 holds across weapon classes. A polearm reaches further
+than a dagger and one number cannot be right for both, and dropping the
+model sizes means a large mob is measured like a small one - both are
+`//hud crossbar wsgate range <yalms>` to adjust, which is why that verb
+exists.
 
 ---
 

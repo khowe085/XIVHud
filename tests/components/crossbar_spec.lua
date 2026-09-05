@@ -910,7 +910,7 @@ describe("crossbar live widget", function()
            the fixture would have described a world where the target and
            range rules could never fire. A test that cares which mob is
            selected still overwrites the whole table. ]]
-      target = { id = 99, hpp = 75, is_npc = true, distance = 4, model_size = 0.5 },
+      target = { id = 99, hpp = 75, is_npc = true, distance = 4 },
       equips = {},
       writes = {},
       stats = {},
@@ -1383,12 +1383,12 @@ describe("crossbar live widget", function()
 
         build_world()
         -- Twenty yalms out: the mob table reports the square.
-        env.target = { id = 99, hpp = 75, is_npc = true, distance = 400, model_size = 0.5 }
+        env.target = { id = 99, hpp = 75, is_npc = true, distance = 400 }
         weaponskill()
         assert.are.same({}, env.commands, "out of reach")
 
         build_world()
-        env.target = { id = 99, hpp = 75, is_npc = false, distance = 4, model_size = 0.5 }
+        env.target = { id = 99, hpp = 75, is_npc = false, distance = 4 }
         weaponskill()
         assert.are.same({}, env.commands, "a player, not an enemy")
       end)
@@ -1417,7 +1417,7 @@ describe("crossbar live widget", function()
              will look up. ]]
         build_world()
         widget.handle_command({ "bind", "1L6", "ws", "Savage Blade", "bt" })
-        env.targets = { bt = { id = 99, hpp = 75, is_npc = true, distance = 4, model_size = 0.5 } }
+        env.targets = { bt = { id = 99, hpp = 75, is_npc = true, distance = 4 } }
         press(LEFT)
         press(DIK_SLOT[6])
         assert.are.same({ 'input /ws "Savage Blade" <bt>' }, env.commands, "nothing tabbed, a battle target")
@@ -1507,6 +1507,20 @@ describe("crossbar live widget", function()
         widget.update("status", 2)
         weaponskill()
         assert.are.equal(2, #env.commands, "so does dying")
+      end)
+
+      it("takes a new melee reach from the command, at once", function()
+        -- Read through a closure like the switch, so a number settled in a
+        -- live client takes effect on the next press rather than the next
+        -- attach - which is the whole point of settling it live.
+        build_world()
+        env.target = { id = 99, hpp = 75, is_npc = true, distance = 400 }
+        weaponskill()
+        assert.are.same({}, env.commands, "twenty yalms out, at the shipped four")
+        local reply = widget.handle_command({ "wsgate", "range", "30" })
+        assert.is_not_nil(tostring(reply):find("30", 1, true), tostring(reply))
+        weaponskill()
+        assert.are.equal(1, #env.commands, "and inside a reach the player just set")
       end)
 
       it("is switched off by its own verb, and back on again", function()
@@ -5727,17 +5741,8 @@ describe("crossbar live widget", function()
       widget.update("chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
       widget.update()
-      --[[ "me" joins the pinning pair (2026-09-05): the weaponskill gate
-           reads the player's own model size for its reach, and that token
-           is vetted repo-wide - speedcheck ships `get_mob_by_target('me')`
-           and CLAUDE.md documents it. The rule is unchanged - only a token
-           this repo has actually read for is handed to the client - and
-           the crossbar's own list was simply narrower than the repo's. ]]
       for _, token in ipairs(env.target_tokens) do
-        assert.is_true(
-          token == "t" or token == "bt" or token == "me",
-          "unvetted target token asked of the client: " .. token
-        )
+        assert.is_true(token == "t" or token == "bt", "unvetted target token asked of the client: " .. token)
       end
     end)
 

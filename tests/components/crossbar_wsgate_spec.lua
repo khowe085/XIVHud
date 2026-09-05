@@ -16,12 +16,11 @@ local function facts(overrides)
     status = 1,
     -- The widget asked the client, with a token this repo has read for.
     target_read = true,
-    self_size = 0.5,
     skill = "Sword",
     -- The mob table reports the SQUARE of the distance (targetbar/logic.lua
     -- takes the same sqrt). 4 is two yalms, well inside the shipped 3.0
     -- plus both half-yalm models.
-    target = { distance = 4, is_npc = true, in_party = false, hpp = 100, model_size = 0.5 },
+    target = { distance = 4, is_npc = true, in_party = false, hpp = 100 },
   }
   for key, value in pairs(overrides or {}) do
     if value == NONE then
@@ -59,7 +58,7 @@ describe("crossbar weaponskill gate", function()
   describe("the shipped config", function()
     it("ships on, with the melee reach and the lock's backstop beside it", function()
       local wsgate = world()
-      assert.same({ enabled = true, melee_range = 6, in_flight = 1 }, wsgate.defaults())
+      assert.same({ enabled = true, melee_range = 4, in_flight = 1 }, wsgate.defaults())
     end)
 
     it("is on unless the config says false outright", function()
@@ -190,41 +189,50 @@ describe("crossbar weaponskill gate", function()
   end)
 
   describe("melee reach", function()
-    it("measures the reach against both models, on the real distance", function()
-      -- 3.0 + 0.5 + 0.5 = 4 yalms, so the squared distance turns at 16.
+    it("measures the reach against the distance the target bar prints", function()
+      --[[ The setting IS that distance (Kevin, 2026-09-05, off two live
+           readings): no model sizes are added to it, so a number settled by
+           watching the target bar is the number to type. The fixture's reach
+           is 3, so the squared distance turns at 9. ]]
       local wsgate = world()
-      assert.is_true(wsgate.allow(WS, facts({ target = { distance = 15.9, model_size = 0.5 } })))
-      assert.is_false(wsgate.allow(WS, facts({ target = { distance = 16.1, model_size = 0.5 } })))
+      assert.is_true(wsgate.allow(WS, facts({ target = { distance = 8.9 } })))
+      assert.is_false(wsgate.allow(WS, facts({ target = { distance = 9.1 } })))
+      --[[ AT the setting still fires: Kevin's own readings are the ones a
+           player types in, and a weaponskill landed at a target bar 4, so a
+           reach of 4 must not refuse 4. The setting is the furthest
+           distance that still goes out, not the first one refused. ]]
+      assert.is_true(wsgate.allow(WS, facts({ target = { distance = 9 } })))
     end)
 
-    it("reaches further at a bigger mob", function()
+    it("does not reach further at a bigger mob", function()
+      -- The model sizes were consulted until the units were settled; a mob
+      -- the size of a house is measured exactly like a rabbit now.
       local wsgate = world()
-      assert.is_true(wsgate.allow(WS, facts({ target = { distance = 42, model_size = 3 } })))
+      assert.is_false(wsgate.allow(WS, facts({ target = { distance = 9.1, model_size = 5 } })))
     end)
 
     it("takes the reach from the live config", function()
       local wsgate, state = world()
-      assert.is_false(wsgate.allow(WS, facts({ target = { distance = 16.1, model_size = 0.5 } })))
+      assert.is_false(wsgate.allow(WS, facts({ target = { distance = 9.1 } })))
       state.config.melee_range = 4
-      assert.is_true(wsgate.allow(WS, facts({ target = { distance = 16.1, model_size = 0.5 } })))
+      assert.is_true(wsgate.allow(WS, facts({ target = { distance = 9.1 } })))
     end)
 
     it("falls back to the shipped reach for a hand-broken one", function()
-      -- The shipped 6 plus two half-yalm models: the cutoff is 7, so the
-      -- squared distance turns at 49 rather than the fixture's 16.
+      -- The shipped 4, so the squared distance turns at 16 rather than the
+      -- fixture's 9.
       local wsgate, state = world()
       for _, broken in ipairs({ "close", -1, 0 / 0 }) do
         state.config.melee_range = broken
-        assert.is_false(wsgate.allow(WS, facts({ target = { distance = 49.1, model_size = 0.5 } })))
-        assert.is_true(wsgate.allow(WS, facts({ target = { distance = 48.9, model_size = 0.5 } })))
+        assert.is_false(wsgate.allow(WS, facts({ target = { distance = 16.1 } })))
+        assert.is_true(wsgate.allow(WS, facts({ target = { distance = 15.9 } })))
       end
     end)
 
-    it("allows a distance or a model size it could not read", function()
+    it("allows a distance it could not read", function()
       local wsgate = world()
-      assert.is_true(wsgate.allow(WS, facts({ target = { distance = 9999 } })))
-      assert.is_true(wsgate.allow(WS, facts({ target = { model_size = 0.5 } })))
-      assert.is_true(wsgate.allow(WS, facts({ self_size = NONE, target = { distance = 9999, model_size = 0.5 } })))
+      assert.is_true(wsgate.allow(WS, facts({ target = {} })))
+      assert.is_true(wsgate.allow(WS, facts({ target = { distance = "far" } })))
     end)
 
     it("never measures a ranged weaponskill", function()
@@ -233,7 +241,7 @@ describe("crossbar weaponskill gate", function()
            lives in the targetbar and cannot be required from here. So a
            ranged weaponskill is gated on everything except the distance. ]]
       local wsgate = world()
-      local far = facts({ target = { distance = 400, model_size = 0.5 }, skill = "Archery" })
+      local far = facts({ target = { distance = 400 }, skill = "Archery" })
       assert.is_true(wsgate.allow(WS, far))
       far.skill = "Marksmanship"
       assert.is_true(wsgate.allow(WS, far))
@@ -253,7 +261,7 @@ describe("crossbar weaponskill gate", function()
       -- is far more likely a melee one the resources did not answer for
       -- than a bow, and the melee test is the conservative reading.
       local wsgate = world()
-      assert.is_false(wsgate.allow(WS, facts({ skill = NONE, target = { distance = 400, model_size = 0.5 } })))
+      assert.is_false(wsgate.allow(WS, facts({ skill = NONE, target = { distance = 400 } })))
     end)
   end)
 
