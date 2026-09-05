@@ -1164,11 +1164,31 @@ local function new(deps)
   --- the one rule still guessed at, so a player settling it in a live client
   --- must be able to see it without opening the file.
   local function wsgate_state()
-    return "weaponskill gate: "
+    local line = "weaponskill gate: "
       .. (gate.enabled() and "on" or "off")
       .. ", melee reach "
       .. tostring(gate.melee_range())
       .. " yalms"
+    --[[ And what is in front of you, which is the whole of how the reach
+         gets settled: neither number is on screen anywhere else, and a
+         BIG mob wants more reach than a small one (Kevin, live client,
+         2026-09-05 - he could not get within 4 yalms of a large monster
+         and struck it from 7). Printing the model size beside the distance
+         is what lets the size factor be read off a few fights rather than
+         guessed at. The mob table reports the SQUARE of the distance. ]]
+    local target = deps.get_target ~= nil and deps.get_target() or nil
+    if type(target) ~= "table" then
+      return line
+    end
+    local squared = tonumber(target.distance)
+    if squared ~= nil then
+      line = line .. (", target %.2f yalms"):format(math.sqrt(math.max(squared, 0)))
+    end
+    local size = tonumber(target.model_size)
+    if size ~= nil then
+      line = line .. (", model size %.2f"):format(size)
+    end
+    return line
   end
 
   --- `wsgate range [<yalms>]` -- the melee reach. No argument reports.

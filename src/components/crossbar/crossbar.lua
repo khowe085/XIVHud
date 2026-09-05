@@ -613,19 +613,13 @@ local function new(ctx)
   --[[ The weaponskill gate: a `ws` press the game could never honour is
        refused before anything is sent. Its config is read through a closure
        for the same reason the two above are - `//hud crossbar wsgate off`
-       reaches it the moment the write lands, in-flight lock and all - and
-       the resource table goes in whole so it can resolve `Engaged` by name
+       and a new reach both reach it the moment the write lands - and the
+       resource table goes in whole so it can resolve `Engaged` by name
        rather than trusting a number.
 
-       The MONOTONIC frame clock, like the mount recast and unlike the
-       extdata maths: the lock is a span measured in play. `ctx.now` goes in
-       RAW rather than through `frame_now`, which answers 0 for a clock that
-       is not there: the module refuses to arm a lock it cannot measure, and
-       a wrapper that turns a missing clock into a frozen zero would hide
-       that from it - leaving the lock permanently up, which is the very
-       thing the guard exists to prevent. ]]
+       No clock: the in-flight lock that needed one was cut against a live
+       client, TP recovery having turned out to outlast it. ]]
   local wsgate = new_wsgate({
-    now = ctx.now,
     config = function()
       return config.wsgate
     end,
@@ -786,6 +780,13 @@ local function new(ctx)
     end,
     file_exists = file_exists,
     validate = actions.validate,
+    --[[ The current target, for the weaponskill gate's readout alone: it
+         prints the distance and the model size beside the reach so the
+         reach can be settled by reading rather than guessing. `<t>` is the
+         gate's own default token, and the read is memoized for the frame. ]]
+    get_target = function()
+      return ctx.get_mob_by_target ~= nil and ctx.get_mob_by_target("t") or nil
+    end,
     action_exists = function(kind, name)
       local table_name = RESOURCE_TABLES[kind]
       if resources == nil or table_name == nil then
@@ -2173,11 +2174,11 @@ local function new(ctx)
        `skill` is the weapon class the weaponskill belongs to - the gate
        skips the distance test for the ranged ones.
 
-       `target_read` is what separates "looked, and nothing is selected"
-       from "never looked": only the first may refuse. It is false for a
-       token above, and for a ctx with no mob lookup at all - which would
-       otherwise refuse every weaponskill for the session off one wiring
-       slip, the frozen-widget hazard CLAUDE.md names. ]]
+       The mob itself never leaves this function: the gate wants its
+       distance and nothing else, the two rules that read the rest of it
+       having been cut against a live client. A token the gate will not
+       look up, or a ctx with no mob lookup at all, simply yields no
+       distance, and the reach rule sits out. ]]
   local function gate_facts(record)
     -- For a weaponskill alone: every other type would pay a resource lookup
     -- and up to two mob reads for facts nothing downstream consults.
@@ -2188,12 +2189,12 @@ local function new(ctx)
     local vitals = player ~= nil and player.vitals or nil
     local meta = meta_for(record)
     local token = ctx.get_mob_by_target ~= nil and gate_token(record) or nil
+    local target = token ~= nil and ctx.get_mob_by_target(token) or nil
     return {
       tp = vitals ~= nil and vitals.tp or nil,
       status = player ~= nil and player.status or nil,
       skill = meta ~= nil and meta.weapon or nil,
-      target = token ~= nil and ctx.get_mob_by_target(token) or nil,
-      target_read = token ~= nil,
+      distance_squared = target ~= nil and target.distance or nil,
     }
   end
 
@@ -2222,9 +2223,9 @@ local function new(ctx)
 
          THE DIM AND THE DEAD PRESS ARE NOT ONE RULE HERE, unlike the mount
          slot's. `render.cost` dims a weaponskill short of its 1000 TP and
-         nothing else, so that one refusal has a signal on screen and the
-         other five - disengaged, nothing targeted, not an enemy, out of
-         reach, one already in flight - refuse against a slot drawn bright.
+         nothing else, so that one refusal has a signal on screen while the
+         other two - disengaged, and out of reach - turn down a slot drawn
+         bright.
          Kevin's call to leave it that way for now; it is written down here
          rather than papered over, because the mount slot's rule was learned
          the hard way and this is a deliberate exception to it. ]]
@@ -2248,15 +2249,6 @@ local function new(ctx)
          holds this very record. Any other press hands over nil, which
          drops whatever was being watched - a newer press means the player
          has moved on. ]]
-    --[[ And the lock, AFTER the send: TP does not fall until the
-         weaponskill lands, and the read behind the test above is an
-         interval old, so nothing else covers the window between pressing
-         and the client answering. It also stands in for the guard this came
-         from - a gear file that queues an ability and re-fires the
-         weaponskill a second later never sees the presses in between. ]]
-    if plan ~= nil and plan.kind == "command" then
-      wsgate.sent(record)
-    end
     local sent = nil
     local kind = RETRY_KINDS[record.type]
     if kind ~= nil and plan ~= nil and plan.kind == "command" and retry.enabled() then
@@ -3559,7 +3551,6 @@ local function new(ctx)
     -- rest of the per-character state is let go, not because it is the only
     -- thing standing there.
     retry.clear()
-    wsgate.clear()
     -- And a countdown, dropped without a word: a logout leaves nobody
     -- reading the chat it would have been cancelled in.
     travel.clear()
@@ -3657,10 +3648,8 @@ local function new(ctx)
       -- sub) here, and scoping it would stick.
       local sub_id = select(2, ...)
       -- A cast held across a job change belongs to the job that pressed it,
-      -- and so does a trip counting down - and so does a weaponskill the
-      -- outgoing job was still waiting on.
+      -- and so does a trip counting down.
       retry.clear()
-      wsgate.clear()
       -- The whole trip, not just its countdown: CLAUDE.md lists a job
       -- change among the transitions that end one, and a ring warming for
       -- the job you just left is not a warp you still want.
@@ -3683,7 +3672,6 @@ local function new(ctx)
     elseif event == "status" then
       if DEAD_STATUSES[a] then
         retry.clear()
-        wsgate.clear()
         -- Whatever you were travelling towards, you are not going now.
         end_trip("cancelled")
       end
@@ -3753,9 +3741,6 @@ local function new(ctx)
         retry.on_chunk(a, original)
         if a == ZONE_OUT_CHUNK then
           retry.clear()
-          -- Whatever weaponskill was in flight is not landing on this side
-          -- of the line either.
-          wsgate.clear()
           -- A zone ends the moment a trip belonged to as surely as it ends
           -- a held cast - the warm-up included, since the ring is coming
           -- with you and the enchantment is not.
@@ -3765,9 +3750,6 @@ local function new(ctx)
           -- nil when the parse failed, which reads as nothing having landed.
           if parsed ~= nil then
             skillchain.on_action(parsed)
-            -- Our own weaponskill landing is what releases the gate's lock.
-            local player = get_player()
-            wsgate.on_action(parsed, player ~= nil and player.id or nil)
           end
         elseif SC_CHUNKS[a] then
           skillchain.on_chunk(a, original, parsed)

@@ -39,8 +39,26 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      dim and its dead press are one, and a weaponskill slot was ALREADY
      drawn dimmed below its 1000 TP while still firing - but the two are NOT
      one here, and that is a deliberate exception (Kevin, 2026-09-05):
-     render.cost dims on TP and nothing else, so the other five refusals
-     turn down a slot drawn bright. See the note at the call site.
+     render.cost dims on TP and nothing else, so the reach refusal turns
+     down a slot drawn bright. See the note at the call site.
+
+     THREE RULES, down from six, cut against a live client (Kevin,
+     2026-09-05). What went, and why:
+
+     - "nothing targeted" and "the target is not an enemy". ENGAGING LOCKS
+       YOUR TARGET to an attackable mob, so neither state is one the game
+       will give you: both rules were untestable in a client, and a rule
+       nobody can reach is a rule nobody can trust. The distance is all
+       this module wants of a mob now, which is why it never sees one.
+     - the in-flight lock, which held the next press for a second after one
+       went out. TP RECOVERY OUTLASTS IT many times over, so a second press
+       could never happen inside the window in the first place. It cost an
+       unverified packet match (our own 0x028 category 3 by actor id, which
+       nobody has read in a client) for a case that cannot arise. The one
+       thing it did do was swallow a mashed burst inside the second a
+       weaponskill takes to resolve, before TP has fallen; without it such
+       a press goes out with the TP already spent, and the game refuses it
+       harmlessly. A redundant command, not a wasted 3000 TP.
 
      PURE - the client tables arrive in `facts`, gathered by the widget from
      the player service. Weaponskills alone: an unaffordable spell still
@@ -62,10 +80,6 @@ local WEAPONSKILL_TP = 1000
      survives a client update; this stands in when the resources library did
      not load, so the gate degrades rather than disappearing. ]]
 local ENGAGED_STATUS = 1
-
--- The 0x028 category that means a weaponskill landed (skillchain.lua's own
--- CATEGORY_RESOURCES documents the numbering). Ours releases the lock.
-local WEAPONSKILL_FINISH = 3
 
 --[[ Skills whose weaponskills are fired from across the field. Their reach
      is DistancePlus' bands rather than one melee number, and that port
@@ -98,15 +112,6 @@ end
 local function new(deps)
   local self = {}
 
-  --[[ When the weaponskill in flight stops being one. nil is "nothing in
-       flight"; the value is the BACKSTOP's deadline, not an expectation -
-       the real release is our own finish packet arriving. ]]
-  local locked_until = nil
-
-  local function now()
-    return deps.now ~= nil and deps.now() or 0
-  end
-
   -- The live config block. A hand-broken one (a non-table, a missing key)
   -- must read as the SHIPPED posture rather than throw in a key handler.
   local function settings()
@@ -118,15 +123,11 @@ local function new(deps)
        here, so there is one place to tune and nothing to keep in step. ]]
   function self.defaults()
     return {
-      --[[ Unlike the cast retry, this ships ON - which is Kevin's call
-           (2026-09-05) and NOT a claim that every rule below is safe. Five
-           of the six are now settled: four are facts the client hands over
-           (TP, what is selected, what it is, whether one is already in
-           flight), and the fifth - that the game refuses a weaponskill
-           while not engaged - Kevin confirmed the same day, closing
-           in-client question P. The REACH is the one that is still a
-           number nobody has measured, and it ships loose for that reason.
-           Row O10 is how it gets settled. ]]
+      --[[ Unlike the cast retry, this ships ON, and all three rules that
+           survive are now settled in a live client (Kevin, 2026-09-05): TP
+           is a fact the client hands over, the game refuses a weaponskill
+           while not engaged (in-client question P), and the reach was
+           measured by walking in on a mob (row O10). ]]
       enabled = true,
       --[[ Yalms of reach: THE DISTANCE THE TARGET BAR PRINTS, and nothing
            added to it (Kevin, 2026-09-05).
@@ -156,27 +157,6 @@ local function new(deps)
            greater - a player types the number they watched work.
            `//hud crossbar wsgate range <yalms>` moves it live. ]]
       melee_range = 4,
-      --[[ Seconds the in-flight lock survives with nothing reported. The
-           ORDINARY release is our own finish packet; this is only for the
-           one that never comes - and it is deliberately SHORT (Kevin,
-           2026-09-05), because it is the one rule here that can kill a
-           button that would have worked: the finish match rests on an
-           actor id nobody has read in a live client, and a wrong match
-           costs the player their weaponskill for this whole span after
-           every press. A second covers the 200ms the cached TP read is
-           stale several times over, which is the window nothing else here
-           can see.
-
-           What it deliberately does NOT cover: a gear file that cancels a
-           press, queues an ability and re-fires the weaponskill a second
-           later. Spam inside that window reaches GearSwap again, where its
-           own lock still catches it. Covering it would mean three seconds,
-           and three seconds is too long to be wrong for.
-
-           Zero is NOT an off switch here, unlike travel.lua's `delay`: the
-           switch is `enabled`, and a hand-edited zero falls back to this
-           span rather than disarming the lock on its own. ]]
-      in_flight = 1,
     }
   end
 
@@ -212,26 +192,17 @@ local function new(deps)
     end
   end
 
-  -- In flight: a weaponskill has gone out and neither landed nor timed out.
-  local function locked()
-    return locked_until ~= nil and now() < locked_until
-  end
+  --[[ Something the game would refuse anyway? A weaponskill at TP, while
+       engaged, within reach of whatever the bind aims at.
 
-  --[[ Something the game would refuse anyway? A weaponskill in reach of a
-       claimable mob, at TP, while engaged, with nothing already in flight.
-
-       `facts` that is not a table at all is a wiring slip rather than an
-       answer, and reads as knowing nothing - so it allows, lock included.
-       A `target` of nil INSIDE a table is the opposite: the widget looked
-       and there was nothing selected. ]]
+       The mob never reaches here - only `distance_squared`, the mob table's
+       own squared field, and only when the widget looked one up. `facts`
+       that is not a table at all is a wiring slip rather than an answer and
+       reads as knowing nothing, so it allows. ]]
   function self.allow(record, facts)
     if type(record) ~= "table" or record.type ~= "ws" or type(facts) ~= "table" or not self.enabled() then
       return true
     end
-    if locked() then
-      return false
-    end
-
     local tp = tonumber(facts.tp)
     if tp ~= nil and tp < WEAPONSKILL_TP then
       return false
@@ -248,31 +219,12 @@ local function new(deps)
       return false
     end
 
-    local target = facts.target
-    if type(target) ~= "table" then
-      --[[ Nothing selected refuses only where the widget actually LOOKED,
-           which it says with `target_read`. A weaponskill bound to a token
-           this repo has not read `get_mob_by_target` for - <st>, <p3>, a
-           scan - is never looked up at all, and an empty <t> is not a fact
-           about <bt>: refusing there would kill a press that fires. Nor is
-           a ctx that cannot be asked, which would otherwise refuse every
-           weaponskill for the session off one wiring slip. Without the mob
-           there is no reach to measure either, so this is the end of it. ]]
-      return facts.target_read ~= true
-    end
-    --[[ Not an enemy, on the three fields this repo already reads in anger
-         (partylist and the stealth ladder read the first two). `valid_target`
-         is deliberately absent: nobody here has confirmed the field exists,
-         and a guess would refuse presses on the strength of a nil. ]]
-    if target.is_npc == false or target.in_party == true or tonumber(target.hpp) == 0 then
-      return false
-    end
-
     if not RANGED_SKILLS[type(facts.skill) == "string" and facts.skill:lower() or ""] then
-      -- The mob table reports the SQUARE of the distance; targetbar/logic.lua
-      -- takes the same root off the same field, and prints what comes out -
-      -- which is the number `melee_range` is expressed in.
-      local squared = tonumber(target.distance)
+      -- The SQUARE of the distance, as the mob table reports it and as the
+      -- name says; targetbar/logic.lua takes the same root off the same
+      -- field and prints what comes out, which is the number melee_range
+      -- is expressed in.
+      local squared = tonumber(facts.distance_squared)
       -- Strictly greater: AT the reach still fires. See melee_range above.
       if squared ~= nil and math.sqrt(math.max(squared, 0)) > self.melee_range() then
         return false
@@ -280,45 +232,6 @@ local function new(deps)
     end
 
     return true
-  end
-
-  --- A weaponskill went out: hold the next press until it resolves. Called
-  --- AFTER the send, and for a weaponskill alone - the lock exists so a
-  --- spammed button cannot stack presses the client has not answered for
-  --- yet, which is the window the TP read cannot cover (it is an interval
-  --- old, and TP does not fall until the weaponskill lands).
-  function self.sent(record)
-    if type(record) ~= "table" or record.type ~= "ws" or not self.enabled() then
-      return
-    end
-    --[[ No clock, no lock. Both fallbacks answer 0 for a missing one, so an
-         armed lock would sit its whole span in a future that never arrives
-         and the session's first weaponskill would be its last. ]]
-    if deps.now == nil then
-      return
-    end
-    locked_until = now() + positive(settings().in_flight, self.defaults().in_flight)
-  end
-
-  --[[ A decoded 0x028. OUR OWN weaponskill landing is what releases the
-       lock; anything else - somebody else's, or one of our own spells -
-       leaves it alone. A refusal the game sends instead is not read here:
-       the cast retry's own refusal message ids have never been observed
-       firing, so nothing is keyed to them and the backstop covers it. ]]
-  function self.on_action(action, self_id)
-    if type(action) ~= "table" or action.category ~= WEAPONSKILL_FINISH then
-      return
-    end
-    if self_id == nil or action.actor_id ~= self_id then
-      return
-    end
-    locked_until = nil
-  end
-
-  --- Forget the lock: a zone, a death, a logout or a re-attach. Whatever was
-  --- in flight is not landing now.
-  function self.clear()
-    locked_until = nil
   end
 
   return self

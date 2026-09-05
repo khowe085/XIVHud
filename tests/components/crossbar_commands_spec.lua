@@ -73,6 +73,12 @@ local function build(opts)
          when it has nothing to check against (no resources library). A
          fixture that omitted the closure instead would exercise a branch
          production never takes. ]]
+    --[[ The current target, which the weaponskill gate's readout prints so
+         the reach can be settled by reading rather than guessing. Nil when
+         nothing is selected, as the client answers. ]]
+    get_target = function()
+      return world.target
+    end,
     action_exists = function(kind, name)
       world.asked[#world.asked + 1] = kind .. ":" .. name
       if opts.known == nil then
@@ -1977,9 +1983,38 @@ describe("crossbar commands", function()
       local shipped = require("components/crossbar/wsgate")({}).defaults().melee_range
       local reply = commands.command({ "wsgate" })
       assert.is_not_nil(reply:find(tostring(shipped), 1, true), reply)
-      world.config.wsgate = { enabled = true, melee_range = 4.5, in_flight = 1 }
+      world.config.wsgate = { enabled = true, melee_range = 4.5 }
       reply = commands.command({ "wsgate" })
       assert.is_not_nil(reply:find("4.5", 1, true), reply)
+    end)
+
+    it("prints the target's distance and model size beside the reach", function()
+      --[[ The reach is settled by walking in on a mob, and a big one needs
+           more of it than a small one (Kevin, live client, 2026-09-05:
+           could not get within 4 yalms of a large monster, and struck it
+           from 7). Neither number is on screen anywhere else, so the gate
+           prints both and the factor can be READ rather than guessed. The
+           mob table reports the SQUARE of the distance. ]]
+      local commands, world = build()
+      world.target = { distance = 30.25, model_size = 2.1 }
+      local reply = commands.command({ "wsgate" })
+      assert.is_not_nil(reply:find("5.5", 1, true), reply)
+      assert.is_not_nil(reply:find("2.1", 1, true), reply)
+    end)
+
+    it("says so when there is nothing to measure", function()
+      local commands = build()
+      local reply = commands.command({ "wsgate" })
+      assert.is_string(reply)
+      assert.is_not_nil(reply:find("on", 1, true), reply)
+    end)
+
+    it("prints a target whose model size the client did not answer for", function()
+      -- Distance without a size still settles half the question.
+      local commands, world = build()
+      world.target = { distance = 30.25 }
+      local reply = commands.command({ "wsgate" })
+      assert.is_not_nil(reply:find("5.5", 1, true), reply)
     end)
 
     it("sets the melee reach, and reports it on its own", function()
@@ -1994,10 +2029,10 @@ describe("crossbar commands", function()
 
     it("leaves the switch alone when it sets the reach", function()
       local commands, world = build()
-      world.config.wsgate = { enabled = false, melee_range = 6, in_flight = 1 }
+      world.config.wsgate = { enabled = false, melee_range = 6 }
       commands.command({ "wsgate", "range", "3" })
       assert.is_false(world.config.wsgate.enabled, "setting the reach is not switching it on")
-      assert.are.equal(1, world.config.wsgate.in_flight)
+      assert.are.equal(3, world.config.wsgate.melee_range)
     end)
 
     it("refuses a reach that would break the gate, writing nothing", function()
@@ -2048,11 +2083,10 @@ describe("crossbar commands", function()
       -- The reach is settled in a live client and must survive the switch,
       -- exactly as the retry's backoff does.
       local commands, world = build()
-      world.config.wsgate = { enabled = true, melee_range = 4.25, in_flight = 3 }
+      world.config.wsgate = { enabled = true, melee_range = 4.25 }
       commands.command({ "wsgate", "off" })
       assert.is_false(world.config.wsgate.enabled)
       assert.equal(4.25, world.config.wsgate.melee_range, "the in-client tuning is not reset by the switch")
-      assert.equal(3, world.config.wsgate.in_flight)
     end)
 
     it("rebuilds a wsgate block the config lost", function()

@@ -1370,12 +1370,7 @@ describe("crossbar live widget", function()
         assert.is_false(image_of("xhb_left", 3, "feedback").visible, "nothing fired, nothing flashes")
       end)
 
-      it("refuses with nothing targeted, while not engaged, and out of reach", function()
-        build_world()
-        env.target = nil
-        weaponskill()
-        assert.are.same({}, env.commands, "a weaponskill aimed at nothing")
-
+      it("refuses while not engaged and out of reach", function()
         build_world()
         env.player.status = 0
         weaponskill()
@@ -1383,21 +1378,27 @@ describe("crossbar live widget", function()
 
         build_world()
         -- Twenty yalms out: the mob table reports the square.
-        env.target = { id = 99, hpp = 75, is_npc = true, distance = 400 }
+        env.target = { id = 99, hpp = 75, distance = 400 }
         weaponskill()
         assert.are.same({}, env.commands, "out of reach")
+      end)
 
+      it("lets a press with nothing to measure against go to the game", function()
+        --[[ Engaging locks your target to an attackable mob (Kevin, live
+             client, 2026-09-05), so a weaponskill press with nothing
+             selected is not a state the game will give you - the rules that
+             refused on it were cut. Nothing selected now reaches the gate as
+             no distance at all, and the game refuses the press itself. ]]
         build_world()
-        env.target = { id = 99, hpp = 75, is_npc = false, distance = 4 }
+        env.target = nil
         weaponskill()
-        assert.are.same({}, env.commands, "a player, not an enemy")
+        assert.are.equal(1, #env.commands, "the game's to refuse, not ours")
       end)
 
       it("gates weaponskills alone: everything else fires regardless", function()
         build_world()
         env.player.vitals.tp = 0
         env.player.status = 0
-        env.target = nil
         press(LEFT)
         press(DIK_SLOT[4])
         release(DIK_SLOT[4])
@@ -1415,12 +1416,16 @@ describe("crossbar live widget", function()
              <bt>. The two are the only tokens this repo has read
              `get_mob_by_target` for, which is the whole of what the gate
              will look up. ]]
+        --[[ The tab target is OUT OF REACH and the battle target is in it,
+             so reading the wrong one refuses the press: without that the
+             test passes whichever token is asked for, since an unresolved
+             lookup yields no distance and the reach rule sits out. ]]
         build_world()
         widget.handle_command({ "bind", "1L6", "ws", "Savage Blade", "bt" })
-        env.targets = { bt = { id = 99, hpp = 75, is_npc = true, distance = 4 } }
+        env.targets = { t = { id = 1, distance = 400 }, bt = { id = 99, distance = 4 } }
         press(LEFT)
         press(DIK_SLOT[6])
-        assert.are.same({ 'input /ws "Savage Blade" <bt>' }, env.commands, "nothing tabbed, a battle target")
+        assert.are.same({ 'input /ws "Savage Blade" <bt>' }, env.commands, "measured against the battle target")
       end)
 
       it("does not look at all for a token it has never read for", function()
@@ -1428,30 +1433,20 @@ describe("crossbar live widget", function()
              to look up and nothing the gate can say about the target. It
              sits the target and reach rules out rather than refusing a press
              on a mob it never saw - and TP still applies. ]]
+        --[[ Every token resolves to a mob far out of reach, so asking about
+             ANY of them refuses the press. The gate must ask about none. ]]
         build_world()
         widget.handle_command({ "bind", "1L6", "ws", "Savage Blade", "st" })
-        env.targets = {}
+        env.target = { id = 99, distance = 400 }
         press(LEFT)
+        env.target_tokens = {}
         press(DIK_SLOT[6])
         assert.are.same({ 'input /ws "Savage Blade" <st>' }, env.commands)
+        assert.are.same({}, env.target_tokens, "an unvetted token is never handed to the client")
         release(DIK_SLOT[6])
         env.player.vitals.tp = 999
         press(DIK_SLOT[6])
         assert.are.equal(1, #env.commands, "the rules that need no target still apply")
-      end)
-
-      it("arms nothing for a press that never went out", function()
-        -- A record whose action resolves to no command sends nothing, so it
-        -- is not a weaponskill in flight and must not hold the next press.
-        local broken = war_bindings()
-        broken.WAR.sets[1].left[6] = { type = "ws", action = "", target = "t" }
-        build_world({ store_files = broken })
-        press(LEFT)
-        press(DIK_SLOT[6])
-        release(DIK_SLOT[6])
-        assert.are.same({}, env.commands, "nothing was sent")
-        press(DIK_SLOT[3])
-        assert.are.same({ 'input /ws "Savage Blade" <t>' }, env.commands, "so nothing is held")
       end)
 
       it("asks the client nothing for a press that is not a weaponskill", function()
@@ -1462,51 +1457,6 @@ describe("crossbar live widget", function()
         env.target_reads = 0
         press(DIK_SLOT[5])
         assert.are.equal(0, env.target_reads, "a spell aimed at <t> asks nothing of the client")
-      end)
-
-      it("drops the lock on a job change, with everything else the job held", function()
-        build_world()
-        weaponskill()
-        weaponskill()
-        assert.are.equal(1, #env.commands, "held")
-        widget.update("job change", 1, 99, 20, 49)
-        weaponskill()
-        assert.are.equal(2, #env.commands, "a weaponskill the last job pressed is not in flight now")
-      end)
-
-      it("holds the next press until our own weaponskill lands", function()
-        --[[ The window nothing else covers: TP does not fall until the
-             weaponskill resolves, and the read behind the TP test is an
-             interval old, so a spammed button would otherwise send twice. ]]
-        build_world()
-        weaponskill()
-        weaponskill()
-        assert.are.equal(1, #env.commands, "the second press is swallowed")
-        -- Our own finish releases it; somebody else's does not.
-        widget.update("chunk", 0x028, "raw action bytes", { category = 3, param = 42, actor_id = 4321 })
-        weaponskill()
-        assert.are.equal(1, #env.commands, "another player's weaponskill is not ours")
-        widget.update("chunk", 0x028, "raw action bytes", { category = 3, param = 42, actor_id = env.player.id })
-        weaponskill()
-        assert.are.equal(2, #env.commands, "our own weaponskill landed")
-      end)
-
-      it("releases the lock on a zone and on death", function()
-        build_world()
-        weaponskill()
-        weaponskill()
-        assert.are.equal(1, #env.commands, "held, until something says otherwise")
-        widget.update("chunk", 0x0B, "zoning out")
-        weaponskill()
-        assert.are.equal(2, #env.commands, "a zone drops what was in flight")
-
-        build_world()
-        weaponskill()
-        weaponskill()
-        assert.are.equal(1, #env.commands, "held")
-        widget.update("status", 2)
-        weaponskill()
-        assert.are.equal(2, #env.commands, "so does dying")
       end)
 
       it("takes a new melee reach from the command, at once", function()
