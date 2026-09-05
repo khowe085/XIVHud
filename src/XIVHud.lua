@@ -1060,6 +1060,7 @@ step("building the invtracker component", function()
     return
   end
   core.register(new_invtracker({
+    new_text = wrap_text,
     new_image = wrap_image,
     screen = screen,
     asset = asset,

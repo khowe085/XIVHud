@@ -265,6 +265,7 @@ describe("invtracker logic", function()
         slot_size = 3,
         box_size = 2,
         align = "top",
+        labels = { enabled = true, font_size = 6, gap = 1 },
         bags = {
           equipment = { enabled = false, columns = 4 },
           inventory = { enabled = true, columns = 5 },
@@ -389,7 +390,103 @@ describe("invtracker logic", function()
       assert.is_true(blocks[2].x <= blocks[1].columns * 4 + 64)
     end)
 
+    it("names each block in a word short enough to fit under it", function()
+      -- A 5-column block is 19px wide; at 6pt "inventory" is about 40.
+      local blocks = logic.layout({ inventory = 80, satchel = 30, treasure = 2 }, 0, 0, 1)
+
+      assert.are.equal("Inv", blocks[1].label)
+      assert.are.equal("Sat", blocks[2].label)
+      assert.are.equal("Pool", blocks[3].label)
+    end)
+
+    it("tells the eight wardrobes and the two safes apart by number", function()
+      logic = new_logic(grid_config({
+        bags = { safe = { enabled = true, columns = 5 }, wardrobe = { enabled = true, columns = 5 } },
+      }))
+      local names = {}
+      for _, block in ipairs(logic.layout({ safe = 1, safe2 = 1, wardrobe = 1, wardrobe8 = 1 }, 0, 0, 1)) do
+        names[block.key] = block.label
+      end
+
+      assert.are.equal("Safe", names.safe)
+      assert.are.equal("Safe2", names.safe2)
+      assert.are.equal("W1", names.wardrobe)
+      assert.are.equal("W8", names.wardrobe8)
+    end)
+
+    it("puts the label just under the block's last row, at its left edge", function()
+      logic = new_logic(grid_config({ align = "bottom" }))
+      local blocks = logic.layout({ inventory = 80, satchel = 10 }, 100, 50, 1)
+
+      -- 16 rows: the last square's foot is at 50 + 15*4 + 3 = 113, then the gap.
+      assert.are.same({ x = 100, y = 114, size = 6 }, logic.label_position(blocks[1], 1))
+      -- Bottom-aligned blocks share a foot, so their labels sit on one line.
+      assert.are.equal(114, logic.label_position(blocks[2], 1).y)
+    end)
+
+    it("scales the label with the grid, in whole pixels", function()
+      local blocks = logic.layout({ inventory = 80 }, 100, 50, 2)
+
+      local at = logic.label_position(blocks[1], 2)
+      assert.are.equal(12, at.size)
+      assert.are.equal(50 + 15 * 8 + 6 + 2, at.y)
+    end)
+
+    it("holds the next block clear of a label wider than its own block", function()
+      -- The temporary bag and the pool ship at ONE column, 4px wide, with
+      -- "Temp" and "Pool" under them on the same line; nothing about the
+      -- squares keeps the two names off each other.
+      logic = new_logic(grid_config({
+        bags = { temporary = { enabled = true, columns = 1 }, treasure = { enabled = true, columns = 1 } },
+      }))
+      local blocks = logic.layout({ temporary = 3, treasure = 2 }, 100, 50, 1)
+
+      assert.is_true(blocks[2].x >= 100 + logic.label_width(blocks[1], 1) + 4, ("pool at %d"):format(blocks[2].x))
+    end)
+
+    it("leaves the block spacing alone where the label already fits", function()
+      local blocks = logic.layout({ inventory = 80, satchel = 30 }, 100, 50, 1)
+
+      assert.are.equal(124, blocks[2].x)
+    end)
+
+    it("bounds the last block's label as well as its squares", function()
+      logic = new_logic(grid_config({ bags = { treasure = { enabled = true, columns = 1 } } }))
+
+      local x, _, width = logic.bounds({ treasure = 2 }, 100, 50, 1)
+
+      assert.is_true(x + width >= 100 + logic.label_width({ label = "Pool" }, 1))
+    end)
+
+    it("estimates a label's width from the font, like the sibling widgets", function()
+      -- 4 characters at 6pt, at the 0.75 per-character ratio speedcheck
+      -- settled on in a live client, doubled by the scale.
+      assert.are.equal(4 * 6 * 0.75 * 2, logic.label_width({ label = "Pool" }, 2))
+    end)
+
+    it("grows the bounds to take the labels in", function()
+      local _, _, _, bare = new_logic(grid_config({ labels = { enabled = false, font_size = 6, gap = 1 } })).bounds(
+        { inventory = 80 },
+        100,
+        50,
+        1
+      )
+      local _, _, _, labelled = logic.bounds({ inventory = 80 }, 100, 50, 1)
+
+      assert.are.equal(63, bare)
+      -- The 1px gap and a 6pt line box, ascender to descender.
+      assert.are.equal(63 + 1 + 6 * 1.5, labelled)
+    end)
+
+    it("draws no label when they are switched off", function()
+      logic = new_logic(grid_config({ labels = { enabled = false, font_size = 6, gap = 1 } }))
+
+      assert.is_false(logic.labels_enabled())
+    end)
+
     it("bounds the whole grid from the origin it was given", function()
+      -- The squares alone; what the labels add is pinned separately above.
+      logic = new_logic(grid_config({ labels = { enabled = false } }))
       local x, y, width, height = logic.bounds({ inventory = 80, satchel = 10 }, 100, 50, 1)
 
       assert.are.equal(100, x)
@@ -589,6 +686,7 @@ describe("invtracker logic", function()
         slot_size = 3,
         box_size = 2,
         align = "bottom",
+        labels = { enabled = true, font_size = 6, gap = 1 },
         bags = {
           equipment = { enabled = false, columns = 4 },
           inventory = { enabled = true, columns = 5 },
@@ -688,6 +786,14 @@ describe("invtracker logic", function()
 
       assert.is_true(changed)
       assert.is_false(logic.settings().sort)
+    end)
+
+    it("switches the labels", function()
+      local _, changed = logic.command({ "labels", "off" })
+
+      assert.is_true(changed)
+      assert.is_false(logic.labels_enabled())
+      assert.is_truthy(joined(logic.command({})):find("labels off", 1, true))
     end)
 
     it("sets the pitch and the gap between blocks", function()

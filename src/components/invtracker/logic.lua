@@ -36,7 +36,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      windower.ffxi.get_items() answers under and `id` the client's bag id;
      `group` is the setting the player switches it with, so one word covers
      both safes and all eight wardrobes exactly as the reference addon grouped
-     them.
+     them. `label` is what is written under the block: a 5-column block is
+     19px wide and at 6pt "inventory" is about 40, so the names are short, and
+     the safes and wardrobes carry their number since nothing else tells them
+     apart on screen.
 
      Two entries are not bags at all: `equipment` is what is worn, which the
      client reports as a slot-keyed table rather than a bag, and `treasure` is
@@ -47,25 +50,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      The recycle bin is deliberately absent: it holds what was thrown
      away, and nobody tracks how full that is. ]]
 local BAGS = {
-  { key = "equipment", group = "equipment" },
-  { key = "inventory", group = "inventory" },
-  { key = "safe", group = "safe" },
-  { key = "safe2", group = "safe" },
-  { key = "storage", group = "storage" },
-  { key = "locker", group = "locker" },
-  { key = "satchel", group = "satchel" },
-  { key = "sack", group = "sack" },
-  { key = "case", group = "case" },
-  { key = "wardrobe", group = "wardrobe" },
-  { key = "wardrobe2", group = "wardrobe" },
-  { key = "wardrobe3", group = "wardrobe" },
-  { key = "wardrobe4", group = "wardrobe" },
-  { key = "wardrobe5", group = "wardrobe" },
-  { key = "wardrobe6", group = "wardrobe" },
-  { key = "wardrobe7", group = "wardrobe" },
-  { key = "wardrobe8", group = "wardrobe" },
-  { key = "temporary", group = "temporary" },
-  { key = "treasure", group = "treasure" },
+  { key = "equipment", group = "equipment", label = "Equip" },
+  { key = "inventory", group = "inventory", label = "Inv" },
+  { key = "safe", group = "safe", label = "Safe" },
+  { key = "safe2", group = "safe", label = "Safe2" },
+  { key = "storage", group = "storage", label = "Stor" },
+  { key = "locker", group = "locker", label = "Lock" },
+  { key = "satchel", group = "satchel", label = "Sat" },
+  { key = "sack", group = "sack", label = "Sack" },
+  { key = "case", group = "case", label = "Case" },
+  { key = "wardrobe", group = "wardrobe", label = "W1" },
+  { key = "wardrobe2", group = "wardrobe", label = "W2" },
+  { key = "wardrobe3", group = "wardrobe", label = "W3" },
+  { key = "wardrobe4", group = "wardrobe", label = "W4" },
+  { key = "wardrobe5", group = "wardrobe", label = "W5" },
+  { key = "wardrobe6", group = "wardrobe", label = "W6" },
+  { key = "wardrobe7", group = "wardrobe", label = "W7" },
+  { key = "wardrobe8", group = "wardrobe", label = "W8" },
+  { key = "temporary", group = "temporary", label = "Temp" },
+  { key = "treasure", group = "treasure", label = "Pool" },
 }
 
 local ZONE_IN = 0x00A -- the bags are dropped and refilled from here
@@ -139,6 +142,16 @@ local BAG_WORDS = {
 }
 
 local ALIGNMENTS = { top = true, bottom = true }
+
+-- Ascender to descender, as a multiple of the font size - the label's line
+-- box, which is what the bounds have to cover.
+local TEXT_HEIGHT_RATIO = 1.5
+-- Fraction of the font size one character occupies. speedcheck's figure, the
+-- LARGER of the repo's two estimates, because this one is used to keep two
+-- labels off each other and an under-estimate would let them touch. Hardcoded
+-- as speedcheck's is; a live client that sees labels touch is the reason to
+-- make it a setting.
+local CHARACTER_WIDTH_RATIO = 0.75
 
 -- A grid wider than this is not a grid any more, and a pitch wider than this
 -- is further apart than any screen makes sense of.
@@ -353,6 +366,51 @@ local function new(initial_config)
     return (config.box_size or 0) * scale
   end
 
+  local function labels_config()
+    return config.labels or {}
+  end
+
+  function self.labels_enabled()
+    return labels_config().enabled and true or false
+  end
+
+  local function label_font_size(scale)
+    -- Whole pixels: a fractional font size is not something a prim can draw.
+    return math.floor((tonumber(labels_config().font_size) or 0) * scale + 0.5)
+  end
+
+  -- What the labels add under the grid: the gap and the line box.
+  local function labels_height(scale)
+    if not self.labels_enabled() then
+      return 0
+    end
+    return (tonumber(labels_config().gap) or 0) * scale + label_font_size(scale) * TEXT_HEIGHT_RATIO
+  end
+
+  -- How wide a block's name draws, estimated from the font: no prim can be
+  -- measured. Zero when the labels are off, so nothing is reserved for them.
+  function self.label_width(block, scale)
+    if not self.labels_enabled() then
+      return 0
+    end
+    -- The same fallback the widget draws with, so what is reserved is what
+    -- is written.
+    return #tostring(block.label or block.key or "") * label_font_size(scale) * CHARACTER_WIDTH_RATIO
+  end
+
+  -- Where a block's name goes: at its left edge, just under its last row.
+  -- Bottom-aligned blocks share a foot, so their labels sit on one line.
+  function self.label_position(block, scale)
+    return {
+      x = block.x,
+      y = block.y
+        + (block.rows - 1) * pitch(scale)
+        + self.slot_size(scale)
+        + (tonumber(labels_config().gap) or 0) * scale,
+      size = label_font_size(scale),
+    }
+  end
+
   --[[ The blocks to draw, left to right, for a grid anchored at (x, y).
 
        `sizes` is how many squares each bag wants, keyed by the catalogue's
@@ -379,6 +437,7 @@ local function new(initial_config)
         blocks[#blocks + 1] = {
           key = bag.key,
           group = bag.group,
+          label = bag.label,
           columns = columns,
           slots = slots,
           rows = rows,
@@ -393,7 +452,12 @@ local function new(initial_config)
       -- which is how the reference drew them; it grew every block upward from
       -- one baseline to get there.
       block.y = y + (config.align == "top" and 0 or (tallest - block.rows) * step)
-      offset = offset + block.columns * step + effective_block_spacing() * scale
+      --[[ A block is as wide as its columns OR its label, whichever is more.
+           The temporary bag and the pool ship at one column - 4px - with a
+           four-letter name under each on the same line, and nothing about the
+           squares would keep the two names off each other. ]]
+      local width = math.max(block.columns * step, self.label_width(block, scale))
+      offset = offset + width + effective_block_spacing() * scale
     end
 
     return blocks
@@ -428,11 +492,11 @@ local function new(initial_config)
     local right, bottom = x, y
 
     for _, block in ipairs(blocks) do
-      right = math.max(right, block.x + (block.columns - 1) * step + square)
+      right = math.max(right, block.x + (block.columns - 1) * step + square, block.x + self.label_width(block, scale))
       bottom = math.max(bottom, block.y + (block.rows - 1) * step + square)
     end
 
-    return x, y, right - x, bottom - y
+    return x, y, right - x, bottom - y + labels_height(scale)
   end
 
   function self.wants_chunk(id)
@@ -578,8 +642,9 @@ local function new(initial_config)
 
   local function report()
     local lines = {
-      ("invtracker - sort %s, spacing %d, block spacing %d, align %s"):format(
+      ("invtracker - sort %s, labels %s, spacing %d, block spacing %d, align %s"):format(
         config.sort == false and "off" or "on",
+        self.labels_enabled() and "on" or "off",
         -- The values actually drawn, not the stored ones: a stored value the
         -- clamp threw away must not be the number the player is shown.
         effective_spacing(),
@@ -605,7 +670,7 @@ local function new(initial_config)
     local switch = on_off(args[2])
     if switch ~= nil then
       bag.enabled = switch
-      return ("invtracker %s %s"):format(group, switch and "on" or "off"), true
+      return ("invtracker %s %s"):format(group, switch and "on" or "off"), true, true
     end
 
     if (args[2] or ""):lower() == "columns" then
@@ -627,8 +692,13 @@ local function new(initial_config)
   end
 
   --[[ The `//hud invtracker` line, already split into words. Answers the
-       message core prints and whether anything changed - the widget repaints
-       and persists on a change, and never on a report.
+       message core prints, whether anything changed - the widget repaints and
+       persists on a change, and never on a report - and whether the change
+       needs the client READ again: which bags are coloured and how they are
+       ordered are decided at the read, so a bag switched on or the sort
+       flipped would otherwise draw nothing new until an unrelated packet
+       arrived, while a column count or a label is pure geometry and a read is
+       a full get_items push.
 
        Unknown input always answers with what IS understood rather than
        nothing: a silent command is indistinguishable from a broken addon. ]]
@@ -646,7 +716,17 @@ local function new(initial_config)
         return "invtracker sort takes on or off", false
       end
       config.sort = switch
-      return ("invtracker sort %s"):format(switch and "on" or "off"), true
+      return ("invtracker sort %s"):format(switch and "on" or "off"), true, true
+    end
+
+    if word == "labels" then
+      local switch = on_off(args[2])
+      if switch == nil then
+        return "invtracker labels takes on or off", false
+      end
+      config.labels = config.labels or {}
+      config.labels.enabled = switch
+      return ("invtracker labels %s"):format(switch and "on" or "off"), true
     end
 
     if word == "spacing" then
@@ -688,7 +768,7 @@ local function new(initial_config)
     return {
       ("invtracker has no '%s' setting"):format(args[1]),
       "  bags: " .. table.concat(BAG_WORDS, " "),
-      "  settings: sort on|off, spacing <px>, blockspacing <px>, align top|bottom",
+      "  settings: sort on|off, labels on|off, spacing <px>, blockspacing <px>, align top|bottom",
     },
       false
   end

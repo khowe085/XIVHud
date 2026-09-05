@@ -73,6 +73,18 @@ return function(screen_width, screen_height)
     -- Blocks of different heights stand on a common foot, which is how the
     -- reference drew them: it grew every block upward from one baseline.
     align = "bottom",
+    -- The bag's short name under each block, in a font small enough to sit
+    -- under a five-column block. Not in the reference; Kevin's, 2026-09-05.
+    labels = {
+      enabled = true,
+      font = "sans-serif",
+      font_size = 6,
+      bold = false,
+      italic = false,
+      gap = 1,
+      color = { a = 255, r = 200, g = 200, b = 200 },
+      stroke = { width = 1, a = 200, r = 0, g = 0, b = 0 },
+    },
     bags = {
       equipment = bag(false, 4), -- slotImage.equipment.*
       inventory = bag(true, 5), -- slotImage.inventory.*

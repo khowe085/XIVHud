@@ -115,6 +115,10 @@ describe("entry point", function()
       assert.is_not_nil(without.ctxs.targetbar)
     end)
 
+    it("is handed a text constructor for the labels under each block", function()
+      assert.are.equal(boot.ctxs.giltracker.new_text, boot.ctxs.invtracker.new_text)
+    end)
+
     it("shares the resources the other components read", function()
       assert.are.equal(boot.ctxs.targetbar.resources, boot.ctxs.invtracker.resources)
     end)

@@ -19,6 +19,7 @@ describe("invtracker widget", function()
   local function build(overrides)
     local ctx = {
       new_image = prims.new_image,
+      new_text = prims.new_text,
       screen = function()
         return 1920, 1080
       end,
@@ -313,6 +314,87 @@ describe("invtracker widget", function()
     end)
   end)
 
+  describe("the labels", function()
+    local function shown_labels()
+      local out = {}
+      for _, prim in ipairs(prims.texts) do
+        if prim.visible then
+          out[#out + 1] = prim.last.text
+        end
+      end
+      table.sort(out)
+      return out
+    end
+
+    it("names each drawn block once, in a 6pt font", function()
+      attach({
+        bags = {
+          inventory = { enabled = true, columns = 5 },
+          equipment = { enabled = true, columns = 4 },
+        },
+      })
+      tick()
+
+      assert.are.same({ "Equip", "Inv" }, shown_labels())
+      assert.are.equal(6, prims.texts[1].font_size)
+    end)
+
+    it("sits each label under its own block", function()
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+
+      local label = prims.texts[1]
+      assert.are.equal(100, label.x)
+      -- The inventory is two rows of five: 50 + 4 + 3, then the 1px gap.
+      assert.are.equal(58, label.y)
+    end)
+
+    it("hides the labels when they are switched off, and brings them back", function()
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+      assert.are.same({ "Inv" }, shown_labels())
+
+      widget.handle_command({ "labels", "off" })
+      assert.are.same({}, shown_labels())
+
+      widget.handle_command({ "labels", "on" })
+      assert.are.same({ "Inv" }, shown_labels())
+    end)
+
+    it("hides a label with the block it named", function()
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+
+      widget.hide()
+
+      assert.are.same({}, shown_labels())
+    end)
+
+    it("draws no label for a bag the client says it has none of", function()
+      attach({
+        bags = {
+          inventory = { enabled = true, columns = 5 },
+          satchel = { enabled = true, columns = 5 },
+        },
+      })
+      tick()
+
+      assert.are.same({ "Inv" }, shown_labels())
+    end)
+
+    it("disposes the labels with the squares", function()
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+
+      widget.destroy()
+
+      assert.is_true(#prims.texts > 0)
+      for _, prim in ipairs(prims.texts) do
+        assert.are.equal(1, prim.destroyed)
+      end
+    end)
+  end)
+
   describe("reading the client", function()
     it("reads on the tick rather than the moment a packet lands", function()
       attach()
@@ -500,6 +582,21 @@ describe("invtracker widget", function()
       tick()
 
       assert.are.equal(2, items.reads)
+    end)
+
+    it("does not re-read the client for a setting the read has no part in", function()
+      -- Which bags are drawn and how they are ordered are decided at the read;
+      -- the labels, the columns and the spacing are not, and a read is a full
+      -- get_items push.
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+
+      widget.handle_command({ "labels", "off" })
+      widget.handle_command({ "inventory", "columns", "10" })
+      widget.handle_command({ "spacing", "6" })
+      tick()
+
+      assert.are.equal(1, items.reads)
     end)
 
     it("does not persist a command it refused", function()

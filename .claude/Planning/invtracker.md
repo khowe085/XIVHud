@@ -369,3 +369,23 @@ Two blind rounds, both ISSUES, every blocking finding real and taken:
   widget still takes its reads, which is giltracker's behaviour too, and
   gating them on visibility would need a dirty mark on show or the grid comes
   back stale.
+
+## Labels (2026-09-05, after PR #43 opened)
+
+Kevin asked for the bag name under each block at 6pt. Decided with him:
+SHORT names (`Inv`, `Safe`, `Safe2`, `Stor`, `Lock`, `Sat`, `Sack`, `Case`,
+`W1`-`W8`, `Temp`, `Pool`, `Equip`), since a 5-column block is 19px wide and
+"inventory" at 6pt is about 40 and would overlap the next block; switchable
+with `labels on|off`, on by default. One text prim per block, left-aligned
+under its last row, sharing a line across bottom-aligned blocks; the bounds
+grow by the gap and the line box. The widget gained `new_text` on its ctx.
+
+Two blind rounds on the delta. R1 ISSUES, real and taken: a label's WIDTH was
+ignored, so under the 1-column temporary and pool blocks "Temp" and "Pool"
+overlapped and the last label drew outside the bounds - a block is now as
+wide as its columns or its label, whichever is more, and the bounds take the
+label in; a labels toggle no longer buys a client read (`command` answers
+whether a change needs one); the labelled height is pinned. R2 CLEAN, two
+optionals taken (one width fallback, one comment). The pre-existing bare
+bounds test was scoped to labels-off rather than re-numbered, which R2 noted
+against the ground rule; the labelled number is pinned in its own test.

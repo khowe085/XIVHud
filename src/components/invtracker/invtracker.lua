@@ -71,6 +71,9 @@ local function new(ctx)
        smaller, so what shows around it is the 1px shadow down the right and
        bottom that gives the grid its relief. ]]
   local squares = {}
+  -- One text per block key, the bag's short name under it. Built and kept
+  -- exactly as the squares are.
+  local labels = {}
 
   -- An item id's stack size, for telling a full stack from a part one.
   -- Answers nil without the resources library, which costs only that colour.
@@ -106,12 +109,43 @@ local function new(ctx)
     return square
   end
 
+  local function label_for(key)
+    local label = labels[key]
+    if not label then
+      label = ctx.new_text()
+      -- Deliberately not right-justified, like every text this addon draws:
+      -- a right-justified prim is positioned from the screen's right edge.
+      label.draggable(false)
+      label.hide()
+      labels[key] = label
+    end
+    return label
+  end
+
+  local function style_label(label)
+    local style = config.labels or {}
+    local color = style.color or {}
+    local stroke = style.stroke or {}
+    label.font(style.font)
+    label.bold(style.bold and true or false)
+    label.italic(style.italic and true or false)
+    label.color(color.r, color.g, color.b)
+    label.alpha(color.a or 255)
+    label.stroke_width(stroke.width or 0)
+    label.stroke_color(stroke.r, stroke.g, stroke.b)
+    label.stroke_alpha(stroke.a or 0)
+    label.bg_visible(false)
+  end
+
   local function hide_all()
     for _, bag in pairs(squares) do
       for _, square in pairs(bag) do
         square.shadow.hide()
         square.box.hide()
       end
+    end
+    for _, label in pairs(labels) do
+      label.hide()
     end
   end
 
@@ -157,6 +191,16 @@ local function new(ctx)
         square.box.pos(at.x, at.y)
         square.box.size(box_size, box_size)
         square.box.show()
+      end
+
+      if logic.labels_enabled() then
+        local label = label_for(block.key)
+        local at = logic.label_position(block, scale)
+        style_label(label)
+        label.text(block.label or block.key)
+        label.pos(at.x, at.y)
+        label.size(at.size)
+        label.show()
       end
     end
   end
@@ -281,14 +325,16 @@ local function new(ctx)
   end
 
   function self.handle_command(args)
-    local message, changed = logic.command(args)
+    local message, changed, reread = logic.command(args)
     if changed then
       --[[ Which bags are drawn and how each is ordered are decided at the
            READ, not at the repaint, so a bag just switched on has no colours
-           to draw until the client is read again. The read is taken on the
-           next tick like every other, so a burst of commands still costs
-           one. ]]
-      logic.mark_dirty()
+           to draw until the client is read again; logic says which changes
+           are that kind. The read is taken on the next tick like every other,
+           so a burst of commands still costs one. ]]
+      if reread then
+        logic.mark_dirty()
+      end
       render()
       if save then
         save()
@@ -305,6 +351,10 @@ local function new(ctx)
       end
     end
     squares = {}
+    for _, label in pairs(labels) do
+      label.destroy()
+    end
+    labels = {}
   end
 
   return self
