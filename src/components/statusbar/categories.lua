@@ -34,18 +34,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      sections at its tail that are neither a spell nor an ability on you -
      restrictions and costumes, crafting imagery, EXP/CP bonuses, food and
      the mount, the signets, battlefield and instance markers, Ballista, zone
-     buffs, the 72-hour boosts and the unused ids. Everything else is an
-     enhancement, an unranked id included: a buff nobody has categorised is
-     still something on you, and the all-bar shows it either way.
+     buffs, the 72-hour boosts and the unused ids. Everything else is a
+     buff (XIV's "enhancements"; the filter is named `buffs`, Kevin's call
+     on 2026-09-05), an unranked id included: a buff nobody has categorised
+     is still something on you, and the all-bar shows it either way.
 
-     Two calls made while curating: movement speed (Flee, quickening) stays an
-     enhancement, being something you did rather than something the system
-     did to you; and the stances, avatar favours and REMA aftermaths stay
-     enhancements too, since each is the effect of an action. ]]
+     Two calls made while curating: movement speed (Flee, quickening) stays a
+     buff, being something you did rather than something the system did to
+     you; and the stances, avatar favours and REMA aftermaths stay buffs
+     too, since each is the effect of an action. ]]
 
 local M = {}
 
-M.NAMES = { "all", "enhancements", "debuffs", "other" }
+M.NAMES = { "all", "buffs", "debuffs", "other" }
 
 local function set(list)
   local out = {}
@@ -231,12 +232,12 @@ function M.category_of(id)
   if M.OTHER[id] then
     return "other"
   end
-  return "enhancements"
+  return "buffs"
 end
 
 -- One predicate per category, built once: `keep` is asked on every plan.
 local KEEP = {}
-for _, name in ipairs({ "enhancements", "debuffs", "other" }) do
+for _, name in ipairs({ "buffs", "debuffs", "other" }) do
   KEEP[name] = function(id)
     return M.category_of(id) == name
   end

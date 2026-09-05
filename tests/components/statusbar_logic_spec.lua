@@ -107,8 +107,8 @@ describe("statusbar logic", function()
       assert.are.same({ FOOD, SIGNET }, ids_of(logic.plan("bar3")))
     end)
 
-    it("shows the enhancements alone when a bar is set to them", function()
-      config.bars.bar1.filter = "enhancements"
+    it("shows the buffs alone when a bar is set to them", function()
+      config.bars.bar1.filter = "buffs"
       logic.set_buffs({ HASTE, SLEEP, FOOD, PROTECT })
       assert.are.same({ HASTE, PROTECT }, ids_of(logic.plan("bar1")))
     end)
@@ -378,7 +378,7 @@ describe("statusbar logic", function()
     it("names the four filters when given one it does not know", function()
       local said, changed = say("filter", "wobble")
       assert.is_false(changed)
-      assert.is_not_nil(said:find("enhancements", 1, true))
+      assert.is_not_nil(said:find("buffs", 1, true))
       assert.is_not_nil(said:find("other", 1, true))
     end)
 

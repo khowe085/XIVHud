@@ -3,7 +3,7 @@ local buff_order = require("lib/buff_order")
 
 describe("statusbar categories", function()
   it("offers the four predefined filters, all first", function()
-    assert.are.same({ "all", "enhancements", "debuffs", "other" }, categories.NAMES)
+    assert.are.same({ "all", "buffs", "debuffs", "other" }, categories.NAMES)
   end)
 
   it("knows the debuffs that open the shipped order", function()
@@ -19,10 +19,10 @@ describe("statusbar categories", function()
     end
   end)
 
-  it("calls everything else an enhancement, ranked or not", function()
+  it("calls everything else a buff, ranked or not", function()
     -- haste, protect, and an id nothing ranks
     for _, id in ipairs({ 33, 40, 9998 }) do
-      assert.are.equal("enhancements", categories.category_of(id), "buff " .. id)
+      assert.are.equal("buffs", categories.category_of(id), "buff " .. id)
     end
   end)
 
@@ -34,7 +34,7 @@ describe("statusbar categories", function()
 
   -- The debuff set is a hand copy of the shipped order's opening section;
   -- pinning where that section ends is what catches a debuff added to the
-  -- order later and landing on the enhancements bar.
+  -- order later and landing on the buffs bar.
   it("holds exactly the debuff section that opens the shipped order", function()
     local section_end = 91
     for rank = 1, section_end do
@@ -68,9 +68,9 @@ describe("statusbar categories", function()
     it("admits only the category named", function()
       assert.is_true(categories.keep("debuffs")(2))
       assert.is_false(categories.keep("debuffs")(33))
-      assert.is_true(categories.keep("enhancements")(33))
-      assert.is_false(categories.keep("enhancements")(251))
-      assert.is_false(categories.keep("enhancements")(2))
+      assert.is_true(categories.keep("buffs")(33))
+      assert.is_false(categories.keep("buffs")(251))
+      assert.is_false(categories.keep("buffs")(2))
       assert.is_true(categories.keep("other")(251))
       assert.is_false(categories.keep("other")(33))
     end)
