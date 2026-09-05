@@ -103,8 +103,16 @@ local function new(ctx)
   -- what it is showing so a move that stays on the cell pushes nothing.
   local tip = nil
   local tip_showing = nil
+  -- Where the cursor last was, so a repaint can re-read the cell under it:
+  -- a buff expiring shifts every later icon left under a cursor that has
+  -- not moved.
+  local last_mouse = nil
+  -- Layout mode: it opens with set_preview and owns the mouse from then on,
+  -- so no tip while it is on.
+  local previewing = false
   -- A right-click this took the press of; its release is swallowed too, so
-  -- the game sees neither edge of a click that cancelled a buff.
+  -- the game sees neither edge of a click that cancelled a buff. Reset with
+  -- the moments the release could not have reached here.
   local swallow_right_up = false
 
   --[[ Core fans a placement out over every anchor on every apply, and layout
@@ -373,6 +381,7 @@ local function new(ctx)
     stale = true
     expiries_of = nil
     hide_tip()
+    swallow_right_up = false
     logic.apply_durations({})
     logic.set_buffs(nil)
     for _, anchor in ipairs(ANCHORS) do
@@ -404,6 +413,9 @@ local function new(ctx)
   end
 
   function self.set_preview(on)
+    previewing = on and true or false
+    hide_tip()
+    swallow_right_up = false
     logic.set_preview(on)
     paint_all()
   end
@@ -432,6 +444,9 @@ local function new(ctx)
 
   function self.hide(anchor)
     hide_tip()
+    if anchor == nil then
+      swallow_right_up = false
+    end
     if anchor ~= nil then
       local bar = bar_at(anchor)
       if bar then
@@ -465,6 +480,21 @@ local function new(ctx)
     return nil
   end
 
+  -- The tip for the cell under the cursor as the bars stand now, or none.
+  local function refresh_tip()
+    if previewing or not last_mouse or not logic.tooltips_on() then
+      hide_tip()
+      return
+    end
+    local anchor, cell = cell_under(last_mouse.x, last_mouse.y)
+    local text = cell and logic.tooltip(cell.id)
+    if text then
+      show_tip(anchor, cell, text)
+    else
+      hide_tip()
+    end
+  end
+
   --[[ The mouse. A move over a drawn icon names its buff under the cell and
        a move anywhere else takes the tip down, never blocking. A RIGHT-CLICK
        over an icon asks the cancel addon to drop the buff (`//cancel <id>`,
@@ -474,10 +504,10 @@ local function new(ctx)
        while it is on, so nothing arrives here then. ]]
   function self.on_mouse(mouse_type, x, y)
     if mouse_type == MOUSE_MOVE then
-      local anchor, cell = cell_under(x, y)
-      local text = cell and logic.tooltip(cell.id)
-      if text then
-        show_tip(anchor, cell, text)
+      last_mouse = { x = x, y = y }
+      -- Off means off: no hit-test per move either.
+      if logic.tooltips_on() then
+        refresh_tip()
       else
         hide_tip()
       end
@@ -535,6 +565,9 @@ local function new(ctx)
       logic.set_buffs(buffs)
       logic.set_time(now)
       paint_all()
+      if tip_showing then
+        refresh_tip()
+      end
     end
   end
 

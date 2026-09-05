@@ -536,6 +536,72 @@ describe("statusbar widget", function()
       widget.on_mouse(MOVE, 106, 60, 0)
       assert.are.equal("haste (33)", tip().last.text)
     end)
+
+    -- A buff expiring shifts every later icon left under a cursor that has
+    -- not moved; the tip must say what is under it now, or go.
+    it("re-reads the cell under a still cursor when the bar repaints", function()
+      widget.on_mouse(MOVE, 105, 60, 0)
+      assert.are.equal("KO (0)", tip().last.text)
+      env.player.buffs = { HASTE }
+      widget.update()
+      assert.are.equal("haste (33)", tip().last.text)
+      env.player.buffs = {}
+      widget.update()
+      assert.is_nil(tip())
+    end)
+
+    -- Layout mode opens with set_preview and the bare show, never a hide,
+    -- and owns the mouse from then on: a tip left up would sit over the
+    -- preview naming a buff that is not there.
+    it("drops the tip when the preview opens, and shows none during it", function()
+      widget.on_mouse(MOVE, 140, 60, 0)
+      widget.set_preview(true)
+      assert.is_nil(tip())
+      widget.update()
+      assert.is_nil(tip())
+      widget.set_preview(false)
+      widget.update()
+      widget.on_mouse(MOVE, 140, 60, 0)
+      assert.is_not_nil(tip())
+    end)
+
+    -- Core drops the mouse under suppression and layout mode takes it, so
+    -- a release can fail to arrive; the flag must not outlive the press's
+    -- context, or the next unrelated right-click loses its release.
+    it("forgets a swallowed press on detach and on a whole-widget hide", function()
+      assert.is_true(widget.on_mouse(RIGHT_DOWN, 140, 60, 0))
+      widget.detach()
+      assert.is_false(widget.on_mouse(RIGHT_UP, 500, 500, 0))
+      attach()
+      widget.update()
+      assert.is_true(widget.on_mouse(RIGHT_DOWN, 140, 60, 0))
+      widget.hide()
+      assert.is_false(widget.on_mouse(RIGHT_UP, 500, 500, 0))
+    end)
+
+    it("addresses the bar under the cursor, later bars winning an overlap", function()
+      env.player.buffs = { HASTE, KO }
+      widget.show("bar2")
+      widget.update()
+      widget.on_mouse(MOVE, 105, 160, 0)
+      assert.are.equal("KO (0)", tip().last.text)
+      assert.is_true(widget.on_mouse(RIGHT_DOWN, 105, 160, 0))
+      assert.are.same({ "cancel 0" }, env.commands)
+      -- bar1 showing buffs alone puts haste in its first cell; bar2 moved
+      -- onto it puts KO in the same square, and being the later bar wins.
+      widget.handle_command({ "filter", "buffs" })
+      widget.set_pos(100, 50, "bar2")
+      widget.on_mouse(MOVE, 105, 60, 0)
+      assert.are.equal("KO (0)", tip().last.text, "bar2 sits over bar1 and wins")
+    end)
+
+    it("does no hit-testing on a move while tooltips are off", function()
+      widget.handle_command({ "tooltips", "off" })
+      local before = calls()
+      widget.on_mouse(MOVE, 140, 60, 0)
+      assert.are.equal(before, calls())
+      assert.is_nil(tip())
+    end)
   end)
 
   describe("preview", function()

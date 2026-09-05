@@ -343,9 +343,13 @@ local function new(deps)
     return nil
   end
 
+  function self.tooltips_on()
+    return config.tooltips ~= false
+  end
+
   -- What the tooltip says for a buff, or nil while tooltips are off.
   function self.tooltip(id)
-    if config.tooltips == false then
+    if not self.tooltips_on() then
       return nil
     end
     return ("%s (%d)"):format(engines.bar1.name(id), id)
