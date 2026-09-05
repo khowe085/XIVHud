@@ -119,16 +119,14 @@ local function new(deps)
   function self.defaults()
     return {
       --[[ Unlike the cast retry, this ships ON - which is Kevin's call
-           (2026-09-05) and NOT a claim that every rule below is safe. Four
-           of the six are facts the client itself hands over (TP, what is
-           selected, what it is, whether one is already in flight). The
-           other two are not: the reach is a number nobody has measured,
-           and the engagement rule is an assumption about what the game
-           does with a disengaged press. Either could refuse a press that
-           would have worked, silently. The cast retry's precedent argues
-           for shipping off until a client has answered; this ships on
-           because the guard is wanted now, and rows K2.4, K2.6, O9 and O10
-           are how it gets checked. ]]
+           (2026-09-05) and NOT a claim that every rule below is safe. Five
+           of the six are now settled: four are facts the client hands over
+           (TP, what is selected, what it is, whether one is already in
+           flight), and the fifth - that the game refuses a weaponskill
+           while not engaged - Kevin confirmed the same day, closing
+           in-client question P. The REACH is the one that is still a
+           number nobody has measured, and it ships loose for that reason.
+           Row O10 is how it gets settled. ]]
       enabled = true,
       --[[ Yalms of reach, added to BOTH models - the shape
            targetbar/logic.lua's casting_state uses.
@@ -224,12 +222,12 @@ local function new(deps)
       return false
     end
 
-    --[[ UNVERIFIED, and the only rule here that is unverified without
-         saying so in its own value: this refuses a disengaged press on the
-         assumption that the game refuses it too. If the game instead
-         ENGAGES and fires, the rule is not imprecise but wrong, and every
-         out-of-combat weaponskill press is a dead button with no message.
-         In-client question P, testplan row O9. ]]
+    --[[ CONFIRMED (Kevin, 2026-09-05): the game does not allow a
+         weaponskill while not engaged, so refusing one here costs nothing.
+         It was an assumption when it was written - and the wrong one would
+         have made every out-of-combat press a dead button with no message,
+         which is why it was tracked as in-client question P rather than
+         left as a plain rule. ]]
     local status = tonumber(facts.status)
     if status ~= nil and status ~= engaged then
       return false

@@ -333,14 +333,15 @@ motivating example. Note the fixture no longer uses Instant Warp as its
 stand-in for a temporary item, since that would have written the wrong
 classification into the tests.
 
-**P. Does the game refuse a weaponskill pressed while NOT ENGAGED, or does
-it engage and fire?** The weaponskill gate refuses a disengaged press on the
-assumption that the game does - an assumption written into `wsgate.lua` with
-no evidence behind it, unlike `melee_range` and `in_flight`, which are at
-least labelled guesses. If the game auto-engages, the rule is not merely
-imprecise but wrong, and every out-of-combat weaponskill press is a dead
-button with no message. Testplan row O9 asks for it directly; K2.4 and K2.3
-between them will show it too.
+**P. ANSWERED (Kevin, 2026-09-05): the game does not allow a weaponskill
+while not engaged.** So the weaponskill gate's engagement rule refuses only
+what the game refuses anyway, and it stays.
+
+It was written as an assumption with no evidence behind it, unlike
+`melee_range` and `in_flight`, which were at least labelled guesses - and
+the wrong answer here would have made every out-of-combat weaponskill press
+a dead button with no message, since a gate refusal is silent by design.
+Testplan row O9 is answered; K2.4 and K2.3 still exercise the rule.
 
 **Q. What is a weaponskill's real reach, and does our own 0x028 release the
 lock?** Two numbers ship as guesses. `melee_range` (3.0 yalms, added to both
