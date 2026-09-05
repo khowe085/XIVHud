@@ -225,6 +225,21 @@ their passes are gone and F36-F38 are new.
 | H9 | `//hud crossbar open equipment` | The equipment window opens | [ ] | [x] | open equipment does nothing; open map works. The chord-based openers (equipment, inventory) are broken - filed as #22 |
 | H10 | `//hud crossbar help` | Prints the command list | [x] | [ ] |  |
 | H11 | If you own a trainer's whistle, run `//hud crossbar mr` a dozen times | It is never picked as a mount | [ ] | [x] | Do not own a trainer's whistle |
+| H12 | `//hud crossbar draw`, then LEFT-CLICK the sword above `Set N` | The sword goes out and you disengage - the same thing `draw` does on the way out | [x] | [ ] |  |
+| H13 | Watch what the GAME did on that same click | Nothing: no target picked up, no camera swing. **The one that decides the feature** - if the game acted too, `return true` does not stop a left-click and this has to be reconsidered | [x] | [ ] | Answered 2026-09-05 (Kevin): the click does NOT reach the game. `return true` stops a left-click outright, unlike the Ctrl/Alt chord it cannot stop - which also clears the status bar's right-click-to-cancel, built on the same assumption, and derisks click-to-fire on the SLOTS |
+| H14 | With the weapon sheathed, click the empty square where the sword was | Nothing happens and the game gets the click as usual | [ ] | [ ] |  |
+| H15 | `//hud crossbar mr` to mount, then `//hud crossbar draw` so the sword lights, then click the sword | You SHEATHE and stay mounted - the click is not the `draw` verb, which would have dismounted you | [ ] | [ ] |  |
+| H16 | `//hud crossbar edit`, click the sword, close edit mode | Nothing sheathed while the binder was open; the sword is still lit | [ ] | [ ] |  |
+| H17 | `//hud layout`, click where the sword is, leave layout mode | Nothing sheathed - layout mode owns the mouse | [ ] | [ ] |  |
+| H18 | Bind something to a slot, then LEFT-CLICK that slot on the bar | It fires, exactly as its key does, and flashes | [ ] | [ ] |  |
+| H19 | Watch the game on that same click | It never sees it: no target picked up, no camera swing (H13's answer, on a second surface) | [ ] | [ ] |  |
+| H20 | Click a slot on the RIGHT cross with no side key held | It fires the RIGHT side's binding - the group under the cursor decides, not a hold state | [ ] | [ ] |  |
+| H21 | With the WXHB shown, click a slot on one of its halves | It fires what THAT half displays, which may be another set entirely | [ ] | [ ] |  |
+| H22 | Click a slot with nothing bound to it | Nothing happens, nothing is said - and the game still does not get the click | [ ] | [ ] |  |
+| H23 | Click a slot bound to `warp` or `mr` | The countdown starts and counts out in chat, exactly as the key press does | [ ] | [ ] |  |
+| H24 | Click a weaponskill slot with `wsgate on` and under 1000 TP | Refused silently, the same as its key press - no command, no flash | [ ] | [ ] |  |
+| H25 | `//hud crossbar edit`, click a slot | The binder opens on that slot as it always did, and nothing fires | [ ] | [ ] |  |
+| H26 | Drag the sword over a slot in `//hud layout`, leave, click where they overlap | The SWORD wins - it sheathes rather than firing the slot | [ ] | [ ] |  |
 
 ## I. Warp
 

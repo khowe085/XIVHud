@@ -68,8 +68,6 @@ local contexts = require("components/crossbar/contexts")
 -- Windower's mouse types, as layout_mode names them.
 local MOVE, LEFT_DOWN, LEFT_UP, WHEEL = 0, 1, 2, 10
 
-local SLOT_COUNT = 8
-
 --[[ ONE window, and a wizard inside it (Kevin, 2026-08-22). It replaced a
      stack panel, a catalog and a floating tooltip drawn beside one another:
      the panel opened next to its slot and drew UNDER the neighbouring
@@ -453,38 +451,6 @@ local function new(deps)
   end
 
   --[[ Geometry -------------------------------------------------------------- ]]
-
-  -- The slot rects currently on screen, through the one geometry function
-  -- render.lua draws them with: the reference resolves picker drops and slot
-  -- drags with two different hit-tests, which can disagree.
-  local function slot_rects()
-    local rects = {}
-    local render = renderer()
-    if render == nil or deps.groups == nil then
-      return rects
-    end
-    local size = render.metrics().slot
-    for _, group in ipairs(deps.groups() or {}) do
-      for index = 1, SLOT_COUNT do
-        -- The render side is the GROUP's own half of the bar; the binding
-        -- side is whichever half the group is displaying, which for a WXHB
-        -- or Expanded view is its config's and not the group's.
-        local x, y = render.slot_pos(group.bar, group.render_side or group.side, index)
-        if x ~= nil then
-          rects[#rects + 1] = {
-            x = group.x + x * group.scale,
-            y = group.y + y * group.scale,
-            width = size * group.scale,
-            height = size * group.scale,
-            set = group.set,
-            side = group.side,
-            slot = index,
-          }
-        end
-      end
-    end
-    return rects
-  end
 
   --[[ The window and its regions. Dead centre, and nothing dodges the bar
        (Kevin, 2026-08-22): `hit()` checks the window before the slots, so a
@@ -1129,14 +1095,15 @@ local function new(deps)
            column never reads as the empty space that clears a slot. ]]
       return { kind = "panel", rect = window }
     end
-    local rects = slot_rects()
-    for index = #rects, 1, -1 do
-      local rect = rects[index]
-      if inside(x, y, rect) then
-        return { kind = "slot", set = rect.set, side = rect.side, slot = rect.slot, rect = rect }
-      end
+    -- render.lua's own resolve, not a second walk over its rects: the
+    -- widget answers a live click with the same call, so the two cannot
+    -- pick different slots for one point.
+    local render = renderer()
+    local rect = render ~= nil and deps.groups ~= nil and render.slot_at(deps.groups(), x, y) or nil
+    if rect == nil then
+      return nil
     end
-    return nil
+    return { kind = "slot", set = rect.set, side = rect.side, slot = rect.slot, rect = rect }
   end
 
   --[[ Actions --------------------------------------------------------------- ]]
