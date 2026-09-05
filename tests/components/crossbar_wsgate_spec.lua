@@ -55,25 +55,27 @@ local WS = { type = "ws", action = "Savage Blade", target = "t" }
 
 describe("crossbar weaponskill gate", function()
   describe("the shipped config", function()
-    it("ships on, with the melee reach beside it", function()
+    it("ships off, with the melee reach beside it", function()
       local wsgate = world()
-      assert.same({ enabled = true, melee_range = 4, size_pivot = 1.3 }, wsgate.defaults())
+      assert.same({ enabled = false, melee_range = 4, size_pivot = 1.3 }, wsgate.defaults())
     end)
 
-    it("is on unless the config says false outright", function()
-      -- The opposite reading to the cast retry's, and deliberately: that
-      -- feature ships off, so only `true` turns it on. This one ships ON,
-      -- so a hand-broken config must read as on rather than silently
-      -- disabling a guard the player never switched off.
+    it("is off unless the config says true outright", function()
+      --[[ The cast retry's reading exactly, and for the same reason: a
+           feature that ships off must not be switched on by a hand-broken
+           config, so a truthy value is not enough. It read the opposite way
+           for a day, while the gate shipped on. ]]
       local wsgate, state = world()
       assert.is_true(wsgate.enabled())
       state.config = nil
-      assert.is_true(wsgate.enabled())
+      assert.is_false(wsgate.enabled())
       state.config = 42
-      assert.is_true(wsgate.enabled())
+      assert.is_false(wsgate.enabled())
       state.config = {}
-      assert.is_true(wsgate.enabled())
+      assert.is_false(wsgate.enabled())
       state.config = { enabled = false }
+      assert.is_false(wsgate.enabled())
+      state.config = { enabled = "yes" }
       assert.is_false(wsgate.enabled())
     end)
 

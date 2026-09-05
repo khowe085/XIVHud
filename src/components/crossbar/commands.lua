@@ -1255,10 +1255,8 @@ local function new(deps)
     if #args > 2 then
       return hint(WSGATE_FORM)
     end
-    --[[ A config written before the feature existed has no block at all,
-         and reads as ON - the shipped posture, and the OPPOSITE of the cast
-         retry's report beside it. Reporting off there would describe a
-         guard that is in fact running. Nothing is written to say so. ]]
+    -- A config with no block at all reads as off, the shipped posture, and
+    -- nothing is written to say so.
     if args[2] == nil then
       return hint(wsgate_state())
     end

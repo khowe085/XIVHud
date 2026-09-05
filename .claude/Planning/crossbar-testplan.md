@@ -306,9 +306,19 @@ at. The rows added at the end of this section ask for a few (model size,
 furthest working distance) pairs across small and large mobs, which is
 what the formula needs to be settled.
 
+The gate ships OFF by default (Kevin, 2026-09-05), reversing his own
+earlier call to ship it on: all three surviving rules are settled in a
+live client, but the melee reach is a FIT rather than a fact - its size
+pivot is an upper bound on what five readings permit - and a gate
+refusal is silent by design, so a guard that can quietly drop a press
+should not be switched on for a player who never asked for it. Every
+row below assumes `//hud crossbar wsgate on` has been run first, and
+the gate can be tuned with `//hud crossbar wsgate pivot <yalms>`.
+
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
-| K2.1 | `//hud crossbar wsgate` | Reports it as on | [x] | [ ] | Reports on, with the reach beside it |
+| K2.1 | `//hud crossbar wsgate` | Reports it as off, naming the reach and the pivot in the readout | [ ] | [ ] | The earlier PASS was recorded against the old on-by-default shipped state and the shorter readout |
+| K2.1b | `//hud crossbar wsgate on` | Reports the gate as on | [ ] | [ ] |  |
 | K2.2 | Under 1000 TP, mash a weaponskill slot | Nothing is sent and nothing is said; the slot stays dimmed | [x] | [ ] |  |
 | K2.3 | At 1000+ TP, engaged, in range, press it once | It fires exactly as it always did | [x] | [ ] |  |
 | K2.4 | Bind a weaponskill to `<bt>` with `//hud crossbar bind <address> ws "<name>" bt`, then press it with no battle target | The nothing-targeted rule is gone, so the gate no longer stops this itself - the press goes out and the game refuses it | [ ] | [ ] | Not run - the rule this row tested was removed |
@@ -326,6 +336,8 @@ what the formula needs to be settled.
 | K2.15 | Select a large mob, run `//hud crossbar wsgate`, and note the model size it reports | Records a model size for a large target | [ ] | [ ] |  |
 | K2.16 | Walk in on that same large mob and find the furthest distance a weaponskill still fires from, then note that distance | Pairs a furthest working distance with K2.15's model size | [ ] | [ ] |  |
 | K2.17 | Repeat K2.13 through K2.16 on one or two more mobs of a different size, if any are on hand | A few (model size, furthest distance) pairs across small and large mobs is what settles the size correction - two points alone would leave it guessed at | [ ] | [ ] |  |
+| K2.18 | Select a small mob and run `//hud crossbar wsgate`, then select a large mob and run it again | Each report prints that target's distance, its model size, and the reach it earns; the large mob's reach is bigger than the small mob's | [ ] | [ ] |  |
+| K2.19 | `//hud crossbar wsgate pivot <yalms>` | Reports the new pivot and it takes effect immediately; a pivot of 0 is accepted and means every mob adds the whole of its bulk | [ ] | [ ] |  |
 
 ## L. Layout mode
 

@@ -2087,15 +2087,13 @@ describe("crossbar commands", function()
       assert.is_nil(world.config.wsgate)
     end)
 
-    it("reports ON with no argument and no block in the config", function()
-      --[[ The opposite of the cast retry's report, and the whole reason the
-           two are not one verb: a config written before this feature
-           existed carries no block, and the gate is on for it. Reporting
-           off there would describe a guard that is in fact running. ]]
+    it("reports OFF with no argument and no block in the config", function()
+      -- The cast retry's report exactly: a config with no block reads as
+      -- off, which is the shipped posture, and nothing is written to say so.
       local commands, world = build()
       local reply, save_config = commands.command({ "wsgate" })
       assert.is_string(reply)
-      assert.is_not_nil(reply:find("on", 1, true), reply)
+      assert.is_not_nil(reply:find("off", 1, true), reply)
       assert.is_falsy(save_config)
       assert.is_nil(world.config.wsgate)
     end)

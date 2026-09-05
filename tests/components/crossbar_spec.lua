@@ -1353,6 +1353,17 @@ describe("crossbar live widget", function()
          yalms off, 1000 TP - so each test below spoils exactly one fact.
          Every refusal is silent: no command, no hint, no flash. ]]
     describe("the weaponskill gate", function()
+      --[[ The gate ships OFF (Kevin, 2026-09-05), so every test of what it
+           refuses turns it on first - the cast retry's `live()` idiom. The
+           shipped posture has a test of its own, below. ]]
+      local function gated()
+        build_world({
+          tune_config = function(tuned)
+            tuned.wsgate.enabled = true
+          end,
+        })
+      end
+
       -- The gate's own send, so a test reads as the press it describes.
       local function weaponskill()
         press(LEFT)
@@ -1361,8 +1372,16 @@ describe("crossbar live widget", function()
         release(LEFT)
       end
 
-      it("refuses a weaponskill under its TP, saying nothing at all", function()
+      it("ships off: the press goes out and the game deals with it", function()
+        -- The shipped posture, and the reason every test below says gated().
         build_world()
+        env.player.vitals.tp = 999
+        weaponskill()
+        assert.are.equal(1, #env.commands, "nothing is gated until the player asks")
+      end)
+
+      it("refuses a weaponskill under its TP, saying nothing at all", function()
+        gated()
         env.player.vitals.tp = 999
         weaponskill()
         assert.are.same({}, env.commands, "nothing reaches Windower")
@@ -1371,12 +1390,12 @@ describe("crossbar live widget", function()
       end)
 
       it("refuses while not engaged and out of reach", function()
-        build_world()
+        gated()
         env.player.status = 0
         weaponskill()
         assert.are.same({}, env.commands, "disengaged")
 
-        build_world()
+        gated()
         -- Twenty yalms out: the mob table reports the square.
         env.target = { id = 99, hpp = 75, distance = 400, model_size = 1 }
         weaponskill()
@@ -1389,14 +1408,14 @@ describe("crossbar live widget", function()
              selected is not a state the game will give you - the rules that
              refused on it were cut. Nothing selected now reaches the gate as
              no distance at all, and the game refuses the press itself. ]]
-        build_world()
+        gated()
         env.target = nil
         weaponskill()
         assert.are.equal(1, #env.commands, "the game's to refuse, not ours")
       end)
 
       it("gates weaponskills alone: everything else fires regardless", function()
-        build_world()
+        gated()
         env.player.vitals.tp = 0
         env.player.status = 0
         press(LEFT)
@@ -1420,7 +1439,7 @@ describe("crossbar live widget", function()
              so reading the wrong one refuses the press: without that the
              test passes whichever token is asked for, since an unresolved
              lookup yields no distance and the reach rule sits out. ]]
-        build_world()
+        gated()
         widget.handle_command({ "bind", "1L6", "ws", "Savage Blade", "bt" })
         env.targets = { t = { id = 1, distance = 400, model_size = 1 }, bt = { id = 99, distance = 4, model_size = 1 } }
         press(LEFT)
@@ -1435,7 +1454,7 @@ describe("crossbar live widget", function()
              on a mob it never saw - and TP still applies. ]]
         --[[ Every token resolves to a mob far out of reach, so asking about
              ANY of them refuses the press. The gate must ask about none. ]]
-        build_world()
+        gated()
         widget.handle_command({ "bind", "1L6", "ws", "Savage Blade", "st" })
         env.target = { id = 99, distance = 400, model_size = 1 }
         press(LEFT)
@@ -1452,7 +1471,7 @@ describe("crossbar live widget", function()
       it("asks the client nothing for a press that is not a weaponskill", function()
         -- The facts are gathered for `ws` alone: every other type would pay
         -- a resource lookup and two mob reads it has no use for.
-        build_world()
+        gated()
         press(LEFT)
         env.target_reads = 0
         press(DIK_SLOT[5])
@@ -1465,12 +1484,12 @@ describe("crossbar live widget", function()
              outside 4 yalms of it, yet a weaponskill landed from 7. Seven
              yalms is a squared 49; the shipped reach is 4 and the pivot
              1.3, so a 6.3 mob earns 9 and a 1.0 mob earns 4. ]]
-        build_world()
+        gated()
         env.target = { id = 99, distance = 49, model_size = 1 }
         weaponskill()
         assert.are.same({}, env.commands, "seven yalms from a small mob is out of reach")
 
-        build_world()
+        gated()
         env.target = { id = 99, distance = 49, model_size = 6.3 }
         weaponskill()
         assert.are.equal(1, #env.commands, "and the same seven yalms from a big one is not")
@@ -1480,7 +1499,7 @@ describe("crossbar live widget", function()
         -- Read through a closure like the switch, so a number settled in a
         -- live client takes effect on the next press rather than the next
         -- attach - which is the whole point of settling it live.
-        build_world()
+        gated()
         env.target = { id = 99, hpp = 75, is_npc = true, distance = 400, model_size = 1 }
         weaponskill()
         assert.are.same({}, env.commands, "twenty yalms out, at the shipped four")
@@ -1491,7 +1510,7 @@ describe("crossbar live widget", function()
       end)
 
       it("is switched off by its own verb, and back on again", function()
-        build_world()
+        gated()
         env.player.vitals.tp = 999
         local reply = widget.handle_command({ "wsgate", "off" })
         assert.is_not_nil(tostring(reply):find("off", 1, true), tostring(reply))
@@ -5229,7 +5248,12 @@ describe("crossbar live widget", function()
       --[[ The gate's refusal is a complete no-op, unlike the empty slot,
            which DOES drop the watch: that press never happened, so the
            moment the held cast belongs to has not moved on. ]]
-      live()
+      build_world({
+        tune_config = function(tuned)
+          tuned.retry.enabled = true
+          tuned.wsgate.enabled = true
+        end,
+      })
       cast()
       env.player.vitals.tp = 999
       cast(DIK_SLOT[3])

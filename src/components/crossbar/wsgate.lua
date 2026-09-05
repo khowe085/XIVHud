@@ -136,12 +136,17 @@ local function new(deps)
        here, so there is one place to tune and nothing to keep in step. ]]
   function self.defaults()
     return {
-      --[[ Unlike the cast retry, this ships ON, and all three rules that
-           survive are now settled in a live client (Kevin, 2026-09-05): TP
-           is a fact the client hands over, the game refuses a weaponskill
-           while not engaged (in-client question P), and the reach was
-           measured by walking in on a mob (row O10). ]]
-      enabled = true,
+      --[[ OFF, the cast retry's posture (Kevin, 2026-09-05, reversing his
+           own earlier call). All three surviving rules are settled in a
+           live client - TP is a fact the client hands over, the game
+           refuses a weaponskill while not engaged (in-client question P),
+           and the reach was fitted to five readings (row O10) - but the
+           reach is a FIT rather than a fact, its pivot is an upper bound
+           on what those readings permit, and a refusal here is silent by
+           design. A guard that can quietly drop a press is not something
+           to switch on for a player who never asked for it; `//hud
+           crossbar wsgate on` is one word. ]]
+      enabled = false,
       --[[ Yalms of reach: THE DISTANCE THE TARGET BAR PRINTS, and nothing
            added to it (Kevin, 2026-09-05).
 
@@ -204,12 +209,12 @@ local function new(deps)
     }
   end
 
-  --- On unless the config says `false` outright - the OPPOSITE reading to
-  --- the cast retry's, and deliberately: that feature ships off, so only
-  --- `true` may turn it on. A hand-broken config must not silently disable
-  --- a guard the player never switched off.
+  --- Off unless the config says `true` outright - the cast retry's reading
+  --- exactly, and for its reason: a feature that ships off must not be
+  --- switched on by a hand-broken config, so a truthy value is not enough.
+  --- It read the other way round for a day, while the gate shipped on.
   function self.enabled()
-    return settings().enabled ~= false
+    return settings().enabled == true
   end
 
   --[[ The reach in force, shipped value and all. Public because the CLI
