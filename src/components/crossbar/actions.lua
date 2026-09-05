@@ -194,6 +194,16 @@ local function open_plan(name)
   return command_plan(chord_command(entry.chord))
 end
 
+--[[ Leaving the drawn state, on its own: the draw toggle's own way out, and
+     what a click on the bar's sword resolves to directly. It reads no state
+     because it answers none - the sword is drawn only while the weapon is,
+     so a click on it can mean nothing else. ]]
+local function sheathe_plan()
+  local plan = command_plan("input /attack off")
+  plan.weapon_state = "sheathed"
+  return plan
+end
+
 -- Mounted outranks everything: you cannot engage while mounted, and the same
 -- gesture should dismount, which is the one draw press that does NOT touch
 -- the weapon state.
@@ -203,9 +213,7 @@ local function draw_plan(state)
     return command_plan("input /dismount")
   end
   if state.weapon_drawn then
-    local plan = command_plan("input /attack off")
-    plan.weapon_state = "sheathed"
-    return plan
+    return sheathe_plan()
   end
   --[[ Entering drawn sends NOTHING (Kevin, 2026-08-22). The component's
        weapon state is its own: it picks which set rotation is live and
@@ -343,6 +351,12 @@ local function new(deps)
       return { kind = "enchanted", plan = deps.enchanteditem.plan(record.action, record.target) }
     end
     return nil, "unknown action type: " .. tostring(kind)
+  end
+
+  -- The sword's click (crossbar.lua's on_mouse), which is one way and takes
+  -- no state: see sheathe_plan.
+  function self.sheathe()
+    return sheathe_plan()
   end
 
   -- The command frontend: `//hud crossbar <name> [<arg>]` -> the same record

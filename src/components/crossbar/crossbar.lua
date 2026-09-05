@@ -93,6 +93,20 @@ local GROUPS = {
 local ASSETS = "assets/"
 local SLOT_COUNT = 8
 local MOUNTED_BUFF = 252
+-- Windower's own mouse-event numbers, and only the two edges the sword's
+-- click reads: a move over it is the game's, so it is never named here.
+local MOUSE_LEFT_DOWN, MOUSE_LEFT_UP = 1, 2
+
+-- Half-open, as the binder's own is: the pixel at x + width belongs to
+-- whatever is drawn next, not to this. A coordinate that is not a number is
+-- answered rather than compared - Windower fails silently, and a handler
+-- that throws is one guard.lua disables after five goes.
+local function inside(x, y, left, top, width, height)
+  if type(x) ~= "number" or type(y) ~= "number" then
+    return false
+  end
+  return x >= left and y >= top and x < left + width and y < top + height
+end
 -- Namespaced so a real MyHome on another character neither triggers nor is
 -- triggered by us; the receiver matches it exactly.
 local IPC_WARP_MESSAGE = "xivhud crossbar warp"
@@ -657,6 +671,8 @@ local function new(ctx)
 
   local visible = false
   local preview = false
+  -- The release of a press the sword took, owed back to nothing: see on_mouse.
+  local swallow_left_up = false
   local active_state = "none"
 
   -- The job scope: nil until the client can name a main job; a `job change`
@@ -1122,6 +1138,22 @@ local function new(ctx)
     return view.set, view.side
   end
 
+  --[[ The sword, placed, or nil when there is none on screen. ONE predicate
+       for drawing it and for hit-testing it (a click on it sheathes): a
+       sword nobody can see must not answer a click, and one on screen must.
+       `visible` and `machine` are the widget's own ways of being off - a
+       user hide, suppression, or nothing scoped yet. ]]
+  local function sword_at()
+    if not visible or machine == nil or bindings.weapon_state() ~= "drawn" then
+      return nil
+    end
+    local entry = anchor_at("weapon")
+    if entry == nil or entry.pos == nil then
+      return nil
+    end
+    return entry
+  end
+
   -- Applies values that live in config; construction only knows paths.
   local function dress()
     if prims == nil then
@@ -1455,8 +1487,8 @@ local function new(ctx)
          - the same state that picks which set rotation is live - so it
          lights on `draw` even with nothing targeted, which is what makes
          that press visible at all. ]]
-    local weapon_at = anchor_at("weapon")
-    if not hidden and weapon_at ~= nil and weapon_at.pos ~= nil and bindings.weapon_state() == "drawn" then
+    local weapon_at = sword_at()
+    if weapon_at ~= nil then
       local icon_size = render.set_icon_size() * weapon_at.scale
       prims.set_icon.pos(weapon_at.pos.x, weapon_at.pos.y)
       prims.set_icon.size(icon_size, icon_size)
@@ -3448,6 +3480,8 @@ local function new(ctx)
   end
 
   function self.detach()
+    -- Nothing owed to a click on a bar that is going away.
+    swallow_left_up = false
     -- The binder describes a character's bindings; a logout invalidates
     -- every one of them, so it goes down with the scope.
     close_edit()
@@ -3700,6 +3734,10 @@ local function new(ctx)
       return
     end
     preview = wanted
+    -- The third place the sword's owed release is settled, beside hide and
+    -- detach: layout mode opening between the two edges of a click owes it
+    -- to nothing.
+    swallow_left_up = false
     if preview then
       -- Core sets preview as layout mode opens, which is the one signal a
       -- component gets for it: entering layout mode exits edit mode, so the
@@ -3769,7 +3807,10 @@ local function new(ctx)
     -- Suppression (a cutscene, zoning) and a user hide both arrive here,
     -- and a cast held through either would fire into a moment that has
     -- gone. Nothing the retry holds outlives the bar being on screen, and
-    -- neither does a trip counting down.
+    -- neither does a trip counting down - nor the sword's owed release,
+    -- which core would go on dispatching to a hidden component and which
+    -- would then be paid out of the game's next click.
+    swallow_left_up = false
     retry.clear()
     say_travel(travel.cancel())
     -- A hidden crossbar has no bar to bind against, and its panels would be
@@ -3798,13 +3839,52 @@ local function new(ctx)
   --[[ The mouse, dispatched by core while any component declares
        `on_mouse` (touchpoint 3). Core has already answered an event layout
        mode owns or another addon took, so everything arriving here is
-       genuinely free. Closed, this is one call and one comparison per
-       event. ]]
+       genuinely free. Closed, a move costs two comparisons and nothing
+       else: only a left-down reaches the sword's placement, and only a
+       left-up reads the debt below. ]]
   function self.on_mouse(mouse_type, x, y, delta)
-    if not editing() then
+    if editing() then
+      return binder.mouse(mouse_type, x, y, delta) == true
+    end
+    --[[ A left-click on the sword sheathes. The sword is drawn only while
+         the weapon state is DRAWN, so the click is one way and resolves
+         straight to `sheathe` rather than through the `draw` verb, which
+         answers the state it is given and mounted would dismount instead
+         (Kevin, 2026-09-05). Preview is layout mode opening: core stops
+         dispatching then, and this refuses in the same breath rather than
+         relying on it. Edit mode above is a no-op for the sword by the same
+         decision - the binder is for authoring the bar, not firing it, and
+         it answers the click itself, whatever it makes of it.
+         Both edges are swallowed, so the game does not act on a click that
+         was ours; the release is answered on the flag alone, since a press
+         that started on the sword is ours wherever the button comes up. A
+         fresh press clears that debt first (the binder's rule for the same
+         hazard): a release taken by an addon ahead of us, or arriving while
+         suppression has dispatch off, would otherwise leave it owed to a
+         click that never comes and swallow the game's next one. ]]
+    if mouse_type == MOUSE_LEFT_UP then
+      local owed = swallow_left_up
+      swallow_left_up = false
+      return owed
+    end
+    if mouse_type ~= MOUSE_LEFT_DOWN then
       return false
     end
-    return binder.mouse(mouse_type, x, y, delta) == true
+    swallow_left_up = false
+    if preview then
+      return false
+    end
+    local entry = sword_at()
+    if entry == nil then
+      return false
+    end
+    local width, height = render.bounds("weapon", entry.scale)
+    if width == nil or not inside(x, y, entry.pos.x, entry.pos.y, width, height) then
+      return false
+    end
+    execute(actions.sheathe())
+    swallow_left_up = true
+    return true
   end
 
   function self.destroy()

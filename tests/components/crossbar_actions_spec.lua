@@ -268,6 +268,23 @@ describe("crossbar actions", function()
       assert.equal("input /attack off", plan.command)
       assert.equal("sheathed", plan.weapon_state)
     end)
+
+    --[[ The sword on the bar is clickable, and a click on it means sheathe
+         and nothing else (Kevin, 2026-09-05). It is deliberately NOT the
+         `draw` record: that verb answers the state it is given, so mounted
+         it dismounts and sheathed it would draw - neither of which a click
+         on a sword only ever drawn while DRAWN can have been asking for.
+         One way, no state to read. ]]
+    it("sheathes outright, where the draw toggle would have dismounted", function()
+      local actions = build()
+      local mounted = { mounted = true, weapon_drawn = true }
+      assert.equal("input /dismount", actions.resolve({ type = "draw" }, mounted).command)
+      -- The same moment, the other way in: no state to read, so nothing
+      -- about being mounted can reach it.
+      local plan = actions.sheathe()
+      assert.equal("input /attack off", plan.command)
+      assert.equal("sheathed", plan.weapon_state)
+    end)
   end)
 
   describe("a named mount", function()

@@ -6306,4 +6306,144 @@ describe("crossbar live widget", function()
       end
     end)
   end)
+  --[[ The sword's click. The sword is drawn only while the weapon state is
+       drawn, so a left-click on it can mean exactly one thing - sheathe -
+       and it resolves straight to that rather than through the `draw` verb,
+       which mounted would dismount instead (Kevin, 2026-09-05). There is no
+       setting: the sword is either on screen and clickable or not there at
+       all. ]]
+  describe("the sword's click", function()
+    local MOUSE_MOVE, MOUSE_LEFT_DOWN, MOUSE_LEFT_UP = 0, 1, 2
+
+    -- The centre of the sword, through the bounds core itself is given, so
+    -- the hit-test and the placement can never be measured differently.
+    local function sword_point()
+      local x, y, width, height = widget.get_bounds("weapon")
+      return x + width / 2, y + height / 2
+    end
+
+    local function draw_weapon()
+      widget.handle_command({ "draw" })
+      env.commands = {}
+    end
+
+    it("sheathes on a click of the sword, and swallows both edges", function()
+      build_world()
+      draw_weapon()
+      assert.is_true(sword_icon().visible, "the sword is on screen to be clicked")
+      local x, y = sword_point()
+      assert.is_true(widget.on_mouse(MOUSE_LEFT_DOWN, x, y, 0), "the press is ours")
+      assert.are.same({ "input /attack off" }, env.commands)
+      assert.is_false(sword_icon().visible, "and the state really flipped")
+      assert.is_true(widget.on_mouse(MOUSE_LEFT_UP, x, y, 0), "the release goes with it")
+    end)
+
+    it("leaves the click to the game while the weapon is sheathed", function()
+      -- Sheathed is where a fresh attach starts, and nothing is drawn there
+      -- to click: the square is the game's like any other empty pixel.
+      build_world()
+      local x, y = sword_point()
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, x, y, 0))
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_UP, x, y, 0))
+      assert.are.same({}, env.commands)
+    end)
+
+    it("sheathes rather than dismounting while mounted", function()
+      --[[ The `draw` verb puts mounted above everything and dismounts. This
+           is not that verb: the sword says drawn, the click says sheathe,
+           and a dismount would be answering a question nobody asked. ]]
+      build_world()
+      draw_weapon()
+      env.player.buffs = { 252 }
+      widget.update()
+      assert.is_true(widget.on_mouse(MOUSE_LEFT_DOWN, sword_point()))
+      assert.are.same({ "input /attack off" }, env.commands)
+    end)
+
+    it("hands back every click that is not on the sword", function()
+      build_world()
+      draw_weapon()
+      local x, y = sword_point()
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, x - 40, y, 0), "clear of the icon")
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, 4, 4, 0), "and the far corner")
+      assert.is_false(widget.on_mouse(MOUSE_MOVE, x, y, 0), "a move over it is never blocked")
+      assert.are.same({}, env.commands)
+    end)
+
+    it("is a no-op while the binder owns the mouse", function()
+      -- Edit mode is for authoring the bar, not firing it (Kevin,
+      -- 2026-09-05): the binder answers the click, whatever it makes of it.
+      build_world()
+      draw_weapon()
+      widget.handle_command({ "edit" })
+      widget.on_mouse(MOUSE_LEFT_DOWN, sword_point())
+      assert.are.same({}, env.commands)
+      -- Still drawn, which the same click proves once the binder is closed.
+      widget.handle_command({ "edit" })
+      assert.is_true(widget.on_mouse(MOUSE_LEFT_DOWN, sword_point()))
+      assert.are.same({ "input /attack off" }, env.commands)
+    end)
+
+    it("owes the swallowed release to the press that earned it and no other", function()
+      --[[ The release of our press can be taken by an addon ahead of us, or
+           arrive while the HUD is suppressed and dispatch is off - after
+           which the debt is owed to a click that never comes. A fresh press
+           supersedes it (the binder's own rule for the same hazard), so the
+           game's next release is the game's. ]]
+      build_world()
+      draw_weapon()
+      widget.on_mouse(MOUSE_LEFT_DOWN, sword_point())
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, 4, 4, 0), "a press clear of the sword")
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_UP, 4, 4, 0), "so its release is the game's")
+    end)
+
+    it("drops the debt when the widget stops owning the mouse", function()
+      --[[ Core keeps dispatching to a component that is user-hidden or
+           detached - only suppression and layout mode short-circuit - so a
+           debt outliving either would be paid out of the game's next click.
+           Going down or away settles it. ]]
+      build_world()
+      draw_weapon()
+      widget.on_mouse(MOUSE_LEFT_DOWN, sword_point())
+      widget.hide()
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_UP, sword_point()), "hidden: the release is the game's")
+      widget.show()
+      draw_weapon()
+      widget.on_mouse(MOUSE_LEFT_DOWN, sword_point())
+      widget.detach()
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_UP, 4, 4, 0), "detached likewise")
+      -- And layout mode opening between the two edges, which is the third
+      -- place the status bar clears its own.
+      build_world()
+      draw_weapon()
+      widget.on_mouse(MOUSE_LEFT_DOWN, sword_point())
+      widget.set_preview(true)
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_UP, sword_point()), "layout mode took the bar over")
+    end)
+
+    it("answers a coordinate it cannot read rather than erroring on it", function()
+      -- Windower fails silently and a guarded handler that throws is a
+      -- handler guard.lua disables after five goes: the binder's own hit
+      -- test type-checks for this reason, and so does this one.
+      build_world()
+      draw_weapon()
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, nil, nil, 0))
+      assert.are.same({}, env.commands)
+    end)
+
+    it("is a no-op with the widget hidden, its anchor hidden, or layout mode up", function()
+      build_world()
+      draw_weapon()
+      local x, y = sword_point()
+      widget.hide()
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, x, y, 0), "nothing on screen to click")
+      widget.show()
+      widget.hide("weapon")
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, x, y, 0), "the anchor alone is off")
+      widget.show("weapon")
+      widget.set_preview(true)
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, x, y, 0), "layout mode owns the mouse")
+      assert.are.same({}, env.commands)
+    end)
+  end)
 end)

@@ -225,6 +225,12 @@ their passes are gone and F36-F38 are new.
 | H9 | `//hud crossbar open equipment` | The equipment window opens | [ ] | [x] | open equipment does nothing; open map works. The chord-based openers (equipment, inventory) are broken - filed as #22 |
 | H10 | `//hud crossbar help` | Prints the command list | [x] | [ ] |  |
 | H11 | If you own a trainer's whistle, run `//hud crossbar mr` a dozen times | It is never picked as a mount | [ ] | [x] | Do not own a trainer's whistle |
+| H12 | `//hud crossbar draw`, then LEFT-CLICK the sword above `Set N` | The sword goes out and you disengage - the same thing `draw` does on the way out | [ ] | [ ] |  |
+| H13 | Watch what the GAME did on that same click | Nothing: no target picked up, no camera swing. **The one that decides the feature** - if the game acted too, `return true` does not stop a left-click and this has to be reconsidered | [ ] | [ ] |  |
+| H14 | With the weapon sheathed, click the empty square where the sword was | Nothing happens and the game gets the click as usual | [ ] | [ ] |  |
+| H15 | `//hud crossbar mr` to mount, then `//hud crossbar draw` so the sword lights, then click the sword | You SHEATHE and stay mounted - the click is not the `draw` verb, which would have dismounted you | [ ] | [ ] |  |
+| H16 | `//hud crossbar edit`, click the sword, close edit mode | Nothing sheathed while the binder was open; the sword is still lit | [ ] | [ ] |  |
+| H17 | `//hud layout`, click where the sword is, leave layout mode | Nothing sheathed - layout mode owns the mouse | [ ] | [ ] |  |
 
 ## I. Warp
 
