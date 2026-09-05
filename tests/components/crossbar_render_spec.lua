@@ -87,6 +87,115 @@ describe("crossbar render", function()
     end)
   end)
 
+  --[[ The ONE slot hit-test: the widget answers a live click with it and
+       the binder resolves its drops and drags with it, so a point can never
+       land on two different slots. The caller says which groups are on
+       screen and where each is drawn; nothing here reads the client. ]]
+  describe("the slot hit-test", function()
+    -- One group at a known origin, with the two sides a group carries.
+    local function group(overrides)
+      local entry = {
+        key = "xhb_left",
+        bar = "xhb",
+        render_side = "left",
+        side = "left",
+        x = 100,
+        y = 900,
+        scale = 1,
+        set = 1,
+      }
+      for key, value in pairs(overrides or {}) do
+        entry[key] = value
+      end
+      return entry
+    end
+
+    local function centre(render, entry, slot)
+      local x, y = render.slot_pos(entry.bar, entry.render_side or entry.side, slot)
+      -- The half-slot is scaled too: at 0.5 the rect is half as wide, so an
+      -- unscaled half would land past its right edge.
+      local half = render.metrics().slot * entry.scale / 2
+      return entry.x + x * entry.scale + half, entry.y + y * entry.scale + half
+    end
+
+    it("answers one rect per slot of every group it is given", function()
+      local render = make()
+      assert.are.equal(0, #render.slot_rects({}), "nothing drawn, nothing to hit")
+      assert.are.equal(0, #render.slot_rects(nil), "and nil is not an error")
+      assert.are.equal(
+        16,
+        #render.slot_rects({ group(), group({ key = "xhb_right", render_side = "right", side = "right" }) })
+      )
+    end)
+
+    it("carries what a slot ADDRESSES, not where it is drawn", function()
+      --[[ A WXHB half draws its own side of the art while pointing at
+           whichever (set, side) its view names - the split that makes the
+           two fields exist at all. ]]
+      local render = make()
+      local wxhb = group({ key = "wxhb_left", bar = "wxhb", render_side = "left", side = "right", set = 3 })
+      local rect = render.slot_at({ wxhb }, centre(render, wxhb, 5))
+      assert.are.same({ "wxhb_left", 3, "right", 5 }, { rect.key, rect.set, rect.side, rect.slot })
+    end)
+
+    it("scales the rect with the anchor it is drawn at", function()
+      local render = make()
+      local half = group({ scale = 0.5 })
+      local rect = render.slot_at({ half }, centre(render, half, 1))
+      assert.are.equal(render.metrics().slot / 2, rect.width)
+      assert.are.equal(1, rect.slot)
+    end)
+
+    it("gives a point that is on nothing back", function()
+      local render = make()
+      local entry = group()
+      local x, y = centre(render, entry, 1)
+      assert.is_nil(render.slot_at({ entry }, x - 1000, y))
+      assert.is_nil(render.slot_at({}, x, y), "not even the group is drawn")
+      assert.is_nil(render.slot_at({ entry }, nil, y), "a coordinate it cannot read")
+    end)
+
+    it("looks PAST a rect the caller turns down", function()
+      -- Asked inside the walk, not after it: a slot the caller does not
+      -- draw must not take a point off one beneath it that it does.
+      local render = make()
+      local under = group({ key = "xhb_left" })
+      local over = group({ key = "wxhb_left", bar = "wxhb" })
+      local x, y = centre(render, under, 3)
+      local ox, oy = render.slot_pos("wxhb", "left", 3)
+      over.x, over.y = x - ox - render.metrics().slot / 2, y - oy - render.metrics().slot / 2
+      local seen = {}
+      local rect = render.slot_at({ under, over }, x, y, function(candidate)
+        seen[#seen + 1] = candidate.key
+        return candidate.key == "xhb_left"
+      end)
+      assert.are.equal("xhb_left", rect.key)
+      assert.are.same({ "wxhb_left", "xhb_left" }, seen, "the top one was asked first and declined")
+      assert.is_nil(
+        render.slot_at({ under, over }, x, y, function()
+          return false
+        end),
+        "and a caller that draws neither gets nothing"
+      )
+    end)
+
+    it("gives an overlap to the group drawn LAST", function()
+      -- Core's own rule for overlapping anchors, and the reason the walk is
+      -- backwards: a bar dragged on top of another answers for the pixel.
+      local render = make()
+      local under = group({ key = "xhb_left", set = 1 })
+      local over = group({ key = "wxhb_left", bar = "wxhb", set = 7 })
+      local x, y = centre(render, under, 3)
+      -- The WXHB draws its side at the anchor's own origin, so line the two
+      -- up by placing it where the XHB's slot 3 actually landed.
+      local ox, oy = render.slot_pos("wxhb", "left", 3)
+      over.x, over.y = x - ox - render.metrics().slot / 2, y - oy - render.metrics().slot / 2
+      assert.are.equal(1, render.slot_at({ under }, x, y).set)
+      assert.are.equal(7, render.slot_at({ under, over }, x, y).set, "the later group wins")
+      assert.are.equal(1, render.slot_at({ over, under }, x, y).set, "and order is all that decides it")
+    end)
+  end)
+
   describe("the set label", function()
     -- Every slot's rect on one side, for the overlap check below.
     local function slot_rects(render)

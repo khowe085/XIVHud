@@ -1162,6 +1162,54 @@ local function new(ctx)
     return view.set, view.side
   end
 
+  --[[ Whether a slot of a SHOWN group is actually drawn - the group's own
+       visibility is `painted_groups`' half of the question, and this is the
+       rest of it. ONE predicate, exactly as `sword_at` is for the sword:
+       refresh draws by it and the click hit-tests by it, so a slot nobody
+       can see can never swallow the game's click. `hide.empty_slots` is
+       what makes the two disagree if they are written twice.
+
+       Empty slots come back for the binder whatever that config says - an
+       invisible slot is still a drop target, which is the one thing edit
+       mode cannot have - which is why `editing()` is in here. ]]
+  local function slot_drawn(group_key, slot)
+    local content = contents[group_key] ~= nil and contents[group_key][slot] or nil
+    if content == nil then
+      return false
+    end
+    return content.record ~= nil or editing() or not config_hide("empty_slots")
+  end
+
+  --[[ Only the groups actually on screen, with the anchor placement they
+       are drawn at, so nothing here can claim a bar that is not there. The
+       binder hit-tests its drops and drags with this and the live click
+       answers with it, over ONE set of rects (render.slot_rects): the
+       reference had two and they disagreed.
+
+       Two sides, deliberately: the group's own half decides where the slots
+       are DRAWN, the view's decides what they ADDRESS, which for a WXHB or
+       Expanded view is its config's and not the group's. ]]
+  local function painted_groups()
+    local list = {}
+    for _, group in ipairs(GROUPS) do
+      local entry = placed[group.anchor]
+      local set, side = group_target(group)
+      if shown_groups[group.key] and entry ~= nil and entry.pos ~= nil and set ~= nil then
+        list[#list + 1] = {
+          key = group.key,
+          bar = group.bar,
+          render_side = group.side,
+          side = side,
+          x = entry.pos.x,
+          y = entry.pos.y,
+          scale = entry.scale,
+          set = set,
+        }
+      end
+    end
+    return list
+  end
+
   --[[ The sword, placed, or nil when there is none on screen. ONE predicate
        for drawing it and for hit-testing it (a click on it sheathes): a
        sword nobody can see must not answer a click, and one on screen must.
@@ -1445,7 +1493,7 @@ local function new(ctx)
         -- Empty slots come back for the binder whatever the config says:
         -- an invisible slot is still a drop target, which is the one thing
         -- edit mode cannot have.
-        local slot_shown = shown and (content.record ~= nil or editing() or not config_hide("empty_slots"))
+        local slot_shown = shown and slot_drawn(group.key, slot)
         want(written, pair.background, "background.visible", slot_shown)
         want(written, pair.frame, "frame.visible", slot_shown)
         -- Chain-aware on purpose: while a chain result covers the slot the
@@ -2237,14 +2285,13 @@ local function new(ctx)
     }
   end
 
-  local function fire_slot(slot)
-    if scoped_main == nil or machine == nil then
-      return
-    end
-    local set, side, group_key = state_target(machine.hold_state())
-    if set == nil then
-      return
-    end
+  --[[ Fire one slot of one (set, side), whatever pointed at it. A KEY press
+       reads the hold state for that pair; a CLICK has no hold state to read
+       and takes the pair off the group it landed on. Everything after the
+       resolve - the gate, the flash, the travel countdown, the cast retry -
+       is the same either way, and deliberately so: two ways in must not
+       become two behaviours. ]]
+  local function fire_at(set, side, slot, group_key)
     local record = bindings.resolve(set, side, slot)
     if record == nil then
       -- An empty slot is silent: no command, no hint, no flash. It is still
@@ -2297,6 +2344,18 @@ local function new(ctx)
       end
     end
     retry.sent(sent)
+  end
+
+  -- The keyboard's way in: the pair comes from whichever side is held.
+  local function fire_slot(slot)
+    if scoped_main == nil or machine == nil then
+      return
+    end
+    local set, side, group_key = state_target(machine.hold_state())
+    if set == nil then
+      return
+    end
+    fire_at(set, side, slot, group_key)
   end
 
   --[[ Job scoping and events ---------------------------------------------- ]]
@@ -2969,34 +3028,11 @@ local function new(ctx)
     render = function()
       return render
     end,
-    -- Only the groups actually on screen, with the anchor placement they
-    -- are drawn at, so the hit-test can never claim a bar that is not
-    -- there. Expanded Hold cannot appear here: the widget ignores every
+    -- Expanded Hold cannot appear in this one: the widget ignores every
     -- activate intent while the binder is up - and the displayed state is
     -- `none`, which toggle_edit forces on the way in, so no side is drawn
     -- as active either.
-    groups = function()
-      local list = {}
-      for _, group in ipairs(GROUPS) do
-        local entry = placed[group.anchor]
-        local set, side = group_target(group)
-        if shown_groups[group.key] and entry ~= nil and entry.pos ~= nil and set ~= nil then
-          list[#list + 1] = {
-            key = group.key,
-            bar = group.bar,
-            -- Two sides, deliberately: the group's own half decides where
-            -- the slots are drawn, the view's decides what they address.
-            render_side = group.side,
-            side = side,
-            x = entry.pos.x,
-            y = entry.pos.y,
-            scale = entry.scale,
-            set = set,
-          }
-        end
-      end
-      return list
-    end,
+    groups = painted_groups,
     bindings = function()
       return bindings
     end,
@@ -3297,6 +3333,10 @@ local function new(ctx)
       -- a bar with no set behind it, which is worse than a refusal.
       return "crossbar: no job scoped yet - log in first"
     end
+    -- The fourth place the owed release is settled, beside hide, detach and
+    -- set_preview: from here the binder answers the mouse, so a debt the
+    -- bar took is owed to nothing.
+    swallow_left_up = false
     binder.open()
     --[[ No side is active in edit mode. The mode is entered by HOLDING a
          side and pressing Select, so without this the side that opened it
@@ -3967,18 +4007,44 @@ local function new(ctx)
       return false
     end
     swallow_left_up = false
-    if preview then
+    --[[ Layout mode owns the mouse outright, and is refused on BOTH the
+         signals that say so: core sets `preview` as it opens, and
+         `layout_active` is the client-side reader every other refusal in
+         this file uses. In production they agree - core stops dispatching
+         before either could matter - so this is belt and braces over a
+         gesture that would otherwise fire while the player is dragging the
+         bar around. ]]
+    if preview or layout_active() then
       return false
     end
+    --[[ The sword is asked FIRST, so it wins where it has been dragged over
+         a slot: ANCHORS orders `weapon` after `main`, and layout mode
+         hit-tests later anchors over earlier ones. One precedence, not two.
+         The slot under it is reached by moving the sword off it. ]]
     local entry = sword_at()
-    if entry == nil then
+    if entry ~= nil then
+      -- Two returns, so no `and`/`or`: that idiom keeps only the first, and
+      -- a nil height would compare against nothing.
+      local width, height = render.bounds("weapon", entry.scale)
+      if width ~= nil and inside(x, y, entry.pos.x, entry.pos.y, width, height) then
+        execute(actions.sheathe())
+        swallow_left_up = true
+        return true
+      end
+    end
+    --[[ Otherwise a slot, which fires what it holds. The GROUP under the
+         cursor gives the (set, side), since a click has no hold state to
+         read - so a WXHB half fires what that half displays. A slot the
+         player can see is the bar's pixel whether or not anything is bound
+         to it: an empty one is silent, exactly as its key press is, but the
+         click is still ours rather than handed on to the game. ]]
+    local rect = render.slot_at(painted_groups(), x, y, function(candidate)
+      return slot_drawn(candidate.key, candidate.slot)
+    end)
+    if rect == nil then
       return false
     end
-    local width, height = render.bounds("weapon", entry.scale)
-    if width == nil or not inside(x, y, entry.pos.x, entry.pos.y, width, height) then
-      return false
-    end
-    execute(actions.sheathe())
+    fire_at(rect.set, rect.side, rect.slot, rect.key)
     swallow_left_up = true
     return true
   end

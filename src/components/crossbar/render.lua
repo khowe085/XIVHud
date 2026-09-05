@@ -312,6 +312,66 @@ local function new(deps)
     return nil
   end
 
+  --[[ Where every slot currently on screen is, in SCREEN coordinates. The
+       caller passes the groups it is actually drawing - each with the
+       anchor placement it is drawn at - and gets one rect per slot back,
+       in the order the groups were given.
+
+       `bar` and `render_side` say where the slot is DRAWN; `set` and `side`
+       say what it addresses, which for a WXHB or Expanded view is its
+       config's half and not the group's. Both ride along on the rect, so a
+       caller never has to re-derive either.
+
+       This is the ONE slot hit-test: the mouse binder resolves its drops
+       and drags with it and the widget answers live clicks with it. The
+       reference addon had two, which is how they came to disagree. ]]
+  function self.slot_rects(groups)
+    local rects = {}
+    local size = self.metrics().slot
+    for _, group in ipairs(groups or {}) do
+      for slot = 1, #SLOT_GRID do
+        local x, y = self.slot_pos(group.bar, group.render_side or group.side, slot)
+        if x ~= nil then
+          rects[#rects + 1] = {
+            x = group.x + x * group.scale,
+            y = group.y + y * group.scale,
+            width = size * group.scale,
+            height = size * group.scale,
+            key = group.key,
+            set = group.set,
+            side = group.side,
+            slot = slot,
+          }
+        end
+      end
+    end
+    return rects
+  end
+
+  --[[ The slot under a point, or nil. Walked backwards so a group drawn
+       over another wins, which is core's own rule for overlapping anchors.
+
+       `accept` is optional and is asked INSIDE the walk, so a rect it turns
+       down is looked past rather than ending the search: a slot the caller
+       does not draw must not take a click off a drawn one beneath it. The
+       binder passes none - an invisible slot is still a drop target there,
+       the one thing edit mode cannot do without. ]]
+  function self.slot_at(groups, x, y, accept)
+    if type(x) ~= "number" or type(y) ~= "number" then
+      return nil
+    end
+    local rects = self.slot_rects(groups)
+    for index = #rects, 1, -1 do
+      local rect = rects[index]
+      if x >= rect.x and y >= rect.y and x < rect.x + rect.width and y < rect.y + rect.height then
+        if accept == nil or accept(rect) then
+          return rect
+        end
+      end
+    end
+    return nil
+  end
+
   --[[ The persistent-bar state table (the component is never hold-to-show:
        the held keys choose which part is ACTIVE, not whether anything is
        drawn). `state` is the input machine's activate state; `opts.hidden`

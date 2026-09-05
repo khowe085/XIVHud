@@ -231,6 +231,15 @@ their passes are gone and F36-F38 are new.
 | H15 | `//hud crossbar mr` to mount, then `//hud crossbar draw` so the sword lights, then click the sword | You SHEATHE and stay mounted - the click is not the `draw` verb, which would have dismounted you | [ ] | [ ] |  |
 | H16 | `//hud crossbar edit`, click the sword, close edit mode | Nothing sheathed while the binder was open; the sword is still lit | [ ] | [ ] |  |
 | H17 | `//hud layout`, click where the sword is, leave layout mode | Nothing sheathed - layout mode owns the mouse | [ ] | [ ] |  |
+| H18 | Bind something to a slot, then LEFT-CLICK that slot on the bar | It fires, exactly as its key does, and flashes | [ ] | [ ] |  |
+| H19 | Watch the game on that same click | It never sees it: no target picked up, no camera swing (H13's answer, on a second surface) | [ ] | [ ] |  |
+| H20 | Click a slot on the RIGHT cross with no side key held | It fires the RIGHT side's binding - the group under the cursor decides, not a hold state | [ ] | [ ] |  |
+| H21 | With the WXHB shown, click a slot on one of its halves | It fires what THAT half displays, which may be another set entirely | [ ] | [ ] |  |
+| H22 | Click a slot with nothing bound to it | Nothing happens, nothing is said - and the game still does not get the click | [ ] | [ ] |  |
+| H23 | Click a slot bound to `warp` or `mr` | The countdown starts and counts out in chat, exactly as the key press does | [ ] | [ ] |  |
+| H24 | Click a weaponskill slot with `wsgate on` and under 1000 TP | Refused silently, the same as its key press - no command, no flash | [ ] | [ ] |  |
+| H25 | `//hud crossbar edit`, click a slot | The binder opens on that slot as it always did, and nothing fires | [ ] | [ ] |  |
+| H26 | Drag the sword over a slot in `//hud layout`, leave, click where they overlap | The SWORD wins - it sheathes rather than firing the slot | [ ] | [ ] |  |
 
 ## I. Warp
 
