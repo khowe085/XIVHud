@@ -17,6 +17,7 @@ local FACTORIES = {
   { module = "components/statusbar/statusbar" },
   { module = "components/speedcheck/speedcheck" },
   { module = "components/expbar/expbar" },
+  { module = "components/invtracker/invtracker" },
 }
 
 describe("component aliases", function()
@@ -75,6 +76,7 @@ describe("component aliases", function()
       sb = "statusbar",
       sc = "speedcheck",
       eb = "expbar",
+      inv = "invtracker",
     }, registry.alias_map())
   end)
 end)

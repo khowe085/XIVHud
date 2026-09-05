@@ -95,6 +95,7 @@ local function build_stubs(boot, options)
     ["components/crossbar/crossbar"] = component("crossbar"),
     ["components/speedcheck/speedcheck"] = component("speedcheck"),
     ["components/expbar/expbar"] = component("expbar"),
+    ["components/invtracker/invtracker"] = component("invtracker"),
   }
 
   for name, failure in pairs(options.require_fails or {}) do
@@ -212,8 +213,12 @@ local function build_windower(boot)
         boot.client_calls.info = boot.client_calls.info + 1
         return { logged_in = true, chat_open = false }
       end,
-      get_items = function()
-        return {}
+      -- Every call is recorded with its arguments: get_items(bag) answers one
+      -- bag and get_items() the lot, and which of the two a component is wired
+      -- to is not visible from its own spec.
+      get_items = function(...)
+        boot.item_reads[#boot.item_reads + 1] = { ... }
+        return boot.items
       end,
       get_spell_recasts = function()
         return {}
@@ -319,6 +324,9 @@ function M.boot(options)
     -- What the fake windower.packets.last_incoming answers with, per id.
     last_incoming = {},
     last_incoming_asked = {},
+    -- Every windower.ffxi.get_items call, with the arguments it was given.
+    item_reads = {},
+    items = {},
     last_incoming_raises = false,
     player = { name = "Tester", vitals = { hp = 1000, hpp = 100, mp = 500, mpp = 100, tp = 0 } },
     party = {},

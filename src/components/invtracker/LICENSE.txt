@@ -1,0 +1,58 @@
+Third-party notices for the invtracker component.
+
+This file collects the upstream notice the source transcribed into this
+component's Lua depends on (BSD clause 1 also keeps that notice in the derived
+source file itself). No art is here, and none ships with the component: the
+squares are drawn from src/assets/own/panel.png, XIVHud's own white square,
+tinted at draw time. The reference addon's own slot.png is a 1x1 white pixel
+serving the same purpose, and redistributing a second one would have added a
+file without adding a texture.
+
+Source transcribed into this component's Lua
+--------------------------------------------------------------------------------
+
+    logic.lua        the widget itself, from the invtracker addon, BSD (c)
+                     2017 sylandro: a bag drawn as one square per slot on a
+                     4px pitch with a 3px shadow under a 2px box, the blocks
+                     laid side by side with a gap between them, the status
+                     colours and their darker backgrounds, the display sort
+                     (status, then the stack nearest full, then the count)
+                     that the addon's README explains as standing in for a
+                     sort order the client does not report, the packets that
+                     say an item may have moved, and the treasury and
+                     temporary bags drawing only what they hold
+
+The code is not copied verbatim: it is re-implemented against this framework's
+contracts, and the defects listed in .claude/Planning/invtracker.md are
+deliberately not reproduced - among them the leaked prims on reload, the
+unknown item status that drew an occupied slot as empty, and the wardrobes 5
+to 8 the reference cannot see.
+
+invtracker
+--------------------------------------------------------------------------------
+
+Copyright © 2017, sylandro
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of invtracker nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL sylandro BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
