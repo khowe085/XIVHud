@@ -32,7 +32,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      sit under `bars.<anchor>`: the anchor name is the single key across the
      config, the code, the command word and the layout-mode label. What is
      shared sits beside them: `priority`, one order for all three (a buff is
-     as important on one bar as on another), and `timers`, one switch.
+     as important on one bar as on another), and two switches: `timers` and
+     `tooltips` (the buff's name and id under the cursor).
 
      Position, scale and visibility are framework-owned and live in layout
      slots. Bars 2 and 3 start switched off - the single all-bar is XIV's own
@@ -78,6 +79,7 @@ return function(screen_width, screen_height)
     bars = bars,
     priority = {},
     timers = true,
+    tooltips = true,
     layout = {
       anchors = anchors,
       visible = true,

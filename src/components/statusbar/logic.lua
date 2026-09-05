@@ -322,9 +322,33 @@ local function new(deps)
         -- Whole pixels: a fractional font size is not something a prim can
         -- draw, and layout mode scales down to 0.25.
         text_size = math.max(1, math.floor(TIMER_FONT * scale + 0.5)),
+        -- The tooltip sits under the timer band, anchored to the cell rather
+        -- than the cursor so it is pushed once per cell rather than per move.
+        tip_x = cell_x,
+        tip_y = cell_y + (ICON_SIZE + TIMER_BAND) * scale,
+        tip_size = math.max(1, math.floor(TIMER_FONT * scale + 0.5)),
       }
     end
     return { cells = cells }
+  end
+
+  -- The cell whose icon square holds the point, or nil: the timer band and
+  -- the gaps are not the icon.
+  function self.cell_at(bar, x, y, scale, point_x, point_y)
+    for _, cell in ipairs(self.geometry(bar, x, y, scale).cells) do
+      if point_x >= cell.x and point_x < cell.x + cell.size and point_y >= cell.y and point_y < cell.y + cell.size then
+        return cell
+      end
+    end
+    return nil
+  end
+
+  -- What the tooltip says for a buff, or nil while tooltips are off.
+  function self.tooltip(id)
+    if config.tooltips == false then
+      return nil
+    end
+    return ("%s (%d)"):format(engines.bar1.name(id), id)
   end
 
   --[[ Commands ------------------------------------------------------------ ]]
@@ -370,12 +394,15 @@ local function new(deps)
     for _, name in ipairs(BARS) do
       lines[#lines + 1] = bar_line(name)
     end
-    lines[#lines + 1] = "  timers " .. (config.timers == false and "off" or "on")
+    lines[#lines + 1] = ("  timers %s, tooltips %s"):format(
+      config.timers == false and "off" or "on",
+      config.tooltips == false and "off" or "on"
+    )
     return lines, false
   end
 
   local function unknown(word)
-    return { ("statusbar has no '%s' setting (filter, rows, timers, buff)"):format(tostring(word)) }, false
+    return { ("statusbar has no '%s' setting (filter, rows, timers, tooltips, buff)"):format(tostring(word)) }, false
   end
 
   local function unusable(bar)
@@ -413,13 +440,14 @@ local function new(deps)
     return { ("%s now draws %d rows (%dx%d)"):format(LABELS[bar], rows, COLUMNS_BY_ROWS[rows], rows) }, true
   end
 
-  local function set_timers(word)
+  -- The two component-wide switches, `timers` and `tooltips`.
+  local function set_switch(key, word)
     word = word and word:lower() or nil
     if word ~= "on" and word ~= "off" then
-      return { "//hud statusbar timers needs on or off" }, false
+      return { ("//hud statusbar %s needs on or off"):format(key) }, false
     end
-    config.timers = word == "on"
-    return { "statusbar timers " .. word }, true
+    config[key] = word == "on"
+    return { ("statusbar %s %s"):format(key, word) }, true
   end
 
   -- What each bar draws right now, past its capacity: how you name a buff
@@ -520,14 +548,14 @@ local function new(deps)
       return status(bar or "bar1")
     end
 
-    if verb == "timers" or verb == "buff" then
-      -- One switch and one order for all three, so a bar word is refused
+    if verb == "timers" or verb == "tooltips" or verb == "buff" then
+      -- Two switches and one order for all three, so a bar word is refused
       -- rather than silently dropped.
       if bar then
         return { ("%s is shared by every bar, so //hud statusbar %s takes no bar word"):format(verb, verb) }, false
       end
-      if verb == "timers" then
-        return set_timers(words[2])
+      if verb ~= "buff" then
+        return set_switch(verb, words[2])
       end
       local rest = {}
       for index = 2, #words do

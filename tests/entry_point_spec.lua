@@ -56,6 +56,8 @@ describe("entry point", function()
       -- way the chunk handler parses it.
       assert.are.equal(boot.ctxs.expbar.last_incoming, boot.ctxs.statusbar.last_incoming)
       assert.are.equal(boot.ctxs.expbar.parse_packet, boot.ctxs.statusbar.parse_packet)
+      -- A right-click on an icon asks the cancel addon to drop the buff.
+      assert.is_function(boot.ctxs.statusbar.send_command)
       assert.is_not_nil(boot.ctxs.statusbar.resources)
     end)
 

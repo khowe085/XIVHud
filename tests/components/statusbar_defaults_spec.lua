@@ -22,9 +22,10 @@ describe("statusbar defaults", function()
     end
   end)
 
-  it("shares one priority order and shows timers", function()
+  it("shares one priority order and shows timers and tooltips", function()
     assert.are.same({}, defaults.priority)
     assert.is_true(defaults.timers)
+    assert.is_true(defaults.tooltips)
   end)
 
   it("places one anchor per bar, at scale 1, with no top-level pos", function()

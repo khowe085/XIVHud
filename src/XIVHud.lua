@@ -884,6 +884,10 @@ step("building the statusbar component", function()
     -- way the chunk handler parses it - timers after a reload.
     last_incoming = last_incoming,
     parse_packet = parse_packet,
+    -- A right-click on an icon asks the cancel addon to drop the buff.
+    send_command = function(command)
+      windower.send_command(command)
+    end,
   }))
 end)
 

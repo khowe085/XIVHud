@@ -60,6 +60,10 @@ local TIMER_FONT = "Arial"
 local TIMER_COLOR = { r = 255, g = 255, b = 255, a = 255 }
 local TIMER_STROKE = { r = 0, g = 0, b = 0, a = 255, width = 2 }
 
+-- The tooltip: the buff's name and id, on a dark backing, under the cell.
+local TIP_BACKGROUND = { r = 0, g = 0, b = 0, a = 200 }
+local MOUSE_MOVE, MOUSE_RIGHT_DOWN, MOUSE_RIGHT_UP = 0, 4, 5
+
 local function new(ctx)
   local self = { name = ctx.name or "statusbar", alias = "sb" }
 
@@ -94,6 +98,14 @@ local function new(ctx)
   for _, anchor in ipairs(ANCHORS) do
     bars[anchor] = { pos = nil, scale = 1, visible = false, icons = {}, texts = {}, drawn = {} }
   end
+
+  -- One tooltip prim for the whole widget, built on the first hover, and
+  -- what it is showing so a move that stays on the cell pushes nothing.
+  local tip = nil
+  local tip_showing = nil
+  -- A right-click this took the press of; its release is swallowed too, so
+  -- the game sees neither edge of a click that cancelled a buff.
+  local swallow_right_up = false
 
   --[[ Core fans a placement out over every anchor on every apply, and layout
        mode drags one of them -- so a name that is not ours has to cost
@@ -142,6 +154,41 @@ local function new(ctx)
       bar.texts[index] = prim
     end
     return prim
+  end
+
+  local function hide_tip()
+    if tip_showing then
+      tip.hide()
+      tip_showing = nil
+    end
+  end
+
+  local function show_tip(anchor, cell, text)
+    if
+      tip_showing
+      and tip_showing.anchor == anchor
+      and tip_showing.text == text
+      and tip_showing.x == cell.tip_x
+      and tip_showing.y == cell.tip_y
+    then
+      return
+    end
+    if not tip then
+      tip = ctx.new_text()
+      tip.draggable(false)
+      tip.font(TIMER_FONT)
+      tip.color(TIMER_COLOR.r, TIMER_COLOR.g, TIMER_COLOR.b)
+      tip.alpha(TIMER_COLOR.a)
+      tip.stroke_width(0)
+      tip.bg_visible(true)
+      tip.bg_color(TIP_BACKGROUND.r, TIP_BACKGROUND.g, TIP_BACKGROUND.b)
+      tip.bg_alpha(TIP_BACKGROUND.a)
+    end
+    tip.text(text)
+    tip.pos(cell.tip_x, cell.tip_y)
+    tip.size(cell.tip_size)
+    tip.show()
+    tip_showing = { anchor = anchor, text = text, x = cell.tip_x, y = cell.tip_y }
   end
 
   -- Hide everything a bar drew and forget it, so the next paint pushes all.
@@ -325,6 +372,7 @@ local function new(ctx)
     save = nil
     stale = true
     expiries_of = nil
+    hide_tip()
     logic.apply_durations({})
     logic.set_buffs(nil)
     for _, anchor in ipairs(ANCHORS) do
@@ -383,6 +431,7 @@ local function new(ctx)
   end
 
   function self.hide(anchor)
+    hide_tip()
     if anchor ~= nil then
       local bar = bar_at(anchor)
       if bar then
@@ -395,6 +444,62 @@ local function new(ctx)
       bars[name].visible = false
     end
     paint_all()
+  end
+
+  -- The drawn cell under a point, with its anchor; later bars win an
+  -- overlap, the order layout mode hit-tests in.
+  local function cell_under(x, y)
+    if not attached then
+      return nil
+    end
+    for index = #ANCHORS, 1, -1 do
+      local anchor = ANCHORS[index]
+      local bar = bars[anchor]
+      if drawing(bar) then
+        local cell = logic.cell_at(anchor, bar.pos.x, bar.pos.y, bar.scale, x, y)
+        if cell then
+          return anchor, cell
+        end
+      end
+    end
+    return nil
+  end
+
+  --[[ The mouse. A move over a drawn icon names its buff under the cell and
+       a move anywhere else takes the tip down, never blocking. A RIGHT-CLICK
+       over an icon asks the cancel addon to drop the buff (`//cancel <id>`,
+       the addon's own grammar) and is swallowed, both edges, so the game
+       does not act on a click that was ours; a right-click anywhere else,
+       and every other button, is the game's. Layout mode owns the mouse
+       while it is on, so nothing arrives here then. ]]
+  function self.on_mouse(mouse_type, x, y)
+    if mouse_type == MOUSE_MOVE then
+      local anchor, cell = cell_under(x, y)
+      local text = cell and logic.tooltip(cell.id)
+      if text then
+        show_tip(anchor, cell, text)
+      else
+        hide_tip()
+      end
+      return false
+    end
+    if mouse_type == MOUSE_RIGHT_DOWN then
+      if not ctx.send_command then
+        return false
+      end
+      local _, cell = cell_under(x, y)
+      if not cell then
+        return false
+      end
+      ctx.send_command("cancel " .. tostring(cell.id))
+      swallow_right_up = true
+      return true
+    end
+    if mouse_type == MOUSE_RIGHT_UP and swallow_right_up then
+      swallow_right_up = false
+      return true
+    end
+    return false
   end
 
   -- The whole shape from the origin set_pos gave, full or empty.
@@ -445,6 +550,10 @@ local function new(ctx)
   end
 
   function self.destroy()
+    if tip then
+      tip.destroy()
+      tip, tip_showing = nil, nil
+    end
     for _, anchor in ipairs(ANCHORS) do
       local bar = bars[anchor]
       for _, prim in pairs(bar.icons) do

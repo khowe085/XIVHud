@@ -27,7 +27,7 @@ describe("statusbar widget", function()
 
   local function build(without)
     prims = fakes.prims()
-    env = { clock = 1788000000, player = { name = "Ayame", buffs = {} }, last = {}, parses = 0 }
+    env = { clock = 1788000000, player = { name = "Ayame", buffs = {} }, last = {}, parses = 0, commands = {} }
     saves = 0
     local ctx = {
       name = "statusbar",
@@ -54,6 +54,9 @@ describe("statusbar widget", function()
       parse_packet = function(data)
         env.parses = env.parses + 1
         return type(data) == "table" and data or nil
+      end,
+      send_command = function(command)
+        env.commands[#env.commands + 1] = command
       end,
     }
     for _, key in ipairs(without or {}) do
@@ -412,6 +415,126 @@ describe("statusbar widget", function()
       for _, prim in ipairs(prims.all) do
         assert.are.equal(1, prim.destroyed)
       end
+    end)
+  end)
+
+  describe("tooltips", function()
+    local MOVE, RIGHT_DOWN, RIGHT_UP = 0, 4, 5
+
+    local function tip()
+      for _, prim in ipairs(prims.texts) do
+        if prim.visible and type(prim.last.text) == "string" and prim.last.text:find("(", 1, true) then
+          return prim
+        end
+      end
+      return nil
+    end
+
+    before_each(function()
+      attach()
+      env.player.buffs = { HASTE, KO }
+      widget.update()
+    end)
+
+    it("declares a mouse handler, so core forwards the mouse", function()
+      assert.is_function(widget.on_mouse)
+    end)
+
+    it("names the buff under the cursor, below its cell, and never blocks", function()
+      assert.is_false(widget.on_mouse(MOVE, 140, 60, 0))
+      local shown = tip()
+      assert.is_not_nil(shown)
+      assert.are.equal("haste (33)", shown.last.text)
+      assert.are.equal(134, shown.x)
+      assert.is_true(shown.y >= 50 + 32 + 14)
+      assert.is_true(shown.last.bg_visible)
+    end)
+
+    it("hides the tip when the cursor leaves the icons", function()
+      widget.on_mouse(MOVE, 140, 60, 0)
+      widget.on_mouse(MOVE, 140, 400, 0)
+      assert.is_nil(tip())
+    end)
+
+    it("costs nothing while the cursor stays on one cell", function()
+      widget.on_mouse(MOVE, 140, 60, 0)
+      local before = calls()
+      widget.on_mouse(MOVE, 141, 61, 0)
+      widget.on_mouse(MOVE, 150, 70, 0)
+      assert.are.equal(before, calls())
+    end)
+
+    it("ignores clicks and the wheel", function()
+      assert.is_false(widget.on_mouse(1, 140, 60, 0))
+      assert.is_false(widget.on_mouse(10, 140, 60, 1))
+      assert.is_nil(tip())
+    end)
+
+    it("shows nothing over a hidden bar", function()
+      widget.hide("bar1")
+      widget.on_mouse(MOVE, 140, 60, 0)
+      assert.is_nil(tip())
+    end)
+
+    it("shows nothing while tooltips are switched off, and drops one already up", function()
+      widget.on_mouse(MOVE, 140, 60, 0)
+      widget.handle_command({ "tooltips", "off" })
+      widget.on_mouse(MOVE, 141, 60, 0)
+      assert.is_nil(tip())
+    end)
+
+    it("drops the tip on a whole-widget hide and on detach", function()
+      widget.on_mouse(MOVE, 140, 60, 0)
+      widget.hide()
+      assert.is_nil(tip())
+      widget.show()
+      widget.update()
+      widget.on_mouse(MOVE, 140, 60, 0)
+      assert.is_not_nil(tip())
+      widget.detach()
+      assert.is_nil(tip())
+      assert.is_false(widget.on_mouse(MOVE, 140, 60, 0))
+    end)
+
+    -- A right-click over an icon asks the cancel addon to drop the buff, and
+    -- the click is swallowed - both edges - so the game does not act on it.
+    it("cancels the buff under a right-click, and swallows the click", function()
+      assert.is_true(widget.on_mouse(RIGHT_DOWN, 140, 60, 0))
+      assert.are.same({ "cancel 33" }, env.commands)
+      assert.is_true(widget.on_mouse(RIGHT_UP, 140, 60, 0))
+      assert.are.same({ "cancel 33" }, env.commands, "the release sends nothing")
+    end)
+
+    it("leaves a right-click off the icons to the game", function()
+      assert.is_false(widget.on_mouse(RIGHT_DOWN, 140, 400, 0))
+      assert.is_false(widget.on_mouse(RIGHT_UP, 140, 400, 0))
+      assert.are.same({}, env.commands)
+    end)
+
+    it("leaves a right-click alone over a hidden bar, or without a console", function()
+      widget.hide("bar1")
+      assert.is_false(widget.on_mouse(RIGHT_DOWN, 140, 60, 0))
+      assert.are.same({}, env.commands)
+      build({ "send_command" })
+      attach()
+      env.player.buffs = { HASTE }
+      widget.update()
+      assert.is_false(widget.on_mouse(RIGHT_DOWN, 105, 60, 0))
+    end)
+
+    it("swallows only the release that followed a swallowed press", function()
+      assert.is_true(widget.on_mouse(RIGHT_DOWN, 140, 60, 0))
+      assert.is_true(widget.on_mouse(RIGHT_UP, 500, 500, 0), "released off the icon, still ours")
+      assert.is_false(widget.on_mouse(RIGHT_UP, 140, 60, 0), "a release with no press of ours")
+    end)
+
+    it("follows a buff that moves cells", function()
+      widget.on_mouse(MOVE, 105, 60, 0)
+      assert.are.equal("KO (0)", tip().last.text)
+      env.player.buffs = { HASTE }
+      widget.update()
+      widget.on_mouse(MOVE, 106, 60, 0)
+      assert.are.equal("haste (33)", tip().last.text)
     end)
   end)
 
