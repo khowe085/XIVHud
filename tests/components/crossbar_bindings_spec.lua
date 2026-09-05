@@ -375,6 +375,232 @@ describe("crossbar bindings", function()
     end)
   end)
 
+  --[[ The weapon layer: overrides that apply while a class of weapon is in
+       the main hand, keyed by the skill name `weapon.lua` resolves. It sits
+       ABOVE the subjob layer where both hold an address (Kevin, 2026-09-04) -
+       the two are one tier in intent, but resolve has to pick, and the
+       weapon is the more situational of the two. ]]
+  describe("the weapon layer", function()
+    local function war_files()
+      return {
+        WAR = {
+          sets = { [1] = { left = { [1] = record("Base WS"), [2] = record("Other WS") } } },
+          sub = { NIN = { [1] = { left = { [1] = ja("Provoke"), [2] = ja("Sneak Attack") } } } },
+          weapons = {
+            ["Great Axe"] = { [1] = { left = { [1] = record("Ukko's Fury") } } },
+            Sword = { [1] = { left = { [1] = record("Savage Blade") } } },
+          },
+        },
+      }
+    end
+
+    it("overrides only where the equipped weapon says so", function()
+      local bindings = build({ files = war_files() })
+      bindings.set_job("WAR")
+      bindings.set_weapon_type("Sword")
+      local entry, source = bindings.resolve(1, "left", 1)
+      assert.equal("Savage Blade", entry.action)
+      assert.equal("wpn", source)
+      assert.equal("Other WS", bindings.resolve(1, "left", 2).action)
+    end)
+
+    it("ignores another weapon class's overrides", function()
+      local bindings = build({ files = war_files() })
+      bindings.set_job("WAR")
+      bindings.set_weapon_type("Scythe")
+      assert.equal("Base WS", bindings.resolve(1, "left", 1).action)
+    end)
+
+    it("outranks the subjob layer at the same address", function()
+      local bindings = build({ files = war_files() })
+      bindings.set_job("WAR", "NIN")
+      bindings.set_weapon_type("Sword")
+      local entry, source = bindings.resolve(1, "left", 1)
+      assert.equal("Savage Blade", entry.action)
+      assert.equal("wpn", source)
+    end)
+
+    it("leaves the subjob layer winning where it holds no entry of its own", function()
+      local bindings = build({ files = war_files() })
+      bindings.set_job("WAR", "NIN")
+      bindings.set_weapon_type("Sword")
+      local entry, source = bindings.resolve(1, "left", 2)
+      assert.equal("Sneak Attack", entry.action)
+      assert.equal("sub", source)
+    end)
+
+    it("holds no layer at all until a weapon is resolved", function()
+      local bindings = build({ files = war_files() })
+      bindings.set_job("WAR")
+      assert.equal("Base WS", bindings.resolve(1, "left", 1).action)
+      assert.is_nil(bindings.weapon_type())
+    end)
+
+    -- An item the resources cannot name answers nothing, and nothing must
+    -- put the bar back on a class it is not holding.
+    it("drops the layer when the weapon resolves to nothing", function()
+      local bindings = build({ files = war_files() })
+      bindings.set_job("WAR")
+      bindings.set_weapon_type("Sword")
+      bindings.set_weapon_type(nil)
+      assert.equal("Base WS", bindings.resolve(1, "left", 1).action)
+      assert.is_nil(bindings.weapon_type())
+    end)
+
+    --[[ A job change auto-equips, so the class in hand is about to change
+         and the incoming job's file must not be read through the outgoing
+         job's weapon for the frames before the client can be re-read - the
+         same posture set_job takes with the context set. ]]
+    it("forgets the weapon across a job change", function()
+      local bindings = build({ files = war_files() })
+      bindings.set_job("WAR")
+      bindings.set_weapon_type("Sword")
+      bindings.set_job("WAR")
+      assert.is_nil(bindings.weapon_type())
+      assert.equal("Base WS", bindings.resolve(1, "left", 1).action)
+    end)
+
+    it("is not persisted - it is what is in your hand, not a setting", function()
+      local bindings, world = build({ files = war_files() })
+      bindings.set_job("WAR")
+      local saves = world.saved.WAR or 0
+      bindings.set_weapon_type("Sword")
+      assert.equal(saves, world.saved.WAR or 0)
+    end)
+
+    --[[ set_job lands the bar on the first non-empty set of the weapon
+         state, and at that moment the class in hand is not known yet - the
+         widget re-reads the client on the next interval. So a set whose only
+         content is a weapon override is invisible to that landing, and a
+         "set 2 is my Sword bar, set 3 is my Great Axe bar" arrangement -
+         exactly what this layer invites - lands somewhere else on every
+         login and every job change. The class arriving re-lands, ONCE. ]]
+    it("lands again when the class arrives after a blind landing", function()
+      local bindings = build({
+        files = {
+          WAR = {
+            active_set = 4,
+            sets = { [3] = { left = { [1] = record("Base WS") } } },
+            weapons = { ["Great Axe"] = { [1] = { left = { [1] = record("Ukko's Fury") } } } },
+          },
+        },
+      })
+      bindings.set_job("WAR")
+      assert.equal(3, bindings.active_set(), "the weapon-only set was invisible to the blind landing")
+      bindings.set_weapon_type("Great Axe")
+      assert.equal(1, bindings.active_set(), "and the class arriving re-landed it")
+    end)
+
+    --[[ Only the FIRST class after a job load re-lands. A swap between two
+         weapons mid-play is not a weapon-state transition, and the set the
+         player is on is theirs - the same reason `on_status` leaves a state
+         it is already in alone. ]]
+    it("does not move the set when the class changes again", function()
+      local bindings = build({
+        files = {
+          WAR = {
+            sets = { [3] = { left = { [1] = record("Base WS") } } },
+            weapons = {
+              ["Great Axe"] = { [1] = { left = { [1] = record("Ukko's Fury") } } },
+              Sword = { [2] = { left = { [1] = record("Savage Blade") } } },
+            },
+          },
+        },
+      })
+      bindings.set_job("WAR")
+      bindings.set_weapon_type("Great Axe")
+      assert.equal(1, bindings.active_set())
+      bindings.set_weapon_type("Sword")
+      assert.equal(1, bindings.active_set(), "the set the player is on stays theirs")
+    end)
+
+    --[[ The bags can take seconds to fill at login, and the re-land waits
+         for them. A set the player picked in that window is theirs - the
+         landing is a default, not a correction. ]]
+    it("stands down from the blind re-land once the player picks a set", function()
+      local bindings = build({
+        files = {
+          WAR = {
+            sets = { [3] = { left = { [1] = record("Base WS") } } },
+            weapons = { ["Great Axe"] = { [1] = { left = { [1] = record("Ukko's Fury") } } } },
+          },
+        },
+      })
+      bindings.set_job("WAR")
+      bindings.jump(3)
+      bindings.set_weapon_type("Great Axe")
+      assert.equal(3, bindings.active_set(), "the set the player asked for stayed")
+    end)
+
+    it("stands down from the blind re-land once the player cycles", function()
+      local bindings = build({
+        files = {
+          WAR = {
+            sets = {
+              [3] = { left = { [1] = record("Base WS") } },
+              [4] = { left = { [1] = record("Other WS") } },
+            },
+            weapons = { ["Great Axe"] = { [1] = { left = { [1] = record("Ukko's Fury") } } } },
+          },
+        },
+      })
+      bindings.set_job("WAR")
+      assert.equal(4, bindings.cycle())
+      bindings.set_weapon_type("Great Axe")
+      assert.equal(4, bindings.active_set())
+    end)
+
+    it("binds into the equipped class through wpn:", function()
+      local bindings, world = build()
+      bindings.set_job("WAR")
+      bindings.set_weapon_type("Great Katana")
+      assert.is_true(bindings.bind("wpn:1", "l", 4, record("Tachi: Fudo")))
+      assert.equal("Tachi: Fudo", world.files.WAR.weapons["Great Katana"][1].left[4].action)
+      assert.equal("Tachi: Fudo", bindings.resolve(1, "left", 4).action)
+    end)
+
+    it("refuses a wpn: address while nothing is resolved", function()
+      local bindings = build()
+      bindings.set_job("WAR")
+      local ok, err = bindings.bind("wpn:1", "l", 4, record("Tachi: Fudo"))
+      assert.is_nil(ok)
+      assert.matches("weapon", err)
+    end)
+
+    it("leaves no husk behind when the last binding of a class goes", function()
+      local bindings, world = build()
+      bindings.set_job("WAR")
+      bindings.set_weapon_type("Sword")
+      bindings.bind("wpn:1", "l", 4, record("Savage Blade"))
+      bindings.unbind("wpn:1", "l", 4)
+      assert.is_nil(world.files.WAR.weapons.Sword)
+      assert.is_nil(bindings.resolve(1, "left", 4))
+    end)
+
+    it("reads one class's own entry through entry_at", function()
+      local bindings = build({ files = war_files() })
+      bindings.set_job("WAR")
+      bindings.set_weapon_type("Great Axe")
+      assert.equal("Ukko's Fury", bindings.entry_at("wpn:1", "l", 1).action)
+    end)
+
+    it("degrades a broken weapons table to nothing rather than crashing", function()
+      local bindings = build({
+        files = {
+          WAR = {
+            sets = { [1] = { left = { [1] = record("Base WS") } } },
+            weapons = { Sword = "not a tree", Staff = { [1] = "not a side" } },
+          },
+        },
+      })
+      bindings.set_job("WAR")
+      bindings.set_weapon_type("Sword")
+      assert.equal("Base WS", bindings.resolve(1, "left", 1).action)
+      bindings.set_weapon_type("Staff")
+      assert.equal("Base WS", bindings.resolve(1, "left", 1).action)
+    end)
+  end)
+
   describe("context layers", function()
     -- Kevin's SCH file: a WS in the base; Light Arts swaps it for the
     -- Addendum; the arts fight over a stratagem slot; Addendum: White fills
@@ -478,7 +704,9 @@ describe("crossbar bindings", function()
       bindings.set_job("SCH")
       bindings.update_buffs({ 358 })
       assert.same({ "light-arts" }, bindings.active_contexts())
-      bindings.set_job("RDM")
+      -- RDM/SCH, so the arts stay within reach across the change: what is
+      -- being pinned here is the CLEARING, not the job gate beside it.
+      bindings.set_job("RDM", "SCH")
       assert.same({}, bindings.active_contexts())
       assert.is_nil(bindings.resolve(1, "left", 3))
       bindings.update_buffs({ 358 })
@@ -490,6 +718,170 @@ describe("crossbar bindings", function()
       bindings.set_job("RDM", "SCH")
       bindings.update_buffs({ 358 })
       assert.is_nil(bindings.resolve(1, "left", 3))
+    end)
+  end)
+
+  --[[ The job gate (Kevin, 2026-09-04): a context belongs to the job whose
+       buff it watches, and off that job it is hidden AND inert - never
+       listed, never live, and refused as a write target. Bindings are per
+       main job, so a layer that can never fire on this job is a write with
+       no possible effect. ]]
+  describe("the job gate on contexts", function()
+    it("keeps a context inert on a job that cannot raise its buff", function()
+      local bindings = build({
+        files = { WAR = { contexts = { ["light-arts"] = { [1] = { left = { [1] = ja("Penury") } } } } } },
+      })
+      bindings.set_job("WAR", "NIN")
+      bindings.update_buffs({ 358 })
+      assert.same({}, bindings.active_contexts())
+      assert.is_nil(bindings.resolve(1, "left", 1))
+    end)
+
+    it("reports no change for a buff no context on this job answers", function()
+      local bindings = build()
+      bindings.set_job("WAR", "NIN")
+      assert.is_false(bindings.update_buffs({ 358, 485 }))
+    end)
+
+    it("lights an arts context on a SCH main job", function()
+      local bindings = build()
+      bindings.set_job("SCH", "RDM")
+      assert.is_true(bindings.update_buffs({ 358 }))
+      assert.same({ "light-arts" }, bindings.active_contexts())
+    end)
+
+    -- Light Arts is a level 10 ability and Addendum: White level 20, so a
+    -- subjob reaches the whole family.
+    it("lights an arts context on a SCH subjob too", function()
+      local bindings = build()
+      bindings.set_job("WHM", "SCH")
+      bindings.update_buffs({ 401 })
+      assert.same({ "light-arts", "addendum-white" }, bindings.active_contexts())
+    end)
+
+    it("lights unbridled on either of its two buffs, on a BLU main job", function()
+      local bindings = build()
+      bindings.set_job("BLU", "WAR")
+      bindings.update_buffs({ 485 })
+      assert.same({ "unbridled" }, bindings.active_contexts())
+      bindings.update_buffs({ 505 })
+      assert.same({ "unbridled" }, bindings.active_contexts())
+    end)
+
+    -- Learned at BLU 96: /BLU can never hold it, so main_only is not decoration.
+    it("keeps unbridled inert on a BLU subjob", function()
+      local bindings = build()
+      bindings.set_job("WAR", "BLU")
+      bindings.update_buffs({ 485 })
+      assert.same({}, bindings.active_contexts())
+    end)
+
+    it("lists the contexts this job can reach, in roster order", function()
+      local bindings = build()
+      bindings.set_job("SCH", "WHM")
+      assert.same({ "light-arts", "dark-arts", "addendum-white", "addendum-black" }, bindings.available_contexts())
+      bindings.set_job("BLU", "SCH")
+      assert.same(
+        { "light-arts", "dark-arts", "addendum-white", "addendum-black", "unbridled" },
+        bindings.available_contexts()
+      )
+      bindings.set_job("WAR", "NIN")
+      assert.same({}, bindings.available_contexts())
+    end)
+
+    it("offers nothing before a job is scoped", function()
+      local bindings = build()
+      assert.same({}, bindings.available_contexts())
+    end)
+
+    --[[ The roster is a required module, so standing a fake in front of it
+         is the only way to ask this. Nothing SHIPS without jobs - the
+         contexts spec pins that - but an entry that arrived without them
+         must not read as "reachable nowhere", and the two spellings of
+         naming none must not disagree. ]]
+    it("treats a context naming no job as reachable everywhere", function()
+      local roster_key = "components/crossbar/contexts"
+      local bindings_key = "components/crossbar/bindings"
+      local real_roster, real_bindings = package.loaded[roster_key], package.loaded[bindings_key]
+      finally(function()
+        package.loaded[roster_key] = real_roster
+        package.loaded[bindings_key] = real_bindings
+      end)
+      package.loaded[roster_key] = {
+        { name = "empty-list", label = "Empty List", any_of = { 900 }, jobs = {} },
+        { name = "no-list", label = "No List", any_of = { 901 } },
+      }
+      package.loaded[bindings_key] = nil
+      local fresh = require(bindings_key)({
+        load = function() end,
+        save = function() end,
+        get_config = function()
+          return { set_flags = default_flags() }
+        end,
+      })
+      fresh.set_job("WAR", "NIN")
+      assert.same({ "empty-list", "no-list" }, fresh.available_contexts())
+      fresh.update_buffs({ 900, 901 })
+      assert.same({ "empty-list", "no-list" }, fresh.active_contexts())
+    end)
+
+    it("refuses a BIND into a context this job cannot reach, naming the job", function()
+      local bindings, world = build()
+      bindings.set_job("WAR", "NIN")
+      local ok, err = bindings.bind("ctx:light-arts:1", "l", 1, ja("Penury"))
+      assert.is_nil(ok)
+      assert.matches("SCH", err)
+      assert.is_nil(world.files.WAR)
+    end)
+
+    --[[ The gate is on the WRITE alone. Context overrides live in the MAIN
+         job's file, so a subjob change can put an entry that already exists
+         out of reach - and an entry `//hud crossbar list` still prints must
+         never be one nothing can remove. "It could not fire here" is an
+         argument against creating a binding, not against deleting one. ]]
+    it("still removes and reads an entry a context out of reach already holds", function()
+      local bindings, world = build({
+        files = { WAR = { contexts = { ["light-arts"] = { [1] = { left = { [1] = ja("Penury") } } } } } },
+      })
+      bindings.set_job("WAR", "NIN")
+      assert.equal("Penury", bindings.entry_at("ctx:light-arts:1", "l", 1).action)
+      assert.is_true(bindings.unbind("ctx:light-arts:1", "l", 1))
+      assert.is_nil(world.files.WAR.contexts["light-arts"])
+    end)
+
+    -- The alias and icon verbs are a read followed by a write of the SAME
+    -- entry, so an entry out of reach would be visible, deletable, and
+    -- unrenameable. What is refused is starting one, not editing one.
+    it("still rewrites an entry a context out of reach already holds", function()
+      local bindings, world = build({
+        files = { WAR = { contexts = { ["light-arts"] = { [1] = { left = { [1] = ja("Penury") } } } } } },
+      })
+      bindings.set_job("WAR", "NIN")
+      local entry = bindings.entry_at("ctx:light-arts:1", "l", 1)
+      entry.alias = "Pen"
+      assert.is_true(bindings.bind("ctx:light-arts:1", "l", 1, entry))
+      assert.equal("Pen", world.files.WAR.contexts["light-arts"][1].left[1].alias)
+      -- And an address it does NOT hold is still refused: that would be a
+      -- new binding on a layer this job can never raise.
+      local ok, err = bindings.bind("ctx:light-arts:1", "l", 2, ja("Accession"))
+      assert.is_nil(ok)
+      assert.matches("SCH", err)
+    end)
+
+    it("says a main-only context is main-only when it refuses one", function()
+      local bindings = build()
+      bindings.set_job("WAR", "BLU")
+      local ok, err = bindings.bind("ctx:unbridled:1", "l", 1, ja("Sudden Lunge"))
+      assert.is_nil(ok)
+      assert.matches("main job", err)
+    end)
+
+    it("still writes a context the job can reach", function()
+      local bindings = build()
+      bindings.set_job("WHM", "SCH")
+      assert.is_true(bindings.bind("ctx:light-arts:1", "l", 1, ja("Penury")))
+      bindings.update_buffs({ 358 })
+      assert.equal("Penury", bindings.resolve(1, "left", 1).action)
     end)
   end)
 
@@ -1012,6 +1404,28 @@ describe("crossbar bindings", function()
       assert.equal("Addendum: White", layers[4].entry.action)
     end)
 
+    it("reports every stored weapon class, above the subjob rows", function()
+      local bindings = build()
+      bindings.set_job("WAR", "NIN")
+      bindings.set_weapon_type("Sword")
+      bindings.bind(1, "l", 3, record("Base WS"))
+      bindings.bind("sub:1", "l", 3, ja("Provoke"))
+      bindings.bind("wpn:1", "l", 3, record("Savage Blade"))
+      bindings.set_weapon_type("Great Axe")
+      bindings.bind("wpn:1", "l", 3, record("Ukko's Fury"))
+      local layers = bindings.layers_at(1, "left", 3)
+      assert.same({ "base", "sub:NIN", "wpn:Great Axe", "wpn:Sword" }, {
+        layers[1].source,
+        layers[2].source,
+        layers[3].source,
+        layers[4].source,
+      })
+      -- The one in hand is marked, exactly as the worn subjob is.
+      assert.is_true(layers[3].worn)
+      assert.is_not_true(layers[4].worn)
+      assert.is_true(layers[3].active)
+    end)
+
     it("marks the layer that is currently winning, and none when none is", function()
       local bindings = build()
       bindings.set_job("SCH", "NIN")
@@ -1157,6 +1571,27 @@ describe("crossbar bindings", function()
       assert.equal("B Ctx", bindings.resolve(1, "left", 1).action)
     end)
 
+    it("carries the weapon layers with it", function()
+      local bindings, world = build({
+        files = {
+          WAR = {
+            sets = { [1] = { left = { [1] = record("A Base") } } },
+            weapons = {
+              Sword = { [1] = { left = { [1] = record("A Sword") } } },
+              Scythe = { [1] = { right = { [2] = record("B Scythe") } } },
+            },
+          },
+        },
+      })
+      bindings.set_job("WAR")
+      assert.is_true(bindings.swap({ set = 1, side = "l", slot = 1 }, { set = 1, side = "r", slot = 2 }))
+      bindings.set_weapon_type("Sword")
+      assert.equal("A Sword", world.files.WAR.weapons.Sword[1].right[2].action)
+      assert.is_nil(bindings.resolve(1, "left", 1))
+      bindings.set_weapon_type("Scythe")
+      assert.equal("B Scythe", bindings.resolve(1, "left", 1).action)
+    end)
+
     it("swaps across the shared/job store boundary and saves both files", function()
       local flags = default_flags()
       flags[6].shared = true
@@ -1255,6 +1690,7 @@ describe("crossbar bindings", function()
             sets = { [1] = { left = { [1] = record("War WS") } } },
             sub = { NIN = { [1] = { left = { [2] = ja("Provoke") } } } },
             contexts = { ["light-arts"] = { [1] = { left = { [3] = ja("Penury") } } } },
+            weapons = { Scythe = { [1] = { left = { [4] = record("Entropy") } } } },
           },
         },
       })
@@ -1262,6 +1698,8 @@ describe("crossbar bindings", function()
       assert.is_true(bindings.copy_from("WAR"))
       assert.equal("War WS", bindings.resolve(1, "left", 1).action)
       assert.equal("Provoke", bindings.resolve(1, "left", 2).action)
+      bindings.set_weapon_type("Scythe")
+      assert.equal("Entropy", bindings.resolve(1, "left", 4).action)
       -- Bindings copy; UI state does not -- the source sits on set 5.
       assert.equal(1, bindings.active_set())
       assert.equal("War WS", world.files.DRK.sets[1].left[1].action)

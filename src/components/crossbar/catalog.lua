@@ -188,13 +188,31 @@ local function new(deps)
         add(groups, "Job Abilities", { label = ability.en, record = { type = "ja", action = ability.en } })
       end
     end
-    -- Weaponskills carry no per-job levels at all, so the client's own list
-    -- is the whole answer and there is nothing left to filter on.
+    --[[ Weaponskills carry no per-job levels, so the client's list is the
+         whole of what this JOB knows - but not of what it can perform right
+         now: the list is job-wide, and a club in hand was offering sword
+         weaponskills (Kevin, live client, 2026-09-05). What the weapon can
+         actually do is the resources' own `skill` on each weaponskill,
+         named through `skills` - the same vocabulary the weapon binding
+         layer keys on, so the two can never disagree about what a class is
+         called.
+
+         Two things are deliberately NOT filtered out: a weaponskill whose
+         skill the resources cannot name, and the whole list when no class
+         has been resolved (no resources, or a client that has not answered
+         yet). Both are ignorance rather than knowledge, and an empty picker
+         is a worse answer than a long one. ]]
     local weapon_skills = table_or_empty(resources.weapon_skills)
+    local skills = table_or_empty(resources.skills)
+    local held = call(deps.weapon_class)
     for _, id in ipairs(table_or_empty(listed.weapon_skills)) do
       local ws = weapon_skills[id]
       if type(ws) == "table" and type(ws.en) == "string" then
-        add(groups, "Weapon Skills", { label = ws.en, record = { type = "ws", action = ws.en } })
+        local skill = skills[ws.skill]
+        local weapon = type(skill) == "table" and skill.en or nil
+        if held == nil or weapon == nil or weapon == held then
+          add(groups, "Weapon Skills", { label = ws.en, record = { type = "ws", action = ws.en } })
+        end
       end
     end
   end
