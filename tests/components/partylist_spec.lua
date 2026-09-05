@@ -1468,6 +1468,10 @@ describe("partylist widget", function()
       return table.concat(widget.handle_command(args), "\n")
     end
 
+    local function buffs(args)
+      return table.concat(widget.handle_buffs(args), "\n")
+    end
+
     it("addresses the main party when no list is named", function()
       build()
       said({ "spacing", "4" })
@@ -1514,7 +1518,61 @@ describe("partylist widget", function()
       local reply = said({ "alliance1", "hidesolo", "on" })
       assert.is_not_nil(reply:find("main party only", 1, true))
       assert.is_false(widget.defaults.lists.main.hide_solo == true)
-      assert.is_not_nil(said({ "alliance2", "buff", "reset" }):find("main party only", 1, true))
+    end)
+
+    --[[ `//hud buffs partylist [<list>] ...`: the list word is optional and
+         means main, the only list with buff icons. An alliance list is
+         refused out loud for the same reason hidesolo is. ]]
+    it("edits the main party's buff order through handle_buffs", function()
+      build()
+      local before = env.saves
+      assert.is_not_nil(buffs({ "top", "doom" }):find("doom", 1, true))
+      assert.is_not_nil(widget.defaults.lists.main.buffs.priority[15])
+      assert.are.equal(before + 1, env.saves)
+    end)
+
+    -- The icons re-sort on the command itself, not on the next tick.
+    it("re-lays the buff icons as soon as the order changes", function()
+      build()
+      env.party = { p0 = member("Volker", 2) }
+      settle(2)
+      widget.update("chunk", 0x076, party_buff_packet(2, { 0, 15 }))
+      settle(2)
+      local function leftmost()
+        local best
+        for _, prim in ipairs(prims.images) do
+          if type(prim.last.path) == "string" and prim.last.path:find("buffIcons", 1, true) and prim.visible then
+            if not best or prim.x < best.x then
+              best = prim
+            end
+          end
+        end
+        return best and best.last.path
+      end
+      assert.is_not_nil(leftmost():find("/0.png", 1, true))
+      buffs({ "top", "doom" })
+      assert.is_not_nil(leftmost():find("/15.png", 1, true))
+    end)
+
+    it("takes main as the list word", function()
+      build()
+      buffs({ "Main", "top", "doom" })
+      assert.is_not_nil(widget.defaults.lists.main.buffs.priority[15])
+    end)
+
+    it("refuses the buff verbs at an alliance list", function()
+      build()
+      local before = env.saves
+      assert.is_not_nil(buffs({ "alliance2", "reset" }):find("main party only", 1, true))
+      assert.is_nil(widget.defaults.lists.main.buffs.priority[15])
+      assert.are.equal(before, env.saves)
+    end)
+
+    it("no longer answers buff as a plain command verb", function()
+      build()
+      local hint = said({ "buff", "top", "doom" })
+      assert.is_nil(widget.defaults.lists.main.buffs.priority[15])
+      assert.is_nil(hint:find("buff,", 1, true), "hint: " .. hint)
     end)
 
     -- The alliance row layout has no range block at all, so the setting could

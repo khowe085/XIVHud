@@ -28,9 +28,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --[[ The buff order and filter engine, shared by every component that draws a
      set of buff icons: the shipped priority with a user's overrides merged in,
-     a filter list in either mode, the sort and the cap - and the `buff`
-     command verbs that edit all of that, so two components' `//hud <x> buff`
-     grammars cannot drift.
+     a filter list in either mode, the sort and the cap - and the command
+     verbs that edit all of that, behind the framework's `//hud buffs <x>`
+     since 2026-09-05, so two components' buff grammars cannot drift.
 
      Promoted out of partylist's logic (2026-09-04) when the status bar needed
      the same machinery; a component may require lib/, never a sibling.
@@ -43,10 +43,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        deps.extra_verbs verbs the caller answers itself, named in the hint
        deps.hint_verbs  the whole list the hint names instead, for a caller
                         that refuses some of the verbs
+       deps.buff_path   where the caller puts the buff verbs, for the
+                        messages ("buffs partylist" unless given)
        deps.filter_path where the caller puts the filter verbs, for the
-                        messages ("partylist buff filter" unless given)
-       deps.buff_path   where the caller puts the buff verbs, for the advice
-                        in a refusal ("partylist buff" unless given)
+                        messages (`<buff_path> filter` unless given)
 
      The `settings` every call takes is the caller's own table - `priority`
      (sparse `id -> wanted rank` overrides on the shipped order, so a later
@@ -81,8 +81,8 @@ end
 local function new(deps)
   deps = deps or {}
   local NAME = deps.name or "hud"
-  local FILTER_PATH = deps.filter_path or (NAME .. " buff filter")
-  local BUFF_PATH = deps.buff_path or (NAME .. " buff")
+  local BUFF_PATH = deps.buff_path or ("buffs " .. NAME)
+  local FILTER_PATH = deps.filter_path or (BUFF_PATH .. " filter")
   local resources = deps.resources or {}
   local shipped = deps.shipped or shipped_order
 
@@ -305,7 +305,7 @@ local function new(deps)
         lines[#lines + 1] = ("  --- cut: only the %d above are ever drawn ---"):format(cap)
       end
     end
-    lines[#lines + 1] = ("  '//hud %s buff list <page>' for another page"):format(NAME)
+    lines[#lines + 1] = ("  '//hud %s list <page>' for another page"):format(BUFF_PATH)
     return lines, false
   end
 
@@ -323,7 +323,7 @@ local function new(deps)
 
   local function find_buffs(settings, text, cap)
     if text == "" then
-      return { ("//hud %s buff find needs something to search for"):format(NAME) }, false
+      return { ("//hud %s find needs something to search for"):format(BUFF_PATH) }, false
     end
 
     local ranks = self.order(settings.priority)
@@ -412,7 +412,7 @@ local function new(deps)
   local function rank_buff(settings, words)
     local rank = whole_number(words[#words])
     if not rank or rank < 1 then
-      return { ("//hud %s buff rank needs a buff and a rank of at least 1"):format(NAME) }, false
+      return { ("//hud %s rank needs a buff and a rank of at least 1"):format(BUFF_PATH) }, false
     end
     local id, complaint = self.resolve(table.concat(words, " ", 2, #words - 1))
     if not id then
@@ -526,7 +526,7 @@ local function new(deps)
     if verb == "filter" then
       return filter_command(settings, words)
     end
-    return { ("//hud %s buff takes %s"):format(NAME, verbs_hint()) }, false
+    return { ("//hud %s takes %s"):format(BUFF_PATH, verbs_hint()) }, false
   end
 
   return self

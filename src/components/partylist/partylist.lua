@@ -851,6 +851,15 @@ local function new_list(ctx, variant, defaults)
     return lines, changed
   end
 
+  -- The buff verbs, likewise: a changed order or filter re-lays the icons.
+  function self.buff_command(words)
+    local lines, changed = logic.buff_command(words)
+    if changed then
+      apply_layout()
+    end
+    return lines, changed
+  end
+
   function self.destroy()
     background.top.destroy()
     background.mid.destroy()
@@ -876,7 +885,7 @@ local ANCHORS = { "main", "alliance1", "alliance2" }
      alone and an alliance row draws no buff icons, and the alliance row layout
      has no range block at all - `range` was accepted and inert there before
      this, back to when the lists were three components. ]]
-local MAIN_ONLY = { hidesolo = true, buff = true, range = true }
+local MAIN_ONLY = { hidesolo = true, range = true }
 
 local function new(ctx)
   local self = { name = ctx.name or "partylist", alias = "pl" }
@@ -1068,6 +1077,31 @@ local function new(ctx)
     end
 
     local lines, changed = lists[anchor or "main"].command(rest)
+    if changed and save then
+      save()
+    end
+    return lines
+  end
+
+  --[[ `//hud buffs partylist [<list>] ...`. The list word is optional and
+       means main, the only list with buff icons: 0x076 carries the main
+       party alone and the alliance row draws none, so naming an alliance
+       list is refused out loud rather than quietly applied to main. ]]
+  function self.handle_buffs(args)
+    args = args or {}
+    local first = args[1] and args[1]:lower() or nil
+    local anchor = lists[first] and first or nil
+    local rest = args
+    if anchor then
+      rest = {}
+      for index = 2, #args do
+        rest[index - 1] = args[index]
+      end
+    end
+    if anchor and anchor ~= "main" then
+      return { ("buffs are the main party only, so //hud buffs partylist takes them, not %s"):format(anchor) }
+    end
+    local lines, changed = lists.main.buff_command(rest)
     if changed and save then
       save()
     end

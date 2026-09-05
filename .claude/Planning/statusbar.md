@@ -54,7 +54,9 @@ system buffs (Signet, Sanction, Sigil, dedication, etc.).
 5. **Full editing verbs in v1.** Statusbar gets its own `buff
    top|up|down|rank|reset`, `buff list|find`, and per-bar `filter
    add|remove|clear|list` / `filter mode` from day one, served by the same lib
-   the partylist verbs delegate to.
+   the partylist verbs delegate to. (Moved behind the framework's `//hud
+   buffs statusbar [<bar>] ...` on 2026-09-05 - see global-buffs.md; the
+   grammar below is as first built.)
 6. From the opening ask: three sub-anchors always, bars 2 and 3 off by default.
    **Per-bar on/off is the framework's per-anchor `visible`** (PR #37,
    2026-08-31 - merged after the first draft of this plan, which had a

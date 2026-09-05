@@ -46,6 +46,7 @@ local RESERVED = {
   reset = true,
   slot = true,
   copy = true,
+  buffs = true,
 }
 
 local SLOT_OPS = { list = true, create = true, delete = true }
@@ -191,6 +192,37 @@ local function new(deps)
     return { action = "copy", source = source, destination = destination }
   end
 
+  --[[ `//hud buffs active` is core's own reader of the player's buffs, and
+       `//hud buffs <component> [...]` reaches the component's buff verbs; the
+       words after the component go through untouched, since only it knows
+       its anchors. A name after `active` is refused rather than dropped -
+       core cannot see a party member's buffs, but the party list can. ]]
+  local function parse_buffs(words)
+    local first = words[2]
+    if not first then
+      return fail("'//hud buffs' takes active, or a component name and its buff verbs")
+    end
+    if first:lower() == "active" then
+      if #words > 2 then
+        return fail(
+          "'//hud buffs active' is yours alone - for a party member try '//hud buffs partylist active "
+            .. words[3]
+            .. "'"
+        )
+      end
+      return { action = "buffs", op = "active" }
+    end
+    local component = resolve_component(first)
+    if not component then
+      return fail("no component named '" .. first .. "'")
+    end
+    local passthrough = {}
+    for index = 3, #words do
+      passthrough[index - 2] = words[index]
+    end
+    return { action = "buffs", component = component, args = passthrough }
+  end
+
   -- Parses one `//hud ...` invocation into an action table. Never returns nil.
   function self.parse(args)
     local words = clean(args)
@@ -210,6 +242,8 @@ local function new(deps)
       return parse_slot(words)
     elseif verb == "copy" then
       return parse_copy(words)
+    elseif verb == "buffs" then
+      return parse_buffs(words)
     end
 
     local component = resolve_component(verb)

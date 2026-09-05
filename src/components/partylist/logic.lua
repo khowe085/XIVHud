@@ -881,7 +881,6 @@ local function new(deps)
       -- setting could only ever be stored and never drawn.
       list[#list + 1] = "range"
       list[#list + 1] = "hidesolo"
-      list[#list + 1] = "buff"
     end
     return table.concat(list, ", ")
   end
@@ -1030,7 +1029,11 @@ local function new(deps)
     return lines, false
   end
 
-  local function buff_command(args)
+  --[[ `//hud buffs partylist [<list>] ...`, the framework's word and the
+       list word both already stripped: `words` starts at the verb. Returns
+       the lines to print and whether anything changed. ]]
+  function self.buff_command(words)
+    words = words or {}
     if not has_buffs() then
       return { ("%s has no buff icons - buffs are a %s setting"):format(NAME, NAMES.main) }, false
     end
@@ -1040,12 +1043,8 @@ local function new(deps)
 
     -- `active` reads the roster, which is this component's alone; every
     -- other verb edits settings the lib owns the grammar of.
-    if args[2] and args[2]:lower() == "active" then
-      return active_buffs(args[3])
-    end
-    local words = {}
-    for index = 2, #args do
-      words[index - 1] = args[index]
+    if words[1] and words[1]:lower() == "active" then
+      return active_buffs(words[2])
     end
     return buff_engine.command(buff_settings(), words, cap())
   end
@@ -1072,9 +1071,6 @@ local function new(deps)
     end
     if verb == "range" then
       return set_range(args)
-    end
-    if verb == "buff" then
-      return buff_command(args)
     end
     return unknown(args[1])
   end

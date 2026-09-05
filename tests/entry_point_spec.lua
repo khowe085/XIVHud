@@ -192,6 +192,12 @@ describe("entry point", function()
          0.05s while a login is under way - LOADING_RETRY_SECONDS, whose comment
          calls that the visible delay before the HUD comes up - and a 200ms TTL
          would answer three of every four of those from the same stale nil. ]]
+    -- `//hud buffs active` names a buff through res.buffs; nil when the
+    -- library failed, and lib/buffs then says `buff 33`.
+    it("hands core the resources for naming buffs", function()
+      assert.is_not_nil(boot.core_deps.resources)
+    end)
+
     it("leaves core reading the client directly", function()
       assert.are_not.equal(boot.core_deps.get_player, boot.ctxs.parambar.get_player)
 

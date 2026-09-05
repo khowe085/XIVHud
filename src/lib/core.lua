@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      - Character scoping. Configs do not exist until login, so components are
        attached on login and detached on logout. ]]
 
+local new_buffs = require("lib/buffs")
 local new_commands = require("lib/commands")
 local new_layout = require("lib/layout")
 local new_layout_mode = require("lib/layout_mode")
@@ -60,6 +61,8 @@ local CHARACTER_RETRY_SECONDS = 1
 local LOADING_RETRY_SECONDS = 0.05
 
 local CORE_NAMESPACE = "core"
+-- What the client puts in an unused buff slot.
+local EMPTY_BUFF = 255
 local CORE_DEFAULTS = {
   -- Grid the drag in layout mode snaps to; CTRL frees it.
   snap = 10,
@@ -86,6 +89,10 @@ local HELP = {
   "  //hud slot create <name>   new slot, copied from the active one",
   "  //hud slot delete <name>   remove a slot",
   "  //hud copy <from> <to>     replace one character's config with another's",
+  "  //hud buffs active         your buffs right now, every one of them",
+  "  //hud buffs <name> [<anchor>] [...]",
+  "                            a component's buff order and filter verbs:",
+  "                            list, find, top, up, down, rank, reset, filter",
   "  //hud <name> ...           pass a command to a component",
   "  //hud <alias> ...          a component answers to its short name too,",
   "                            which //hud list prints beside it",
@@ -727,6 +734,57 @@ local function new(deps)
     return false
   end
 
+  --[[ The buff verbs live behind one framework word so the same grammar
+       reaches every component that draws buffs. `active` is core's own: the
+       player's buffs as the client reports them, in the SHIPPED order rather
+       than any component's - the priority overrides are each component's and
+       core holds none. Everything else goes to the component's `handle_buffs`,
+       an opt-in member exactly like `anchors()`. ]]
+  local buff_names = new_buffs({ name = "hud", resources = deps.resources })
+
+  local function say_lines(reply)
+    if type(reply) == "table" then
+      for _, line in ipairs(reply) do
+        say(line)
+      end
+    elseif reply then
+      say(reply)
+    end
+  end
+
+  local function say_active_buffs()
+    local player = deps.get_player()
+    local ids = {}
+    for _, id in ipairs(player and player.buffs or {}) do
+      if id ~= EMPTY_BUFF then
+        ids[#ids + 1] = id
+      end
+    end
+    if #ids == 0 then
+      say("you have no buffs")
+      return
+    end
+    local ranks = buff_names.order({})
+    buff_names.sort(ids, ranks)
+    say(("you have %d buff(s):"):format(#ids))
+    for _, id in ipairs(ids) do
+      say(("  %d  %s"):format(id, buff_names.name(id)))
+    end
+  end
+
+  local function run_buffs(action)
+    if action.op == "active" then
+      say_active_buffs()
+      return
+    end
+    local component = registry.get(action.component)
+    if not component.handle_buffs then
+      say(component.name .. " draws no buffs")
+      return
+    end
+    say_lines(component.handle_buffs(action.args))
+  end
+
   -- One line for a single-anchor component; a headline plus one indented line
   -- per anchor otherwise, since four placements do not fit one chat line.
   local function describe(component)
@@ -1184,6 +1242,10 @@ local function new(deps)
       end
     elseif action.action == "copy" then
       run_copy(action)
+    elseif action.action == "buffs" then
+      if require_character() then
+        run_buffs(action)
+      end
     elseif action.action == "component" then
       if not require_character() then
         return
@@ -1195,14 +1257,7 @@ local function new(deps)
       end
       -- A list, because a component whose answer is an ordering or a search
       -- result has nowhere to put it in one line, and FFXI's chat ignores \n.
-      local reply = component.handle_command(action.args)
-      if type(reply) == "table" then
-        for _, line in ipairs(reply) do
-          say(line)
-        end
-      elseif reply then
-        say(reply)
-      end
+      say_lines(component.handle_command(action.args))
     end
   end
 

@@ -29,7 +29,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --[[ Status bar logic: the pure state machine behind the three bars. Given
      the player's buff list, the last duration packet and the clock, it
      answers what each bar draws (which ids, in which cell, with what timer
-     text), where each cell sits, and every `//hud statusbar` command.
+     text), where each cell sits, and every `//hud statusbar` command - and
+     the buff and filter verbs that arrive through `//hud buffs statusbar`.
 
      It holds no prims and reads no client - statusbar.lua feeds it and draws
      what it says. The order and the filters are lib/buffs', one engine per
@@ -49,6 +50,9 @@ local new_buffs = require("lib/buffs")
 local categories = require("components/statusbar/categories")
 
 local BARS = { "bar1", "bar2", "bar3" }
+-- The lib's verbs over the one priority shared by every bar; a bar word in
+-- front of one is refused, while any other word falls to the lib's hint.
+local ORDER_VERBS = { list = true, find = true, top = true, up = true, down = true, rank = true, reset = true }
 -- How a message names a bar, which is also how the user addresses it: the
 -- first is the default and goes unnamed, partylist's `main` rule.
 local NAMES = { bar1 = "statusbar", bar2 = "statusbar bar2", bar3 = "statusbar bar3" }
@@ -99,12 +103,10 @@ local function new(deps)
     engines[bar] = new_buffs({
       name = NAMES[bar],
       resources = resources,
-      filter_path = NAMES[bar] .. " filter",
-      -- The buff verbs take no bar word, so every bar's advice names the
-      -- same path; and `buff filter` is refused below, so the hint must not
-      -- offer it.
-      buff_path = "statusbar buff",
-      hint_verbs = { "list", "find", "top", "up", "down", "rank", "reset" },
+      -- The order verbs take no bar word, so every bar's advice names the
+      -- same path; the filter verbs take one.
+      buff_path = "buffs statusbar",
+      filter_path = "buffs " .. NAMES[bar] .. " filter",
     })
   end
 
@@ -410,7 +412,7 @@ local function new(deps)
   end
 
   local function unknown(word)
-    return { ("statusbar has no '%s' setting (filter, rows, timers, tooltips, buff)"):format(tostring(word)) }, false
+    return { ("statusbar has no '%s' setting (rows, timers, tooltips)"):format(tostring(word)) }, false
   end
 
   local function unusable(bar)
@@ -431,7 +433,7 @@ local function new(deps)
       return lines, changed
     end
     return {
-      ("//hud %s filter takes a category (%s) or an edit (add, remove, clear, list, mode)"):format(
+      ("//hud buffs %s filter takes a category (%s) or an edit (add, remove, clear, list, mode)"):format(
         NAMES[bar],
         table.concat(categories.NAMES, ", ")
       ),
@@ -497,22 +499,47 @@ local function new(deps)
     return lines, false
   end
 
-  local function buff_command(words)
+  --[[ `//hud buffs statusbar [<bar>] ...`, the framework's words already
+       stripped. Bare, it names what every bar draws, or one bar's when
+       named - three bars of 32 is a wall of chat. `filter` is the named
+       bar's (the first without one); the order verbs are one order for
+       every bar, so a bar word in front of one is refused rather than
+       dropped. Returns the lines to print and whether anything changed. ]]
+  function self.buff_command(args)
+    args = args or {}
+    local first = args[1] and args[1]:lower() or nil
+    local bar = engines[first] and first or nil
+    local words = args
+    if bar then
+      words = {}
+      for index = 2, #args do
+        words[index - 1] = args[index]
+      end
+    end
+
     local verb = words[1] and words[1]:lower() or nil
     if verb == nil then
-      return active()
+      return active(bar)
     end
-    if engines[verb] then
-      if words[2] then
-        return {
-          ("//hud statusbar buff %s takes nothing after the bar - '%s' is not understood"):format(verb, words[2]),
-        },
-          false
-      end
-      return active(verb)
-    end
+
     if verb == "filter" then
-      return { "a filter list belongs to one bar: //hud statusbar [<bar>] filter add|remove|clear|list|mode" }, false
+      bar = bar or "bar1"
+      local entry = bar_settings(bar)
+      if not entry then
+        return unusable(bar)
+      end
+      return set_filter(bar, entry, words)
+    end
+
+    if bar and ORDER_VERBS[verb] then
+      return {
+        ("%s is one order for every bar, so //hud buffs statusbar %s takes no bar word - not %s"):format(
+          verb,
+          verb,
+          bar
+        ),
+      },
+        false
     end
     local entry = bar_settings("bar1")
     if not entry then
@@ -556,32 +583,22 @@ local function new(deps)
       return status(bar or "bar1")
     end
 
-    if verb == "timers" or verb == "tooltips" or verb == "buff" then
-      -- Two switches and one order for all three, so a bar word is refused
-      -- rather than silently dropped.
+    if verb == "timers" or verb == "tooltips" then
+      -- Two component-wide switches, so a bar word is refused rather than
+      -- silently dropped.
       if bar then
         return { ("%s is shared by every bar, so //hud statusbar %s takes no bar word"):format(verb, verb) }, false
       end
-      if verb ~= "buff" then
-        return set_switch(verb, words[2])
-      end
-      local rest = {}
-      for index = 2, #words do
-        rest[index - 1] = words[index]
-      end
-      return buff_command(rest)
+      return set_switch(verb, words[2])
     end
 
-    if verb == "filter" or verb == "rows" then
+    if verb == "rows" then
       bar = bar or "bar1"
       local entry = bar_settings(bar)
       if not entry then
         return unusable(bar)
       end
-      if verb == "rows" then
-        return set_rows(bar, entry, words[2])
-      end
-      return set_filter(bar, entry, words)
+      return set_rows(bar, entry, words[2])
     end
 
     return unknown(words[1])
