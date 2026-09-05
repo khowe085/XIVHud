@@ -776,8 +776,10 @@ describe("crossbar live widget", function()
       },
       weapon_skills = {
         [42] = { id = 42, en = "Savage Blade", skill = 4 },
+        -- A club weaponskill beside the sword one, for the picker's filter.
+        [3] = { id = 3, en = "Skullbreaker", skill = 3 },
       },
-      skills = { [4] = { id = 4, en = "Sword" } },
+      skills = { [3] = { id = 3, en = "Club" }, [4] = { id = 4, en = "Sword" }, [5] = { id = 5, en = "Great Axe" } },
       items = {
         [4165] = { id = 4165, en = "Prism Powder", stack = 12 },
         -- Enchanted gear, for the enchanteditem bind type. `slots` is the
@@ -785,7 +787,11 @@ describe("crossbar live widget", function()
         [27546] = { id = 27546, en = "Vocation Ring", slots = { [13] = true, [14] = true } },
         -- Worn somewhere that is not a ring, so the GearSwap slot map is
         -- exercised past its one long-standing entry.
-        [17040] = { id = 17040, en = "Warp Cudgel", slots = { [0] = true } },
+        [17040] = { id = 17040, en = "Warp Cudgel", slots = { [0] = true }, skill = 3 },
+        -- A sword and a great axe, for the weapon layer: the class is the
+        -- item's `skill`, named through `skills` below.
+        [16535] = { id = 16535, en = "Ark Sword", skill = 4 },
+        [16800] = { id = 16800, en = "Bravura", skill = 5 },
         [4181] = { id = 4181, en = "Instant Warp" },
         -- The warp ladder's last rung, resolved by name rather than by an
         -- id anyone here claims to know.
@@ -822,8 +828,12 @@ describe("crossbar live widget", function()
       main_job = "WAR",
       main_job_id = 1,
       main_job_level = 99,
-      sub_job = "NIN",
-      sub_job_id = 13,
+      -- WAR/SCH: the context roster is job-gated now (Kevin, 2026-09-04),
+      -- and a subjob that reaches no context would leave every arts test
+      -- below with nothing to light. The WAR-keyed store files are
+      -- unaffected - a context override lives in the MAIN job's file.
+      sub_job = "SCH",
+      sub_job_id = 20,
       sub_job_level = 49,
       vitals = { mp = 100, tp = 1000 },
       buffs = {},
@@ -879,7 +889,12 @@ describe("crossbar live widget", function()
       spell_recasts = {},
       ability_recasts = {},
       items = { [0] = {} },
+      -- Nothing in the main hand by default, which resolves to no weapon
+      -- layer at all rather than to a class: the equipment table is there
+      -- to be read, and it names no item.
+      equipment = opts.equipment or {},
       known_spells = {},
+      abilities = { job_abilities = {}, weapon_skills = { 42, 3 } },
       key_items = {},
       target = { id = 99 },
       equips = {},
@@ -972,9 +987,31 @@ describe("crossbar live widget", function()
       get_spells = function()
         return env.known_spells
       end,
-      get_items = function(bag)
+      -- The client's ability lists, which the binder's catalog is built on.
+      get_abilities = function()
+        return env.abilities
+      end,
+      --[[ Argument-agnostic, as the entry point's wrapper is: whole-bag
+           reads answer the bag, and a (bag, index) read answers the one
+           item - which is how the equipped weapon is read. ]]
+      get_items = function(bag, index)
         env.item_reads = (env.item_reads or 0) + 1
+        if index ~= nil then
+          return (env.items[bag] or {})[index]
+        end
         return env.items[bag]
+      end,
+      get_equipment = function()
+        env.equipment_reads = (env.equipment_reads or 0) + 1
+        return env.equipment
+      end,
+      --[[ The fixtures hand a FIELD TABLE where the client hands bytes, so
+           a test reads as the packet's own field names rather than as
+           offsets into a string. A string fixture parses to nothing, which
+           is the "could not read it" case the code fails open on. ]]
+      parse_packet = function(data)
+        env.parses = (env.parses or 0) + 1
+        return type(data) == "table" and data or nil
       end,
       --[[ The client puts the piece ON, which is what the widget's poll
            reads back: a ring that stays flagged in-the-bag is a ring
@@ -1036,7 +1073,9 @@ describe("crossbar live widget", function()
       game_path = function()
         return "C:/FFXI/"
       end,
-      resources = resources(),
+      -- `false` describes a client whose resources library failed to load,
+      -- which the entry point models by handing the ctx no resources at all.
+      resources = opts.resources ~= false and resources() or nil,
     }
     store = {
       load = function(name)
@@ -1832,7 +1871,7 @@ describe("crossbar live widget", function()
       env.player = war_player()
       env.player.main_job = "DRK"
       env.player.main_job_id = 8
-      widget.update("job change", 8, 99, 13, 49)
+      widget.update("job change", 8, 99, 20, 49)
       widget.handle_command({ "set", "6" })
       press(LEFT)
       press(DIK_SLOT[1])
@@ -1852,7 +1891,7 @@ describe("crossbar live widget", function()
       widget.update("job change", 1, 99, 19, 49)
       press(LEFT)
       press(DIK_SLOT[8])
-      assert.are.same({}, env.commands, "the stale NIN sub must not be scoped as final")
+      assert.are.same({}, env.commands, "the stale SCH sub must not be scoped as final")
       release(DIK_SLOT[8])
       env.player.sub_job = "DNC"
       env.player.sub_job_id = 19
@@ -1885,7 +1924,7 @@ describe("crossbar live widget", function()
       build_world()
       -- The job change event outruns get_player: the stale player still
       -- says WAR. Nothing rescopes until the ids agree.
-      widget.update("job change", 8, 99, 13, 49)
+      widget.update("job change", 8, 99, 20, 49)
       press(LEFT)
       press(DIK_SLOT[3])
       assert.are.same({ 'input /ws "Savage Blade" <t>' }, env.commands, "still WAR until the client catches up")
@@ -1895,6 +1934,232 @@ describe("crossbar live widget", function()
       widget.update()
       press(DIK_SLOT[3])
       assert.are.equal(1, #env.commands, "DRK has no binding in that slot")
+    end)
+
+    --[[ The weapon layer (Kevin, 2026-09-04): overrides keyed by the class
+         in the main hand, resolved off the client and never per frame. The
+         resolver itself is `weapon.lua`'s spec; what is pinned here is WHEN
+         the widget asks it and what it does with the answer. ]]
+    local function weapon_files()
+      local files = war_bindings()
+      files.WAR.weapons = {
+        Sword = { [1] = { left = { [3] = { type = "ws", action = "Vorpal", target = "t" } } } },
+        ["Great Axe"] = { [1] = { left = { [3] = { type = "ws", action = "Ukko", target = "t" } } } },
+      }
+      return files
+    end
+
+    -- The bag and equipment table of a character holding one weapon.
+    local function holding(item_id)
+      env.items[0] = { [1] = { id = item_id, count = 1 } }
+      env.equipment = { main = 1, main_bag = 0 }
+    end
+
+    local function press_slot(slot)
+      press(LEFT)
+      press(DIK_SLOT[slot])
+      release(DIK_SLOT[slot])
+      release(LEFT)
+      return env.commands[#env.commands]
+    end
+
+    it("resolves the weapon layer off the equipped main hand", function()
+      build_world({ store_files = weapon_files() })
+      holding(16535)
+      -- No packet: the attach arms the first read, or a character who logs
+      -- in and changes nothing would never resolve a class at all.
+      widget.update()
+      assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "the sword layer covered the base")
+    end)
+
+    it("falls back to the base when the weapon has no layer of its own", function()
+      local files = weapon_files()
+      files.WAR.weapons["Great Axe"] = nil
+      build_world({ store_files = files })
+      holding(16800)
+      widget.update()
+      assert.are.equal('input /ws "Savage Blade" <t>', press_slot(3), "the great axe has no layer")
+    end)
+
+    --[[ The re-read is packet-driven: `get_equipment` is a whole-inventory
+         call, so nothing asks per frame - and equally, the class in hand
+         must not go stale for the rest of the session once it has. ]]
+    it("re-reads the main hand on the equip packet, and not before it", function()
+      build_world({ store_files = weapon_files() })
+      holding(16535)
+      widget.update()
+      assert.are.equal('input /ws "Vorpal" <t>', press_slot(3))
+      -- The gear moved, and nothing has said so: several intervals go by
+      -- without the widget noticing.
+      holding(16800)
+      for _ = 1, 3 do
+        env.now = env.now + 0.5
+        widget.update()
+      end
+      assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "no packet, no re-read")
+      widget.update("chunk", 0x050, "raw equip bytes")
+      -- Past the client interval: the answer is taken at most once per
+      -- generation, so the packet lands on the next one rather than at once.
+      env.now = env.now + 0.5
+      widget.update()
+      assert.are.equal('input /ws "Ukko" <t>', press_slot(3), "the equip packet moved the layer")
+    end)
+
+    --[[ `get_equipment` is a whole-inventory read, and GearSwap fires a
+         0x050 per slot it swaps on every cast. Only the MAIN hand can move
+         this layer, and the packet says which slot it moved. ]]
+    it("ignores an equip packet for a slot that is not the main hand", function()
+      build_world({ store_files = weapon_files() })
+      holding(16535)
+      widget.update()
+      holding(16800)
+      widget.update("chunk", 0x050, { ["Equipment Slot"] = 13 })
+      env.now = env.now + 0.5
+      widget.update()
+      assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "a ring moved, not the weapon")
+      widget.update("chunk", 0x050, { ["Equipment Slot"] = 0 })
+      env.now = env.now + 0.5
+      widget.update()
+      assert.are.equal('input /ws "Ukko" <t>', press_slot(3), "and the main hand did")
+    end)
+
+    -- A packet that cannot be read arms the re-read rather than dropping it:
+    -- a decode that fails must not freeze the layer for the session.
+    it("re-reads on an equip packet it cannot decode", function()
+      build_world({ store_files = weapon_files() })
+      holding(16535)
+      widget.update()
+      holding(16800)
+      widget.update("chunk", 0x050, "bytes nothing here can parse")
+      env.now = env.now + 0.5
+      widget.update()
+      assert.are.equal('input /ws "Ukko" <t>', press_slot(3))
+    end)
+
+    it("asks again when a bag finishes loading", function()
+      build_world({ store_files = weapon_files() })
+      holding(16535)
+      widget.update()
+      holding(16800)
+      env.now = env.now + 0.5
+      widget.update()
+      assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "still the sword until something says otherwise")
+      widget.update("chunk", 0x01D, "raw inventory-ready bytes")
+      env.now = env.now + 0.5
+      widget.update()
+      assert.are.equal('input /ws "Ukko" <t>', press_slot(3), "the finished bag moved the layer")
+    end)
+
+    --[[ A job change auto-equips AND drops the class the outgoing job held,
+         so the re-arm is what brings the layer back at all: without it the
+         new job resolves through no weapon for the rest of the session. ]]
+    it("re-reads the main hand after a job change", function()
+      local files = weapon_files()
+      files.DRK = {
+        weapons = { Sword = { [1] = { left = { [3] = { type = "ws", action = "Torcleaver", target = "t" } } } } },
+      }
+      build_world({ store_files = files })
+      holding(16535)
+      widget.update()
+      env.player.main_job = "DRK"
+      env.player.main_job_id = 8
+      widget.update("job change", 8, 99, 20, 49)
+      env.now = env.now + 0.5
+      widget.update()
+      assert.are.equal('input /ws "Torcleaver" <t>', press_slot(3), "DRK's own sword layer")
+    end)
+
+    --[[ The two nils `weapon.lua` answers with are different facts here:
+         a client that could not be read leaves the flag UP, so the layer
+         lands as soon as the bag arrives - with no second packet to prompt
+         it. Clearing on an unread client would key the layer off nothing
+         and never ask again. ]]
+    it("keeps asking while the client cannot be read", function()
+      build_world({ store_files = weapon_files() })
+      env.equipment = nil
+      widget.update()
+      holding(16535)
+      env.now = env.now + 0.5
+      widget.update()
+      assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "the layer landed without a packet")
+    end)
+
+    --[[ A re-attach - `//hud reset crossbar`, a `//hud slot` switch, the
+         reload after `//hud copy` - builds a NEW binding model, which knows
+         nothing about the hand. What brings the class back is the rescope
+         every attach forces (it clears the scope, so the next tick goes
+         through try_scope); without one the layer would stay lost until the
+         player next changed a piece of gear. ]]
+    it("re-reads the main hand on a re-attach", function()
+      build_world({ store_files = weapon_files() })
+      holding(16535)
+      widget.update()
+      assert.are.equal('input /ws "Vorpal" <t>', press_slot(3))
+      widget.attach(widget.defaults, function() end, store)
+      widget.show()
+      env.now = env.now + 0.5
+      widget.update()
+      assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "the class came back with the new model")
+    end)
+
+    --[[ Without the resources there is no way to NAME a class, so the layer
+         never comes up - and, more to the point, nothing may go on asking
+         the client for one: an index error in the tick recurs sixty times a
+         second and guard disables the handler, taking the whole bar down
+         for exactly the players who have no `res`. ]]
+    it("sits the weapon layer out entirely without the resources library", function()
+      build_world({ store_files = weapon_files(), resources = false })
+      holding(16535)
+      assert.has_no.errors(function()
+        for _ = 1, 3 do
+          env.now = env.now + 0.5
+          widget.update()
+        end
+      end)
+      assert.are.equal('input /ws "Savage Blade" <t>', press_slot(3), "the base carried on")
+      assert.is_nil(env.equipment_reads, "and the client was never asked")
+    end)
+
+    -- The status line is the only place to ask what class the bar thinks
+    -- is in your hand: `list` shows a wpn row only where one is bound, so
+    -- without this there is no way to check before binding the first one.
+    it("names the class in hand in the status line", function()
+      build_world({ store_files = weapon_files() })
+      holding(16535)
+      widget.update()
+      local status = table.concat(widget.handle_command({}), "\n")
+      assert.is_not_nil(status:find("Sword", 1, true), status)
+    end)
+
+    -- The layer changes what is DRAWN, not just what a press resolves.
+    it("repaints the bar when the class in hand changes", function()
+      build_world({ store_files = weapon_files() })
+      holding(16535)
+      widget.update()
+      assert.are.equal("Vorpal", text_of("xhb_left", 3, "name").last.text)
+      holding(16800)
+      widget.update("chunk", 0x050, "raw equip bytes")
+      env.now = env.now + 0.5
+      widget.update()
+      assert.are.equal("Ukko", text_of("xhb_left", 3, "name").last.text, "the slot was repainted")
+    end)
+
+    -- The read is a whole-inventory call behind the service: it happens
+    -- when a packet says the gear may have moved, never every frame.
+    it("reads the equipment only when something says it may have moved", function()
+      build_world()
+      holding(16535)
+      widget.update("chunk", 0x050, "raw equip bytes")
+      widget.update()
+      local reads = env.equipment_reads
+      assert.is_true(reads > 0, "the equip packet was answered")
+      for _ = 1, 5 do
+        -- Past the service's own interval each time, so a read gated on the
+        -- generation counter would have taken its chance.
+        env.now = env.now + 0.5
+        widget.update()
+      end
+      assert.are.equal(reads, env.equipment_reads, "and nothing else asked again")
     end)
 
     it("swaps a context layer in on a buff and back off", function()
@@ -3223,16 +3488,13 @@ describe("crossbar live widget", function()
     end)
 
     describe("the buff and zone chunks", function()
-      local function u16le(v)
-        return string.char(v % 256, math.floor(v / 256) % 256)
-      end
-
+      -- 0x63 order 9 as the entry point's packets.parse hands it over.
       local function buff_refresh(buff_id)
-        local body = "HDRX" .. string.char(9) .. "\0\0\0"
+        local packet = { Order = 9 }
         for n = 1, 32 do
-          body = body .. u16le(n == 1 and buff_id or 0)
+          packet["Buffs " .. n] = n == 1 and buff_id or 0
         end
-        return body
+        return packet
       end
 
       it("reads the target from the client once per tick, never once per slot", function()
@@ -3253,7 +3515,7 @@ describe("crossbar live widget", function()
 
       it("feeds 0x63 through: a spell under Immanence opens the indicator", function()
         local _, fill = indicator_prims()
-        widget.update("chunk", 0x63, buff_refresh(470))
+        widget.update("chunk", 0x63, "raw", buff_refresh(470))
         widget.update("chunk", 0x028, "raw action bytes", {
           category = 4,
           param = 144,
@@ -4991,8 +5253,8 @@ describe("crossbar live widget", function()
         main_job = "WAR",
         main_job_id = 1,
         main_job_level = 99,
-        sub_job = "NIN",
-        sub_job_id = 13,
+        sub_job = "SCH",
+        sub_job_id = 20,
         sub_job_level = 49,
         vitals = { mp = 2, tp = 1000 },
         buffs = {},
@@ -5571,6 +5833,50 @@ describe("crossbar live widget", function()
       return click(prim.x + 2, prim.y + 2)
     end
 
+    --[[ The class arriving is a fifth producer of an active-set change,
+         after the two key intents, the two CLI verbs and a job change. An
+         open binder keeps the address it was opened on, so the next bind
+         would write into that set of a set the bar has since left. ]]
+    it("deselects an open binder when the class arriving moves the set", function()
+      -- The base's lowest non-empty set is 3; set 1 is non-empty only
+      -- through the Sword layer, which the blind landing cannot see.
+      local files = {
+        WAR = {
+          sets = { [3] = { left = { [3] = { type = "ws", action = "Savage Blade", target = "t" } } } },
+          weapons = { Sword = { [1] = { left = { [3] = { type = "ws", action = "Vorpal", target = "t" } } } } },
+        },
+      }
+      build_world({ store_files = files })
+      widget.handle_command({ "edit" })
+      click(slot_point("left", 3))
+      assert.is_not_nil(binder_line("^3L3"), "the window opened on set 3")
+      env.items[0] = { [1] = { id = 16535, count = 1 } }
+      env.equipment = { main = 1, main_bag = 0 }
+      env.now = env.now + 0.5
+      widget.update()
+      assert.is_nil(binder_line("^3L3"), "and it closed with the set it was opened on")
+    end)
+
+    --[[ The picker's weaponskill list is the CLIENT's, and the client's is
+         the job's rather than the weapon's: a club in hand was offering
+         sword weaponskills (Kevin, live client, 2026-09-05). What the
+         widget hands the catalog is the model's own class, so the picker
+         and the `wpn:` layer can never name different weapons. ]]
+    it("offers the picker only weaponskills the class in hand can perform", function()
+      build_world()
+      env.items[0] = { [1] = { id = 17040, count = 1 } }
+      env.equipment = { main = 1, main_bag = 0 }
+      env.now = env.now + 0.5
+      widget.update()
+      widget.handle_command({ "edit" })
+      click(slot_point("left", 1))
+      -- Step one is the layer; the catalog's categories are step two.
+      click_line("wpn:Club")
+      click_line("Weapon Skills")
+      assert.is_not_nil(binder_line("Skullbreaker"), "the club weaponskill is offered")
+      assert.is_nil(binder_line("Savage Blade"), "and the sword one is not")
+    end)
+
     it("toggles with the edit verb and says which way it went", function()
       build_world()
       local on = widget.handle_command({ "edit" })
@@ -5675,7 +5981,7 @@ describe("crossbar live widget", function()
 
     it("tags each slot with the layer its winner came from", function()
       local files = war_bindings()
-      files.WAR.sub = { NIN = { [1] = { left = { [4] = { type = "ja", action = "Berserk" } } } } }
+      files.WAR.sub = { SCH = { [1] = { left = { [4] = { type = "ja", action = "Berserk" } } } } }
       build_world({ store_files = files })
       env.player.buffs = { 358 }
       widget.update("gain buff", 358)
@@ -5919,21 +6225,43 @@ describe("crossbar live widget", function()
       assert.is_false(prims.images[1].visible)
     end)
 
-    it("keeps a previewed context through a job change", function()
+    it("keeps a previewed context through a job change that still reaches it", function()
+      -- SCH's own file, so the previewed layer has something to show after
+      -- the change: bindings are per main job.
+      local files = war_bindings()
+      local penury = { type = "ja", action = "Penury", target = "me" }
+      files.SCH = { contexts = { ["light-arts"] = { [1] = { left = { [2] = penury } } } } }
+      build_world({ store_files = files })
+      widget.handle_command({ "edit" })
+      click(slot_point("left", 2))
+      click_line("light%-arts:")
+      assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text)
+      -- The model reloads and clears its active contexts, so the preview
+      -- has to be re-asserted or the bar reverts under a header still
+      -- claiming the simulated view.
+      env.player.main_job, env.player.main_job_id = "SCH", 20
+      widget.update("job change", 20, 99, 20, 49)
+      assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text, "the preview survived the job change")
+      assert.is_not_nil(binder_line("viewing: LIGHT ARTS"))
+      widget.handle_command({ "edit" })
+      assert.are.equal("", text_of("xhb_left", 2, "name").last.text, "and the client's own state comes back")
+    end)
+
+    --[[ The other half of the same rule, and the one the job gate creates:
+         a change that takes the previewed context OUT of reach must bring
+         the preview and the header down with it. Leaving them up shows the
+         layer's world under a header naming it, on a job where the write
+         would be refused. ]]
+    it("drops a previewed context the new job cannot reach", function()
       build_world()
       widget.handle_command({ "edit" })
       click(slot_point("left", 2))
       click_line("light%-arts:")
       assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text)
-      -- Same main job, a new subjob: the model reloads and clears its
-      -- active contexts, so the preview has to be re-asserted or the bar
-      -- reverts under a header still claiming the simulated view.
       env.player.sub_job, env.player.sub_job_id = "WAR", 2
       widget.update("job change", 1, 99, 2, 49)
-      assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text, "the preview survived the job change")
-      assert.is_not_nil(binder_line("viewing: LIGHT ARTS"))
-      widget.handle_command({ "edit" })
-      assert.are.equal("", text_of("xhb_left", 2, "name").last.text, "and the client's own state comes back")
+      assert.are.equal("", text_of("xhb_left", 2, "name").last.text, "the preview came down with the layer")
+      assert.is_nil(binder_line("viewing: LIGHT ARTS"), "and the header stopped claiming it")
     end)
 
     it("shows every empty slot while the binder is up, whatever the config says", function()

@@ -17,6 +17,7 @@ local ACTION = 0x028
 local ALLIANCE, PARTY_MEMBER, CHAR = 0x0C8, 0x0DD, 0x0DF
 -- Read raw by the party list; no field definition to parse it with.
 local PARTY_BUFFS = 0x076
+local CHAR_UPDATE = 0x063
 
 describe("entry point", function()
   local boot
@@ -30,6 +31,7 @@ describe("entry point", function()
       assert.is_not_nil(boot.handlers["incoming chunk"])
       assert.is_not_nil(boot.ctxs.targetbar)
       assert.is_not_nil(boot.ctxs.crossbar)
+      assert.is_not_nil(boot.ctxs.speedcheck)
     end)
 
     --[[ The party list is ONE registration over three anchors. It was three
@@ -37,6 +39,28 @@ describe("entry point", function()
          carry no alias: all three would have claimed `pl` and the second would
          have aborted the load. Only the entry point can say how many times the
          factory is called, or that nothing picks a variant for it any more. ]]
+    -- The status bar reads the player through the service like everyone
+    -- else, and decodes its own packet against the wall clock the timestamps
+    -- count in - the monotonic `now` the other ctxs carry could not answer.
+    it("builds the status bar over the player service and the wall clock", function()
+      local built = 0
+      for _, name in ipairs(boot.built) do
+        if name == "statusbar" then
+          built = built + 1
+        end
+      end
+      assert.are.equal(1, built)
+      assert.are.equal(boot.ctxs.partylist.get_player, boot.ctxs.statusbar.get_player)
+      assert.are.equal(os.time, boot.ctxs.statusbar.time)
+      -- The seed at attach: the last 0x063 the client sent, parsed the same
+      -- way the chunk handler parses it.
+      assert.are.equal(boot.ctxs.expbar.last_incoming, boot.ctxs.statusbar.last_incoming)
+      assert.are.equal(boot.ctxs.expbar.parse_packet, boot.ctxs.statusbar.parse_packet)
+      -- A right-click on an icon asks the cancel addon to drop the buff.
+      assert.is_function(boot.ctxs.statusbar.send_command)
+      assert.is_not_nil(boot.ctxs.statusbar.resources)
+    end)
+
     it("builds the party list once, with no variant to pick", function()
       local built = 0
       for _, name in ipairs(boot.built) do
@@ -53,6 +77,49 @@ describe("entry point", function()
     end)
   end)
 
+  --[[ The exp bar reads packets nothing else does, and asks the client for the
+       last of two of them at attach. Neither the dep nor its pcall is visible
+       from the component's own spec. ]]
+  describe("the exp bar", function()
+    it("reads the player through the service, like every other component", function()
+      assert.are.equal(boot.ctxs.parambar.get_player, boot.ctxs.expbar.get_player)
+    end)
+
+    it("shares the one packet parser", function()
+      assert.are.equal(boot.ctxs.giltracker.parse_packet, boot.ctxs.expbar.parse_packet)
+    end)
+
+    it("hands over the last packet the client sent, without its timestamp", function()
+      boot.last_incoming[0x061] = "the char stats bytes"
+      assert.are.same({ "the char stats bytes" }, { boot.ctxs.expbar.last_incoming(0x061) })
+      assert.are.same({ 0x061 }, boot.last_incoming_asked)
+    end)
+
+    it("answers nil rather than throwing where windower.packets is not there", function()
+      boot.last_incoming_raises = true
+      assert.is_nil(boot.ctxs.expbar.last_incoming(0x061))
+    end)
+
+    it("sits out when the packets library did not load", function()
+      local without = harness.boot({ require_fails = { packets = "no packets library" } })
+      assert.is_nil(without.ctxs.expbar)
+      -- The bar that needs no library is still there.
+      assert.is_not_nil(without.ctxs.targetbar)
+    end)
+
+    -- The status bar stays up without the library and seeds its timers at
+    -- attach through parse_packet; that must answer nil there, not index a
+    -- nil global on its way into pcall and throw out of an attach core runs
+    -- unprotected.
+    it("hands the status bar a parse_packet that answers nil without the library", function()
+      local without = harness.boot({ require_fails = { packets = "no packets library" } })
+      assert.is_not_nil(without.ctxs.statusbar)
+      assert.has_no.errors(function()
+        assert.is_nil(without.ctxs.statusbar.parse_packet("bytes"))
+      end)
+    end)
+  end)
+
   --[[ The player service. Which client reads reach the client, and how the
        vitals events reconcile against them, is a decision made here and nowhere
        else -- a component is handed a getter and cannot tell what is behind it. ]]
@@ -65,16 +132,41 @@ describe("entry point", function()
       assert.are.equal(boot.ctxs.parambar.get_player, boot.ctxs.targetbar.get_player)
       assert.are.equal(boot.ctxs.partylist.get_party, boot.ctxs.targetbar.get_party)
       assert.are.equal(boot.ctxs.partylist.get_mob_by_target, boot.ctxs.crossbar.get_mob_by_target)
+      --[[ speedcheck reads the mob table on the TICK, which is only affordable
+           because this is the service's memoized lookup rather than a client
+           read of its own. ]]
+      assert.are.equal(boot.ctxs.targetbar.get_mob_by_target, boot.ctxs.speedcheck.get_mob_by_target)
     end)
 
     --[[ The two widgets that gate a rebuild on the counter go quiet without it -
          partylist would throw away its packet pushes every frame, targetbar
          would walk eighteen member tables sixty times a second - and no
          component spec can see whether the ctx carried it. ]]
+    --[[ The crossbar's weapon layer is keyed off the main hand, and the
+         accessor that reads it is the one equipviewer already uses - one
+         reading of the equipment table for the addon, not two shapes that
+         could disagree about what an empty slot looks like. ]]
+    it("hands the crossbar the same equipment read equipviewer takes", function()
+      assert.is_function(boot.ctxs.crossbar.get_equipment)
+      assert.are.equal(boot.ctxs.equipviewer.get_equipment, boot.ctxs.crossbar.get_equipment)
+    end)
+
+    --[[ The crossbar reads the Equip packet itself, to tell a main-hand
+         change from the fifteen other slots GearSwap moves on every cast.
+         Same decode equipviewer uses on the same packet - an offset of its
+         own would be a second reading of one packet. ]]
+    it("hands the crossbar the same packet decode equipviewer reads 0x050 with", function()
+      assert.is_function(boot.ctxs.crossbar.parse_packet)
+      assert.are.equal(boot.ctxs.equipviewer.parse_packet, boot.ctxs.crossbar.parse_packet)
+    end)
+
     it("hands the counter to the components that gate on it", function()
       assert.is_function(boot.ctxs.partylist.generation)
       assert.is_function(boot.ctxs.targetbar.generation)
       assert.is_function(boot.ctxs.crossbar.generation)
+      -- speedcheck polls the mob table on its tick and has nothing else to
+      -- pace it: without the counter it would read the client every frame.
+      assert.is_function(boot.ctxs.speedcheck.generation)
       assert.are.equal(boot.ctxs.partylist.generation, boot.ctxs.targetbar.generation)
       assert.are.equal(boot.ctxs.partylist.generation, boot.ctxs.crossbar.generation)
       assert.is_number(boot.ctxs.targetbar.generation())
@@ -342,6 +434,39 @@ describe("entry point", function()
 
       assert.are.equal(3, #boot.parsed_packets)
       assert.are.equal(0, #boot.action_parses)
+    end)
+
+    -- Three readers - the crossbar's skillchain engine, expbar and the status
+    -- bar - so it is decoded once here rather than once each, through the
+    -- same packets.parse the party ids use (its field definition switches on
+    -- the order byte, so every order comes through it).
+    it("pre-parses the 0x063 character update once, for its three readers", function()
+      boot.chunk(CHAR_UPDATE, "char update bytes")
+
+      local dispatch = boot.last_dispatch("chunk")
+      assert.are.equal("char update bytes", dispatch[2])
+      assert.are.same({ packet = "char update bytes" }, dispatch[3])
+      assert.are.equal(1, #boot.parsed_packets)
+      assert.are.equal(0, #boot.action_parses)
+    end)
+
+    -- Both pre-parses are pcall'd: a packet the library cannot read costs
+    -- the frame nothing, the raw bytes still go out, and `parsed` is nil -
+    -- the contract every reader is written to. Unprotected, five bad packets
+    -- would have guard disable the whole chunk handler for the session.
+    it("dispatches a packets.parse failure as a nil `parsed`, without throwing", function()
+      boot.parse_raises = true
+
+      assert.has_no.errors(function()
+        boot.chunk(CHAR_UPDATE, "unreadable")
+        boot.chunk(ALLIANCE, "unreadable")
+      end)
+
+      local dispatch = boot.last_dispatch("chunk")
+      assert.are.equal(3, dispatch.n)
+      assert.are.equal("unreadable", dispatch[2])
+      assert.is_nil(dispatch[3])
+      assert.are.equal("", boot.said():match("error in the incoming chunk handler") or "")
     end)
 
     it("parses nothing for an id no component has a definition for", function()

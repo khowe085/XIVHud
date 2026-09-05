@@ -117,9 +117,11 @@ local ENTRY_ROWS = BODY_ROWS - 1
      silently - the CLI can still reach it. ]]
 local CATEGORY_ROWS = BODY_ROWS
 local DETAIL_ROWS = BODY_ROWS
--- base/shared + the worn subjob + every roster context, with headroom so a
--- roster addition needs no prim-count edit here.
-local STACK_ROWS = #contexts + 4
+-- base/shared + the worn subjob + the weapon in hand + every roster context,
+-- with headroom so a roster addition needs no prim-count edit here. Counted
+-- off the WHOLE roster though the job gate hides most of it: the panel is
+-- rebuilt per job and the prims are not.
+local STACK_ROWS = #contexts + 5
 -- Panel chrome: the component's own white square, tinted and dimmed.
 local PANEL_TEXTURE = "assets/own/black-square.png"
 local PANEL_ALPHA = 220
@@ -171,8 +173,9 @@ end
 
 -- The marks a slot wears on the bar in edit mode, so "where is this coming
 -- from" is answered before any click: nothing for the job base (the common
--- case), one mark for a subjob layer, another for a context.
-local MARKS = { sub = "+", ctx = "*" }
+-- case), one mark for a subjob layer, one for the weapon layer, another for
+-- a context. Each is a single character none of them can start a name with.
+local MARKS = { sub = "+", wpn = "^", ctx = "*" }
 
 local function inside(x, y, rect)
   return rect ~= nil
@@ -604,6 +607,9 @@ local function new(deps)
     if source == "sub" then
       return "sub:" .. set
     end
+    if source == "wpn" then
+      return "wpn:" .. set
+    end
     local name = source:match("^ctx:(.+)$")
     if name ~= nil then
       return "ctx:" .. name .. ":" .. set
@@ -627,8 +633,10 @@ local function new(deps)
       local key = layer.source
       if key == "shared" then
         key = "base"
-      elseif key:match("^sub:") then
-        key = layer.worn and "sub" or nil
+      elseif key:match("^sub:") or key:match("^wpn:") then
+        -- Only the worn subjob and the class in hand have a row here; the
+        -- others are stored layers this slot cannot be edited through.
+        key = layer.worn and key:sub(1, 3) or nil
       end
       if key ~= nil then
         found[key] = layer
@@ -652,8 +660,15 @@ local function new(deps)
     if sub ~= nil then
       row("sub", "sub:" .. tostring(sub))
     end
-    for _, context in ipairs(contexts) do
-      row("ctx:" .. context.name, context.name)
+    -- The weapon row exists only once the client has answered with a class:
+    -- it is what is in your hand, not a setting.
+    local weapon = bindings.weapon_type()
+    if weapon ~= nil then
+      row("wpn", "wpn:" .. tostring(weapon))
+    end
+    -- Job-gated: a context this job cannot raise is not a layer to bind into.
+    for _, name in ipairs(bindings.available_contexts()) do
+      row("ctx:" .. name, name)
     end
     return rows
   end
@@ -1395,6 +1410,31 @@ local function new(deps)
     redraw()
   end
 
+  --[[ The cursor against the rows the slot offers NOW. It deliberately
+       outlives a bind, so it can outlive its row - a subjob change takes a
+       context out of reach and unequipping takes the weapon row away - and
+       it can outlive its row's NAME: `sub:` and `wpn:` address whatever is
+       worn or held, so the class under the cursor changes when the hand
+       does. Both are answered from stack_rows rather than from the model,
+       so the panel and the cursor can never hold different opinions of
+       what a row is called. A cursor always has a slot (close_panel drops
+       them together, and a new slot drops the cursor), so the rows are
+       always there to compare against.
+
+       Answers false when the row is gone; adopts the live label otherwise. ]]
+  local function cursor_offered()
+    if cursor == nil or slot == nil then
+      return true
+    end
+    for _, row in ipairs(stack_rows()) do
+      if row.source == cursor.source then
+        cursor.label = row.label
+        return true
+      end
+    end
+    return false
+  end
+
   --- Re-read the model and redraw: a job change, a buff change or the bar's
   --- own repaint can all move what the panel is showing.
   function self.refresh()
@@ -1404,6 +1444,16 @@ local function new(deps)
     local bindings = model()
     if bindings ~= nil and bindings.job() ~= catalog_job then
       rebuild_catalog()
+    end
+    --[[ A stranded cursor is worse than a closed one: the bar goes on
+         showing a context's world under a header naming it, the wizard
+         walks to the end, and only the write says the layer is out of
+         reach. Back to the layer step, with the preview taken down. ]]
+    if not cursor_offered() then
+      cursor, pending = nil, nil
+      step, page = STEP_LAYER, 1
+      details, hovered = nil, nil
+      apply_preview()
     end
     redraw()
   end
@@ -1470,6 +1520,9 @@ local function new(deps)
     end
     if source == "sub" or source:match("^sub:") then
       return MARKS.sub
+    end
+    if source == "wpn" or source:match("^wpn:") then
+      return MARKS.wpn
     end
     return ""
   end
