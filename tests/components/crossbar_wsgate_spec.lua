@@ -152,15 +152,20 @@ describe("crossbar weaponskill gate", function()
   end)
 
   describe("blocking buffs", function()
-    it("refuses a weaponskill while amnesia is up", function()
-      --[[ Amnesia stops weaponskills outright, so a press under it can
-           never land however close you are or how much TP you hold (Kevin,
-           live client, 2026-09-05: one went straight through the gate).
-           The id is the one retry.lua already blocks retries on, read off
-           the party list's own buff order. ]]
+    --[[ Every id read off lib/buff_order, which is where retry.lua's own
+         blocking set came from - not from memory. Amnesia is the one a live
+         client produced (Kevin, 2026-09-05: a press under it went straight
+         through the gate); terror, stun and impairment are Kevin's, added
+         the same day. ]]
+    local BLOCKED_BY = { amnesia = 16, stun = 10, terror = 28, impairment = 261 }
+
+    it("refuses a weaponskill under every buff that stops one", function()
       local wsgate = world()
-      assert.is_false(wsgate.allow(WS, facts({ buffs = { 16 } })))
-      assert.is_false(wsgate.allow(WS, facts({ buffs = { 2, 16, 33 } })))
+      for name, id in pairs(BLOCKED_BY) do
+        assert.is_false(wsgate.allow(WS, facts({ buffs = { id } })), name)
+        -- And found among others, rather than only as the whole list.
+        assert.is_false(wsgate.allow(WS, facts({ buffs = { 2, id, 33 } })), name .. " among others")
+      end
     end)
 
     it("passes a weaponskill under buffs that do not stop one", function()
@@ -168,6 +173,10 @@ describe("crossbar weaponskill gate", function()
       -- retry.lua keeps, and pooling them would refuse presses that work.
       local wsgate = world()
       assert.is_true(wsgate.allow(WS, facts({ buffs = { 6, 29 } })))
+      -- Sleep and bind stop a great deal and not this: the game refuses
+      -- those presses itself, and guessing at them is how a dead button
+      -- gets built.
+      assert.is_true(wsgate.allow(WS, facts({ buffs = { 2, 11 } })))
       assert.is_true(wsgate.allow(WS, facts({ buffs = {} })))
     end)
 
@@ -181,7 +190,7 @@ describe("crossbar weaponskill gate", function()
       -- Nothing else needs asking: no distance and no TP can make a press
       -- under amnesia land.
       local wsgate = world()
-      local blocked = facts({ buffs = { 16 } })
+      local blocked = facts({ buffs = { 28 } })
       blocked.distance_squared = nil
       blocked.model_size = nil
       assert.is_false(wsgate.allow(WS, blocked))

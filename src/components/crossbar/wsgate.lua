@@ -82,17 +82,27 @@ local WEAPONSKILL_TP = 1000
 local ENGAGED_STATUS = 1
 
 --[[ Buffs that stop a weaponskill outright, by their resource ids. AMNESIA
-     alone, which is what a live client produced (Kevin, 2026-09-05: a press
-     under it went straight through the gate). The id is the one retry.lua
-     already blocks retries on, read off the party list's own buff order,
-     and this is deliberately NOT pooled with the buffs that stop a spell:
-     silence and mute leave weaponskills alone, and refusing on them would
-     kill presses that work.
+     is what a live client produced (Kevin, 2026-09-05: a press under it
+     went straight through the gate); TERROR, STUN and IMPAIRMENT are
+     Kevin's, added the same day - none of them lets you use a weaponskill,
+     so a press under any is one that cannot land.
 
-     A table rather than a comparison because there is almost certainly more
-     here - terror and impairment are the obvious candidates - and each
-     wants a client to confirm it before it earns a line. ]]
-local BLOCKING_BUFFS = { [16] = true }
+     Every id is read off `lib/buff_order`, which is where retry.lua's own
+     blocking set came from, rather than from memory: amnesia 16, stun 10,
+     terror 28, impairment 261.
+
+     Deliberately NOT pooled with the buffs that stop a SPELL - silence and
+     mute leave weaponskills alone, and refusing on them would kill presses
+     that work, the same split retry.lua keeps. And deliberately not
+     extended past what someone has actually seen: sleep, bind and petrify
+     stop a great deal, the game refuses those presses itself, and a guess
+     here costs a silently dead button. ]]
+local BLOCKING_BUFFS = {
+  [16] = true, -- amnesia
+  [10] = true, -- stun
+  [28] = true, -- terror
+  [261] = true, -- impairment
+}
 
 --[[ Skills whose weaponskills are fired from across the field. Their reach
      is DistancePlus' bands rather than one melee number, and that port
