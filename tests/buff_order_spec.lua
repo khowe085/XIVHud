@@ -1,6 +1,6 @@
-local buff_order = require("components/partylist/buff_order")
+local buff_order = require("lib/buff_order")
 
-describe("partylist buff order", function()
+describe("shipped buff order", function()
   it("carries every entry XIVParty ranks", function()
     assert.are.equal(621, #buff_order)
   end)

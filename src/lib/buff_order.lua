@@ -36,10 +36,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        Copyright (c) 2013-2020, Windower. All rights reserved. Redistribution
        and use in source and binary forms, with or without modification, are
        permitted provided that the conditions of the BSD 3-clause licence
-       reproduced in assets/LICENSE.txt are met.
+       reproduced in assets/xiv/LICENSE.txt are met.
 
      The names in the trailing comments are for the reader only -- nothing
-     resolves a buff by the name in this file, and `//hud partylist buff` reads
+     resolves a buff by the name in this file, and `//hud <component> buff` reads
      names from res.buffs. A buff id absent from this list is not an error: it
      simply sorts after everything ranked here. ]]
 
