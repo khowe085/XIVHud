@@ -218,7 +218,7 @@ describe("lib/buffs", function()
     it("refuses nothing at all", function()
       local id, lines = engine.resolve("")
       assert.is_nil(id)
-      assert.is_not_nil(table.concat(lines, "\n"):find("//hud partylist buff", 1, true))
+      assert.is_not_nil(table.concat(lines, "\n"):find("//hud buffs partylist needs", 1, true))
     end)
 
     it("refuses a name it cannot resolve", function()
@@ -501,9 +501,24 @@ describe("lib/buffs", function()
         assert.are.same({}, filters)
       end)
 
-      -- The status bar's filters sit at `//hud statusbar <bar> filter`, with
-      -- no `buff` word in the path, so the messages take the path from the
-      -- caller.
+      -- The verbs sit behind the framework's `//hud buffs <component>`, so
+      -- that is what every message names unless the caller says otherwise.
+      it("names //hud buffs <name> in every message by default", function()
+        local function said(...)
+          return table.concat((engine.command(settings, { ... }, 16)), "\n")
+        end
+        assert.is_not_nil(said("wobble"):find("//hud buffs partylist takes", 1, true))
+        assert.is_not_nil(said("find"):find("//hud buffs partylist find needs", 1, true))
+        assert.is_not_nil(said("rank", "doom"):find("//hud buffs partylist rank needs", 1, true))
+        assert.is_not_nil(said("list"):find("'//hud buffs partylist list <page>'", 1, true))
+        assert.is_not_nil(said("filter", "wobble"):find("//hud buffs partylist filter takes", 1, true))
+        assert.is_not_nil(said("filter", "add", "xyzzy"):find("//hud buffs partylist find xyzzy", 1, true))
+        assert.is_nil(said("wobble"):find("partylist buff", 1, true))
+      end)
+
+      -- A caller may put the filter verbs somewhere other than the default
+      -- path (the status bar's carry a bar word), so the messages take the
+      -- path from the caller.
       it("names the filter path the caller gave in its messages", function()
         local bar = new_buffs({ name = "statusbar bar2", resources = RESOURCES, filter_path = "statusbar bar2 filter" })
         local said = table.concat(bar.command(settings, { "filter", "mode", "greylist" }, 16), "\n")

@@ -199,6 +199,41 @@ describe("commands", function()
     end)
   end)
 
+  describe("buffs", function()
+    it("is a reserved verb, so no component can be named after it", function()
+      assert.is_true(commands.reserved.buffs)
+    end)
+
+    it("answers a bare verb with the grammar rather than silence", function()
+      assert_error(parse("buffs"), "//hud buffs")
+    end)
+
+    it("reads active as core's own op", function()
+      assert.are.same({ action = "buffs", op = "active" }, parse("buffs", "Active"))
+    end)
+
+    it("refuses a name after active and points at the party list's reader", function()
+      assert_error(parse("buffs", "active", "Bob"), "//hud buffs partylist active bob")
+    end)
+
+    it("routes a component word with everything after it untouched", function()
+      local action = parse("buffs", "ParamBar", "Main", "top", "Haste")
+      assert.are.same({ action = "buffs", component = "parambar", args = { "Main", "top", "Haste" } }, action)
+    end)
+
+    it("routes a bare component word with no arguments", function()
+      assert.are.same({ action = "buffs", component = "parambar", args = {} }, parse("buffs", "parambar"))
+    end)
+
+    it("resolves the component through its alias", function()
+      assert.are.equal("parambar", parse("buffs", "pb", "list").component)
+    end)
+
+    it("rejects an unknown component", function()
+      assert_error(parse("buffs", "bogus"), "no component named 'bogus'")
+    end)
+  end)
+
   describe("component passthrough", function()
     it("routes an unreserved first word that names a component", function()
       local action = parse("parambar", "width", "150")

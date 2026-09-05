@@ -580,8 +580,7 @@ local function new(ctx)
     end
   end
 
-  function self.handle_command(args)
-    local lines, changed = logic.command(args)
+  local function answer(lines, changed)
     if changed then
       if save then
         save()
@@ -590,6 +589,15 @@ local function new(ctx)
       refresh_tip()
     end
     return lines
+  end
+
+  function self.handle_command(args)
+    return answer(logic.command(args))
+  end
+
+  -- `//hud buffs statusbar [<bar>] ...`: the order and filter verbs.
+  function self.handle_buffs(args)
+    return answer(logic.buff_command(args))
   end
 
   function self.destroy()

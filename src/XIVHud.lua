@@ -741,6 +741,9 @@ step("building the framework", function()
     logged_in = function()
       return windower.ffxi.get_info().logged_in
     end,
+    -- For `//hud buffs active` to name a buff; nil without the library, and
+    -- the answer then says `buff 33`.
+    resources = libraries_error == nil and res or nil,
     screen = screen,
     now = os.clock,
     chat = chat,

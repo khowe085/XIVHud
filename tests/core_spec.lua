@@ -1222,6 +1222,92 @@ describe("core", function()
   -- Touchpoint 1: a component may consume the keyboard by declaring an
   -- optional `on_keyboard(key, down, flags, blocked) -> block` member. Core
   -- delivers every event and propagates a `true` out to Windower.
+  describe("buffs", function()
+    local resources = { buffs = { [33] = { en = "Haste" }, [632] = { en = "Black Sanctus" } } }
+
+    local function buffs_core()
+      deps, env = fakes.core_deps({ resources = resources })
+      core = new_core(deps)
+    end
+
+    it("lists the verb in help", function()
+      core.on_command({ "help" })
+      assert.is_not_nil(env.said():find("//hud buffs", 1, true))
+    end)
+
+    it("refuses while logged out", function()
+      core.on_command({ "buffs", "active" })
+      assert.is_not_nil(env.said():lower():find("log in"))
+    end)
+
+    -- Sorted by the shipped priority, not by id: Black Sanctus (632) outranks
+    -- Haste (33) there. Empty slots (255) are dropped.
+    it("lists the player's buffs by id and name in shipped order", function()
+      buffs_core()
+      login()
+      env.player.buffs = { 33, 255, 632 }
+      core.on_command({ "buffs", "active" })
+      local said = env.said()
+      local sanctus = said:find("632  Black Sanctus", 1, true)
+      local haste = said:find("33  Haste", 1, true)
+      assert.is_not_nil(sanctus)
+      assert.is_not_nil(haste)
+      assert.is_true(sanctus < haste)
+      assert.is_not_nil(said:find("2 buff(s)", 1, true))
+    end)
+
+    it("says so when the player has no buffs", function()
+      buffs_core()
+      login()
+      env.player.buffs = { 255, 255 }
+      core.on_command({ "buffs", "active" })
+      assert.is_not_nil(env.said():lower():find("no buffs"))
+    end)
+
+    it("names a buff by id without the resources", function()
+      login()
+      env.player.buffs = { 33 }
+      core.on_command({ "buffs", "active" })
+      assert.is_not_nil(env.said():find("33  buff 33", 1, true))
+    end)
+
+    it("routes a component's buff verbs to its handle_buffs, words untouched", function()
+      local widget = core.register(bar())
+      local got
+      widget.handle_buffs = function(args)
+        got = args
+        return { "first", "second" }
+      end
+      login()
+      core.on_command({ "buffs", "bar", "Main", "top", "Haste" })
+      assert.are.same({ "Main", "top", "Haste" }, got)
+      assert.is_not_nil(env.said():find("first", 1, true))
+      assert.is_not_nil(env.said():find("second", 1, true))
+    end)
+
+    it("says a component draws no buffs rather than swallowing the verb", function()
+      local widget = core.register(bar())
+      widget.handle_command = function()
+        return "handled as a plain command"
+      end
+      login()
+      core.on_command({ "buffs", "bar", "top", "Haste" })
+      assert.is_not_nil(env.said():lower():find("draws no buffs"))
+      assert.is_nil(env.said():find("plain command", 1, true))
+    end)
+
+    it("refuses a component's buff verbs while logged out", function()
+      local widget = core.register(bar())
+      local called = false
+      widget.handle_buffs = function()
+        called = true
+      end
+      core.on_command({ "buffs", "bar", "top", "Haste" })
+      assert.is_false(called)
+      assert.is_not_nil(env.said():lower():find("log in"))
+    end)
+  end)
+
   describe("component keyboard dispatch", function()
     local function keyboard_widget(name)
       local widget = bar(name)
