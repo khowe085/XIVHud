@@ -275,6 +275,29 @@ their passes are gone and F36-F38 are new.
 | K10 | Roughly how long after the refusal did the re-send succeed? | — (a rough number in the notes is enough) | [x] | [ ] | Re-sent 1-2 seconds after the refusal, about the usual gap between spells |
 | K11 | Try the same with a job ability, then a weaponskill | Both are retried the way a spell is | [ ] | [x] | Not run - the ability (71) and weaponskill (72) message ids remain unverified |
 
+## K2. The weaponskill gate
+
+Every refusal here is SILENT by design - nothing is sent, nothing is said,
+and the slot does not flash. So the failure mode to watch for is a
+weaponskill button that does nothing when you believe it should have fired:
+if that happens, note what was on screen (TP, whether you were engaged, how
+far off the mob was) before doing anything else.
+
+| # | Do this | Passes if | Pass | Fail | What went wrong |
+| --- | --- | --- | --- | --- | --- |
+| K2.1 | `//hud crossbar wsgate` | Reports it as on | [ ] | [ ] |  |
+| K2.2 | Under 1000 TP, mash a weaponskill slot | Nothing is sent and nothing is said; the slot stays dimmed | [ ] | [ ] |  |
+| K2.3 | At 1000+ TP, engaged, in range, press it once | It fires exactly as it always did | [ ] | [ ] |  |
+| K2.4 | At 1000+ TP with nothing targeted, press it | Nothing is sent | [ ] | [ ] |  |
+| K2.5 | At 1000+ TP with a PARTY MEMBER selected, press it | Nothing is sent | [ ] | [ ] |  |
+| K2.6 | Stand well back from a mob (past melee) and press it | Nothing is sent. **Then walk in a step at a time and note the closest distance that was still refused** | [ ] | [ ] |  |
+| K2.7 | Do K2.6 again with a mob much larger than you | The reach grows with the mob - it fires from further out | [ ] | [ ] |  |
+| K2.8 | Fire one weaponskill, then mash the slot while it resolves | Exactly one goes out | [ ] | [ ] |  |
+| K2.9 | Fire one, wait for it to land, then press again | The second fires - the lock released on the finish, not on the clock | [ ] | [ ] |  |
+| K2.10 | `//hud crossbar wsgate off`, then repeat K2.2 | The press goes out and the game refuses it, as it did before this feature | [ ] | [ ] |  |
+| K2.11 | Bind a weaponskill to `<bt>`, engage, clear your tab target, press it | It fires - the gate reads the token the bind aims at | [ ] | [ ] |  |
+| K2.12 | On a job with a ranged weaponskill (bow, gun, or a boomerang), press it from ranged distance | It fires - ranged weaponskills are never distance-gated | [ ] | [ ] |  |
+
 ## L. Layout mode
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
@@ -340,6 +363,9 @@ question the code currently guesses at, listed in
 | O5 | Type `/ma "Cure IV"` with a mob selected, then with nothing selected | What happens each time — does it use the target, prompt, or fail? | [x] | [ ] | Answered by C25 - a bare name in angle brackets casts, so a target token is resolved by the game at send time |
 | O6 | Type `/item "Echo Drops" <a real mob id>` using a number, not a token | Does the game accept a bare numeric target? | [x] | [ ] | Answered by K6 - the cast retry re-sends the pinned mob id in place of <t> and lands on the original mob, so the game does accept a bare numeric target |
 | O7 | On a job with /COR, try to spend a **master** card (Trump Card) | Can a subjob COR burn one? | [ ] | [x] | Not run |
+| O9 | **NOT ENGAGED**, at 1000+ TP with a mob targeted in range, type `/ws "<a weaponskill>" <t>` BY HAND (not from the bar) | Does the game refuse it, or does it engage and fire? The gate refuses a disengaged press on the assumption it is the former - if the game fires, that rule is wrong and must come out | [ ] | [ ] | Not run |
+| O10 | Note the closest distance K2.6 still refused at, and the mob's apparent size | Settles `melee_range`, which ships at a deliberately loose 6 - TIGHTEN it to what you saw, never raise it to that | [ ] | [ ] | Not run |
+| O11 | After K2.9, roughly how long between the press and the weaponskill landing? | Sanity-checks the 1s `in_flight` backstop against a real resolve | [ ] | [ ] | Not run |
 | O8 | If you own a trainer's whistle, look at its name in your key items | Does it start with the same music-note character the mounts do? | [ ] | [x] | Do not own a trainer's whistle |
 
 ---

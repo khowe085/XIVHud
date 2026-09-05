@@ -113,6 +113,7 @@ local HELP = {
   -- advances the rotation is a different command again, listed above.
   "  //hud crossbar cycle <set> drawn|sheathed|both|none",
   "  //hud crossbar retry [on|off] - re-send an action the game refused as too soon",
+  "  //hud crossbar wsgate [on|off] - drop a weaponskill press the game would refuse",
   "  //hud crossbar copy <JOB>",
   "  //hud crossbar context list",
   "  //hud crossbar open [<name>]",
@@ -1144,6 +1145,30 @@ local function new(deps)
     return hint("cast retry: " .. (on and "on" or "off")), true, false
   end
 
+  --- `wsgate [on|off]` -- the weaponskill gate. No argument reports.
+  local function wsgate(args)
+    if #args > 2 then
+      return hint("wsgate [on|off]")
+    end
+    local live = config()
+    if args[2] == nil then
+      --[[ A config written before the feature existed has no block at all,
+           and reads as ON - the shipped posture, and the OPPOSITE of the
+           cast retry's report beside it. Reporting off there would describe
+           a guard that is in fact running. Nothing is written to say so. ]]
+      local block = type(live.wsgate) == "table" and live.wsgate or {}
+      return hint("weaponskill gate: " .. (block.enabled ~= false and "on" or "off"))
+    end
+    local on = parse_switch(args[2])
+    if on == nil then
+      return hint("wsgate [on|off]")
+    end
+    -- Through config_table, so only the switch is touched: the melee reach
+    -- is settled in a live client and must survive the switch.
+    config_table("wsgate").enabled = on
+    return hint("weaponskill gate: " .. (on and "on" or "off")), true, false
+  end
+
   --- `copy <JOB>` -- seed this job's bindings from another job's file.
   local function copy(args)
     if #args ~= 2 then
@@ -1232,6 +1257,7 @@ local function new(deps)
     cycle = cycle_flags,
     wxhb = wxhb,
     retry = retry,
+    wsgate = wsgate,
     copy = copy,
     context = context,
   }

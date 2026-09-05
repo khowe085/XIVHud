@@ -93,6 +93,15 @@ describe("crossbar defaults", function()
     assert.is_false(defaults.retry.enabled)
   end)
 
+  it("ships the weaponskill gate ON, seeded from the module that owns its tuning", function()
+    -- The cast retry's precedent for where the numbers live, and the
+    -- opposite posture: every rule the gate applies is something the game
+    -- itself refuses, so it cannot cost a press that would have worked.
+    local wsgate = require("components/crossbar/wsgate")({})
+    assert.same(wsgate.defaults(), defaults.wsgate)
+    assert.is_true(defaults.wsgate.enabled)
+  end)
+
   it("ships the five-second travel delay, seeded from the module that owns it", function()
     -- One place to tune, the cast retry's precedent: the span sits beside
     -- the countdown that reads it, so the shipped config and the fallback

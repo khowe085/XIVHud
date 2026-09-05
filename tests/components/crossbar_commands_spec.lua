@@ -1968,12 +1968,82 @@ describe("crossbar commands", function()
     end)
   end)
 
+  describe("wsgate", function()
+    it("reports ON with no argument and no block in the config", function()
+      --[[ The opposite of the cast retry's report, and the whole reason the
+           two are not one verb: a config written before this feature
+           existed carries no block, and the gate is on for it. Reporting
+           off there would describe a guard that is in fact running. ]]
+      local commands, world = build()
+      local reply, save_config = commands.command({ "wsgate" })
+      assert.is_string(reply)
+      assert.is_not_nil(reply:find("on", 1, true), reply)
+      assert.is_falsy(save_config)
+      assert.is_nil(world.config.wsgate)
+    end)
+
+    it("turns the gate off and on", function()
+      local commands, world = build()
+      local reply, save_config = commands.command({ "wsgate", "off" })
+      assert.is_string(reply)
+      assert.is_true(save_config)
+      assert.is_false(world.config.wsgate.enabled)
+      local reported = commands.command({ "wsgate" })
+      assert.is_not_nil(reported:find("off", 1, true), reported)
+      commands.command({ "wsgate", "ON" })
+      assert.is_true(world.config.wsgate.enabled)
+      reported = commands.command({ "wsgate" })
+      assert.is_not_nil(reported:find("on", 1, true), reported)
+    end)
+
+    it("leaves the melee reach alone when it flips the switch", function()
+      -- The reach is settled in a live client and must survive the switch,
+      -- exactly as the retry's backoff does.
+      local commands, world = build()
+      world.config.wsgate = { enabled = true, melee_range = 4.25, in_flight = 3 }
+      commands.command({ "wsgate", "off" })
+      assert.is_false(world.config.wsgate.enabled)
+      assert.equal(4.25, world.config.wsgate.melee_range, "the in-client tuning is not reset by the switch")
+      assert.equal(3, world.config.wsgate.in_flight)
+    end)
+
+    it("rebuilds a wsgate block the config lost", function()
+      local commands, world = build()
+      world.config.wsgate = "yes"
+      commands.command({ "wsgate", "off" })
+      assert.is_false(world.config.wsgate.enabled)
+    end)
+
+    it("hints on anything else", function()
+      local commands, world = build()
+      local reply, save_config = commands.command({ "wsgate", "maybe" })
+      assert.is_string(reply)
+      assert.is_falsy(save_config)
+      assert.is_nil(world.config.wsgate)
+      reply = commands.command({ "wsgate", "on", "please" })
+      assert.is_string(reply)
+      assert.is_nil(world.config.wsgate)
+    end)
+  end)
+
   describe("help", function()
     it("lists the authoring verbs", function()
       local commands = build()
       local reply = commands.command({ "help" })
       local text = text_of(reply)
-      for _, verb in ipairs({ "bind", "unbind", "alias", "icon", "swap", "view", "share", "copy", "list", "retry" }) do
+      for _, verb in ipairs({
+        "bind",
+        "unbind",
+        "alias",
+        "icon",
+        "swap",
+        "view",
+        "share",
+        "copy",
+        "list",
+        "retry",
+        "wsgate",
+      }) do
         assert.is_not_nil(text:find(verb, 1, true), verb .. " missing from help: " .. text)
       end
     end)

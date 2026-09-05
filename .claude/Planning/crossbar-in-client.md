@@ -333,6 +333,27 @@ motivating example. Note the fixture no longer uses Instant Warp as its
 stand-in for a temporary item, since that would have written the wrong
 classification into the tests.
 
+**P. Does the game refuse a weaponskill pressed while NOT ENGAGED, or does
+it engage and fire?** The weaponskill gate refuses a disengaged press on the
+assumption that the game does - an assumption written into `wsgate.lua` with
+no evidence behind it, unlike `melee_range` and `in_flight`, which are at
+least labelled guesses. If the game auto-engages, the rule is not merely
+imprecise but wrong, and every out-of-combat weaponskill press is a dead
+button with no message. Testplan row O9 asks for it directly; K2.4 and K2.3
+between them will show it too.
+
+**Q. What is a weaponskill's real reach, and does our own 0x028 release the
+lock?** Two numbers ship as guesses. `melee_range` (3.0 yalms, added to both
+model sizes) has nothing behind it - the DistancePlus port in the targetbar
+carries magic, ninjutsu and ranged bands and no melee one, so this was
+invented. `in_flight` (1s) is the backstop for a finish packet that never
+comes; the ordinary release is our own category-3 `0x028` matched on
+`actor_id`, and NOBODY HAS READ THAT PACKET IN A CLIENT - the same caveat the
+cast retry's refusal ids carry. A wrong match costs the player their
+weaponskill for a second after every press, which is why the span is short
+rather than the three seconds that would have covered a GearSwap ability
+chain. Rows K2.8, K2.9, O10 and O11.
+
 ---
 
 ## Not on this list, and why

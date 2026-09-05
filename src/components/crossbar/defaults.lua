@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local new_render = require("components/crossbar/render")
 local new_retry = require("components/crossbar/retry")
 local new_travel = require("components/crossbar/travel")
+local new_wsgate = require("components/crossbar/wsgate")
 
 local SLOT_SPACING = 6
 -- First-run placements, tuned in-client: the anchor footprints come from
@@ -125,6 +126,11 @@ return function(screen_width, screen_height)
     -- them: it ships off, and its numbers are first guesses to be tuned in
     -- a live client. See retry.lua.
     retry = new_retry({}).defaults(),
+    --[[ The weaponskill gate's switch and its reach, from the module that
+         reads them. It ships ON, unlike the cast retry: every rule it
+         applies is something the game itself refuses. `melee_range` is the
+         one number here that is a guess - see wsgate.lua. ]]
+    wsgate = new_wsgate({}).defaults(),
     -- Seconds between pressing mount, mount roulette or warp and actually
     -- going, counted out in chat and cancelled by resting. Zero is the off
     -- switch, so there is no toggle verb. See travel.lua.
