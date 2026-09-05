@@ -6,9 +6,10 @@ subdirectories are the "xiv" theme assets from the XivParty addon:
 XivParty ships no separate asset licence, so its source licence is the basis on
 which they are redistributed here. That notice is reproduced in full below.
 
-The same licence covers the material ported from XivParty's source into this
-component: the buff priority in buff_order.lua, the trust job table and role
-map in jobs.lua, and the geometry in layout.lua.
+The same licence covers the material ported from XivParty's source into the
+addon: the buff priority in lib/buff_order.lua (shared by the party list and
+the status bar), and the party list's trust job table and role map in
+jobs.lua and geometry in layout.lua.
 
 xiv/BgTopWide.png, xiv/BgMidWide.png and xiv/BgBottomWide.png are modified
 versions of XivParty's BgTop.png, BgMid.png and BgBottom.png, which are kept

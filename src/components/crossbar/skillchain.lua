@@ -1263,12 +1263,13 @@ local function new(deps)
        upstream clears on the zone change event, which the widget does not
        receive; the zone-out chunk on the already-forwarded dispatch says
        the same thing. ]]
-  function self.on_chunk(id, data)
+  --[[ `parsed` is the entry point's one decode of the packet, handed to every
+       reader; 0x63 is read from it alone (three components want that id, and
+       the raw bytes are not decoded a second time here). nil when the parse
+       failed, which reads as nothing having arrived. ]]
+  function self.on_chunk(id, data, parsed)
     if id == 0x0B then
       resonating = {}
-      return
-    end
-    if type(data) ~= "string" then
       return
     end
     -- Byte and length checks come BEFORE the player read: most of these
@@ -1277,6 +1278,26 @@ local function new(deps)
     local function my_id()
       local player = deps.get_player ~= nil and deps.get_player() or nil
       return player ~= nil and player.id or nil
+    end
+    if id == 0x63 then
+      if type(parsed) ~= "table" or parsed.Order ~= 9 or type(parsed["Buffs 1"]) ~= "number" then
+        return
+      end
+      local me = my_id()
+      if me ~= nil then
+        local set = {}
+        for n = 1, 32 do
+          local buff = parsed["Buffs " .. n]
+          if type(buff) == "number" and (CHAIN_BUFF_SECONDS[buff] ~= nil or (buff > 269 and buff < 273)) then
+            set[buff] = true
+          end
+        end
+        buffs[me] = set
+      end
+      return
+    end
+    if type(data) ~= "string" then
+      return
     end
     if id == 0x29 then
       if #data < 26 or u16(data, 25) ~= WEAR_OFF_MESSAGE then
@@ -1288,21 +1309,6 @@ local function new(deps)
         if mine ~= nil then
           mine[u16(data, 13)] = nil
         end
-      end
-    elseif id == 0x63 then
-      if #data < 72 or data:byte(5) ~= 9 then
-        return
-      end
-      local me = my_id()
-      if me ~= nil then
-        local set = {}
-        for n = 1, 32 do
-          local buff = u16(data, n * 2 + 7)
-          if CHAIN_BUFF_SECONDS[buff] ~= nil or (buff > 269 and buff < 273) then
-            set[buff] = true
-          end
-        end
-        buffs[me] = set
       end
     end
   end

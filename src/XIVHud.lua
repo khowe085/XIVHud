@@ -197,6 +197,10 @@ end)
 local partylist_packets = step("loading the partylist packet parsers", function()
   return require("components/partylist/packets")
 end)
+
+local new_statusbar = step("loading the statusbar component", function()
+  return require("components/statusbar/statusbar")
+end)
 local new_giltracker = step("loading the giltracker component", function()
   return require("components/giltracker/giltracker")
 end)
@@ -642,7 +646,13 @@ end
 -- silently stop updating. A component already has to treat a nil packet as a
 -- real case, so failing to nil costs nothing.
 local function parse_packet(data)
-  local ok, packet = pcall(packets.parse, "incoming", data)
+  -- The index happens INSIDE the closure: `packets` is the global assigned
+  -- only when the library loaded, and pcall(packets.parse, ...) would index
+  -- nil before the protected call - which a component holding this without
+  -- the library (the status bar's seed at attach) would then throw from.
+  local ok, packet = pcall(function()
+    return packets.parse("incoming", data)
+  end)
   return ok and packet or nil
 end
 
@@ -847,6 +857,43 @@ step("building the party list component", function()
     generation = read_generation,
     get_mob_by_target = read_mob_by_target,
     get_info = read_info,
+  }))
+end)
+
+--[[ The status bar: the player's own buffs and debuffs on three anchored bars
+     (`bar1`, `bar2`, `bar3`). Presence comes off the player service; the
+     expiries ride the 0x063 chunk, which the chunk handler below pre-parses
+     once for its three readers. The wall clock is what the packet's
+     timestamps count in.
+
+     Gated on safe_mode alone, targetbar's rule: the icons draw by id and the
+     packet arrives parsed, so the resources only ever name a buff in a
+     command's answer - without them it says `buff 33` instead. What a
+     libraries failure DOES cost it is the timers: the `incoming chunk`
+     handler below is registered only with the libraries up - and this one
+     is not too wide a gate for it, the pre-parse being packets.parse - so
+     the bar then draws icons with no time under them. ]]
+step("building the statusbar component", function()
+  if safe_mode then
+    return
+  end
+  core.register(new_statusbar({
+    name = "statusbar",
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
+    resources = libraries_error == nil and res or nil,
+    get_player = read_player,
+    time = os.time,
+    -- The seed at attach: the last 0x063 the client sent, parsed the same
+    -- way the chunk handler parses it - timers after a reload.
+    last_incoming = last_incoming,
+    parse_packet = parse_packet,
+    -- A right-click on an icon asks the cancel addon to drop the buff.
+    send_command = function(command)
+      windower.send_command(command)
+    end,
   }))
 end)
 
@@ -1267,13 +1314,21 @@ windower.register_event(
      Pre-existing, and not this change's to fix. ]]
 if not safe_mode and not libraries_error then
   local ACTION_CHUNK = 0x028
+  --[[ 0x063, the character update: one id over several orders, and three
+       readers - the crossbar's skillchain engine (order 9's buff ids), expbar
+       (order 2's limit points and merits) and the status bar (order 9's ids
+       with their expiries). Windower's field definition for it switches on
+       the order byte, so one packets.parse serves every order and every
+       reader; until 2026-09-04 each of the three decoded it again. ]]
+  local CHAR_UPDATE_CHUNK = 0x063
   local structured = partylist_packets
       and {
         [partylist_packets.ALLIANCE] = true,
         [partylist_packets.PARTY_MEMBER] = true,
         [partylist_packets.CHAR] = true,
+        [CHAR_UPDATE_CHUNK] = true,
       }
-    or {}
+    or { [CHAR_UPDATE_CHUNK] = true }
   windower.register_event(
     "incoming chunk",
     guard.wrap("incoming chunk", function(id, original)
@@ -1281,7 +1336,10 @@ if not safe_mode and not libraries_error then
       if id == ACTION_CHUNK then
         parsed = parse_action(original)
       elseif structured[id] then
-        parsed = packets.parse("incoming", original)
+        -- pcall'd, like parse_action: a packet the library cannot read is a
+        -- nil `parsed` with the bytes still dispatched, never a handler
+        -- failure that guard would count towards disabling the whole thing.
+        parsed = parse_packet(original)
       end
       core.dispatch("chunk", id, original, parsed)
     end)
