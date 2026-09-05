@@ -302,6 +302,7 @@ local function new(deps)
 
   function self.geometry(bar, x, y, scale)
     local plan = self.plan(bar)
+    local _, _, _, height = self.bounds(bar, x, y, scale)
     local pitch_x = (ICON_SIZE + COLUMN_GAP) * scale
     local pitch_y = (ICON_SIZE + TIMER_BAND + ROW_GAP) * scale
     local cells = {}
@@ -322,20 +323,23 @@ local function new(deps)
         -- Whole pixels: a fractional font size is not something a prim can
         -- draw, and layout mode scales down to 0.25.
         text_size = math.max(1, math.floor(TIMER_FONT * scale + 0.5)),
-        -- The tooltip sits under the timer band, anchored to the cell rather
-        -- than the cursor so it is pushed once per cell rather than per move.
+        -- The tooltip sits under the whole bar, level with the cell - under
+        -- the cell it would cover the next row's icons - and is anchored to
+        -- the cell rather than the cursor so it is pushed once per cell
+        -- rather than per move.
         tip_x = cell_x,
-        tip_y = cell_y + (ICON_SIZE + TIMER_BAND) * scale,
+        tip_y = y + height,
         tip_size = math.max(1, math.floor(TIMER_FONT * scale + 0.5)),
       }
     end
     return { cells = cells }
   end
 
-  -- The cell whose icon square holds the point, or nil: the timer band and
-  -- the gaps are not the icon.
-  function self.cell_at(bar, x, y, scale, point_x, point_y)
-    for _, cell in ipairs(self.geometry(bar, x, y, scale).cells) do
+  -- The cell among those laid out whose icon square holds the point, or
+  -- nil: the timer band and the gaps are not the icon. Over the cells a
+  -- paint already built, so a mouse move costs no plan.
+  function self.hit(cells, point_x, point_y)
+    for _, cell in ipairs(cells or {}) do
       if point_x >= cell.x and point_x < cell.x + cell.size and point_y >= cell.y and point_y < cell.y + cell.size then
         return cell
       end

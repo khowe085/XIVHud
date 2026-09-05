@@ -595,6 +595,18 @@ describe("statusbar widget", function()
       assert.are.equal("KO (0)", tip().last.text, "bar2 sits over bar1 and wins")
     end)
 
+    -- A command that re-lays the bar moves the cells under a still cursor.
+    it("re-reads the tip when a command repaints the bar", function()
+      widget.on_mouse(MOVE, 140, 60, 0)
+      assert.are.equal("haste (33)", tip().last.text)
+      widget.handle_command({ "filter", "debuffs" })
+      assert.is_nil(tip())
+      widget.on_mouse(MOVE, 105, 60, 0)
+      assert.are.equal("KO (0)", tip().last.text)
+      widget.handle_command({ "tooltips", "off" })
+      assert.is_nil(tip())
+    end)
+
     it("does no hit-testing on a move while tooltips are off", function()
       widget.handle_command({ "tooltips", "off" })
       local before = calls()

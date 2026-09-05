@@ -217,6 +217,7 @@ local function new(ctx)
       prim.hide()
     end
     bar.drawn = {}
+    bar.cells = nil
   end
 
   -- One cell against what it last drew; only the fields that moved are pushed.
@@ -278,6 +279,8 @@ local function new(ctx)
     end
 
     local geometry = logic.geometry(anchor, bar.pos.x, bar.pos.y, bar.scale)
+    -- Kept for the mouse: the hit test runs over what was drawn.
+    bar.cells = geometry.cells
     for index, cell in ipairs(geometry.cells) do
       draw_cell(bar, index, cell)
     end
@@ -471,7 +474,7 @@ local function new(ctx)
       local anchor = ANCHORS[index]
       local bar = bars[anchor]
       if drawing(bar) then
-        local cell = logic.cell_at(anchor, bar.pos.x, bar.pos.y, bar.scale, x, y)
+        local cell = logic.hit(bar.cells, x, y)
         if cell then
           return anchor, cell
         end
@@ -578,6 +581,7 @@ local function new(ctx)
         save()
       end
       paint_all()
+      refresh_tip()
     end
     return lines
   end

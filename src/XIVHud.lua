@@ -646,7 +646,13 @@ end
 -- silently stop updating. A component already has to treat a nil packet as a
 -- real case, so failing to nil costs nothing.
 local function parse_packet(data)
-  local ok, packet = pcall(packets.parse, "incoming", data)
+  -- The index happens INSIDE the closure: `packets` is the global assigned
+  -- only when the library loaded, and pcall(packets.parse, ...) would index
+  -- nil before the protected call - which a component holding this without
+  -- the library (the status bar's seed at attach) would then throw from.
+  local ok, packet = pcall(function()
+    return packets.parse("incoming", data)
+  end)
   return ok and packet or nil
 end
 

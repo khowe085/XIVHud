@@ -106,6 +106,18 @@ describe("entry point", function()
       -- The bar that needs no library is still there.
       assert.is_not_nil(without.ctxs.targetbar)
     end)
+
+    -- The status bar stays up without the library and seeds its timers at
+    -- attach through parse_packet; that must answer nil there, not index a
+    -- nil global on its way into pcall and throw out of an attach core runs
+    -- unprotected.
+    it("hands the status bar a parse_packet that answers nil without the library", function()
+      local without = harness.boot({ require_fails = { packets = "no packets library" } })
+      assert.is_not_nil(without.ctxs.statusbar)
+      assert.has_no.errors(function()
+        assert.is_nil(without.ctxs.statusbar.parse_packet("bytes"))
+      end)
+    end)
   end)
 
   --[[ The player service. Which client reads reach the client, and how the

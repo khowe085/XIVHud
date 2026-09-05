@@ -311,26 +311,41 @@ describe("statusbar logic", function()
       logic.set_buffs({ KO, HASTE })
     end)
 
+    -- The hit test runs over the cells a paint already laid out, so it is
+    -- what is drawn that is tested, at no cost of a plan per mouse move.
+    local function cells(bar, x, y, scale)
+      return logic.geometry(bar, x, y, scale).cells
+    end
+
     it("finds the cell under a point, by the icon's own square", function()
-      local first = logic.cell_at("bar1", 100, 50, 1, 105, 60)
-      assert.are.equal(KO, first.id)
-      assert.are.equal(HASTE, logic.cell_at("bar1", 100, 50, 1, 134, 81).id)
-      assert.is_nil(logic.cell_at("bar1", 100, 50, 1, 133, 60), "the gap between icons")
-      assert.is_nil(logic.cell_at("bar1", 100, 50, 1, 105, 83), "the timer band is not the icon")
-      assert.is_nil(logic.cell_at("bar1", 100, 50, 1, 99, 60))
-      assert.is_nil(logic.cell_at("bar3", 100, 50, 1, 105, 60), "an empty bar has no cells")
+      local laid = cells("bar1", 100, 50, 1)
+      assert.are.equal(KO, logic.hit(laid, 105, 60).id)
+      assert.are.equal(HASTE, logic.hit(laid, 134, 81).id)
+      assert.is_nil(logic.hit(laid, 133, 60), "the gap between icons")
+      assert.is_nil(logic.hit(laid, 105, 83), "the timer band is not the icon")
+      assert.is_nil(logic.hit(laid, 99, 60))
+      assert.is_nil(logic.hit(cells("bar3", 100, 50, 1), 105, 60), "an empty bar has no cells")
+      assert.is_nil(logic.hit(nil, 105, 60))
     end)
 
     it("scales the hit test with the bar", function()
-      assert.are.equal(HASTE, logic.cell_at("bar1", 0, 0, 2, 70, 10).id)
-      assert.is_nil(logic.cell_at("bar1", 0, 0, 2, 66, 10))
+      local laid = cells("bar1", 0, 0, 2)
+      assert.are.equal(HASTE, logic.hit(laid, 70, 10).id)
+      assert.is_nil(logic.hit(laid, 66, 10))
     end)
 
-    it("anchors the tip under the cell's timer band", function()
-      local cell = logic.cell_at("bar1", 100, 50, 1, 105, 60)
-      assert.are.equal(100, cell.tip_x)
-      assert.is_true(cell.tip_y >= 50 + 32 + 14)
-      assert.is_true(cell.tip_size >= 1)
+    -- Under the whole bar rather than under the cell: on a 2-4 row bar a tip
+    -- under the cell would sit on the next row's icons.
+    it("anchors the tip under the bar, level with the cell", function()
+      config.bars.bar1.rows = 4
+      logic.set_buffs(many(6))
+      local laid = cells("bar1", 100, 50, 1)
+      local _, _, _, height = logic.bounds("bar1", 100, 50, 1)
+      assert.are.equal(100, laid[1].tip_x)
+      assert.are.equal(50 + height, laid[1].tip_y)
+      assert.are.equal(50 + height, laid[6].tip_y)
+      assert.are.equal(laid[6].x, laid[6].tip_x)
+      assert.is_true(laid[1].tip_size >= 1)
     end)
 
     it("names the buff with its id", function()
