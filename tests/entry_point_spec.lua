@@ -77,6 +77,53 @@ describe("entry point", function()
     end)
   end)
 
+  --[[ The inventory tracker is the only component that reads the WHOLE item
+       table, and the only one that reads no packet through the packets
+       library: the one field it wants is a byte of the chunk. Neither fact is
+       visible from its own spec, which is handed a ctx already built. ]]
+  describe("the inventory tracker", function()
+    it("is built and registered with the rest", function()
+      assert.is_not_nil(boot.ctxs.invtracker)
+    end)
+
+    it("reads the client's items itself, since no service caches them", function()
+      assert.is_function(boot.ctxs.invtracker.get_items)
+      assert.are.same({}, boot.ctxs.invtracker.get_items())
+    end)
+
+    it("takes the whole item table, not one bag of it", function()
+      -- get_items(bag) answers one bag; the grid draws every bag at once, and
+      -- the capacities it sizes blocks from ride the same no-argument read.
+      boot.item_reads = {}
+
+      boot.ctxs.invtracker.get_items()
+
+      assert.are.equal(1, #boot.item_reads)
+      assert.are.equal(0, #boot.item_reads[1])
+    end)
+
+    it("sits out when the packets library did not load", function()
+      --[[ Every signal that something moved arrives as a chunk or an item
+           event, and BOTH of those handlers are registered behind the same
+           library gate. Registered without them it would read once at attach
+           and then draw a frozen grid of stale slots for the session, which
+           is worse than not being there. ]]
+      local without = harness.boot({ require_fails = { packets = "no packets library" } })
+
+      assert.is_nil(without.ctxs.invtracker)
+      -- The components that need no library are still there.
+      assert.is_not_nil(without.ctxs.targetbar)
+    end)
+
+    it("shares the resources the other components read", function()
+      assert.are.equal(boot.ctxs.targetbar.resources, boot.ctxs.invtracker.resources)
+    end)
+
+    it("needs no packet parser, reading its one field off the raw chunk", function()
+      assert.is_nil(boot.ctxs.invtracker.parse_packet)
+    end)
+  end)
+
   --[[ The exp bar reads packets nothing else does, and asks the client for the
        last of two of them at attach. Neither the dep nor its pcall is visible
        from the component's own spec. ]]

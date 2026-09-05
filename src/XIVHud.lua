@@ -219,6 +219,9 @@ end)
 local new_expbar = step("loading the expbar component", function()
   return require("components/expbar/expbar")
 end)
+local new_invtracker = step("loading the invtracker component", function()
+  return require("components/invtracker/invtracker")
+end)
 
 -- Every Windower handler goes through this, so a bug degrades to a message and
 -- a dead handler rather than an unexplained freeze.
@@ -630,6 +633,15 @@ local function get_item(bag, index)
   return windower.ffxi.get_items(bag, index)
 end
 
+--[[ The same expensive push as get_gil above, kept whole: the inventory grid
+     draws every bag at once, and the capacities it sizes each block from ride
+     this one read rather than a second call that could disagree with it.
+     get_bag_info would answer those capacities more cheaply, but not the items
+     filling them, so it would be a second read either way. ]]
+local function get_all_items()
+  return windower.ffxi.get_items()
+end
+
 --[[ Where the client is installed, for the DAT reads above. Undocumented, and
      the reason the setting exists to override it: the wiki documents
      `pol_path` ("path to playonline and ffxi install directory") but not
@@ -1031,6 +1043,28 @@ step("building the expbar component", function()
     get_player = read_player,
     parse_packet = parse_packet,
     last_incoming = last_incoming,
+  }))
+end)
+
+--[[ Gated on the libraries too, like giltracker and the equip viewer, though
+     for a different reason: this component parses nothing (the one field it
+     reads, 0x01D's Flag, is a byte of the raw chunk) and the resources library
+     costs it only the colour that marks a full stack. What it cannot do
+     without is the CHUNK DISPATCH, which is registered behind the same gate,
+     along with the item movement events - every signal that something moved
+     arrives through one of the two. Registered without them it would read once
+     at attach and then draw a frozen grid of stale slots for the rest of the
+     session, which is worse than sitting the session out. ]]
+step("building the invtracker component", function()
+  if safe_mode or libraries_error then
+    return
+  end
+  core.register(new_invtracker({
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
+    get_items = get_all_items,
+    resources = res,
   }))
 end)
 
