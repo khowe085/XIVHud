@@ -151,6 +151,43 @@ describe("crossbar weaponskill gate", function()
     end)
   end)
 
+  describe("blocking buffs", function()
+    it("refuses a weaponskill while amnesia is up", function()
+      --[[ Amnesia stops weaponskills outright, so a press under it can
+           never land however close you are or how much TP you hold (Kevin,
+           live client, 2026-09-05: one went straight through the gate).
+           The id is the one retry.lua already blocks retries on, read off
+           the party list's own buff order. ]]
+      local wsgate = world()
+      assert.is_false(wsgate.allow(WS, facts({ buffs = { 16 } })))
+      assert.is_false(wsgate.allow(WS, facts({ buffs = { 2, 16, 33 } })))
+    end)
+
+    it("passes a weaponskill under buffs that do not stop one", function()
+      -- Silence and mute stop spells, not weaponskills - the same split
+      -- retry.lua keeps, and pooling them would refuse presses that work.
+      local wsgate = world()
+      assert.is_true(wsgate.allow(WS, facts({ buffs = { 6, 29 } })))
+      assert.is_true(wsgate.allow(WS, facts({ buffs = {} })))
+    end)
+
+    it("allows a press whose buffs it could not read", function()
+      local wsgate = world()
+      assert.is_true(wsgate.allow(WS, facts({ buffs = NONE })))
+      assert.is_true(wsgate.allow(WS, facts({ buffs = "amnesia" })))
+    end)
+
+    it("refuses on the buff before it measures anything else", function()
+      -- Nothing else needs asking: no distance and no TP can make a press
+      -- under amnesia land.
+      local wsgate = world()
+      local blocked = facts({ buffs = { 16 } })
+      blocked.distance_squared = nil
+      blocked.model_size = nil
+      assert.is_false(wsgate.allow(WS, blocked))
+    end)
+  end)
+
   describe("melee reach", function()
     it("measures the reach against the distance the target bar prints", function()
       --[[ The setting IS that distance (Kevin, 2026-09-05): it is what a

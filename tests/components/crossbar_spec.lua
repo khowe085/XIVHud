@@ -1389,6 +1389,23 @@ describe("crossbar live widget", function()
         assert.is_false(image_of("xhb_left", 3, "feedback").visible, "nothing fired, nothing flashes")
       end)
 
+      it("refuses a weaponskill while amnesia is up", function()
+        --[[ Amnesia stops weaponskills outright, so the press can never
+             land - and one went straight through the gate in a live client
+             (Kevin, 2026-09-05) because the buffs never reached it. Id 16,
+             the one retry.lua already blocks retries on. ]]
+        gated()
+        env.player.buffs = { 16 }
+        weaponskill()
+        assert.are.same({}, env.commands, "amnesia stops a weaponskill")
+
+        gated()
+        -- Silence stops spells, not weaponskills.
+        env.player.buffs = { 6 }
+        weaponskill()
+        assert.are.equal(1, #env.commands, "silence does not")
+      end)
+
       it("refuses while not engaged and out of reach", function()
         gated()
         env.player.status = 0

@@ -81,6 +81,19 @@ local WEAPONSKILL_TP = 1000
      not load, so the gate degrades rather than disappearing. ]]
 local ENGAGED_STATUS = 1
 
+--[[ Buffs that stop a weaponskill outright, by their resource ids. AMNESIA
+     alone, which is what a live client produced (Kevin, 2026-09-05: a press
+     under it went straight through the gate). The id is the one retry.lua
+     already blocks retries on, read off the party list's own buff order,
+     and this is deliberately NOT pooled with the buffs that stop a spell:
+     silence and mute leave weaponskills alone, and refusing on them would
+     kill presses that work.
+
+     A table rather than a comparison because there is almost certainly more
+     here - terror and impairment are the obvious candidates - and each
+     wants a client to confirm it before it earns a line. ]]
+local BLOCKING_BUFFS = { [16] = true }
+
 --[[ Skills whose weaponskills are fired from across the field. Their reach
      is DistancePlus' bands rather than one melee number, and that port
      lives in the targetbar, which cannot be required from here - so a
@@ -285,6 +298,17 @@ local function new(deps)
          have made every out-of-combat press a dead button with no message,
          which is why it was tracked as in-client question P rather than
          left as a plain rule. ]]
+    --[[ Before anything is measured: no distance and no amount of TP can
+         make a press under amnesia land. A buff list that cannot be read
+         allows, as every unreadable fact here does. ]]
+    if type(facts.buffs) == "table" then
+      for _, id in ipairs(facts.buffs) do
+        if BLOCKING_BUFFS[id] then
+          return false
+        end
+      end
+    end
+
     local status = tonumber(facts.status)
     if status ~= nil and status ~= engaged then
       return false

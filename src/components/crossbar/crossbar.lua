@@ -2193,6 +2193,9 @@ local function new(ctx)
     return {
       tp = vitals ~= nil and vitals.tp or nil,
       status = player ~= nil and player.status or nil,
+      -- Amnesia stops a weaponskill outright, and the buffs are already
+      -- read here every frame for the context layers.
+      buffs = player ~= nil and player.buffs or nil,
       skill = meta ~= nil and meta.weapon or nil,
       distance_squared = target ~= nil and target.distance or nil,
       -- The mob's bulk, which the reach grows with past a pivot: a big
