@@ -2175,10 +2175,10 @@ local function new(ctx)
        skips the distance test for the ranged ones.
 
        The mob itself never leaves this function: the gate wants its
-       distance and nothing else, the two rules that read the rest of it
-       having been cut against a live client. A token the gate will not
-       look up, or a ctx with no mob lookup at all, simply yields no
-       distance, and the reach rule sits out. ]]
+       distance and its bulk, the two rules that read the rest of it having
+       been cut against a live client. A token the gate will not look up, or
+       a ctx with no mob lookup at all, simply yields neither, and the reach
+       rule sits out. ]]
   local function gate_facts(record)
     -- For a weaponskill alone: every other type would pay a resource lookup
     -- and up to two mob reads for facts nothing downstream consults.
@@ -2195,6 +2195,10 @@ local function new(ctx)
       status = player ~= nil and player.status or nil,
       skill = meta ~= nil and meta.weapon or nil,
       distance_squared = target ~= nil and target.distance or nil,
+      -- The mob's bulk, which the reach grows with past a pivot: a big
+      -- monster is struck from further out because you cannot get close to
+      -- it. See wsgate.lua's size_pivot.
+      model_size = target ~= nil and target.model_size or nil,
     }
   end
 

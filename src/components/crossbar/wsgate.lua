@@ -109,6 +109,19 @@ local function positive(value, fallback)
   return number
 end
 
+--[[ The same, but zero is legitimate: a size pivot of zero means every mob
+     adds the whole of its bulk to the reach, which is a real setting rather
+     than a broken one. Split from `positive` above rather than
+     parameterised, because which side zero falls on is the entire
+     difference. ]]
+local function nonnegative(value, fallback)
+  local number = tonumber(value)
+  if number == nil or number ~= number or number < 0 or number == math.huge then
+    return fallback
+  end
+  return number
+end
+
 local function new(deps)
   local self = {}
 
@@ -157,6 +170,37 @@ local function new(deps)
            greater - a player types the number they watched work.
            `//hud crossbar wsgate range <yalms>` moves it live. ]]
       melee_range = 4,
+      --[[ The mob bulk the reach already covers. Past it, every yalm of
+           model size is another yalm of reach; at or under it, `melee_range`
+           is the whole answer.
+
+           FITTED to five live readings (Kevin, 2026-09-05), model size
+           against the furthest distance a weaponskill still landed from:
+           1.0 -> 4, 1.2 -> 4, 1.5 -> 4, 2.5 -> 5, 6.3 -> 9. The first three
+           are what put a FLOOR under it - three different sizes all capping
+           at the same 4, so the reach does not shrink with a small mob - and
+           they are why this is a pivot rather than the plain `base + size`
+           that a two-point fit suggested: that fit refused the 1.0 mob at a
+           distance it had just been struck from.
+
+           The readings are LOWER BOUNDS - the furthest distance that still
+           landed, not the first that failed - so every cutoff must REACH
+           its reading, and that is what fixes 1.3 rather than a rounder
+           number: the 6.3 mob allows no more than 1.3 and the 2.5 mob no
+           more than 1.5, so 1.3 is the tightest value honouring both. A
+           pivot of 1.5 was tried first and fell 0.2 short of the 6.3
+           reading, which is a press that landed in a client being refused.
+
+           It also keeps `melee_range` meaning what it already meant, the
+           reach against an ORDINARY mob, so the number settled by walking in
+           on one carries over untouched and the size term is purely an
+           addition for the big.
+
+           This is why the mob's size arrives here at all, and why the reach
+           SITS OUT when it cannot be read: without it there is no telling a
+           rabbit from a monster, and measuring the monster on the bare reach
+           would refuse a press that lands. ]]
+      size_pivot = 1.3,
     }
   end
 
@@ -173,6 +217,28 @@ local function new(deps)
        could report a number that is not the one being measured against. ]]
   function self.melee_range()
     return positive(settings().melee_range, self.defaults().melee_range)
+  end
+
+  --- The reach against a mob of this bulk: the setting, plus every yalm of
+  --- model size past the pivot. Public for the same reason melee_range is -
+  --- the CLI prints it for the current target, and a second reading of the
+  --- sum over there could name a number that is not the one being measured.
+  --- The bulk the reach already covers, live. Public beside melee_range so
+  --- the CLI can report and set it without a second reading of the fallback.
+  function self.size_pivot()
+    return nonnegative(settings().size_pivot, self.defaults().size_pivot)
+  end
+
+  function self.reach_for(model_size)
+    -- NaN and infinity answer "no size" rather than an infinite reach: the
+    -- module is scrupulous about both everywhere else, and an inf here
+    -- would switch the rule off while printing `inf` in the CLI's readout.
+    local size = tonumber(model_size)
+    if size == nil or size ~= size or size == math.huge then
+      return nil
+    end
+    local pivot = self.size_pivot()
+    return self.melee_range() + math.max(0, size - pivot)
   end
 
   --[[ Engaged, resolved from the resource table rather than trusted from
@@ -225,8 +291,9 @@ local function new(deps)
       -- field and prints what comes out, which is the number melee_range
       -- is expressed in.
       local squared = tonumber(facts.distance_squared)
+      local reach = self.reach_for(facts.model_size)
       -- Strictly greater: AT the reach still fires. See melee_range above.
-      if squared ~= nil and math.sqrt(math.max(squared, 0)) > self.melee_range() then
+      if squared ~= nil and reach ~= nil and math.sqrt(math.max(squared, 0)) > reach then
         return false
       end
     end

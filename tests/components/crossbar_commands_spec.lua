@@ -1980,9 +1980,12 @@ describe("crossbar commands", function()
       -- name it: a player settling it in a live client needs to see what it
       -- is now without opening the file.
       local commands, world = build()
-      local shipped = require("components/crossbar/wsgate")({}).defaults().melee_range
+      local defaults = require("components/crossbar/wsgate")({}).defaults()
       local reply = commands.command({ "wsgate" })
-      assert.is_not_nil(reply:find(tostring(shipped), 1, true), reply)
+      assert.is_not_nil(reply:find(tostring(defaults.melee_range), 1, true), reply)
+      -- And the pivot, which decides how much of a big mob's bulk is added
+      -- to that reach - the reach alone does not explain what happens.
+      assert.is_not_nil(reply:find(tostring(defaults.size_pivot), 1, true), reply)
       world.config.wsgate = { enabled = true, melee_range = 4.5 }
       reply = commands.command({ "wsgate" })
       assert.is_not_nil(reply:find("4.5", 1, true), reply)
@@ -2000,6 +2003,11 @@ describe("crossbar commands", function()
       local reply = commands.command({ "wsgate" })
       assert.is_not_nil(reply:find("5.5", 1, true), reply)
       assert.is_not_nil(reply:find("2.1", 1, true), reply)
+      --[[ And the reach THIS mob earns, which is the number that actually
+           decides the press: 4 plus its 0.6 of bulk past the pivot. Without
+           it a player reads a reach of 4 beside a target 5.5 yalms off and
+           concludes the gate is about to refuse a press it will allow. ]]
+      assert.is_not_nil(reply:find("4.8", 1, true), reply)
     end)
 
     it("says so when there is nothing to measure", function()
@@ -2015,6 +2023,33 @@ describe("crossbar commands", function()
       world.target = { distance = 30.25 }
       local reply = commands.command({ "wsgate" })
       assert.is_not_nil(reply:find("5.5", 1, true), reply)
+    end)
+
+    it("sets the size pivot, and reports it on its own", function()
+      --[[ A verb for the same reason the reach has one: it is settled by
+           fighting things of different sizes and reading what worked, and
+           hand-editing a file between fights is the wrong loop. ]]
+      local commands, world = build()
+      local reply, save_config = commands.command({ "wsgate", "pivot", "2" })
+      assert.is_string(reply)
+      assert.is_true(save_config)
+      assert.are.equal(2, world.config.wsgate.size_pivot)
+      local reported = commands.command({ "wsgate", "pivot" })
+      assert.is_not_nil(reported:find("2", 1, true), reported)
+      -- Zero is legitimate here and not an off switch: it means every mob
+      -- adds the whole of its bulk.
+      commands.command({ "wsgate", "pivot", "0" })
+      assert.are.equal(0, world.config.wsgate.size_pivot)
+    end)
+
+    it("refuses a pivot that would break the reach, writing nothing", function()
+      local commands, world = build()
+      for _, bad in ipairs({ "big", "-1", "" }) do
+        local reply, save_config = commands.command({ "wsgate", "pivot", bad })
+        assert.is_string(reply, bad)
+        assert.is_falsy(save_config, bad)
+        assert.is_nil(world.config.wsgate, bad)
+      end
     end)
 
     it("sets the melee reach, and reports it on its own", function()

@@ -116,6 +116,7 @@ local HELP = {
   "  //hud crossbar retry [on|off] - re-send an action the game refused as too soon",
   "  //hud crossbar wsgate [on|off] - drop a weaponskill press the game would refuse",
   "  //hud crossbar wsgate range <yalms> - how close it wants you for a melee weaponskill",
+  "  //hud crossbar wsgate pivot <yalms> - the mob bulk that reach already covers",
   "  //hud crossbar copy <JOB>",
   "  //hud crossbar context list",
   "  //hud crossbar open [<name>]",
@@ -1158,7 +1159,7 @@ local function new(deps)
     end,
   })
 
-  local WSGATE_FORM = "wsgate [on|off] - or wsgate range <yalms>"
+  local WSGATE_FORM = "wsgate [on|off] - or wsgate range <yalms>, wsgate pivot <yalms>"
 
   --- How the gate's state reads out, switch and reach together. The reach is
   --- the one rule still guessed at, so a player settling it in a live client
@@ -1168,7 +1169,8 @@ local function new(deps)
       .. (gate.enabled() and "on" or "off")
       .. ", melee reach "
       .. tostring(gate.melee_range())
-      .. " yalms"
+      .. " yalms, size pivot "
+      .. tostring(gate.size_pivot())
     --[[ And what is in front of you, which is the whole of how the reach
          gets settled: neither number is on screen anywhere else, and a
          BIG mob wants more reach than a small one (Kevin, live client,
@@ -1188,7 +1190,38 @@ local function new(deps)
     if size ~= nil then
       line = line .. (", model size %.2f"):format(size)
     end
+    --[[ And the reach THIS mob earns, which is the number that actually
+         decides the press - a big monster is struck from further out than
+         the bare setting says. Without it a player reads a reach of 4
+         beside a target 5.5 yalms off and concludes the gate is about to
+         refuse a press it will in fact allow. From the module, so the two
+         cannot disagree. ]]
+    local reach = gate.reach_for(target.model_size)
+    if reach ~= nil then
+      line = line .. (", reach here %.2f"):format(reach)
+    end
     return line
+  end
+
+  --[[ `wsgate pivot [<yalms>]` -- the mob bulk the reach already covers.
+       A verb for the same reason the reach has one: it is settled by
+       fighting things of different sizes and reading what worked, and
+       hand-editing a file between fights is the wrong loop. ]]
+  local function wsgate_pivot(args)
+    if #args > 3 then
+      return hint(WSGATE_FORM)
+    end
+    if args[3] == nil then
+      return hint("weaponskill gate size pivot: " .. tostring(gate.size_pivot()) .. " yalms")
+    end
+    -- Zero is legitimate here and NOT an off switch, unlike the reach's:
+    -- it means every mob adds the whole of its bulk.
+    local yalms = tonumber(args[3])
+    if yalms == nil or yalms ~= yalms or yalms < 0 or yalms == math.huge then
+      return hint("wsgate pivot <yalms> - a distance of zero or more")
+    end
+    config_table("wsgate").size_pivot = yalms
+    return hint("weaponskill gate size pivot: " .. tostring(yalms) .. " yalms"), true, false
   end
 
   --- `wsgate range [<yalms>]` -- the melee reach. No argument reports.
@@ -1215,6 +1248,9 @@ local function new(deps)
   local function wsgate(args)
     if args[2] ~= nil and args[2]:lower() == "range" then
       return wsgate_range(args)
+    end
+    if args[2] ~= nil and args[2]:lower() == "pivot" then
+      return wsgate_pivot(args)
     end
     if #args > 2 then
       return hint(WSGATE_FORM)

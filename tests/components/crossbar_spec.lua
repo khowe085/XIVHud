@@ -910,7 +910,7 @@ describe("crossbar live widget", function()
            the fixture would have described a world where the target and
            range rules could never fire. A test that cares which mob is
            selected still overwrites the whole table. ]]
-      target = { id = 99, hpp = 75, is_npc = true, distance = 4 },
+      target = { id = 99, hpp = 75, is_npc = true, distance = 4, model_size = 1 },
       equips = {},
       writes = {},
       stats = {},
@@ -1378,7 +1378,7 @@ describe("crossbar live widget", function()
 
         build_world()
         -- Twenty yalms out: the mob table reports the square.
-        env.target = { id = 99, hpp = 75, distance = 400 }
+        env.target = { id = 99, hpp = 75, distance = 400, model_size = 1 }
         weaponskill()
         assert.are.same({}, env.commands, "out of reach")
       end)
@@ -1422,7 +1422,7 @@ describe("crossbar live widget", function()
              lookup yields no distance and the reach rule sits out. ]]
         build_world()
         widget.handle_command({ "bind", "1L6", "ws", "Savage Blade", "bt" })
-        env.targets = { t = { id = 1, distance = 400 }, bt = { id = 99, distance = 4 } }
+        env.targets = { t = { id = 1, distance = 400, model_size = 1 }, bt = { id = 99, distance = 4, model_size = 1 } }
         press(LEFT)
         press(DIK_SLOT[6])
         assert.are.same({ 'input /ws "Savage Blade" <bt>' }, env.commands, "measured against the battle target")
@@ -1437,7 +1437,7 @@ describe("crossbar live widget", function()
              ANY of them refuses the press. The gate must ask about none. ]]
         build_world()
         widget.handle_command({ "bind", "1L6", "ws", "Savage Blade", "st" })
-        env.target = { id = 99, distance = 400 }
+        env.target = { id = 99, distance = 400, model_size = 1 }
         press(LEFT)
         env.target_tokens = {}
         press(DIK_SLOT[6])
@@ -1459,12 +1459,29 @@ describe("crossbar live widget", function()
         assert.are.equal(0, env.target_reads, "a spell aimed at <t> asks nothing of the client")
       end)
 
+      it("strikes a big mob from further out than a small one", function()
+        --[[ The scenario that put the size correction back (Kevin, live
+             client, 2026-09-05): a large monster's own bulk kept him
+             outside 4 yalms of it, yet a weaponskill landed from 7. Seven
+             yalms is a squared 49; the shipped reach is 4 and the pivot
+             1.3, so a 6.3 mob earns 9 and a 1.0 mob earns 4. ]]
+        build_world()
+        env.target = { id = 99, distance = 49, model_size = 1 }
+        weaponskill()
+        assert.are.same({}, env.commands, "seven yalms from a small mob is out of reach")
+
+        build_world()
+        env.target = { id = 99, distance = 49, model_size = 6.3 }
+        weaponskill()
+        assert.are.equal(1, #env.commands, "and the same seven yalms from a big one is not")
+      end)
+
       it("takes a new melee reach from the command, at once", function()
         -- Read through a closure like the switch, so a number settled in a
         -- live client takes effect on the next press rather than the next
         -- attach - which is the whole point of settling it live.
         build_world()
-        env.target = { id = 99, hpp = 75, is_npc = true, distance = 400 }
+        env.target = { id = 99, hpp = 75, is_npc = true, distance = 400, model_size = 1 }
         weaponskill()
         assert.are.same({}, env.commands, "twenty yalms out, at the shipped four")
         local reply = widget.handle_command({ "wsgate", "range", "30" })
