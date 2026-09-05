@@ -62,6 +62,9 @@ local function build(opts)
   if opts.job ~= false then
     bindings.set_job(opts.job or "SCH", opts.sub)
   end
+  if opts.weapon then
+    bindings.set_weapon_type(opts.weapon)
+  end
   local commands = new_commands({
     bindings = function()
       return bindings
@@ -143,6 +146,39 @@ describe("crossbar commands", function()
       local commands, world = build()
       commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Addendum:", "White" })
       assert.equal("Addendum: White", world.files.SCH.contexts["light-arts"][1].left[3].action)
+    end)
+
+    it("targets the equipped weapon class with wpn:", function()
+      local commands, world = build({ weapon = "Great Katana" })
+      commands.command({ "bind", "wpn:1L3", "ws", "Tachi:", "Fudo" })
+      assert.equal("Tachi: Fudo", world.files.SCH.weapons["Great Katana"][1].left[3].action)
+    end)
+
+    it("refuses a wpn: address with nothing in hand, and says why", function()
+      local commands, world = build()
+      local reply = commands.command({ "bind", "wpn:1L3", "ws", "Savage", "Blade" })
+      assert.is_not_nil(text_of(reply):find("weapon", 1, true), text_of(reply))
+      assert.is_nil(world.files.SCH)
+    end)
+
+    -- The other side of the same rule: an entry the player can SEE in
+    -- `list` and can delete must not be one they cannot rename.
+    it("still relabels an entry an out-of-reach context already holds", function()
+      local commands, world = build({
+        job = "WAR",
+        sub = "NIN",
+        files = {
+          WAR = { contexts = { ["light-arts"] = { [1] = { left = { [3] = { type = "ja", action = "Penury" } } } } } },
+        },
+      })
+      commands.command({ "alias", "ctx:light-arts:1L3", "Pen" })
+      assert.equal("Pen", world.files.WAR.contexts["light-arts"][1].left[3].alias)
+    end)
+
+    it("refuses a context this job cannot reach, naming the job that can", function()
+      local commands = build({ job = "WAR", sub = "NIN" })
+      local reply = commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Penury" })
+      assert.is_not_nil(text_of(reply):find("SCH", 1, true), text_of(reply))
     end)
 
     it("rejects an unknown context and an unparseable set", function()
@@ -1661,6 +1697,39 @@ describe("crossbar commands", function()
       assert.equal(2, #marked, "Addendum: White implies Light Arts: " .. text)
     end)
 
+    --[[ The gate (Kevin, 2026-09-04): a context follows the job whose buff
+         it watches, and listing one the player cannot raise is an invitation
+         to bind into a layer that can never fire. ]]
+    it("lists only the contexts the scoped job can reach", function()
+      local commands = build()
+      local text = text_of(commands.command({ "context", "list" }))
+      assert.is_nil(text:find("unbridled", 1, true), "a BLU context on SCH: " .. text)
+    end)
+
+    it("lists a BLU main job's own context and none of the arts", function()
+      local commands = build({ job = "BLU", sub = "WAR" })
+      local text = text_of(commands.command({ "context", "list" }))
+      assert.is_not_nil(text:find("unbridled", 1, true), text)
+      assert.is_nil(text:find("light-arts", 1, true), text)
+    end)
+
+    it("says so plainly on a job with no context at all", function()
+      local commands = build({ job = "WAR", sub = "NIN" })
+      local reply = commands.command({ "context", "list" })
+      local text = text_of(reply)
+      assert.is_not_nil(text:find("WAR", 1, true), text)
+      assert.is_nil(text:find("light-arts", 1, true), text)
+    end)
+
+    -- Character select: `handle_command` routes whether or not a job is
+    -- scoped, and every other unscoped path has a case of its own.
+    it("says there is no job yet rather than naming one", function()
+      local commands = build({ job = false })
+      local text = text_of(commands.command({ "context", "list" }))
+      assert.is_not_nil(text:find("no job", 1, true), text)
+      assert.is_nil(text:find("light-arts", 1, true), text)
+    end)
+
     it("lists bare and hints on an unknown subverb", function()
       local commands = build()
       assert.is_table(commands.command({ "context" }))
@@ -1906,6 +1975,14 @@ describe("crossbar commands", function()
       local text = text_of(reply)
       for _, verb in ipairs({ "bind", "unbind", "alias", "icon", "swap", "view", "share", "copy", "list", "retry" }) do
         assert.is_not_nil(text:find(verb, 1, true), verb .. " missing from help: " .. text)
+      end
+    end)
+
+    it("names every layer prefix an address can carry", function()
+      local commands = build()
+      local text = text_of(commands.command({ "help" }))
+      for _, prefix in ipairs({ "sub:", "wpn:", "ctx:" }) do
+        assert.is_not_nil(text:find(prefix, 1, true), prefix .. " missing from help: " .. text)
       end
     end)
 

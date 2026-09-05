@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      an entry wins:
 
        context layers   buff-conditioned, roster order -- later wins  (sparse)
+       weapon layer     overrides for the equipped main-hand class    (sparse)
        subjob layer     overrides for the current MAIN/SUB pair       (sparse)
        job base         the MAIN job's sets, shared by every subjob
                         -- OR the shared store, per the set's flag
@@ -48,9 +49,9 @@ local SIDES = { l = "left", r = "right", left = "left", right = "right" }
 local SET_COUNT = 8
 local SLOT_COUNT = 8
 
-local CONTEXT_NAMES = {}
+local CONTEXT_BY_NAME = {}
 for _, context in ipairs(roster) do
-  CONTEXT_NAMES[context.name] = true
+  CONTEXT_BY_NAME[context.name] = context
 end
 
 --[[ How deep a copy will go before it gives up on a branch. A `.lua`
@@ -151,16 +152,22 @@ end
 
 -- The set argument of bind/unbind, with its optional layer prefix: a number
 -- (or numeric string) targets the base; "sub:<set>" the current subjob's
--- layer; "ctx:<name>:<set>" a context's overrides.
+-- layer; "wpn:<set>" the equipped weapon class's; "ctx:<name>:<set>" a
+-- context's overrides. Neither sub: nor wpn: names its layer - each
+-- addresses what is worn or held right now, which is the only one the
+-- player can see on the bar.
 local function parse_address(set_arg)
   local layer, context, set = "base", nil, tonumber(set_arg)
   if set == nil and type(set_arg) == "string" then
     local sub_set = set_arg:match("^sub:(%d+)$")
+    local wpn_set = set_arg:match("^wpn:(%d+)$")
     local ctx_name, ctx_set = set_arg:match("^ctx:([%w%-]+):(%d+)$")
     if sub_set then
       layer, set = "sub", tonumber(sub_set)
+    elseif wpn_set then
+      layer, set = "wpn", tonumber(wpn_set)
     elseif ctx_name then
-      if not CONTEXT_NAMES[ctx_name] then
+      if not CONTEXT_BY_NAME[ctx_name] then
         return nil, "unknown context: " .. ctx_name
       end
       layer, context, set = "ctx", ctx_name, tonumber(ctx_set)
@@ -216,10 +223,51 @@ local function new(deps)
 
   local job_name = nil
   local sub_name = nil
-  local job_data = { active_set = 1, sets = {}, sub = {}, contexts = {} }
+  local job_data = { active_set = 1, sets = {}, sub = {}, contexts = {}, weapons = {} }
   local shared_data = { sets = {} }
   -- Active context names, re-synced from the full buff list only.
   local active = {}
+  --[[ The weapon class in the main hand, as `weapon.lua` names it. Session
+       state like the drawn/sheathed flag and for the same reason: it is what
+       you are holding, not a setting, and the widget re-reads it from the
+       client whenever an equip packet says it may have moved. ]]
+  local equipped = nil
+  --[[ Whether the landing the bar is sitting on was made without knowing
+       the class in hand. set_job lands before the widget can re-read the
+       client, so a set whose only content is a weapon override is invisible
+       to that landing - and a "set 2 is my Sword bar" arrangement, which is
+       what this layer invites, would land somewhere else on every login. ]]
+  local landed_blind = false
+
+  --[[ The job gate (Kevin, 2026-09-04). A context watches a buff only one
+       job can raise, so off that job it is hidden AND inert: never listed,
+       never live, and refused as a write target. `jobs` counts the SUB job
+       too - an arts context is reachable on /SCH - unless `main_only` says
+       the ability is out of a subjob's reach.
+
+       An entry naming no job at all is eligible everywhere, and an EMPTY
+       list says the same thing as an absent one. Nothing ships either way,
+       but "no jobs named" must not read as "eligible nowhere" - that is
+       the silent-nil failure the conventions warn about - and the two
+       spellings of it must not disagree, which would be the same failure
+       one step further along. ]]
+  local function context_eligible(context)
+    if type(context) ~= "table" then
+      return false
+    end
+    if type(context.jobs) ~= "table" or #context.jobs == 0 then
+      return true
+    end
+    for _, job in ipairs(context.jobs) do
+      if job_name == job then
+        return true
+      end
+      if not context.main_only and sub_name == job then
+        return true
+      end
+    end
+    return false
+  end
 
   local function config()
     return deps.get_config()
@@ -316,6 +364,7 @@ local function new(deps)
     loaded.sets = sanitize_sets(loaded.sets)
     loaded.sub = sanitize_tree_map(loaded.sub)
     loaded.contexts = sanitize_tree_map(loaded.contexts)
+    loaded.weapons = sanitize_tree_map(loaded.weapons)
     job_data = loaded
     local from_shared = deps.load("SHARED")
     local shared = deep_copy(type(from_shared) == "table" and from_shared or {})
@@ -325,6 +374,11 @@ local function new(deps)
     -- A job change strips buffs in game; until the next full-list re-sync
     -- arrives, the old job's contexts must not colour the new job's slots.
     active = {}
+    -- And it auto-equips, so the class in hand is about to change: the
+    -- incoming job's file must not be read through the outgoing job's weapon
+    -- for the frames before the widget can re-read the client.
+    equipped = nil
+    landed_blind = true
     --[[ The line above SHEATHES you without entering the state, so nothing
          reconciled the set the store just handed back: on a config whose
          low sets are drawn-only, a job change landed on a set the sheathed
@@ -347,10 +401,12 @@ local function new(deps)
     local next_active = {}
     local changed = false
     for _, context in ipairs(roster) do
-      for _, id in ipairs(context.any_of) do
-        if up[id] then
-          next_active[context.name] = true
-          break
+      if context_eligible(context) then
+        for _, id in ipairs(context.any_of) do
+          if up[id] then
+            next_active[context.name] = true
+            break
+          end
         end
       end
       if (next_active[context.name] or false) ~= (active[context.name] or false) then
@@ -361,6 +417,19 @@ local function new(deps)
       active = next_active
     end
     return changed
+  end
+
+  --- The context names this job can reach at all, in roster (stack) order -
+  --- what the CLI and the binder list. Everything else is not the player's
+  --- to see here: it belongs to a job they are not on.
+  function self.available_contexts()
+    local names = {}
+    for _, context in ipairs(roster) do
+      if context_eligible(context) then
+        names[#names + 1] = context.name
+      end
+    end
+    return names
   end
 
   --- The active context names, in roster (stack) order.
@@ -376,6 +445,34 @@ local function new(deps)
 
   function self.weapon_state()
     return weapon
+  end
+
+  --- The weapon class the layer is being read through, or nil for none.
+  function self.weapon_type()
+    return equipped
+  end
+
+  --- What `weapon.lua` resolved off the main hand. Nil drops the layer
+  --- outright: an item that cannot be named is not a reason to keep reading
+  --- the class you were holding before.
+  ---
+  --- The FIRST class after a job load re-lands the bar, because the landing
+  --- set_job made could not see this layer. Later swaps do not: a weapon
+  --- change is not a weapon-state transition, and the set the player is on
+  --- is theirs - the same reason `on_status` leaves a state it is already
+  --- in alone. Nor does it re-land at all once the player has picked a set
+  --- by hand: the bags can take seconds to fill, and a landing is a default
+  --- rather than a correction.
+  function self.set_weapon_type(name)
+    local class = type(name) == "string" and name or nil
+    if class == equipped then
+      return
+    end
+    equipped = class
+    if landed_blind and equipped ~= nil then
+      landed_blind = false
+      land_on_first_set()
+    end
   end
 
   --[[ The set follows the weapon state (Kevin, 2026-08-24): entering a mode
@@ -408,7 +505,7 @@ local function new(deps)
   end
 
   --- The winning entry for an address, and where it came from:
-  --- "ctx:<name>", "sub", "shared" or "base". Nil for an empty stack.
+  --- "ctx:<name>", "wpn", "sub", "shared" or "base". Nil for an empty stack.
   function self.resolve(set, side, slot)
     side = SIDES[side]
     if side == nil then
@@ -421,6 +518,12 @@ local function new(deps)
         if entry then
           return entry, "ctx:" .. name
         end
+      end
+    end
+    if equipped then
+      local entry = slot_in(job_data.weapons[equipped] or {}, set, side, slot)
+      if entry then
+        return entry, "wpn"
       end
     end
     if sub_name then
@@ -437,13 +540,15 @@ local function new(deps)
   end
 
   --- Every layer that HAS an entry at an address, in stack order (base
-  --- first, then each subjob layer, then the contexts in roster order),
+  --- first, then each subjob layer, then each weapon class, then the
+  --- contexts in roster order),
   --- tagged with its source and whether it is the one currently winning.
   --- This is the INSPECTION read: resolve() answers only the winner through
   --- the ACTIVE stack, so a listing built on it reports a stored-but-dormant
   --- layer -- an unbuffed context, another subjob's overrides -- as nothing
-  --- at all. Subjob layers carry their own job name, since a file holds the
-  --- layers of every subjob ever bound on it, not just the one worn.
+  --- at all. Subjob and weapon layers carry their own name, since a file
+  --- holds the layers of every subjob ever bound on it and every class ever
+  --- held, not just the one worn.
   function self.layers_at(set, side, slot)
     local layers = {}
     if job_name == nil then
@@ -468,6 +573,19 @@ local function new(deps)
       local entry = slot_in(job_data.sub[name], set, side, slot)
       if entry then
         layers[#layers + 1] = { source = "sub:" .. name, entry = entry, worn = name == sub_name }
+      end
+    end
+    -- The weapon classes read the same way, and sit above the subjob rows
+    -- because that is the order resolve() applies them in.
+    local weapons = {}
+    for name in pairs(job_data.weapons) do
+      weapons[#weapons + 1] = name
+    end
+    table.sort(weapons)
+    for _, name in ipairs(weapons) do
+      local entry = slot_in(job_data.weapons[name], set, side, slot)
+      if entry then
+        layers[#layers + 1] = { source = "wpn:" .. name, entry = entry, worn = name == equipped }
       end
     end
     for _, context in ipairs(roster) do
@@ -505,6 +623,9 @@ local function new(deps)
       return nil, "no such set: " .. tostring(set) .. " (1-" .. SET_COUNT .. ")"
     end
     job_data.active_set = set
+    -- An explicit choice ends the blind landing: the class arriving later
+    -- must not undo a set the player asked for while the bags were loading.
+    landed_blind = false
     save_job()
     return set
   end
@@ -568,6 +689,8 @@ local function new(deps)
     for step = 1, SET_COUNT do
       local set = (from + step - 1) % SET_COUNT + 1
       if cycle_flags(set)[weapon] and not set_is_empty(set) then
+        -- Explicit, like jump: the player has said where they want to be.
+        landed_blind = false
         if set ~= from then
           job_data.active_set = set
           save_job()
@@ -611,7 +734,29 @@ local function new(deps)
           job_data.sub[sub_name] = nil
         end
       end
+    elseif address.layer == "wpn" then
+      if equipped == nil then
+        --[[ Never "nothing equipped": unarmed resolves to Hand-to-Hand, so
+             this can only be the client not having said yet - or no
+             resources library to name a class with. A player reading it
+             would otherwise look at the weapon in their hand and conclude
+             the command was broken. ]]
+        return nil, "no weapon class read from the client yet"
+      end
+      target.sets = job_data.weapons[equipped]
+      target.materialize = function()
+        job_data.weapons[equipped] = job_data.weapons[equipped] or {}
+        return job_data.weapons[equipped]
+      end
+      target.prune_root = function()
+        if job_data.weapons[equipped] ~= nil and next(job_data.weapons[equipped]) == nil then
+          job_data.weapons[equipped] = nil
+        end
+      end
     elseif address.layer == "ctx" then
+      -- Carried rather than judged here: the job gate refuses a BIND, and
+      -- only a bind - see self.bind.
+      target.context = address.context
       target.sets = job_data.contexts[address.context]
       target.materialize = function()
         job_data.contexts[address.context] = job_data.contexts[address.context] or {}
@@ -666,6 +811,31 @@ local function new(deps)
     return slot_in(target.sets, target.set, target.side, target.slot)
   end
 
+  --[[ Why a context out of reach refuses a NEW binding and nothing else: a
+       layer this job cannot raise is a binding with no possible effect, so
+       starting one is refused where the player can see it. Everything about
+       an entry that already EXISTS is the opposite case - context overrides
+       live in the MAIN job's file, so a subjob change can put one out of
+       reach, and an entry `//hud crossbar list` still prints must never be
+       one nothing can delete or rename. So `unbind` and `entry_at` are
+       ungated outright, and a `bind` over an occupied address is too - the
+       alias and icon verbs are exactly that, a read of an entry followed by
+       a write of it back. ]]
+  local function bind_refusal(target)
+    if target.context == nil then
+      return nil
+    end
+    local context = CONTEXT_BY_NAME[target.context]
+    if context_eligible(context) then
+      return nil
+    end
+    return target.context
+      .. " applies to "
+      .. table.concat(context.jobs, "/")
+      .. (context.main_only and " as a main job" or "")
+      .. " only"
+  end
+
   --- Bind an action record at an address; persists immediately into the
   --- store the addressed layer lives in.
   function self.bind(set_arg, side, slot, entry)
@@ -676,6 +846,12 @@ local function new(deps)
     local target, target_err = write_target(set_arg, side, slot)
     if target == nil then
       return nil, target_err
+    end
+    if slot_in(target.sets or {}, target.set, target.side, target.slot) == nil then
+      local refusal = bind_refusal(target)
+      if refusal ~= nil then
+        return nil, refusal
+      end
     end
     local sets = target.sets or target.materialize()
     write_slot(sets, target.set, target.side, target.slot, entry)
@@ -705,7 +881,8 @@ local function new(deps)
   end
 
   --- Exchange two addresses' ENTIRE stacks: the bases (each in the store its
-  --- set's flag selects), every subjob override and every context override.
+  --- set's flag selects), every subjob override, every weapon override and
+  --- every context override.
   --- No layer prefix applies; a move is a swap with an empty stack.
   function self.swap(a, b)
     local ok, err = require_job()
@@ -745,6 +922,9 @@ local function new(deps)
     for _, overrides in pairs(job_data.sub) do
       exchange(overrides, overrides)
     end
+    for _, overrides in pairs(job_data.weapons) do
+      exchange(overrides, overrides)
+    end
     for _, overrides in pairs(job_data.contexts) do
       exchange(overrides, overrides)
     end
@@ -756,9 +936,9 @@ local function new(deps)
     return true
   end
 
-  --- Seed this job's bindings from another job's file: base, subjob layers
-  --- and context overrides, copied by value (shared sets are already
-  --- everywhere). The active set stays this job's own.
+  --- Seed this job's bindings from another job's file: base, subjob layers,
+  --- weapon layers and context overrides, copied by value (shared sets are
+  --- already everywhere). The active set stays this job's own.
   function self.copy_from(job)
     local ok, err = require_job()
     if ok == nil then
@@ -774,6 +954,7 @@ local function new(deps)
     job_data.sets = sanitize_sets(deep_copy(loaded.sets))
     job_data.sub = sanitize_tree_map(deep_copy(loaded.sub))
     job_data.contexts = sanitize_tree_map(deep_copy(loaded.contexts))
+    job_data.weapons = sanitize_tree_map(deep_copy(loaded.weapons))
     save_job()
     return true
   end

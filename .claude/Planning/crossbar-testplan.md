@@ -110,10 +110,24 @@ These bindings are used by every later section — leave them in place.
 | D10 | `//hud crossbar share 1 on` then `share 1 off` | Set 1 is untouched by set 2's flag either way | [x] | [ ] |  |
 | D11 | `//hud crossbar bind sub:1L6 ma "Stone" t` | Bound to the subjob layer | [x] | [ ] |  |
 | D12 | Look at slot 6 in edit mode later (F-section) | It is tagged as a subjob override | [x] | [ ] | Verified in F2 - slot 6 carries the subjob mark |
-| D13 | `//hud crossbar context list` | Lists the four Scholar contexts and which are live | [x] | [ ] |  |
+| D13 | `//hud crossbar context list` | Lists the four Scholar contexts and which are live. **Re-run after 2026-09-04**: it must list them ONLY on SCH main or /SCH, and the row's old pass predates the job gate | [ ] | [ ] |  |
 | D14 | On SCH: `//hud crossbar bind ctx:light-arts:1L7 ja "Accession"` | Bound to that context | [x] | [ ] |  |
 | D15 | On SCH: use Light Arts | Slot 7 changes to Accession by itself | [x] | [ ] |  |
 | D16 | On SCH: use Dark Arts | Slot 7 changes back | [x] | [ ] |  |
+| D17 | On a job that is neither SCH nor /SCH: `//hud crossbar context list` | Says there are no contexts on that job and NAMES it - no arts rows at all | [ ] | [ ] |  |
+| D18 | On that same job: `//hud crossbar bind ctx:light-arts:1L7 ja "Provoke"` | **Refused**, naming SCH, and nothing is written | [ ] | [ ] |  |
+| D19 | On BLU: `//hud crossbar context list` | Lists `unbridled` and no arts row | [ ] | [ ] |  |
+| D20 | On BLU: bind `ctx:unbridled:1L7` to a spell Unbridled Learning unlocks, then use Unbridled Learning | Slot 7 becomes that spell while the buff is up, and reverts when it drops. **Both buff ids are unverified** - 485 Learning, 505 Wisdom, taken from XivParty's ported table | [ ] | [ ] |  |
+| D21 | On /BLU: use nothing, just `//hud crossbar context list` | `unbridled` is absent - it is a main-job context | [ ] | [ ] |  |
+| D22 | With a sword equipped: `//hud crossbar bind wpn:1L6 ws "Savage Blade" t` | Bound; slot 6 reads Savage Blade | [ ] | [ ] |  |
+| D23 | Equip a different weapon class (a great axe, an unarmed hand) | Slot 6 goes back to whatever the subjob or base holds - **the layer follows the main hand** | [ ] | [ ] |  |
+| D24 | Re-equip the sword | Slot 6 is Savage Blade again, without a reload | [ ] | [ ] |  |
+| D25 | Bind the SAME address on both `sub:` and `wpn:` and wear both | The weapon layer wins, and edit mode marks the slot `^` | [ ] | [ ] |  |
+| D26 | Unequip the main hand entirely | The layer keyed `Hand-to-Hand` applies - unarmed is H2H, not "no weapon" | [ ] | [ ] |  |
+| D28 | With a club in the main hand, open the binder on a slot, pick a layer, then Weapon Skills | ONLY club weaponskills are listed - the client's own list is the job's, and a sword weaponskill on a club is a bind that can never fire. **This is Kevin's 2026-09-05 report**; the fix is unverified in a client | [ ] | [ ] |  |
+| D29 | Swap to a sword and re-open the binder | The list is sword weaponskills, without a reload | [ ] | [ ] |  |
+| D30 | Unequip the main hand entirely and re-open the binder | Hand-to-Hand weaponskills, on the same rule | [ ] | [ ] |  |
+| D27 | `//hud crossbar bind wpn:1L6 ...` with nothing in the main hand at login, before the bag has loaded | Either refused with "no weapon equipped to target", or bound to Hand-to-Hand once the bag lands - **never bound to the previous character's class** | [ ] | [ ] |  |
 
 ## E. The other two bars
 
@@ -145,7 +159,7 @@ their passes are gone and F36-F38 are new.
 | # | Do this | Passes if | Pass | Fail | What went wrong |
 | --- | --- | --- | --- | --- | --- |
 | F1 | Hold `;` and press `=` | Edit mode says so in chat. Nothing is drawn yet - the window appears when you click a slot | [x] | [ ] |  |
-| F2 | Look at the bar | Slots show `+` for subjob and `*` for context sources | [x] | [ ] | Unchanged by the rewrite; D12 covered here too |
+| F2 | Look at the bar | Slots show `+` for subjob, `^` for the weapon layer and `*` for context sources | [x] | [ ] | Unchanged by the rewrite; D12 covered here too |
 | F3 | Click an empty slot | One window opens **dead centre**, titled `pick a layer`, listing the whole stack | [x] | [ ] |  |
 | F4 | Look at the top left of it | **Nothing** - on the first step there is nothing to go back to, so no back button is drawn | [ ] | [ ] |  |
 | F5 | Read the line under the title | It names the slot you clicked in the form you would type - `1L3` | [x] | [ ] |  |

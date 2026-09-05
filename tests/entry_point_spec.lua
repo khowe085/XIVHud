@@ -107,6 +107,24 @@ describe("entry point", function()
          partylist would throw away its packet pushes every frame, targetbar
          would walk eighteen member tables sixty times a second - and no
          component spec can see whether the ctx carried it. ]]
+    --[[ The crossbar's weapon layer is keyed off the main hand, and the
+         accessor that reads it is the one equipviewer already uses - one
+         reading of the equipment table for the addon, not two shapes that
+         could disagree about what an empty slot looks like. ]]
+    it("hands the crossbar the same equipment read equipviewer takes", function()
+      assert.is_function(boot.ctxs.crossbar.get_equipment)
+      assert.are.equal(boot.ctxs.equipviewer.get_equipment, boot.ctxs.crossbar.get_equipment)
+    end)
+
+    --[[ The crossbar reads the Equip packet itself, to tell a main-hand
+         change from the fifteen other slots GearSwap moves on every cast.
+         Same decode equipviewer uses on the same packet - an offset of its
+         own would be a second reading of one packet. ]]
+    it("hands the crossbar the same packet decode equipviewer reads 0x050 with", function()
+      assert.is_function(boot.ctxs.crossbar.parse_packet)
+      assert.are.equal(boot.ctxs.equipviewer.parse_packet, boot.ctxs.crossbar.parse_packet)
+    end)
+
     it("hands the counter to the components that gate on it", function()
       assert.is_function(boot.ctxs.partylist.generation)
       assert.is_function(boot.ctxs.targetbar.generation)

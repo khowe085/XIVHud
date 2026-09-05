@@ -64,6 +64,7 @@ local new_retry = require("components/crossbar/retry")
 local new_travel = require("components/crossbar/travel")
 local new_catalog = require("components/crossbar/catalog")
 local new_binder = require("components/crossbar/binder")
+local new_weapon = require("components/crossbar/weapon")
 local new_icon_cache = require("lib/icon_cache")
 local build_defaults = require("components/crossbar/defaults")
 
@@ -180,6 +181,22 @@ local ACTION_CHUNK = 0x028
      events it cannot be gated on which id moved - only on whether the bar
      draws a count at all. ]]
 local INVENTORY_CHUNK = 0x01E
+--[[ The two packets the weapon layer follows: `0x050` Equip, which says a
+     slot changed, and `0x01D` Finish Inventory, the login and zone-in bag
+     dump without which the first read of a session finds nothing to name.
+     Both are the ids equipviewer keys its own grid off.
+
+     The Equip packet is READ rather than merely counted, and by its field
+     name rather than by an offset, the way equipviewer reads the same one.
+     Answering it costs a whole-inventory `get_equipment`, and GearSwap
+     fires one of these per slot it swaps on every cast - sixteen of them a
+     spell, none of which can move a layer keyed to the MAIN hand. A packet
+     that will not decode arms the read anyway: a decode that fails must not
+     freeze the layer for the session. ]]
+local EQUIP_CHUNK = 0x050
+local INVENTORY_READY_CHUNK = 0x01D
+-- Equipment slot 0 is the main hand (equipviewer's own slot table).
+local MAIN_HAND_SLOT = 0
 -- Zoning out: every mob id on this side of the line is stale, and so is any
 -- cast the retry is still holding.
 local ZONE_OUT_CHUNK = 0x0B
@@ -375,6 +392,21 @@ local function new(ctx)
         equip_bags[id] = { name = bag.name or bag.en or tostring(id), equippable = bag.equippable and true or false }
       end
     end
+  end
+
+  --[[ The weapon layer's resolver. Built only WITH the resources - the
+       class is a skill name off `res.items`/`res.skills`, so without them
+       there is no answer to be had and the refresh below must not go on
+       asking the client for one every interval for the rest of the
+       session. Without it the layer simply never comes up, and the rest of
+       the bar carries on (the cast bar's posture in targetbar). ]]
+  local weapon_layer = nil
+  if resources ~= nil then
+    weapon_layer = new_weapon({
+      get_equipment = ctx.get_equipment,
+      get_items = ctx.get_items,
+      resources = resources,
+    })
   end
 
   -- Shared by the warp ladder and by a named enchanteditem binding: both
@@ -642,6 +674,17 @@ local function new(ctx)
   local gear_counts = {}
   local temporary_seen = false
   local counts_dirty = true
+  --[[ Whether the class in the main hand needs re-reading. `get_equipment`
+       is a whole-inventory call, so it is asked only when a packet or a
+       rescope says the gear may have moved - never per frame - and the
+       answer is then taken at most once per client interval, off the same
+       generation counter the recast reads are gated on.
+
+       It starts DOWN, unlike `counts_dirty`: every attach clears the scope,
+       so the first tick of any attach goes through try_scope, which arms it
+       there. An attach that armed it as well would be a second path to the
+       same state that no test could tell from the first. ]]
+  local weapon_dirty = false
   --[[ The bound-id set as it stood at the last repaint, so a repaint that
        changed nothing worth counting costs no client read. Forward-declared
        because repaint sits well above the counting code that builds it. ]]
@@ -2188,6 +2231,9 @@ local function new(ctx)
       binder.deselect()
     end
     counts_dirty = true
+    -- A job change auto-equips, and set_job has just dropped the class the
+    -- outgoing job was holding.
+    weapon_dirty = true
     -- Through the one writer: set_job clears the active contexts, and a
     -- job change landing mid-preview must re-assert the simulated list
     -- rather than the client's.
@@ -2275,6 +2321,36 @@ local function new(ctx)
       end
     end
     return false
+  end
+
+  --[[ The class in the main hand, into the binding model. Only when
+       something said it may have moved, and an unreadable client leaves the
+       flag up rather than clearing the layer: an empty bag is the ordinary
+       state for the first seconds of a login, and answering it would key
+       the layer off a hand the client has not described yet. ]]
+  local function refresh_weapon()
+    if not weapon_dirty or weapon_layer == nil then
+      return
+    end
+    local name, known = weapon_layer.resolve()
+    if not known then
+      return
+    end
+    weapon_dirty = false
+    if name == bindings.weapon_type() then
+      return
+    end
+    --[[ The class arriving can move the active set - the landing set_job
+         made could not see this layer - which makes this the fifth producer
+         of a set change, after the two key intents, the two CLI verbs and a
+         job change. An open binder keeps the address it was opened on, so
+         it is deselected exactly as try_scope does it. ]]
+    local set_before = bindings.active_set()
+    bindings.set_weapon_type(name)
+    if editing() and set_before ~= bindings.active_set() then
+      binder.deselect()
+    end
+    repaint()
   end
 
   local function recount_items()
@@ -2733,6 +2809,14 @@ local function new(ctx)
     get_player = get_player,
     get_spells = ctx.get_spells,
     get_abilities = ctx.get_abilities,
+    --[[ What the weapon in hand can perform: the client's weaponskill list
+         is the JOB's, so without this the picker offers weaponskills for a
+         weapon you are not holding (Kevin, live client, 2026-09-05). Read
+         through the model rather than resolved again here, so the picker
+         and the `wpn:` layer can never name different classes. ]]
+    weapon_class = function()
+      return bindings ~= nil and bindings.weapon_type() or nil
+    end,
     get_items = ctx.get_items,
     owned_mounts = roulette ~= nil and roulette.owned or nil,
     -- The owned list is what /mount takes; this is how it is written.
@@ -2976,6 +3060,7 @@ local function new(ctx)
     local generation = ctx.generation and ctx.generation() or nil
     if reads == nil or generation == nil or generation ~= last_read_generation then
       last_read_generation = generation
+      refresh_weapon()
       reads = {
         player = get_player(),
         spell_recasts = ctx.get_spell_recasts ~= nil and ctx.get_spell_recasts() or {},
@@ -3111,6 +3196,12 @@ local function new(ctx)
       head = head .. "/" .. scoped_sub
     end
     local lines = { head .. " - set " .. bindings.active_set() .. " (" .. bindings.weapon_state() .. ")" }
+    -- The class the weapon layer is keyed to, which nothing else reports:
+    -- `list` prints a wpn row only where one is already bound.
+    local class = bindings.weapon_type()
+    if class ~= nil then
+      lines[1] = lines[1] .. " - " .. class
+    end
     -- The CLI owns the view map: it is the spelling the user types, and a
     -- second copy here could disagree with the verb that sets them.
     for _, view in ipairs(authoring.views) do
@@ -3534,6 +3625,18 @@ local function new(ctx)
       -- dump costs one re-read on the next tick rather than one per packet.
       if a == INVENTORY_CHUNK and counts_from_inventory() then
         counts_dirty = true
+      end
+      -- Coalesced the same way: an equip burst, or a zone-in's whole bag
+      -- dump, costs one re-read on the next interval rather than one each.
+      if a == INVENTORY_READY_CHUNK then
+        weapon_dirty = true
+      elseif a == EQUIP_CHUNK then
+        local raw = ...
+        local equip = ctx.parse_packet ~= nil and ctx.parse_packet(raw) or nil
+        local moved = type(equip) == "table" and equip["Equipment Slot"] or nil
+        if moved == nil or moved == MAIN_HAND_SLOT then
+          weapon_dirty = true
+        end
       end
       -- The skillchain feed, attached only: the action packet, decoded once
       -- by the entry point's dispatch and handed down beside the raw bytes,

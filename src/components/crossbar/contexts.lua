@@ -29,8 +29,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --[[ The code-defined context roster: buff-conditioned binding layers, in
      stack order -- later in the list wins. Definitions and their order are
      code; users author only the per-context overrides (in the per-job files).
-     Adding a context is one entry here. The v1 roster is the SCH
-     arts/addendum family, buff ids ported from an xivcrossbar fork.
+     Adding a context is one entry here. The roster is the SCH arts/addendum
+     family (buff ids ported from an xivcrossbar fork) plus BLU's Unbridled
+     Learning.
+
+     Every entry names the JOB it belongs to, and off that job it is neither
+     listed nor live (Kevin, 2026-09-04): a context watches a buff only one
+     job can raise, so an entry on the wrong job is a layer that could never
+     fire. `jobs` counts the sub job as well as the main, since an arts
+     context is reachable on /SCH; `main_only` narrows it back to the main
+     job for an ability no subjob can hold.
 
      A context is active while ANY buff in `any_of` is up. The addendum ids
      appear in the arts predicates too: using an Addendum makes FFXI
@@ -45,24 +53,46 @@ local contexts = {
     label = "Light Arts",
     any_of = { 358, 401 }, -- Light Arts; Addendum: White implies it
     icon = "abilities/book_white",
+    jobs = { "SCH" },
   },
   {
     name = "dark-arts",
     label = "Dark Arts",
     any_of = { 359, 402 }, -- Dark Arts; Addendum: Black implies it
     icon = "abilities/book_black",
+    jobs = { "SCH" },
   },
   {
     name = "addendum-white",
     label = "Addendum: White",
     any_of = { 401 },
     icon = "abilities/book_white",
+    jobs = { "SCH" },
   },
   {
     name = "addendum-black",
     label = "Addendum: Black",
     any_of = { 402 },
     icon = "abilities/book_black",
+    jobs = { "SCH" },
+  },
+  --[[ Learning and its merit upgrade Wisdom under one name: the two open the
+       same door and the bar wants the same slots for either, so they sit in
+       one predicate the way an addendum sits in its arts. Last in the roster,
+       and so above the arts family where a slot somehow held both - which no
+       single job can produce, one family being BLU-main and the other SCH.
+
+       The icon is the JOB's rather than the ability's: the shipped ability
+       sheet is keyed by RECAST id (render.lua), and this container cannot
+       look one up. ]]
+  {
+    name = "unbridled",
+    label = "Unbridled Learning",
+    any_of = { 485, 505 }, -- Unbridled Learning; Unbridled Wisdom
+    icon = "jobs/blu",
+    jobs = { "BLU" },
+    -- Learned at BLU 96: no subjob can ever hold it.
+    main_only = true,
   },
 }
 
