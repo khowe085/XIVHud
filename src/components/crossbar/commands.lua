@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      rather than author, and the widget owns execution. ]]
 
 local roster = require("components/crossbar/contexts")
+local new_wsgate = require("components/crossbar/wsgate")
 
 -- The component's own asset root, for the shipped half of an icon name.
 -- The asset ROOT, not one folder in it: what hangs off this is `own/` for
@@ -113,6 +114,9 @@ local HELP = {
   -- advances the rotation is a different command again, listed above.
   "  //hud crossbar cycle <set> drawn|sheathed|both|none",
   "  //hud crossbar retry [on|off] - re-send an action the game refused as too soon",
+  "  //hud crossbar wsgate [on|off] - drop a weaponskill press the game would refuse",
+  "  //hud crossbar wsgate range <yalms> - how close it wants you for a melee weaponskill",
+  "  //hud crossbar wsgate pivot <yalms> - the mob bulk that reach already covers",
   "  //hud crossbar copy <JOB>",
   "  //hud crossbar context list",
   "  //hud crossbar open [<name>]",
@@ -1144,6 +1148,128 @@ local function new(deps)
     return hint("cast retry: " .. (on and "on" or "off")), true, false
   end
 
+  --[[ The gate itself, over the LIVE config, so the CLI reports the very
+       numbers the widget's own instance measures against: the shipped
+       posture and the reach's fallback live in the module, and a second
+       reading of either here could report a value that is not in force. ]]
+  local gate = new_wsgate({
+    config = function()
+      local live = config()
+      return type(live) == "table" and live.wsgate or nil
+    end,
+  })
+
+  local WSGATE_FORM = "wsgate [on|off] - or wsgate range <yalms>, wsgate pivot <yalms>"
+
+  --- How the gate's state reads out, switch and reach together. The reach is
+  --- the one rule still guessed at, so a player settling it in a live client
+  --- must be able to see it without opening the file.
+  local function wsgate_state()
+    local line = "weaponskill gate: "
+      .. (gate.enabled() and "on" or "off")
+      .. ", melee reach "
+      .. tostring(gate.melee_range())
+      .. " yalms, size pivot "
+      .. tostring(gate.size_pivot())
+    --[[ And what is in front of you, which is the whole of how the reach
+         gets settled: neither number is on screen anywhere else, and a
+         BIG mob wants more reach than a small one (Kevin, live client,
+         2026-09-05 - he could not get within 4 yalms of a large monster
+         and struck it from 7). Printing the model size beside the distance
+         is what lets the size factor be read off a few fights rather than
+         guessed at. The mob table reports the SQUARE of the distance. ]]
+    local target = deps.get_target ~= nil and deps.get_target() or nil
+    if type(target) ~= "table" then
+      return line
+    end
+    local squared = tonumber(target.distance)
+    if squared ~= nil then
+      line = line .. (", target %.2f yalms"):format(math.sqrt(math.max(squared, 0)))
+    end
+    local size = tonumber(target.model_size)
+    if size ~= nil then
+      line = line .. (", model size %.2f"):format(size)
+    end
+    --[[ And the reach THIS mob earns, which is the number that actually
+         decides the press - a big monster is struck from further out than
+         the bare setting says. Without it a player reads a reach of 4
+         beside a target 5.5 yalms off and concludes the gate is about to
+         refuse a press it will in fact allow. From the module, so the two
+         cannot disagree. ]]
+    local reach = gate.reach_for(target.model_size)
+    if reach ~= nil then
+      line = line .. (", reach here %.2f"):format(reach)
+    end
+    return line
+  end
+
+  --[[ `wsgate pivot [<yalms>]` -- the mob bulk the reach already covers.
+       A verb for the same reason the reach has one: it is settled by
+       fighting things of different sizes and reading what worked, and
+       hand-editing a file between fights is the wrong loop. ]]
+  local function wsgate_pivot(args)
+    if #args > 3 then
+      return hint(WSGATE_FORM)
+    end
+    if args[3] == nil then
+      return hint("weaponskill gate size pivot: " .. tostring(gate.size_pivot()) .. " yalms")
+    end
+    -- Zero is legitimate here and NOT an off switch, unlike the reach's:
+    -- it means every mob adds the whole of its bulk.
+    local yalms = tonumber(args[3])
+    if yalms == nil or yalms ~= yalms or yalms < 0 or yalms == math.huge then
+      return hint("wsgate pivot <yalms> - a distance of zero or more")
+    end
+    config_table("wsgate").size_pivot = yalms
+    return hint("weaponskill gate size pivot: " .. tostring(yalms) .. " yalms"), true, false
+  end
+
+  --- `wsgate range [<yalms>]` -- the melee reach. No argument reports.
+  local function wsgate_range(args)
+    if #args > 3 then
+      return hint(WSGATE_FORM)
+    end
+    if args[3] == nil then
+      return hint("weaponskill gate melee reach: " .. tostring(gate.melee_range()) .. " yalms")
+    end
+    --[[ Refused rather than stored: the module falls back to the shipped
+         reach for a value it cannot use, so writing one would leave the
+         player believing a number that is not being measured against. Zero
+         is not an off switch here - `wsgate off` is. ]]
+    local yalms = tonumber(args[3])
+    if yalms == nil or yalms ~= yalms or yalms <= 0 or yalms == math.huge then
+      return hint("wsgate range <yalms> - a distance greater than zero")
+    end
+    config_table("wsgate").melee_range = yalms
+    return hint("weaponskill gate melee reach: " .. tostring(yalms) .. " yalms"), true, false
+  end
+
+  --- `wsgate [on|off]` -- the weaponskill gate. No argument reports.
+  local function wsgate(args)
+    if args[2] ~= nil and args[2]:lower() == "range" then
+      return wsgate_range(args)
+    end
+    if args[2] ~= nil and args[2]:lower() == "pivot" then
+      return wsgate_pivot(args)
+    end
+    if #args > 2 then
+      return hint(WSGATE_FORM)
+    end
+    -- A config with no block at all reads as off, the shipped posture, and
+    -- nothing is written to say so.
+    if args[2] == nil then
+      return hint(wsgate_state())
+    end
+    local on = parse_switch(args[2])
+    if on == nil then
+      return hint(WSGATE_FORM)
+    end
+    -- Through config_table, so only the switch is touched: the melee reach
+    -- is settled in a live client and must survive the switch.
+    config_table("wsgate").enabled = on
+    return hint("weaponskill gate: " .. (on and "on" or "off")), true, false
+  end
+
   --- `copy <JOB>` -- seed this job's bindings from another job's file.
   local function copy(args)
     if #args ~= 2 then
@@ -1232,6 +1358,7 @@ local function new(deps)
     cycle = cycle_flags,
     wxhb = wxhb,
     retry = retry,
+    wsgate = wsgate,
     copy = copy,
     context = context,
   }

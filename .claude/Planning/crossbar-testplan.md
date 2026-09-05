@@ -281,6 +281,70 @@ their passes are gone and F36-F38 are new.
 | K10 | Roughly how long after the refusal did the re-send succeed? | — (a rough number in the notes is enough) | [x] | [ ] | Re-sent 1-2 seconds after the refusal, about the usual gap between spells |
 | K11 | Try the same with a job ability, then a weaponskill | Both are retried the way a spell is | [ ] | [x] | Not run - the ability (71) and weaponskill (72) message ids remain unverified |
 
+## K2. The weaponskill gate
+
+Every refusal here is SILENT by design - nothing is sent, nothing is said,
+and the slot does not flash. So the failure mode to watch for is a
+weaponskill button that does nothing when you believe it should have fired:
+if that happens, note what was on screen (TP, whether you were engaged, how
+far off the mob was) before doing anything else.
+
+The gate shipped with six rules and lost three of them to live-client
+testing on 2026-09-05. THREE survive: under 1000 TP, while not engaged, and
+past the melee reach. The nothing-targeted and not-an-enemy rules are gone
+outright rather than merely untested - engaging locks your target to an
+attackable mob, so neither "engaged with nothing targeted" nor "engaged
+with a non-enemy targeted" is a state the game will ever let you reach. The
+in-flight lock, which held the next press for one second after a
+weaponskill went out, is gone too: TP recovery takes far longer than a
+second, so a second full-TP press cannot happen inside that window anyway,
+and without the lock a mashed press during the resolve window simply goes
+out and is refused by the game once the TP is already spent - a redundant
+command rather than a wasted 3000 TP.
+
+What is still open is a correction for mob size. Kevin found on 2026-09-05
+that a very large monster's own bulk kept him from ever closing to within
+4 yalms of it, yet a weaponskill still landed from as far as 7 yalms - the
+reach the code ships with cannot be right for every mob. `//hud crossbar
+wsgate` now prints the current target's distance and model size beside the
+reach, so the correction can be read off a live client instead of guessed
+at. The rows added at the end of this section ask for a few (model size,
+furthest working distance) pairs across small and large mobs, which is
+what the formula needs to be settled.
+
+The gate ships OFF by default (Kevin, 2026-09-05), reversing his own
+earlier call to ship it on: all three surviving rules are settled in a
+live client, but the melee reach is a FIT rather than a fact - its size
+pivot is an upper bound on what five readings permit - and a gate
+refusal is silent by design, so a guard that can quietly drop a press
+should not be switched on for a player who never asked for it. Every
+row below assumes `//hud crossbar wsgate on` has been run first, and
+the gate can be tuned with `//hud crossbar wsgate pivot <yalms>`.
+
+| # | Do this | Passes if | Pass | Fail | What went wrong |
+| --- | --- | --- | --- | --- | --- |
+| K2.1 | `//hud crossbar wsgate` | Reports it as off, naming the reach and the pivot in the readout | [ ] | [ ] | The earlier PASS was recorded against the old on-by-default shipped state and the shorter readout |
+| K2.1b | `//hud crossbar wsgate on` | Reports the gate as on | [ ] | [ ] |  |
+| K2.2 | Under 1000 TP, mash a weaponskill slot | Nothing is sent and nothing is said; the slot stays dimmed | [x] | [ ] |  |
+| K2.3 | At 1000+ TP, engaged, in range, press it once | It fires exactly as it always did | [x] | [ ] |  |
+| K2.4 | Bind a weaponskill to `<bt>` with `//hud crossbar bind <address> ws "<name>" bt`, then press it with no battle target | The nothing-targeted rule is gone, so the gate no longer stops this itself - the press goes out and the game refuses it | [ ] | [ ] | Not run - the rule this row tested was removed |
+| K2.5 | At 1000+ TP with a PARTY MEMBER selected, press it | The not-an-enemy rule is gone, so the gate no longer stops this itself - the press goes out and the game refuses it | [ ] | [ ] | Not run - the rule this row tested was removed |
+| K2.6 | Stand well back from a mob (past melee) and press it | Nothing is sent. **Then walk in a step at a time and note the closest distance that was still refused** - it should track the target bar's own reading, `melee_range` being that same distance | [x] | [ ] | The refusal tracked the target bar's own reading at the shipped reach of 4, which is the same number the reach was settled from |
+| K2.7 | Do K2.6 again with a mob much larger than you, and on a long-reach weapon (polearm, scythe) if you have one | The reach does NOT grow with the mob - model sizes were dropped so the setting could stay in the units you read. If a big mob or a long weapon is refused at a distance that would have worked, raise it with `wsgate range` and note both numbers | [ ] | [ ] | Not run - no large mob or long-reach weapon to hand |
+| K2.8 | Fire one weaponskill, then mash the slot while it resolves | The in-flight lock is gone, so mashing may now send a second command while the first is still resolving - the game refuses it harmlessly because the TP is already spent | [ ] | [ ] | The earlier PASS on this row was recorded against the in-flight lock, which has since been removed |
+| K2.9 | Fire one, wait for TP to reach 1000+ again, then press a weaponskill again | It fires normally, exactly as the first one did | [ ] | [ ] |  |
+| K2.9b | `//hud crossbar wsgate range 3`, then repeat K2.6 | The reach the gate wants is what you just set - it refuses from closer in. `//hud crossbar wsgate` reports it | [x] | [ ] | The new reach took effect immediately with no reload, and the bare wsgate command reported it |
+| K2.10 | `//hud crossbar wsgate off`, then repeat K2.2 | The press goes out and the game refuses it, as it did before this feature | [x] | [ ] | With the gate off the press went out and the game refused it, exactly as before the feature existed |
+| K2.11 | Bind a weaponskill to `<bt>`, engage, clear your tab target, press it | Not runnable - your target stays locked while engaged, so the tab target cannot be cleared to make `<t>` and `<bt>` point at different things | [ ] | [ ] | The token-aware lookup still earns its keep for the melee reach, which is measured against the mob the bind aims at - a `<bt>` bind measures reach against the battle target rather than the tab target, and the two can point at different mobs |
+| K2.12 | On a job with a ranged weaponskill (bow, gun, or a boomerang), press it from ranged distance | It fires - ranged weaponskills are never distance-gated | [ ] | [ ] | Not run - no ranged weaponskill available |
+| K2.13 | Select a small mob, run `//hud crossbar wsgate`, and note the model size it reports | Records a model size for a small target | [ ] | [ ] |  |
+| K2.14 | Walk in on that same mob and find the furthest distance a weaponskill still fires from, then note that distance | Pairs a furthest working distance with K2.13's model size | [ ] | [ ] |  |
+| K2.15 | Select a large mob, run `//hud crossbar wsgate`, and note the model size it reports | Records a model size for a large target | [ ] | [ ] |  |
+| K2.16 | Walk in on that same large mob and find the furthest distance a weaponskill still fires from, then note that distance | Pairs a furthest working distance with K2.15's model size | [ ] | [ ] |  |
+| K2.17 | Repeat K2.13 through K2.16 on one or two more mobs of a different size, if any are on hand | A few (model size, furthest distance) pairs across small and large mobs is what settles the size correction - two points alone would leave it guessed at | [ ] | [ ] |  |
+| K2.18 | Select a small mob and run `//hud crossbar wsgate`, then select a large mob and run it again | Each report prints that target's distance, its model size, and the reach it earns; the large mob's reach is bigger than the small mob's | [ ] | [ ] |  |
+| K2.19 | `//hud crossbar wsgate pivot <yalms>` | Reports the new pivot and it takes effect immediately; a pivot of 0 is accepted and means every mob adds the whole of its bulk | [ ] | [ ] |  |
+
 ## L. Layout mode
 
 | # | Do this | Passes if | Pass | Fail | What went wrong |
@@ -346,6 +410,9 @@ question the code currently guesses at, listed in
 | O5 | Type `/ma "Cure IV"` with a mob selected, then with nothing selected | What happens each time — does it use the target, prompt, or fail? | [x] | [ ] | Answered by C25 - a bare name in angle brackets casts, so a target token is resolved by the game at send time |
 | O6 | Type `/item "Echo Drops" <a real mob id>` using a number, not a token | Does the game accept a bare numeric target? | [x] | [ ] | Answered by K6 - the cast retry re-sends the pinned mob id in place of <t> and lands on the original mob, so the game does accept a bare numeric target |
 | O7 | On a job with /COR, try to spend a **master** card (Trump Card) | Can a subjob COR burn one? | [ ] | [x] | Not run |
+| O9 | **NOT ENGAGED**, at 1000+ TP with a mob targeted in range, type `/ws "<a weaponskill>" <t>` BY HAND (not from the bar) | Does the game refuse it, or does it engage and fire? | [x] | [ ] | Answered by Kevin, 2026-09-05: the game does not allow a weaponskill while not engaged, so the gate's engagement rule refuses only what the game refuses anyway |
+| O10 | Note the closest distance K2.6 still refused at | Settles `melee_range` | [x] | [ ] | Answered by Kevin, 2026-09-05: a weaponskill landed at a target bar 3 and at 4, and at 6 it fired and spent the whole 3000 TP. Shipped at 4, expressed as the target bar's own distance with no model sizes added, strictly greater so 4 itself still fires |
+| O11 | After K2.9, roughly how long between the press and the weaponskill landing? | Sanity-checks the 1s `in_flight` backstop against a real resolve | [ ] | [ ] | Obsolete - the one-second in_flight lock this row measured was removed on 2026-09-05 |
 | O8 | If you own a trainer's whistle, look at its name in your key items | Does it start with the same music-note character the mounts do? | [ ] | [x] | Do not own a trainer's whistle |
 
 ---

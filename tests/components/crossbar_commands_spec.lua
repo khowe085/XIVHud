@@ -73,6 +73,12 @@ local function build(opts)
          when it has nothing to check against (no resources library). A
          fixture that omitted the closure instead would exercise a branch
          production never takes. ]]
+    --[[ The current target, which the weaponskill gate's readout prints so
+         the reach can be settled by reading rather than guessing. Nil when
+         nothing is selected, as the client answers. ]]
+    get_target = function()
+      return world.target
+    end,
     action_exists = function(kind, name)
       world.asked[#world.asked + 1] = kind .. ":" .. name
       if opts.known == nil then
@@ -1968,12 +1974,191 @@ describe("crossbar commands", function()
     end)
   end)
 
+  describe("wsgate", function()
+    it("reports the melee reach beside the switch", function()
+      -- The reach is the one rule still guessed at, so the report has to
+      -- name it: a player settling it in a live client needs to see what it
+      -- is now without opening the file.
+      local commands, world = build()
+      local defaults = require("components/crossbar/wsgate")({}).defaults()
+      local reply = commands.command({ "wsgate" })
+      assert.is_not_nil(reply:find(tostring(defaults.melee_range), 1, true), reply)
+      -- And the pivot, which decides how much of a big mob's bulk is added
+      -- to that reach - the reach alone does not explain what happens.
+      assert.is_not_nil(reply:find(tostring(defaults.size_pivot), 1, true), reply)
+      world.config.wsgate = { enabled = true, melee_range = 4.5 }
+      reply = commands.command({ "wsgate" })
+      assert.is_not_nil(reply:find("4.5", 1, true), reply)
+    end)
+
+    it("prints the target's distance and model size beside the reach", function()
+      --[[ The reach is settled by walking in on a mob, and a big one needs
+           more of it than a small one (Kevin, live client, 2026-09-05:
+           could not get within 4 yalms of a large monster, and struck it
+           from 7). Neither number is on screen anywhere else, so the gate
+           prints both and the factor can be READ rather than guessed. The
+           mob table reports the SQUARE of the distance. ]]
+      local commands, world = build()
+      world.target = { distance = 30.25, model_size = 2.1 }
+      local reply = commands.command({ "wsgate" })
+      assert.is_not_nil(reply:find("5.5", 1, true), reply)
+      assert.is_not_nil(reply:find("2.1", 1, true), reply)
+      --[[ And the reach THIS mob earns, which is the number that actually
+           decides the press: 4 plus its 0.6 of bulk past the pivot. Without
+           it a player reads a reach of 4 beside a target 5.5 yalms off and
+           concludes the gate is about to refuse a press it will allow. ]]
+      assert.is_not_nil(reply:find("4.8", 1, true), reply)
+    end)
+
+    it("says so when there is nothing to measure", function()
+      local commands = build()
+      local reply = commands.command({ "wsgate" })
+      assert.is_string(reply)
+      assert.is_not_nil(reply:find("on", 1, true), reply)
+    end)
+
+    it("prints a target whose model size the client did not answer for", function()
+      -- Distance without a size still settles half the question.
+      local commands, world = build()
+      world.target = { distance = 30.25 }
+      local reply = commands.command({ "wsgate" })
+      assert.is_not_nil(reply:find("5.5", 1, true), reply)
+    end)
+
+    it("sets the size pivot, and reports it on its own", function()
+      --[[ A verb for the same reason the reach has one: it is settled by
+           fighting things of different sizes and reading what worked, and
+           hand-editing a file between fights is the wrong loop. ]]
+      local commands, world = build()
+      local reply, save_config = commands.command({ "wsgate", "pivot", "2" })
+      assert.is_string(reply)
+      assert.is_true(save_config)
+      assert.are.equal(2, world.config.wsgate.size_pivot)
+      local reported = commands.command({ "wsgate", "pivot" })
+      assert.is_not_nil(reported:find("2", 1, true), reported)
+      -- Zero is legitimate here and not an off switch: it means every mob
+      -- adds the whole of its bulk.
+      commands.command({ "wsgate", "pivot", "0" })
+      assert.are.equal(0, world.config.wsgate.size_pivot)
+    end)
+
+    it("refuses a pivot that would break the reach, writing nothing", function()
+      local commands, world = build()
+      for _, bad in ipairs({ "big", "-1", "" }) do
+        local reply, save_config = commands.command({ "wsgate", "pivot", bad })
+        assert.is_string(reply, bad)
+        assert.is_falsy(save_config, bad)
+        assert.is_nil(world.config.wsgate, bad)
+      end
+    end)
+
+    it("sets the melee reach, and reports it on its own", function()
+      local commands, world = build()
+      local reply, save_config = commands.command({ "wsgate", "range", "4.5" })
+      assert.is_string(reply)
+      assert.is_true(save_config)
+      assert.are.equal(4.5, world.config.wsgate.melee_range)
+      local reported = commands.command({ "wsgate", "range" })
+      assert.is_not_nil(reported:find("4.5", 1, true), reported)
+    end)
+
+    it("leaves the switch alone when it sets the reach", function()
+      local commands, world = build()
+      world.config.wsgate = { enabled = false, melee_range = 6 }
+      commands.command({ "wsgate", "range", "3" })
+      assert.is_false(world.config.wsgate.enabled, "setting the reach is not switching it on")
+      assert.are.equal(3, world.config.wsgate.melee_range)
+    end)
+
+    it("refuses a reach that would break the gate, writing nothing", function()
+      --[[ The module falls back to the shipped reach for any of these, so a
+           stored one would be silently ignored - worse than a refusal,
+           because the player would believe it took. ]]
+      local commands, world = build()
+      for _, bad in ipairs({ "close", "0", "-1", "1/0", "" }) do
+        local reply, save_config = commands.command({ "wsgate", "range", bad })
+        assert.is_string(reply, bad)
+        assert.is_falsy(save_config, bad)
+        assert.is_nil(world.config.wsgate, bad)
+      end
+      local reply, save_config = commands.command({ "wsgate", "range", "4", "5" })
+      assert.is_string(reply)
+      assert.is_falsy(save_config)
+      assert.is_nil(world.config.wsgate)
+    end)
+
+    it("reports OFF with no argument and no block in the config", function()
+      -- The cast retry's report exactly: a config with no block reads as
+      -- off, which is the shipped posture, and nothing is written to say so.
+      local commands, world = build()
+      local reply, save_config = commands.command({ "wsgate" })
+      assert.is_string(reply)
+      assert.is_not_nil(reply:find("off", 1, true), reply)
+      assert.is_falsy(save_config)
+      assert.is_nil(world.config.wsgate)
+    end)
+
+    it("turns the gate off and on", function()
+      local commands, world = build()
+      local reply, save_config = commands.command({ "wsgate", "off" })
+      assert.is_string(reply)
+      assert.is_true(save_config)
+      assert.is_false(world.config.wsgate.enabled)
+      local reported = commands.command({ "wsgate" })
+      assert.is_not_nil(reported:find("off", 1, true), reported)
+      commands.command({ "wsgate", "ON" })
+      assert.is_true(world.config.wsgate.enabled)
+      reported = commands.command({ "wsgate" })
+      assert.is_not_nil(reported:find("on", 1, true), reported)
+    end)
+
+    it("leaves the melee reach alone when it flips the switch", function()
+      -- The reach is settled in a live client and must survive the switch,
+      -- exactly as the retry's backoff does.
+      local commands, world = build()
+      world.config.wsgate = { enabled = true, melee_range = 4.25 }
+      commands.command({ "wsgate", "off" })
+      assert.is_false(world.config.wsgate.enabled)
+      assert.equal(4.25, world.config.wsgate.melee_range, "the in-client tuning is not reset by the switch")
+    end)
+
+    it("rebuilds a wsgate block the config lost", function()
+      local commands, world = build()
+      world.config.wsgate = "yes"
+      commands.command({ "wsgate", "off" })
+      assert.is_false(world.config.wsgate.enabled)
+    end)
+
+    it("hints on anything else", function()
+      local commands, world = build()
+      local reply, save_config = commands.command({ "wsgate", "maybe" })
+      assert.is_string(reply)
+      assert.is_falsy(save_config)
+      assert.is_nil(world.config.wsgate)
+      reply = commands.command({ "wsgate", "on", "please" })
+      assert.is_string(reply)
+      assert.is_nil(world.config.wsgate)
+    end)
+  end)
+
   describe("help", function()
     it("lists the authoring verbs", function()
       local commands = build()
       local reply = commands.command({ "help" })
       local text = text_of(reply)
-      for _, verb in ipairs({ "bind", "unbind", "alias", "icon", "swap", "view", "share", "copy", "list", "retry" }) do
+      for _, verb in ipairs({
+        "bind",
+        "unbind",
+        "alias",
+        "icon",
+        "swap",
+        "view",
+        "share",
+        "copy",
+        "list",
+        "retry",
+        "wsgate",
+      }) do
         assert.is_not_nil(text:find(verb, 1, true), verb .. " missing from help: " .. text)
       end
     end)

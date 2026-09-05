@@ -837,7 +837,14 @@ describe("crossbar live widget", function()
       sub_job_level = 49,
       vitals = { mp = 100, tp = 1000 },
       buffs = {},
-      status = 0,
+      --[[ Engaged, and with the mob below it makes a weaponskill press
+           LEGAL - which most of the tests here need, because the Savage
+           Blade slot is what they reach for whenever they want to fire
+           something. The weaponskill gate refuses a press the game would
+           refuse, and an idle character with nothing selected is the
+           clearest such case there is. The status is the resource
+           fixture's Engaged (1), not a constant of its own. ]]
+      status = 1,
     }
   end
 
@@ -896,7 +903,14 @@ describe("crossbar live widget", function()
       known_spells = {},
       abilities = { job_abilities = {}, weapon_skills = { 42, 3 } },
       key_items = {},
-      target = { id = 99 },
+      --[[ A claimable mob two yalms off - the mob table reports the SQUARE
+           of the distance. It carried its id alone until the weaponskill
+           gate landed (2026-09-05), which reads the rest of these: without
+           them every field is unknown, and the gate allows on ignorance, so
+           the fixture would have described a world where the target and
+           range rules could never fire. A test that cares which mob is
+           selected still overwrites the whole table. ]]
+      target = { id = 99, hpp = 75, is_npc = true, distance = 4, model_size = 1 },
       equips = {},
       writes = {},
       stats = {},
@@ -1329,6 +1343,200 @@ describe("crossbar live widget", function()
       assert.are.same({}, env.commands)
       assert.are.equal(0, #env.chat)
       assert.is_false(image_of("xhb_left", 1, "feedback").visible, "nothing fired, nothing flashes")
+    end)
+
+    --[[ The weaponskill gate (2026-09-05): a `ws` press the game could
+         never honour never reaches Windower. Moved in from a GearSwap file,
+         where the same guard ran a round trip too late.
+
+         The FIXTURE world is a legal one - engaged, a claimable mob two
+         yalms off, 1000 TP - so each test below spoils exactly one fact.
+         Every refusal is silent: no command, no hint, no flash. ]]
+    describe("the weaponskill gate", function()
+      --[[ The gate ships OFF (Kevin, 2026-09-05), so every test of what it
+           refuses turns it on first - the cast retry's `live()` idiom. The
+           shipped posture has a test of its own, below. ]]
+      local function gated()
+        build_world({
+          tune_config = function(tuned)
+            tuned.wsgate.enabled = true
+          end,
+        })
+      end
+
+      -- The gate's own send, so a test reads as the press it describes.
+      local function weaponskill()
+        press(LEFT)
+        press(DIK_SLOT[3])
+        release(DIK_SLOT[3])
+        release(LEFT)
+      end
+
+      it("ships off: the press goes out and the game deals with it", function()
+        -- The shipped posture, and the reason every test below says gated().
+        build_world()
+        env.player.vitals.tp = 999
+        weaponskill()
+        assert.are.equal(1, #env.commands, "nothing is gated until the player asks")
+      end)
+
+      it("refuses a weaponskill under its TP, saying nothing at all", function()
+        gated()
+        env.player.vitals.tp = 999
+        weaponskill()
+        assert.are.same({}, env.commands, "nothing reaches Windower")
+        assert.are.equal(0, #env.chat, "and nothing is said about it")
+        assert.is_false(image_of("xhb_left", 3, "feedback").visible, "nothing fired, nothing flashes")
+      end)
+
+      it("refuses a weaponskill while amnesia is up", function()
+        --[[ Amnesia stops weaponskills outright, so the press can never
+             land - and one went straight through the gate in a live client
+             (Kevin, 2026-09-05) because the buffs never reached it. Id 16,
+             the one retry.lua already blocks retries on. ]]
+        gated()
+        env.player.buffs = { 16 }
+        weaponskill()
+        assert.are.same({}, env.commands, "amnesia stops a weaponskill")
+
+        gated()
+        -- Silence stops spells, not weaponskills.
+        env.player.buffs = { 6 }
+        weaponskill()
+        assert.are.equal(1, #env.commands, "silence does not")
+      end)
+
+      it("refuses while not engaged and out of reach", function()
+        gated()
+        env.player.status = 0
+        weaponskill()
+        assert.are.same({}, env.commands, "disengaged")
+
+        gated()
+        -- Twenty yalms out: the mob table reports the square.
+        env.target = { id = 99, hpp = 75, distance = 400, model_size = 1 }
+        weaponskill()
+        assert.are.same({}, env.commands, "out of reach")
+      end)
+
+      it("lets a press with nothing to measure against go to the game", function()
+        --[[ Engaging locks your target to an attackable mob (Kevin, live
+             client, 2026-09-05), so a weaponskill press with nothing
+             selected is not a state the game will give you - the rules that
+             refused on it were cut. Nothing selected now reaches the gate as
+             no distance at all, and the game refuses the press itself. ]]
+        gated()
+        env.target = nil
+        weaponskill()
+        assert.are.equal(1, #env.commands, "the game's to refuse, not ours")
+      end)
+
+      it("gates weaponskills alone: everything else fires regardless", function()
+        gated()
+        env.player.vitals.tp = 0
+        env.player.status = 0
+        press(LEFT)
+        press(DIK_SLOT[4])
+        release(DIK_SLOT[4])
+        assert.are.same({ 'input /ja "Provoke" <me>' }, env.commands)
+        -- And the weaponskill beside it, in that same world, is refused:
+        -- the two halves together are what says the gate is narrow.
+        press(DIK_SLOT[3])
+        assert.are.equal(1, #env.commands, "the weaponskill in the same world is not")
+      end)
+
+      it("asks about the mob the bind actually aims at, not always <t>", function()
+        --[[ A weaponskill bound to <bt> fires at the battle target, which
+             survives clearing the tab target. Reading <t> and refusing on it
+             would kill a press that works - an empty <t> is not a fact about
+             <bt>. The two are the only tokens this repo has read
+             `get_mob_by_target` for, which is the whole of what the gate
+             will look up. ]]
+        --[[ The tab target is OUT OF REACH and the battle target is in it,
+             so reading the wrong one refuses the press: without that the
+             test passes whichever token is asked for, since an unresolved
+             lookup yields no distance and the reach rule sits out. ]]
+        gated()
+        widget.handle_command({ "bind", "1L6", "ws", "Savage Blade", "bt" })
+        env.targets = { t = { id = 1, distance = 400, model_size = 1 }, bt = { id = 99, distance = 4, model_size = 1 } }
+        press(LEFT)
+        press(DIK_SLOT[6])
+        assert.are.same({ 'input /ws "Savage Blade" <bt>' }, env.commands, "measured against the battle target")
+      end)
+
+      it("does not look at all for a token it has never read for", function()
+        --[[ <st> opens a selection cursor at press time, so there is nothing
+             to look up and nothing the gate can say about the target. It
+             sits the target and reach rules out rather than refusing a press
+             on a mob it never saw - and TP still applies. ]]
+        --[[ Every token resolves to a mob far out of reach, so asking about
+             ANY of them refuses the press. The gate must ask about none. ]]
+        gated()
+        widget.handle_command({ "bind", "1L6", "ws", "Savage Blade", "st" })
+        env.target = { id = 99, distance = 400, model_size = 1 }
+        press(LEFT)
+        env.target_tokens = {}
+        press(DIK_SLOT[6])
+        assert.are.same({ 'input /ws "Savage Blade" <st>' }, env.commands)
+        assert.are.same({}, env.target_tokens, "an unvetted token is never handed to the client")
+        release(DIK_SLOT[6])
+        env.player.vitals.tp = 999
+        press(DIK_SLOT[6])
+        assert.are.equal(1, #env.commands, "the rules that need no target still apply")
+      end)
+
+      it("asks the client nothing for a press that is not a weaponskill", function()
+        -- The facts are gathered for `ws` alone: every other type would pay
+        -- a resource lookup and two mob reads it has no use for.
+        gated()
+        press(LEFT)
+        env.target_reads = 0
+        press(DIK_SLOT[5])
+        assert.are.equal(0, env.target_reads, "a spell aimed at <t> asks nothing of the client")
+      end)
+
+      it("strikes a big mob from further out than a small one", function()
+        --[[ The scenario that put the size correction back (Kevin, live
+             client, 2026-09-05): a large monster's own bulk kept him
+             outside 4 yalms of it, yet a weaponskill landed from 7. Seven
+             yalms is a squared 49; the shipped reach is 4 and the pivot
+             1.3, so a 6.3 mob earns 9 and a 1.0 mob earns 4. ]]
+        gated()
+        env.target = { id = 99, distance = 49, model_size = 1 }
+        weaponskill()
+        assert.are.same({}, env.commands, "seven yalms from a small mob is out of reach")
+
+        gated()
+        env.target = { id = 99, distance = 49, model_size = 6.3 }
+        weaponskill()
+        assert.are.equal(1, #env.commands, "and the same seven yalms from a big one is not")
+      end)
+
+      it("takes a new melee reach from the command, at once", function()
+        -- Read through a closure like the switch, so a number settled in a
+        -- live client takes effect on the next press rather than the next
+        -- attach - which is the whole point of settling it live.
+        gated()
+        env.target = { id = 99, hpp = 75, is_npc = true, distance = 400, model_size = 1 }
+        weaponskill()
+        assert.are.same({}, env.commands, "twenty yalms out, at the shipped four")
+        local reply = widget.handle_command({ "wsgate", "range", "30" })
+        assert.is_not_nil(tostring(reply):find("30", 1, true), tostring(reply))
+        weaponskill()
+        assert.are.equal(1, #env.commands, "and inside a reach the player just set")
+      end)
+
+      it("is switched off by its own verb, and back on again", function()
+        gated()
+        env.player.vitals.tp = 999
+        local reply = widget.handle_command({ "wsgate", "off" })
+        assert.is_not_nil(tostring(reply):find("off", 1, true), tostring(reply))
+        weaponskill()
+        assert.are.equal(1, #env.commands, "switched off, the press goes out")
+        widget.handle_command({ "wsgate", "on" })
+        weaponskill()
+        assert.are.equal(1, #env.commands, "and is refused again")
+      end)
     end)
 
     it("ranks disabled above suppressed across the whole truth table", function()
@@ -1998,9 +2206,13 @@ describe("crossbar live widget", function()
       end
       assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "no packet, no re-read")
       widget.update("chunk", 0x050, "raw equip bytes")
-      -- Past the client interval: the answer is taken at most once per
-      -- generation, so the packet lands on the next one rather than at once.
-      env.now = env.now + 0.5
+      --[[ Past the client interval: the answer is taken at most once per
+           generation, so the packet lands on the next one rather than at
+           once. And past the weaponskill gate's in-flight lock, which the
+           press above armed - this test fires the same weaponskill twice
+           to prove the layer moved, which no player could do inside the
+           lock's second. ]]
+      env.now = env.now + 1.5
       widget.update()
       assert.are.equal('input /ws "Ukko" <t>', press_slot(3), "the equip packet moved the layer")
     end)
@@ -2018,7 +2230,8 @@ describe("crossbar live widget", function()
       widget.update()
       assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "a ring moved, not the weapon")
       widget.update("chunk", 0x050, { ["Equipment Slot"] = 0 })
-      env.now = env.now + 0.5
+      -- Past the gate's in-flight lock too: the press above armed it.
+      env.now = env.now + 1.5
       widget.update()
       assert.are.equal('input /ws "Ukko" <t>', press_slot(3), "and the main hand did")
     end)
@@ -2045,7 +2258,8 @@ describe("crossbar live widget", function()
       widget.update()
       assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "still the sword until something says otherwise")
       widget.update("chunk", 0x01D, "raw inventory-ready bytes")
-      env.now = env.now + 0.5
+      -- Past the gate's in-flight lock too: the press above armed it.
+      env.now = env.now + 1.5
       widget.update()
       assert.are.equal('input /ws "Ukko" <t>', press_slot(3), "the finished bag moved the layer")
     end)
@@ -5046,6 +5260,27 @@ describe("crossbar live widget", function()
       widget.update("chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
     end
+
+    it("keeps watching through a weaponskill press the weaponskill gate refused", function()
+      --[[ The gate's refusal is a complete no-op, unlike the empty slot,
+           which DOES drop the watch: that press never happened, so the
+           moment the held cast belongs to has not moved on. ]]
+      build_world({
+        tune_config = function(tuned)
+          tuned.retry.enabled = true
+          tuned.wsgate.enabled = true
+        end,
+      })
+      cast()
+      env.player.vitals.tp = 999
+      cast(DIK_SLOT[3])
+      assert.are.same({ CURE }, env.commands, "the weaponskill never went out")
+      widget.update("chunk", 0x29, refusal(env.player.id))
+      env.now = env.now + 1
+      widget.update()
+      -- Pinned to the mob it was pressed against, as any re-send is.
+      assert.are.same({ CURE, 'input /ma "Cure" 99' }, env.commands, "the Cure is still what is watched")
+    end)
 
     it("ships off: nothing is remembered and nothing is re-sent", function()
       build_world()

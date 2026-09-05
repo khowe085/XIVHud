@@ -333,6 +333,44 @@ motivating example. Note the fixture no longer uses Instant Warp as its
 stand-in for a temporary item, since that would have written the wrong
 classification into the tests.
 
+**P. ANSWERED (Kevin, 2026-09-05): the game does not allow a weaponskill
+while not engaged.** So the weaponskill gate's engagement rule refuses only
+what the game refuses anyway, and it stays.
+
+It was written as an assumption with no evidence behind it, unlike
+`melee_range` and `in_flight`, which were at least labelled guesses - and
+the wrong answer here would have made every out-of-combat weaponskill press
+a dead button with no message, since a gate refusal is silent by design.
+Testplan row O9 is answered; K2.4 and K2.3 still exercise the rule.
+
+**Q. PARTLY ANSWERED (Kevin, 2026-09-05): a weaponskill's reach, and the
+game's own behaviour past it.**
+
+Three readings, all in the distance the target bar prints: a weaponskill
+landed at **3** and at **4**, and at **6** it FIRED AND SPENT THE WHOLE 3000
+TP. So `melee_range` ships at 4, expressed as that same distance with nothing
+added to it, and the comparison is strictly greater so the number a player
+watched work is the number they can type.
+
+The 6 is the important half. The gate was designed on the assumption that a
+press let through reaches a game that refuses it harmlessly, which made the
+range rule the most expendable of the six and argued for shipping it loose.
+The game does not refuse it. Too loose costs 3000 TP; too tight costs a dead
+button. The rule is now the most valuable of the six, and the reasoning in
+`wsgate.lua` is written the other way round.
+
+STILL OPEN, the other half: whether our own category-3 `0x028` matched on
+`actor_id` releases the in-flight lock. Nobody has read that packet in a
+client - the same caveat the cast retry's refusal ids carry - and a wrong
+match costs the player their weaponskill for `in_flight` after every press,
+which is why that span is one second. Rows K2.8, K2.9 and O11.
+
+Also open: whether 4 holds across weapon classes. A polearm reaches further
+than a dagger and one number cannot be right for both, and dropping the
+model sizes means a large mob is measured like a small one - both are
+`//hud crossbar wsgate range <yalms>` to adjust, which is why that verb
+exists.
+
 ---
 
 ## Not on this list, and why
