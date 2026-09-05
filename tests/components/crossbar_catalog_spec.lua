@@ -41,7 +41,11 @@ local function resources()
     },
     weapon_skills = {
       [42] = { id = 42, en = "Savage Blade", skill = 4 },
+      [3] = { id = 3, en = "Skullbreaker", skill = 3 },
+      -- A weaponskill the resources cannot name a weapon for.
+      [90] = { id = 90, en = "Nameless Blow", skill = 41 },
     },
+    skills = { [3] = { id = 3, en = "Club" }, [4] = { id = 4, en = "Sword" } },
     items = {
       [4165] = { id = 4165, en = "Prism Powder", category = "Usable" },
       [17040] = { id = 17040, en = "Warp Cudgel", category = "Weapon" },
@@ -56,6 +60,7 @@ local function build(overrides)
     player = overrides.player == nil and player() or overrides.player,
     spells = overrides.spells or { [1] = true, [144] = true, [149] = true, [98] = true, [204] = true, [896] = true },
     abilities = overrides.abilities or { job_abilities = { 696, 605, 720 }, weapon_skills = { 42 } },
+    weapon_class = overrides.weapon_class,
     items = overrides.items or { [0] = { { id = 4165, count = 2 }, { id = 17040, count = 1 } } },
     mounts = overrides.mounts or { "chocobo" },
   }
@@ -76,6 +81,9 @@ local function build(overrides)
       return world.mounts
     end,
     mount_display = overrides.mount_display,
+    weapon_class = function()
+      return world.weapon_class
+    end,
     resources = overrides.resources == nil and resources() or overrides.resources,
     bags = overrides.bags,
     extdata_decode = overrides.extdata_decode,
@@ -274,6 +282,38 @@ describe("crossbar catalog", function()
         category(built, "Weapon Skills").entries[1].record,
         "bound as /ws"
       )
+    end)
+
+    --[[ The client's list is the JOB's weaponskills, not the equipped
+         weapon's (Kevin, live client, 2026-09-05: a club in hand, the
+         picker offering sword weaponskills). Only the ones the weapon in
+         hand can actually perform are worth offering - the rest bind an
+         action the game will refuse. ]]
+    it("offers only the weaponskills the class in hand can perform", function()
+      local built = build({
+        weapon_class = "Club",
+        abilities = { job_abilities = {}, weapon_skills = { 42, 3 } },
+      }).build()
+      assert.is_true(has(built, "Weapon Skills", "Skullbreaker"))
+      assert.is_false(has(built, "Weapon Skills", "Savage Blade"), "a sword weaponskill on a club")
+    end)
+
+    -- Nothing is hidden on a hunch: an unnamed weapon means the resources
+    -- could not say, not that the weaponskill is unusable.
+    it("keeps a weaponskill whose weapon the resources cannot name", function()
+      local built = build({
+        weapon_class = "Club",
+        abilities = { job_abilities = {}, weapon_skills = { 90 } },
+      }).build()
+      assert.is_true(has(built, "Weapon Skills", "Nameless Blow"))
+    end)
+
+    -- And with no class resolved - no resources, or a client that has not
+    -- answered yet - the whole list stands rather than an empty picker.
+    it("offers the whole list while the class in hand is unknown", function()
+      local built = build({ abilities = { job_abilities = {}, weapon_skills = { 42, 3 } } }).build()
+      assert.is_true(has(built, "Weapon Skills", "Savage Blade"))
+      assert.is_true(has(built, "Weapon Skills", "Skullbreaker"))
     end)
   end)
 

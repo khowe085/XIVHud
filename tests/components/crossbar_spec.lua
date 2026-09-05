@@ -776,6 +776,8 @@ describe("crossbar live widget", function()
       },
       weapon_skills = {
         [42] = { id = 42, en = "Savage Blade", skill = 4 },
+        -- A club weaponskill beside the sword one, for the picker's filter.
+        [3] = { id = 3, en = "Skullbreaker", skill = 3 },
       },
       skills = { [3] = { id = 3, en = "Club" }, [4] = { id = 4, en = "Sword" }, [5] = { id = 5, en = "Great Axe" } },
       items = {
@@ -892,6 +894,7 @@ describe("crossbar live widget", function()
       -- to be read, and it names no item.
       equipment = opts.equipment or {},
       known_spells = {},
+      abilities = { job_abilities = {}, weapon_skills = { 42, 3 } },
       key_items = {},
       target = { id = 99 },
       equips = {},
@@ -983,6 +986,10 @@ describe("crossbar live widget", function()
       end,
       get_spells = function()
         return env.known_spells
+      end,
+      -- The client's ability lists, which the binder's catalog is built on.
+      get_abilities = function()
+        return env.abilities
       end,
       --[[ Argument-agnostic, as the entry point's wrapper is: whole-bag
            reads answer the bag, and a (bag, index) read answers the one
@@ -5851,6 +5858,26 @@ describe("crossbar live widget", function()
       env.now = env.now + 0.5
       widget.update()
       assert.is_nil(binder_line("^3L3"), "and it closed with the set it was opened on")
+    end)
+
+    --[[ The picker's weaponskill list is the CLIENT's, and the client's is
+         the job's rather than the weapon's: a club in hand was offering
+         sword weaponskills (Kevin, live client, 2026-09-05). What the
+         widget hands the catalog is the model's own class, so the picker
+         and the `wpn:` layer can never name different weapons. ]]
+    it("offers the picker only weaponskills the class in hand can perform", function()
+      build_world()
+      env.items[0] = { [1] = { id = 17040, count = 1 } }
+      env.equipment = { main = 1, main_bag = 0 }
+      env.now = env.now + 0.5
+      widget.update()
+      widget.handle_command({ "edit" })
+      click(slot_point("left", 1))
+      -- Step one is the layer; the catalog's categories are step two.
+      click_line("wpn:Club")
+      click_line("Weapon Skills")
+      assert.is_not_nil(binder_line("Skullbreaker"), "the club weaponskill is offered")
+      assert.is_nil(binder_line("Savage Blade"), "and the sword one is not")
     end)
 
     it("toggles with the edit verb and says which way it went", function()

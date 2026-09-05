@@ -124,6 +124,9 @@ These bindings are used by every later section — leave them in place.
 | D24 | Re-equip the sword | Slot 6 is Savage Blade again, without a reload | [ ] | [ ] |  |
 | D25 | Bind the SAME address on both `sub:` and `wpn:` and wear both | The weapon layer wins, and edit mode marks the slot `^` | [ ] | [ ] |  |
 | D26 | Unequip the main hand entirely | The layer keyed `Hand-to-Hand` applies - unarmed is H2H, not "no weapon" | [ ] | [ ] |  |
+| D28 | With a club in the main hand, open the binder on a slot, pick a layer, then Weapon Skills | ONLY club weaponskills are listed - the client's own list is the job's, and a sword weaponskill on a club is a bind that can never fire. **This is Kevin's 2026-09-05 report**; the fix is unverified in a client | [ ] | [ ] |  |
+| D29 | Swap to a sword and re-open the binder | The list is sword weaponskills, without a reload | [ ] | [ ] |  |
+| D30 | Unequip the main hand entirely and re-open the binder | Hand-to-Hand weaponskills, on the same rule | [ ] | [ ] |  |
 | D27 | `//hud crossbar bind wpn:1L6 ...` with nothing in the main hand at login, before the bag has loaded | Either refused with "no weapon equipped to target", or bound to Hand-to-Hand once the bag lands - **never bound to the previous character's class** | [ ] | [ ] |  |
 
 ## E. The other two bars

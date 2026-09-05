@@ -2809,6 +2809,14 @@ local function new(ctx)
     get_player = get_player,
     get_spells = ctx.get_spells,
     get_abilities = ctx.get_abilities,
+    --[[ What the weapon in hand can perform: the client's weaponskill list
+         is the JOB's, so without this the picker offers weaponskills for a
+         weapon you are not holding (Kevin, live client, 2026-09-05). Read
+         through the model rather than resolved again here, so the picker
+         and the `wpn:` layer can never name different classes. ]]
+    weapon_class = function()
+      return bindings ~= nil and bindings.weapon_type() or nil
+    end,
     get_items = ctx.get_items,
     owned_mounts = roulette ~= nil and roulette.owned or nil,
     -- The owned list is what /mount takes; this is how it is written.
