@@ -607,12 +607,26 @@ describe("statusbar widget", function()
       assert.is_nil(tip())
     end)
 
-    it("does no hit-testing on a move while tooltips are off", function()
+    it("shows nothing on a move while tooltips are off", function()
       widget.handle_command({ "tooltips", "off" })
-      local before = calls()
       widget.on_mouse(MOVE, 140, 60, 0)
-      assert.are.equal(before, calls())
       assert.is_nil(tip())
+    end)
+
+    it("names a buff that appears under a still cursor", function()
+      env.player.buffs = { KO }
+      widget.update()
+      widget.on_mouse(MOVE, 140, 60, 0)
+      assert.is_nil(tip())
+      env.player.buffs = { KO, HASTE }
+      widget.update()
+      assert.are.equal("haste (33)", tip().last.text)
+    end)
+
+    it("cancels nothing for a preview sample", function()
+      widget.set_preview(true)
+      assert.is_false(widget.on_mouse(RIGHT_DOWN, 105, 60, 0))
+      assert.are.same({}, env.commands)
     end)
   end)
 

@@ -317,7 +317,15 @@ local function new(ctx)
     end
 
     if event == "chunk" and logic.wants_chunk(first) then
-      local packet = first == CHAR_UPDATE and third or ctx.parse_packet(second)
+      -- Written as a branch, not `and/or`: a pre-parse that FAILED is a nil
+      -- `third`, and the idiom would fall through to parsing the same bytes
+      -- a second time with the library that has just failed on them.
+      local packet
+      if first == CHAR_UPDATE then
+        packet = third
+      else
+        packet = ctx.parse_packet(second)
+      end
       logic.on_packet(first, packet, ctx.now())
     end
   end

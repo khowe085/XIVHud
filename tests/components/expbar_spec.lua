@@ -377,6 +377,13 @@ describe("expbar widget", function()
       widget.set_pos(100, 200)
     end)
 
+    -- A pre-parse that failed is a nil `third`; the bytes are not parsed a
+    -- second time here, the same library having just failed on them.
+    it("does not re-parse a 0x063 the entry point could not", function()
+      chunk(CHAR_UPDATE, nil)
+      assert.are.equal(0, #parses)
+    end)
+
     it("parses only the two ids it alone reads; 0x063 arrives parsed", function()
       chunk(UNHANDLED, { Order = 2 })
       assert.are.equal(0, #parses)

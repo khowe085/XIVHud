@@ -105,8 +105,10 @@ local function new(ctx)
   local tip_showing = nil
   -- Where the cursor last was, so a repaint can re-read the cell under it:
   -- a buff expiring shifts every later icon left under a cursor that has
-  -- not moved.
-  local last_mouse = nil
+  -- not moved. Two scalars, not a table: a move fires more often than a
+  -- frame, and a table per move is the one allocation this file would pay
+  -- most often.
+  local mouse_x, mouse_y = nil, nil
   -- Layout mode: it opens with set_preview and owns the mouse from then on,
   -- so no tip while it is on.
   local previewing = false
@@ -485,11 +487,11 @@ local function new(ctx)
 
   -- The tip for the cell under the cursor as the bars stand now, or none.
   local function refresh_tip()
-    if previewing or not last_mouse or not logic.tooltips_on() then
+    if previewing or mouse_x == nil or not logic.tooltips_on() then
       hide_tip()
       return
     end
-    local anchor, cell = cell_under(last_mouse.x, last_mouse.y)
+    local anchor, cell = cell_under(mouse_x, mouse_y)
     local text = cell and logic.tooltip(cell.id)
     if text then
       show_tip(anchor, cell, text)
@@ -507,7 +509,7 @@ local function new(ctx)
        while it is on, so nothing arrives here then. ]]
   function self.on_mouse(mouse_type, x, y)
     if mouse_type == MOUSE_MOVE then
-      last_mouse = { x = x, y = y }
+      mouse_x, mouse_y = x, y
       -- Off means off: no hit-test per move either.
       if logic.tooltips_on() then
         refresh_tip()
@@ -517,7 +519,8 @@ local function new(ctx)
       return false
     end
     if mouse_type == MOUSE_RIGHT_DOWN then
-      if not ctx.send_command then
+      -- Nothing to cancel in a preview: the cells are samples.
+      if not ctx.send_command or previewing then
         return false
       end
       local _, cell = cell_under(x, y)
@@ -568,7 +571,10 @@ local function new(ctx)
       logic.set_buffs(buffs)
       logic.set_time(now)
       paint_all()
-      if tip_showing then
+      -- Whenever the cursor is known, not only while a tip is up: a buff
+      -- APPEARING under a still cursor deserves its name as much as one
+      -- expiring deserves its correction. Over the drawn cells, so cheap.
+      if mouse_x ~= nil then
         refresh_tip()
       end
     end
