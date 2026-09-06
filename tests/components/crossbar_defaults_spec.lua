@@ -75,46 +75,19 @@ describe("crossbar defaults", function()
     assert.same({ r = 254, g = 222, b = 0 }, defaults.tp_cost_color)
   end)
 
-  it("carries the skillchain indicator settings", function()
-    assert.same({
-      indicator = true,
-      opacity = 220,
-      waiting_color = { r = 237, g = 28, b = 36 },
-      open_color = { r = 15, g = 205, b = 5 },
-    }, defaults.skillchain)
+  it("carries no skillchain indicator block - the indicator is its own component", function()
+    assert.is_nil(defaults.skillchain)
   end)
 
-  it("ships the cast retry off, seeded from the module that owns its tuning", function()
-    -- One place to tune: the numbers live beside the state machine that
-    -- reads them (and beside the note about which of them are guesses), so
-    -- the shipped config and its fallbacks cannot drift apart.
-    local retry = require("components/crossbar/retry")({})
-    assert.same(retry.defaults(), defaults.retry)
-    assert.is_false(defaults.retry.enabled)
-  end)
-
-  it("ships the weaponskill gate off, seeded from the module that owns its tuning", function()
-    -- The cast retry's precedent for both halves now: where the numbers
-    -- live, and the posture. A gate that silently drops a press is not
-    -- something to switch on for a player who never asked for it.
-    local wsgate = require("components/crossbar/wsgate")({})
-    assert.same(wsgate.defaults(), defaults.wsgate)
-    assert.is_false(defaults.wsgate.enabled)
-  end)
-
-  it("ships the five-second travel delay, seeded from the module that owns it", function()
-    -- One place to tune, the cast retry's precedent: the span sits beside
-    -- the countdown that reads it, so the shipped config and the fallback
-    -- behind a hand-broken one cannot drift apart. Zero is the off switch,
-    -- which is why there is no toggle verb.
-    local travel = require("components/crossbar/travel")({})
-    assert.equal(travel.defaults().delay, defaults.delay)
-    assert.equal(5, defaults.delay)
+  it("carries none of the action service's tuning - that is core.lua's", function()
+    assert.is_nil(defaults.retry)
+    assert.is_nil(defaults.wsgate)
+    assert.is_nil(defaults.delay)
   end)
 
   it("places all four anchors on screen", function()
     local anchors = defaults.layout.anchors
-    for _, name in ipairs({ "main", "wxhb_left", "wxhb_right", "set", "weapon", "skillchain_indicator" }) do
+    for _, name in ipairs({ "main", "wxhb_left", "wxhb_right", "set", "weapon" }) do
       local anchor = anchors[name]
       assert.is_table(anchor, name)
       assert.equal(1, anchor.scale, name)
@@ -138,10 +111,7 @@ describe("crossbar defaults", function()
     assert.equal(anchors.main.pos.x + 300, anchors.wxhb_right.pos.x)
     assert.equal(anchors.main.pos.y - 180, anchors.wxhb_left.pos.y)
     assert.equal(anchors.wxhb_left.pos.y, anchors.wxhb_right.pos.y)
-    -- The skillchain indicator: centred on its own 604 footprint, floating
-    -- its 40px lift above the WXHB pair.
-    assert.equal((WIDTH - 604) / 2, anchors.skillchain_indicator.pos.x)
-    assert.equal(anchors.wxhb_left.pos.y - 40, anchors.skillchain_indicator.pos.y)
+    assert.is_nil(anchors.skillchain_indicator, "the indicator is its own component now")
   end)
 
   it("survives a zero screen (size not yet known)", function()

@@ -365,7 +365,10 @@ function M.core_deps(overrides)
     now = function()
       return recorder.clock
     end,
+    -- The client's sink concatenates a prefix onto what it is given, so a
+    -- nil that would throw there throws here too rather than vanishing.
     chat = function(message)
+      assert(type(message) == "string", "chat was handed a " .. type(message))
       recorder.chat[#recorder.chat + 1] = message
     end,
     set_input_capture = function(on)
@@ -409,6 +412,28 @@ function M.core_deps(overrides)
   end
 
   return deps, recorder
+end
+
+--[[ The action service over a component ctx's own fakes, so a widget spec
+     drives the one instance the entry point would hand it as `ctx.actions`.
+     `config` is the tuning core would hold in core.lua; absent, the modules'
+     own defaults (retry and the gate off, a five-second delay). ]]
+function M.action_service(ctx, config)
+  if config == nil then
+    config = {
+      retry = require("lib/actionbar/retry")({}).defaults(),
+      wsgate = require("lib/actionbar/wsgate")({}).defaults(),
+      delay = require("lib/actionbar/travel")({}).defaults().delay,
+    }
+  end
+  -- Forwarded at call time rather than copied: a spec that swaps one of the
+  -- ctx's fakes after construction must be seen by the service as well.
+  local deps = setmetatable({
+    config = function()
+      return config
+    end,
+  }, { __index = ctx })
+  return require("lib/actionbar/service")(deps)
 end
 
 return M

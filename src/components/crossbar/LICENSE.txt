@@ -11,31 +11,28 @@ own notice.
 Source transcribed into this component's Lua
 --------------------------------------------------------------------------------
 
-    kebab.lua        kebab_casify, taken verbatim from xivcrossbar's
-                     libs/kebab_casify.lua (MIT (c) 2020 AliekberFFXI - the
-                     full MIT text is below; kebab.lua's header points here)
-    render.lua       the radial recast sweep algorithm (observed-maximum
-                     denominator, frame formula) from Petit Trois'
-                     lib/ui.lua, BSD (c) 2026 WG Incorporated; the compact
-                     cross geometry and drawing constants from xivcrossbar's
-                     ui.lua, BSD (c) 2017 SirEdeonX
-    roulette.lua     from libs/mountroulette/, BSD (c) 2020 Dean James
-                     (Xurion of Bismarck)
-    warp.lua         from MyHome (Icydeath/ffxi-addons), BSD (c) 2018
-                     from20020516
-    skillchain.lua   the property and chain-resolution tables and the
-                     resolution/window logic, from libs/skillchain/
-                     (the SkillChains addon), BSD (c) 2017 Ivaar
-    counters.lua     the stratagem charge counter from an xivcrossbar fork
-                     (https://github.com/khowe085/xivcrossbar), which
-                     carries its parent repository's notices: MIT (c) 2020
-                     AliekberFFXI and BSD (c) 2017 SirEdeonX; plus the ninja
-                     tool / master tool / Quick Draw card lookup tables and
-                     the stratagem ability list, transcribed from
-                     xivcrossbar's consumables.lua (MIT (c) 2020 AliekberFFXI)
-    src/lib/icons.lua  the item icon extractor, from EquipViewer, BSD
-                     (c) 2021 Rubenator (promoted to lib/ so this component
-                     and the equip viewer share one copy)
+    render.lua       the compact cross geometry and drawing constants from
+                     xivcrossbar's ui.lua, BSD (c) 2017 SirEdeonX. The
+                     radial recast sweep (Petit Trois, BSD (c) 2026 WG
+                     Incorporated) moved to src/lib/actionbar/render.lua on
+                     2026-09-06 and carries that notice inline.
+
+Moved out of this component on 2026-09-06, each now carrying or pointing at
+its own notice where it lives (nothing in lib/ depends on this file):
+
+    src/lib/actionbar/kebab.lua     MIT (c) 2020 AliekberFFXI - the notice
+                                    text is in src/lib/actionbar/LICENSE.txt
+    src/lib/actionbar/counters.lua  MIT (c) 2020 AliekberFFXI and BSD (c)
+                                    2017 SirEdeonX - likewise
+    src/lib/roulette.lua            BSD (c) 2020 Dean James, inline
+    src/lib/warp.lua                BSD (c) 2018 from20020516, inline
+    src/lib/skillchain.lua          BSD (c) 2017 Ivaar, inline
+    src/lib/icons.lua               BSD (c) 2021 Rubenator, inline (promoted
+                                    earlier, for the equip viewer)
+
+The notices below are kept for the history above; the MIT and SirEdeonX
+texts are duplicated in src/lib/actionbar/LICENSE.txt, which is the copy the
+moved files point at.
 
 MIT License (xivcrossbar)
 --------------------------------------------------------------------------------

@@ -358,12 +358,12 @@ describe("entry point", function()
          eighteen-member walk for a fact neither of them holds. ]]
     it("keeps the party and the zone for a buff gain", function()
       boot.ctxs.targetbar.get_party()
-      boot.ctxs.crossbar.zone()
+      boot.service_deps.zone()
       local party, info = boot.client_calls.party, boot.client_calls.info
 
       boot.handlers["gain buff"](43)
       boot.ctxs.targetbar.get_party()
-      boot.ctxs.crossbar.zone()
+      boot.service_deps.zone()
       assert.are.equal(party, boot.client_calls.party, "a buff dropped the party read")
       assert.are.equal(info, boot.client_calls.info, "a buff dropped the zone read")
     end)
@@ -376,8 +376,8 @@ describe("entry point", function()
 
     it("reads the zone once per interval, however often the crossbar draws", function()
       local before = boot.client_calls.info
-      boot.ctxs.crossbar.zone()
-      boot.ctxs.crossbar.zone()
+      boot.service_deps.zone()
+      boot.service_deps.zone()
       boot.ctxs.partylist.get_info()
       assert.are.equal(before + 1, boot.client_calls.info)
     end)
@@ -435,6 +435,144 @@ describe("entry point", function()
       boot.handlers["zone change"]()
       boot.ctxs.parambar.get_player()
       assert.are.equal(2, boot.client_calls.player)
+    end)
+  end)
+
+  --[[ The hotbar reads the client exactly as the crossbar does, member for
+       member, off the same service - and is registered after it, which is
+       the whole of the keyboard arbitration between the two. ]]
+  describe("the hotbar", function()
+    it("is built after the crossbar, over the same service and the same reads", function()
+      assert.is_not_nil(boot.ctxs.hotbar)
+      local crossbar_at, hotbar_at = nil, nil
+      for index, name in ipairs(boot.built) do
+        if name == "crossbar" then
+          crossbar_at = index
+        elseif name == "hotbar" then
+          hotbar_at = index
+        end
+      end
+      assert.is_true(crossbar_at ~= nil and hotbar_at ~= nil and crossbar_at < hotbar_at, "order")
+      assert.are.equal(boot.service, boot.ctxs.hotbar.actions)
+      for _, name in ipairs({
+        "get_player",
+        "get_mob_by_target",
+        "generation",
+        "get_items",
+        "get_equipment",
+        "parse_packet",
+        "decode_extdata",
+        "get_spells",
+        "get_abilities",
+        "get_spell_recasts",
+        "get_ability_recasts",
+        "file_exists",
+        "chat_open",
+      }) do
+        assert.are.equal(boot.ctxs.crossbar[name], boot.ctxs.hotbar[name], name)
+      end
+    end)
+
+    it("sits out in safe mode with the rest", function()
+      local safe = harness.boot({ files = { ["addons/XIVHud/safe_mode"] = "" } })
+      assert.is_nil(safe.ctxs.hotbar)
+    end)
+  end)
+
+  describe("the skillchain indicator", function()
+    it("is built over the service's engine, with an image constructor and nothing of the client", function()
+      assert.is_not_nil(boot.ctxs.skillchain)
+      assert.are.equal(boot.service, boot.ctxs.skillchain.actions)
+      assert.are.equal(boot.ctxs.crossbar.new_image, boot.ctxs.skillchain.new_image)
+      assert.is_nil(boot.ctxs.skillchain.get_player)
+      assert.is_nil(boot.ctxs.skillchain.parse_packet)
+      -- Every press goes through the service: no bar sends a command itself.
+      assert.is_nil(boot.ctxs.crossbar.send_command)
+      assert.is_nil(boot.ctxs.hotbar.send_command)
+    end)
+  end)
+
+  --[[ The action service (lib/actionbar/service): built once, before core,
+       over the same reads the components get, and fed every event before
+       core dispatches it - never by a bar, or two bars would feed one engine
+       twice. Only the entry point can say any of this. ]]
+  describe("the action service", function()
+    it("is built once and handed to core and to the crossbar", function()
+      assert.is_not_nil(boot.service_deps)
+      assert.are.equal(boot.service, boot.core_deps.actions)
+      assert.are.equal(boot.service, boot.ctxs.crossbar.actions)
+    end)
+
+    it("reads the player and the target through the player service", function()
+      assert.are.equal(boot.ctxs.crossbar.get_player, boot.service_deps.get_player)
+      assert.are.equal(boot.ctxs.crossbar.get_mob_by_target, boot.service_deps.get_mob_by_target)
+      assert.are.equal(boot.ctxs.crossbar.get_mob_by_target, boot.core_deps.get_mob_by_target)
+    end)
+
+    it("reads its tuning off core's own config", function()
+      assert.are.equal(boot.core_config, boot.service_deps.config())
+    end)
+
+    it("takes the members the crossbar no longer reads", function()
+      for _, name in ipairs({
+        "send_ipc",
+        "set_equip",
+        "decode_extdata",
+        "random",
+        "get_key_items",
+        "zone",
+        "chat_open",
+      }) do
+        assert.is_function(boot.service_deps[name], name .. " missing from the service")
+      end
+      for _, name in ipairs({ "send_ipc", "set_equip", "random", "get_key_items", "zone" }) do
+        assert.is_nil(boot.ctxs.crossbar[name], name .. " still on the crossbar's ctx")
+      end
+    end)
+
+    it("hears every chunk before the components, with the one parse", function()
+      boot.action = { category = 8, param = 144, targets = { { id = 1, actions = {} } } }
+      boot.chunk(ACTION, "raw action bytes")
+      local call = boot.service_calls[#boot.service_calls]
+      assert.are.equal("on_chunk", call.name)
+      assert.are.equal(ACTION, call[1])
+      assert.are.equal("raw action bytes", call[2])
+      assert.are.equal(boot.last_dispatch("chunk")[3], call[3], "the same parsed table, not a second decode")
+    end)
+
+    it("hears the status, the job change, the ipc message and the unload", function()
+      boot.handlers["status change"](7, 0)
+      boot.handlers["job change"](1, 99, 20, 49)
+      boot.handlers["ipc message"]("xivhud warp")
+      boot.handlers["unload"]()
+      local names = {}
+      for _, call in ipairs(boot.service_calls) do
+        names[#names + 1] = call.name .. ":" .. tostring(call[1])
+      end
+      assert.are.same({ "on_status:7", "on_job_change:nil", "on_ipc:xivhud warp", "on_unload:nil" }, names)
+    end)
+
+    it("sits out in safe mode, and every handler that would reach it copes", function()
+      local safe = harness.boot({ files = { ["addons/XIVHud/safe_mode"] = "" } })
+      assert.is_nil(safe.service_deps, "built, it would hold a GearSwap slot with nothing to poll it")
+      assert.is_nil(safe.core_deps.actions)
+      assert.has_no.errors(function()
+        safe.handlers["status change"](7, 0)
+        safe.handlers["job change"](1, 99, 20, 49)
+        safe.handlers["ipc message"]("xivhud warp")
+        safe.handlers["unload"]()
+      end)
+      assert.are.equal("", safe.said():match("error in the") or "")
+    end)
+
+    it("takes the whole HUD down with it when it will not load", function()
+      local without = harness.boot({ require_fails = { ["lib/actionbar/service"] = "no service" } })
+      assert.is_nil(without.ctxs.crossbar)
+      assert.is_nil(without.ctxs.parambar)
+      -- The failure is reported where a player can ask for it: `//hud`.
+      without.fire("addon command")
+      assert.is_not_nil(without.said():find("did not load", 1, true))
+      assert.is_not_nil(without.said():find("lib/actionbar/service", 1, true))
     end)
   end)
 

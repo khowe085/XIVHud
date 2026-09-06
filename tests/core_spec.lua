@@ -1365,6 +1365,19 @@ describe("core", function()
     -- Pinned 2026-08-16: the inertness during layout mode lives inside the
     -- component's input module, NOT in dispatch going quiet - otherwise its
     -- dedicated keys could not stay blocked while anchors are placed.
+    it("hands a later component the block an earlier one took, and the first the inbound flag", function()
+      local first = core.register(keyboard_widget("first"))
+      local second = core.register(keyboard_widget("second"))
+      login()
+      first.block = true
+      assert.is_true(core.on_keyboard(2, true, 0, false))
+      assert.is_false(first.keys[1][4], "the first sees what Windower said")
+      assert.is_true(second.keys[1][4], "the second sees the first's claim")
+      first.block = false
+      core.on_keyboard(2, false, 0, false)
+      assert.is_false(second.keys[2][4], "and nothing more once the claim is gone")
+    end)
+
     it("keeps delivering, and honouring blocks, while layout mode is on", function()
       local widget = core.register(keyboard_widget())
       login()
@@ -1935,6 +1948,203 @@ describe("core", function()
       widget.store.save("WAR", { active_set = 1 })
       core.on_command({ "copy", "Alpha", "Azureblood" })
       assert.are.equal(7, widget.store.load("WAR").active_set)
+    end)
+  end)
+
+  describe("the action service", function()
+    local calls, service
+
+    local function fake_service()
+      calls = {}
+      service = {
+        config = {
+          retry = { enabled = false },
+          wsgate = { enabled = false, melee_range = 4, size_pivot = 1.3 },
+          delay = 5,
+        },
+        travel = {
+          delay = function()
+            return service.config.delay
+          end,
+        },
+        retry = {
+          sync = function()
+            calls[#calls + 1] = { "sync" }
+          end,
+        },
+        wsgate = {
+          enabled = function()
+            return service.config.wsgate.enabled == true
+          end,
+          melee_range = function()
+            return service.config.wsgate.melee_range
+          end,
+          size_pivot = function()
+            return service.config.wsgate.size_pivot
+          end,
+          reach_for = function(size)
+            return size and 4 + size or nil
+          end,
+        },
+      }
+      function service.config_defaults()
+        return {
+          retry = { enabled = false },
+          wsgate = { enabled = false, melee_range = 4, size_pivot = 1.3 },
+          delay = 5,
+        }
+      end
+      function service.warp(all)
+        calls[#calls + 1] = { "warp", all }
+      end
+      function service.builtin(name)
+        calls[#calls + 1] = { "builtin", name }
+        if name == "mr" then
+          return "no mount here"
+        end
+        return nil
+      end
+      function service.tick()
+        calls[#calls + 1] = { "tick" }
+      end
+      function service.on_logout()
+        calls[#calls + 1] = { "logout" }
+      end
+      return service
+    end
+
+    local function service_core(overrides)
+      overrides = overrides or {}
+      overrides.actions = fake_service()
+      deps, env = fakes.core_deps(overrides)
+      core = new_core(deps)
+    end
+
+    it("lists the verbs in help", function()
+      service_core()
+      core.on_command({ "help" })
+      for _, verb in ipairs({ "warp", "mr", "sneak", "invisible", "draw", "retry", "wsgate", "delay" }) do
+        assert.is_not_nil(env.said():find("//hud " .. verb, 1, true), verb .. " missing from help")
+      end
+    end)
+
+    it("refuses the action verbs while logged out", function()
+      service_core()
+      core.on_command({ "warp" })
+      assert.is_not_nil(env.said():lower():find("log in"))
+      assert.are.same({}, calls)
+    end)
+
+    it("hands warp and warp all to the service", function()
+      service_core()
+      login()
+      core.on_command({ "warp" })
+      core.on_command({ "warp", "all" })
+      assert.are.same({ { "warp", false }, { "warp", true } }, calls)
+    end)
+
+    it("runs a built-in and says the hint it answers", function()
+      service_core()
+      login()
+      core.on_command({ "draw" })
+      assert.are.same({ { "builtin", "draw" } }, calls)
+      env.forget()
+      core.on_command({ "mr" })
+      assert.is_not_nil(env.said():find("no mount here", 1, true))
+      env.forget()
+      core.on_command({ "sneak" })
+      assert.are.equal("", env.said(), "a press that went says nothing, and throws nothing")
+    end)
+
+    it("says so when the service did not load", function()
+      deps, env = fakes.core_deps()
+      core = new_core(deps)
+      login()
+      core.on_command({ "warp" })
+      assert.is_not_nil(env.said():lower():find("action service"))
+    end)
+
+    it("seeds the service's tuning into core.lua at login", function()
+      service_core()
+      login()
+      local written = env.fs.files["data/Azureblood/core.lua"]
+      assert.is_not_nil(written:find("retry", 1, true))
+      assert.is_not_nil(written:find("wsgate", 1, true))
+      assert.is_not_nil(written:find("delay", 1, true))
+      assert.are.equal(5, core.config().delay)
+    end)
+
+    it("switches the cast retry, writing core.lua at once", function()
+      service_core()
+      login()
+      core.on_command({ "retry" })
+      assert.is_not_nil(env.said():find("cast retry: off", 1, true))
+      core.on_command({ "retry", "on" })
+      assert.is_true(core.config().retry.enabled)
+      assert.are.same({ { "sync" } }, calls, "the service's retry hears the write at once")
+      assert.is_not_nil(env.fs.files["data/Azureblood/core.lua"]:find("enabled = true", 1, true))
+      core.on_command({ "retry", "maybe" })
+      assert.is_not_nil(env.said():find("retry [on|off]", 1, true))
+    end)
+
+    it("reports and tunes the weaponskill gate", function()
+      service_core({
+        get_mob_by_target = function()
+          return { distance = 16, model_size = 2 }
+        end,
+      })
+      login()
+      core.on_command({ "wsgate" })
+      assert.is_not_nil(env.said():find("weaponskill gate: off, melee reach 4 yalms, size pivot 1.3", 1, true))
+      assert.is_not_nil(env.said():find("target 4.00 yalms, model size 2.00, reach here 6.00", 1, true))
+      core.on_command({ "wsgate", "on" })
+      assert.is_true(core.config().wsgate.enabled)
+      core.on_command({ "wsgate", "range", "30" })
+      assert.are.equal(30, core.config().wsgate.melee_range)
+      core.on_command({ "wsgate", "pivot", "0" })
+      assert.are.equal(0, core.config().wsgate.size_pivot)
+      env.forget()
+      core.on_command({ "wsgate", "range", "0" })
+      assert.is_not_nil(env.said():find("greater than zero", 1, true))
+      assert.are.equal(30, core.config().wsgate.melee_range)
+    end)
+
+    it("reports and sets the travel delay", function()
+      service_core()
+      login()
+      core.on_command({ "delay" })
+      assert.is_not_nil(env.said():find("travel delay: 5 seconds", 1, true))
+      core.on_command({ "delay", "0" })
+      assert.are.equal(0, core.config().delay)
+      env.forget()
+      core.on_command({ "delay", "soon" })
+      assert.is_not_nil(env.said():find("delay <seconds>", 1, true))
+      assert.are.equal(0, core.config().delay)
+    end)
+
+    it("ticks the service once per frame, before any component", function()
+      service_core()
+      local widget = bar("bar")
+      widget.update = function(event)
+        if event == nil then
+          calls[#calls + 1] = { "component" }
+        end
+      end
+      core.register(widget)
+      login()
+      core.on_prerender()
+      local order = {}
+      for _, call in ipairs(calls) do
+        order[#order + 1] = call[1]
+      end
+      assert.are.same({ "tick", "component" }, order)
+    end)
+
+    it("tells the service about a logout", function()
+      service_core()
+      login()
+      core.on_logout()
+      assert.are.same({ { "logout" } }, calls)
     end)
   end)
 end)

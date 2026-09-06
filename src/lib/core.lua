@@ -93,6 +93,16 @@ local HELP = {
   "  //hud buffs <name> [<anchor>] [...]",
   "                            a component's buff order and filter verbs:",
   "                            list, find, top, up, down, rank, reset, filter",
+  "  //hud warp [all]           go home, by the best rung you have; all takes",
+  "                            every instance with you",
+  "  //hud mr                   mount roulette, or dismount",
+  "  //hud sneak                the sneak ladder, the same on every job",
+  "  //hud invisible            the invisible ladder, likewise",
+  "  //hud draw                 toggle the weapon state every bar follows",
+  "  //hud retry [on|off]       re-send an action the game refused as too soon",
+  "  //hud wsgate [on|off]      drop a weaponskill press the game would refuse;",
+  "                            wsgate range|pivot <yalms> tune its reach",
+  "  //hud delay [<seconds>]    the countdown before a mount or a warp goes",
   "  //hud <name> ...           pass a command to a component",
   "  //hud <alias> ...          a component answers to its short name too,",
   "                            which //hud list prints beside it",
@@ -131,6 +141,26 @@ local function new(deps)
 
   local function core_config()
     return core_handle and core_handle.get() or nil
+  end
+  self.config = core_config
+
+  --[[ The action service's tuning lives in core.lua beside snap and
+       hideCutscene: retry, the weaponskill gate and the travel delay were
+       never meant to vary by slot, and a slot-scoped home would have meant a
+       settings handle for something that is not a component (Kevin,
+       2026-09-06). The service names its own defaults; without the service
+       core.lua carries none of them. ]]
+  local function core_defaults()
+    local defaults = {}
+    for key, value in pairs(CORE_DEFAULTS) do
+      defaults[key] = value
+    end
+    if deps.actions ~= nil and deps.actions.config_defaults ~= nil then
+      for key, value in pairs(deps.actions.config_defaults()) do
+        defaults[key] = value
+      end
+    end
+    return defaults
   end
 
   local layout = new_layout({
@@ -510,7 +540,7 @@ local function new(deps)
     if not core_handle then
       -- Character-scoped, not slot-scoped: core holds the active slot, so its
       -- own file cannot live inside one.
-      core_handle = settings.register_character(CORE_NAMESPACE, CORE_DEFAULTS)
+      core_handle = settings.register_character(CORE_NAMESPACE, core_defaults())
     end
 
     -- Nothing else ever writes core's file, so create it on the first login for
@@ -594,6 +624,9 @@ local function new(deps)
       set_layout_mode(false)
     end
     set_character(nil)
+    if deps.actions ~= nil then
+      deps.actions.on_logout()
+    end
   end
 
   function self.on_unload()
@@ -640,6 +673,13 @@ local function new(deps)
 
     if visibility.tick() then
       apply_all()
+    end
+    -- The action service ticks BEFORE any bar: its per-frame target memo is
+    -- re-armed there, and a warp poll or a countdown is a press already
+    -- made, answered whether or not any bar is on screen or a character is
+    -- scoped (the logout already dropped whatever belonged to one).
+    if deps.actions ~= nil then
+      deps.actions.tick()
     end
     if not settings.character() then
       return
@@ -705,10 +745,18 @@ local function new(deps)
        inbound-blocked guard. ]]
   function self.on_keyboard(key, down, flags, blocked)
     layout_mode.key(key, down)
+    --[[ The block ACCUMULATES through the walk (2026-09-06): a later
+         component sees a key an earlier one took as already blocked, exactly
+         as it sees one a prior addon took. Two bars own overlapping keys -
+         the crossbar's slot keys are the number row while a side is held,
+         the hotbar's the bare row - and neither can see the other's held
+         key, so this order is the arbitration: the crossbar is registered
+         first. Delivery is unchanged; only the flag carries more. ]]
     local block = false
     for _, component in ipairs(registry.all()) do
       if component.on_keyboard then
-        block = component.on_keyboard(key, down, flags, blocked) == true or block
+        local took = component.on_keyboard(key, down, flags, blocked or block) == true
+        block = block or took
       end
     end
     return block
@@ -1196,6 +1244,202 @@ local function new(deps)
     say(("copied %d file(s) from %s to %s, replacing %d"):format(copied, source, destination, removed))
   end
 
+  --[[ The action service's verbs -------------------------------------------
+
+       `//hud warp|mr|sneak|invisible|draw` are the framework's since the
+       service took execution off the crossbar (2026-09-06): a warp is nobody's
+       bar's in particular, and the weapon state is the player's. ]]
+
+  local function require_service()
+    if deps.actions ~= nil then
+      return true
+    end
+    say("the action service did not load - nothing can be fired from here")
+    return false
+  end
+
+  local function run_action(action)
+    if not require_character() or not require_service() then
+      return
+    end
+    if action.verb == "warp" then
+      deps.actions.warp(action.all)
+      return
+    end
+    -- A hint only where the press was refused: a built-in that went answers
+    -- nil, and the chat sink concatenates what it is given.
+    local hint = deps.actions.builtin(action.verb)
+    if hint ~= nil then
+      say(hint)
+    end
+  end
+
+  local function parse_switch(word)
+    word = type(word) == "string" and word:lower() or nil
+    if word == "on" then
+      return true
+    elseif word == "off" then
+      return false
+    end
+    return nil
+  end
+
+  -- A block of the tuning, made if a hand-edited file lost it: only the key
+  -- being set is touched, so the tuning beside it survives the switch.
+  local function tuning_table(key)
+    local config = core_config()
+    if type(config[key]) ~= "table" then
+      config[key] = {}
+    end
+    return config[key]
+  end
+
+  local function tune_retry(words)
+    if #words > 1 then
+      say("retry [on|off]")
+      return
+    end
+    if words[1] == nil then
+      local block = core_config().retry
+      say("cast retry: " .. (type(block) == "table" and block.enabled == true and "on" or "off"))
+      return
+    end
+    local on = parse_switch(words[1])
+    if on == nil then
+      say("retry [on|off]")
+      return
+    end
+    tuning_table("retry").enabled = on
+    core_handle.save()
+    -- Switching off drops a cast held at that moment rather than letting a
+    -- last one through; the service's retry reads the write it just saw.
+    deps.actions.retry.sync()
+    say("cast retry: " .. (on and "on" or "off"))
+  end
+
+  local WSGATE_FORM = "wsgate [on|off] - or wsgate range <yalms>, wsgate pivot <yalms>"
+
+  --[[ The gate's state, switch and reach together, plus what is in front of
+       you: the reach is settled by walking in on mobs of different sizes and
+       reading what worked, and neither the distance nor the model size is on
+       screen anywhere else. The numbers come from the service's own gate, so
+       the line cannot name a value that is not in force. ]]
+  local function wsgate_state()
+    local gate = deps.actions.wsgate
+    local line = "weaponskill gate: "
+      .. (gate.enabled() and "on" or "off")
+      .. ", melee reach "
+      .. tostring(gate.melee_range())
+      .. " yalms, size pivot "
+      .. tostring(gate.size_pivot())
+    local target = deps.get_mob_by_target ~= nil and deps.get_mob_by_target("t") or nil
+    if type(target) ~= "table" then
+      return line
+    end
+    local squared = tonumber(target.distance)
+    if squared ~= nil then
+      line = line .. (", target %.2f yalms"):format(math.sqrt(math.max(squared, 0)))
+    end
+    local size = tonumber(target.model_size)
+    if size ~= nil then
+      line = line .. (", model size %.2f"):format(size)
+    end
+    local reach = gate.reach_for(target.model_size)
+    if reach ~= nil then
+      line = line .. (", reach here %.2f"):format(reach)
+    end
+    return line
+  end
+
+  local function tune_wsgate(words)
+    local sub = type(words[1]) == "string" and words[1]:lower() or nil
+    if sub == "range" or sub == "pivot" then
+      if #words > 2 then
+        say(WSGATE_FORM)
+        return
+      end
+      local gate = deps.actions.wsgate
+      if words[2] == nil then
+        if sub == "range" then
+          say("weaponskill gate melee reach: " .. tostring(gate.melee_range()) .. " yalms")
+        else
+          say("weaponskill gate size pivot: " .. tostring(gate.size_pivot()) .. " yalms")
+        end
+        return
+      end
+      -- Refused rather than stored: the module falls back to the shipped
+      -- value for one it cannot use, so writing it would leave the player
+      -- believing a number that is not being measured against. Zero is
+      -- legitimate for the pivot (every mob adds the whole of its bulk) and
+      -- not for the reach - `wsgate off` is the off switch.
+      local yalms = tonumber(words[2])
+      local bad = yalms == nil or yalms ~= yalms or yalms == math.huge
+      if sub == "range" then
+        if bad or yalms <= 0 then
+          say("wsgate range <yalms> - a distance greater than zero")
+          return
+        end
+        tuning_table("wsgate").melee_range = yalms
+        core_handle.save()
+        say("weaponskill gate melee reach: " .. tostring(yalms) .. " yalms")
+      else
+        if bad or yalms < 0 then
+          say("wsgate pivot <yalms> - a distance of zero or more")
+          return
+        end
+        tuning_table("wsgate").size_pivot = yalms
+        core_handle.save()
+        say("weaponskill gate size pivot: " .. tostring(yalms) .. " yalms")
+      end
+      return
+    end
+    if #words > 1 then
+      say(WSGATE_FORM)
+      return
+    end
+    if words[1] == nil then
+      say(wsgate_state())
+      return
+    end
+    local on = parse_switch(words[1])
+    if on == nil then
+      say(WSGATE_FORM)
+      return
+    end
+    tuning_table("wsgate").enabled = on
+    core_handle.save()
+    say("weaponskill gate: " .. (on and "on" or "off"))
+  end
+
+  local function tune_delay(words)
+    if words[1] == nil then
+      local span = deps.actions.travel.delay()
+      say("travel delay: " .. tostring(span) .. (span == 1 and " second" or " seconds") .. " - zero switches it off")
+      return
+    end
+    local seconds = tonumber(words[1])
+    if #words > 1 or seconds == nil or seconds ~= seconds or seconds == math.huge or seconds < 0 then
+      say("delay <seconds> - zero or more; zero switches the countdown off")
+      return
+    end
+    core_config().delay = seconds
+    core_handle.save()
+    say("travel delay: " .. tostring(seconds) .. (seconds == 1 and " second" or " seconds"))
+  end
+
+  local function run_tune(action)
+    if not require_character() or not require_service() then
+      return
+    end
+    if action.verb == "retry" then
+      tune_retry(action.words)
+    elseif action.verb == "wsgate" then
+      tune_wsgate(action.words)
+    elseif action.verb == "delay" then
+      tune_delay(action.words)
+    end
+  end
+
   local function run(action)
     if action.action == "help" then
       for _, line in ipairs(HELP) do
@@ -1246,6 +1490,10 @@ local function new(deps)
       if require_character() then
         run_buffs(action)
       end
+    elseif action.action == "action" then
+      run_action(action)
+    elseif action.action == "tune" then
+      run_tune(action)
     elseif action.action == "component" then
       if not require_character() then
         return

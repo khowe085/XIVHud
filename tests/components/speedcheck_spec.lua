@@ -52,7 +52,7 @@ describe("speedcheck widget", function()
     end)
 
     it("answers to a short alias of its own", function()
-      assert.are.equal("sc", widget.alias)
+      assert.are.equal("spd", widget.alias)
     end)
 
     it("defaults its slot position to the bottom right, a row above the gil tracker", function()

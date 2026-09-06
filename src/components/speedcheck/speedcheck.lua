@@ -55,7 +55,9 @@ local build_defaults = require("components/speedcheck/defaults")
 local ICON_TEXTURE = "assets/xiv/buffIcons/330.png"
 
 local function new(ctx)
-  local self = { name = "speedcheck", alias = "sc" }
+  -- `spd`: it was `sc` until 2026-09-06, when the skillchain indicator
+  -- became a component and took the word (Kevin).
+  local self = { name = "speedcheck", alias = "spd" }
 
   local screen_width, screen_height = ctx.screen()
   self.defaults = build_defaults(screen_width, screen_height)

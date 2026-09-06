@@ -270,4 +270,35 @@ describe("commands", function()
       assert.are.equal("help", commands.parse({ "" }).action)
     end)
   end)
+
+  describe("the action verbs", function()
+    it("reserves every framework action and tuning word", function()
+      for _, verb in ipairs({ "warp", "mr", "sneak", "invisible", "draw", "retry", "wsgate", "delay" }) do
+        assert.is_true(commands.reserved[verb], verb .. " must be reserved")
+      end
+    end)
+
+    it("parses a bare warp, and warp all", function()
+      assert.are.same({ action = "action", verb = "warp", all = false }, parse("warp"))
+      assert.are.same({ action = "action", verb = "warp", all = true }, parse("Warp", "ALL"))
+    end)
+
+    it("refuses any other word after warp", function()
+      assert_error(parse("warp", "me"), "//hud warp [all]")
+    end)
+
+    it("parses the built-ins in any case and refuses arguments", function()
+      for _, verb in ipairs({ "mr", "sneak", "invisible", "draw" }) do
+        assert.are.same({ action = "action", verb = verb }, parse(verb:upper()))
+        assert_error(parse(verb, "x"), "takes no arguments")
+      end
+    end)
+
+    it("passes the tuning verbs through with their words", function()
+      assert.are.same({ action = "tune", verb = "retry", words = {} }, parse("retry"))
+      assert.are.same({ action = "tune", verb = "retry", words = { "on" } }, parse("Retry", "on"))
+      assert.are.same({ action = "tune", verb = "wsgate", words = { "range", "30" } }, parse("wsgate", "range", "30"))
+      assert.are.same({ action = "tune", verb = "delay", words = { "3" } }, parse("delay", "3"))
+    end)
+  end)
 end)
