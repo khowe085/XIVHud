@@ -2035,7 +2035,7 @@ describe("crossbar commands", function()
       local commands =
         build({ name = "hotbar", grammar = grammar.hotbar(), views = false, help_extra = { "rows <n>" } })
       local help = commands.command({ "help" })
-      assert.are.equal("  //hud hotbar rows <n>", help[6])
+      assert.are.equal("  //hud hotbar rows <n>", help[7])
     end)
 
     it("has no views and no wxhb", function()

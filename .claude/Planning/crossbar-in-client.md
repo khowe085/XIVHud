@@ -131,6 +131,8 @@ unverified is the **wired component** behaving the same way.
 | 7.10 | Open a skillchain window with the crossbar hidden | The `skillchain` component's bar tracks it on its own anchor; `//hud hide skillchain` takes it down; `//hud list` shows five crossbar anchors and one `skillchain` placement | The crossbar's `layout.lua` may still carry a `skillchain_indicator` entry - dead weight, expected |
 | 7.11 | `//hud spd` and `//hud sc` | speedcheck and the skillchain component respectively | Aliases moved 2026-09-06 |
 | 7.12 | `//hud layout` with the hotbar on, then leave it | Entering builds the seven hidden rows in ONE frame (about 640 prims); leaving tears them down on the next tick; watch for a hitch on the way in | The lazy build keeps the resting cost down; the burst is the price of force-showing every anchor for the drag |
+| 7.13 | CTRL+Up, CTRL+Down with the hotbar on | Row 1 moves to the next / previous set of the rotation; the game's macro set changes too (expected); a bare arrow still turns the camera; `//hud hotbar cycle back` does the same from the console | The chord cannot be kept from the game; the number row's own caveat |
+| 7.14 | `//hud hotbar bar1 rows 10` and `rows 5` | The set number sits clear above slot 1 (a 14pt digit is reserved 20px, an estimate); if it still touches, `LABEL_HEIGHT` in components/hotbar/render.lua is the knob | Reported over slot 1 at 18px on 2026-09-06 |
 
 ---
 

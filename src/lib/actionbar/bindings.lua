@@ -693,14 +693,17 @@ local function new(deps)
   --- Advance to the next set that is non-empty AND flagged for the current
   --- weapon state's rotation. Wraps; when nothing qualifies it stays put and
   --- answers the unchanged active set (the no-op).
-  function self.cycle()
+  --- `direction` is -1 to walk the rotation BACKWARDS (the hotbar's
+  --- CTRL+Down, `cycle back`); anything else is the forward walk.
+  function self.cycle(direction)
     local ok, err = require_job()
     if ok == nil then
       return nil, err
     end
     local from = job_data.active_set
+    local sign = direction == -1 and -1 or 1
     for step = 1, SET_COUNT do
-      local set = (from + step - 1) % SET_COUNT + 1
+      local set = (from + sign * step - 1) % SET_COUNT + 1
       if cycle_flags(set)[weapon] and not set_is_empty(set) then
         -- Explicit, like jump: the player has said where they want to be.
         landed_blind = false

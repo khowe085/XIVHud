@@ -53,6 +53,12 @@ local SLOT_COUNT = 10
 local LABEL_SIZE = 14
 local LABEL_WIDTH = 12
 local LABEL_GAP = 4
+--[[ How tall a 14pt digit actually DRAWS: a texts prim renders taller than
+     its point size, so a reserve of the size alone put the label over slot
+     1 on the tall shapes (Kevin, live client, 2026-09-06). An estimate, like
+     every text measurement here - the client cannot be asked - to settle
+     in a live client; it also centres the label on the wide shapes. ]]
+local LABEL_HEIGHT = 20
 --[[ The band under a row of slots that the action names draw in: the shared
      render puts a slot's name at y + 40 in the bar's font (7pt, about ten
      pixels tall), and the crossbar's panel art reserves 49px under its grid
@@ -119,7 +125,7 @@ local function new(deps)
       rows = rows,
       columns = columns,
       grid_x = wide(rows) and (LABEL_WIDTH + LABEL_GAP) or 0,
-      grid_y = wide(rows) and 0 or (LABEL_SIZE + LABEL_GAP),
+      grid_y = wide(rows) and 0 or (LABEL_HEIGHT + LABEL_GAP),
     }
   end
 
@@ -143,7 +149,7 @@ local function new(deps)
       return nil
     end
     if wide(rows) then
-      return 0, math.floor((SLOT - LABEL_SIZE) / 2)
+      return 0, math.floor((SLOT - LABEL_HEIGHT) / 2)
     end
     return 0, 0
   end

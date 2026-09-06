@@ -666,7 +666,15 @@ local function new(ctx)
       return false
     end
     local intent, block = machine.on_key(key, down, flags, blocked)
-    if intent ~= nil then
+    if intent ~= nil and intent.cycle ~= nil then
+      -- The active set moves row 1, through the same path the CLI's cycle
+      -- takes (the machine's edit_mode guard keeps a key out while a
+      -- binder is open, so the put-away in set_changed never fires here).
+      local before = bar.bindings().active_set()
+      if bar.bindings().cycle(intent.cycle) ~= nil then
+        bar.set_changed(before)
+      end
+    elseif intent ~= nil then
       fire_at(intent.bar, intent.slot)
     end
     return block

@@ -53,14 +53,14 @@ describe("hotbar render", function()
         assert.are.equal(0, x, "wide: the label starts the row")
         assert.is_true(metrics.grid_x > 0, "and the grid sits to its right")
         assert.are.equal(0, metrics.grid_y)
-        assert.is_true(y >= 0)
+        assert.are.equal(10, y, "centred on the slot at the digit's drawn height")
       end
       for _, rows in ipairs({ 5, 10 }) do
         local metrics = render.metrics(rows)
         local x, y = render.label_pos(rows)
         assert.are.same({ 0, 0 }, { x, y }, "tall: the label tops the column")
         assert.are.equal(0, metrics.grid_x)
-        assert.is_true(metrics.grid_y > 0, "and the grid sits under it")
+        assert.is_true(metrics.grid_y >= 20 + 4, "and the grid sits under the digit's drawn height, not its point size")
       end
     end)
 

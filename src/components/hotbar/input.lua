@@ -47,9 +47,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      Under any guard - chat open, suppressed, layout mode, edit mode,
      disabled - or on a key a prior addon took, nothing fires and nothing is
      blocked: no key of the hotbar's is worth protecting through a cutscene
-     the way the crossbar's `;` is. No Windower globals. ]]
+     the way the crossbar's `;` is. The cycle keys - CTRL+Up the next set,
+     CTRL+Down the previous - are the one pair that claims NEITHER edge: a
+     block cannot keep a CTRL chord from the game, and a swallowed up after
+     CTRL lifted is a camera that keeps turning. The arrows' scan codes
+     (200/208) are unverified in a client. No Windower globals. ]]
 
--- DirectInput scan codes: the number row, and the three modifiers, each side.
+-- DirectInput scan codes: the number row, the arrows that cycle the active
+-- set under CTRL (Kevin, 2026-09-06: the game cycles its macro sets on the
+-- same chord, the caveat the rows already carry), and the three modifiers,
+-- each side.
+local CYCLE_OF = { [200] = 1, [208] = -1 }
 local SLOT_OF = { [2] = 1, [3] = 2, [4] = 3, [5] = 4, [6] = 5, [7] = 6, [8] = 7, [9] = 8, [10] = 9, [11] = 10 }
 local MODIFIER_OF = {
   [29] = "ctrl",
@@ -82,6 +90,8 @@ local function new(deps)
   local held = {}
   -- The number keys whose down this machine took, so the up is taken too.
   local latched = {}
+  -- Every slot or arrow key currently down, ours or not.
+  local down = {}
 
   local function modifier_held(which)
     for dik, name in pairs(MODIFIER_OF) do
@@ -115,23 +125,46 @@ local function new(deps)
       held[dik] = pressed or nil
       return nil, false
     end
+    local cycle = CYCLE_OF[dik]
     local slot = SLOT_OF[dik]
-    if slot == nil then
+    if slot == nil and cycle == nil then
       return nil, false
     end
     if not pressed then
       local ours = latched[dik] == true
       latched[dik] = nil
+      down[dik] = nil
       return nil, ours
     end
     if latched[dik] then
       -- Auto-repeat of a key already down: still ours, and fires nothing.
       return nil, true
     end
-    if blocked or guarded() then
+    --[[ A key that went down as the game's stays the game's until it lifts:
+         its OS auto-repeats must not become ours when CTRL arrives under a
+         held arrow (the camera key would then never be released to the
+         game) or when a guard lifts under a held number - the crossbar's
+         press-edge rule. ]]
+    local repeated = down[dik] == true
+    down[dik] = true
+    if repeated or blocked or guarded() then
       return nil, false
     end
-    local bar = BAR_OF[combo()]
+    local held_set = combo()
+    if cycle ~= nil then
+      --[[ CTRL alone: CTRL+Up is the next set, CTRL+Down the previous. A
+           bare arrow is the game's camera and any other chord is nobody's.
+           Neither edge is claimed: a block cannot keep a CTRL chord from
+           the game, so the game sees this down whatever we answer, and a
+           latched up would be swallowed even after CTRL lifted - an arrow
+           the game saw go down and never come up is a camera that keeps
+           turning. `down` still keeps the repeats from firing again. ]]
+      if held_set ~= "c" then
+        return nil, false
+      end
+      return { cycle = cycle }, false
+    end
+    local bar = BAR_OF[held_set]
     if bar == nil then
       return nil, false
     end
@@ -143,6 +176,7 @@ local function new(deps)
   function self.focus_lost()
     held = {}
     latched = {}
+    down = {}
   end
 
   return self

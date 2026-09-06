@@ -1068,11 +1068,13 @@ local function new(deps)
       self.set_changed(before)
       return name .. ": set " .. landed
     end
-    if verb == "cycle" and args[2] == nil then
-      -- The bare/args overload: bare advances the rotation, with args it
-      -- edits rotation membership (the authoring half, below).
+    local second = type(args[2]) == "string" and args[2]:lower() or nil
+    if verb == "cycle" and (second == nil or second == "back") and args[3] == nil then
+      -- The bare/args overload: bare advances the rotation, `back` walks it
+      -- the other way, and anything else edits rotation membership (the
+      -- authoring half, below).
       local before = bindings.active_set()
-      local landed, err = bindings.cycle()
+      local landed, err = bindings.cycle(second == "back" and -1 or 1)
       if landed == nil then
         return name .. ": " .. err
       end

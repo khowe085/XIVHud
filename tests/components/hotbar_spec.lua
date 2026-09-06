@@ -4,6 +4,7 @@ local fakes = require("tests/support/fakes")
 
 local ANCHORS = { "bar1", "bar2", "bar3", "bar4", "bar5", "bar6", "bar7", "bar8" }
 local LCTRL = 29
+local UP, DOWN = 200, 208
 local DIK_SLOT = { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 }
 local LEFT_DOWN, LEFT_UP = 1, 2
 
@@ -281,6 +282,20 @@ describe("hotbar", function()
       widget.on_keyboard(LCTRL, true, 0, false)
       widget.on_keyboard(DIK_SLOT[3], true, 0, false)
       assert.are.equal('input /ja "Provoke" <me>', env.commands[2], "row 2 need not be on screen")
+    end)
+
+    it("cycles row 1's set forward on CTRL+Up and back on CTRL+Down", function()
+      build_world()
+      push()
+      widget.on_keyboard(LCTRL, true, 0, false)
+      assert.is_false(widget.on_keyboard(UP, true, 0, false), "the chord reaches the game either way")
+      widget.on_keyboard(UP, false, 0, false)
+      assert.are.equal("Provoke", row_names("bar1")[3], "row 1 now shows set 2")
+      assert.are.equal("2", prims.texts[31].last.text)
+      widget.on_keyboard(DOWN, true, 0, false)
+      widget.on_keyboard(DOWN, false, 0, false)
+      assert.are.equal("Cure", row_names("bar1")[3], "and back on set 1")
+      assert.are.same({}, env.commands, "a cycle fires nothing")
     end)
 
     it("fires nothing before a job is scoped, and blocks nothing", function()

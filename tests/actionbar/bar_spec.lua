@@ -286,6 +286,7 @@ describe("one bar's state", function()
             sets = {
               [1] = { row = { [1] = { type = "ma", action = "Cure" } } },
               [2] = { row = { [1] = { type = "ma", action = "Cure" } } },
+              [3] = { row = { [1] = { type = "ma", action = "Cure" } } },
             },
           },
         },
@@ -293,7 +294,9 @@ describe("one bar's state", function()
       bar.attach(store)
       bar.try_scope()
       assert.are.equal("hotbar: set 2", bar.command({ "set", "2" }))
-      assert.are.equal("hotbar: set 1", bar.command({ "cycle" }))
+      assert.are.equal("hotbar: set 3", bar.command({ "cycle" }))
+      assert.are.equal("hotbar: set 2", bar.command({ "cycle", "back" }))
+      assert.are.equal("hotbar: set 1", bar.command({ "cycle", "BACK" }))
       assert.is_not_nil(bar.command({ "set" }):find("set takes a number", 1, true))
       assert.is_not_nil(bar.command({ "bogus" }):find("unknown command 'bogus'", 1, true))
       assert.is_not_nil(

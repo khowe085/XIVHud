@@ -38,9 +38,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      A binding write persists itself through the model's own store, so it
      asks only for the repaint.
 
-     The verbs the live widget answers itself -- `set`, bare `cycle`, bare
-     `open`, `edit` and the built-in actions -- are not here: they execute
-     rather than author, and the widget owns execution. ]]
+     The verbs the live widget answers itself -- `set`, `cycle` and `cycle
+     back`, bare `open`, `edit` and the built-in actions -- are not here:
+     they execute rather than author, and the widget owns execution. ]]
 
 local roster = require("lib/actionbar/contexts")
 local grammars = require("lib/actionbar/grammar")
@@ -103,6 +103,7 @@ local function help_lines(name, grammar, with_views, extra)
     hud .. " - the job, the active set" .. (with_views and ", and where each view points" or ""),
     hud .. " set <1-8>",
     hud .. " cycle - advance the rotation",
+    hud .. " cycle back - the other way",
     hud .. " list [<set>]",
   }
   if with_views then
@@ -1220,8 +1221,8 @@ local function new(deps)
     list = list,
     view = with_views and view or nil,
     share = share,
-    -- With arguments only: the widget answers bare `cycle` itself, and
-    -- routes here when it sees any.
+    -- The membership edit only: the widget answers bare `cycle` and `cycle
+    -- back` itself, and routes anything else here.
     cycle = cycle_flags,
     wxhb = with_views and wxhb or nil,
     copy = copy,

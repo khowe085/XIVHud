@@ -2,6 +2,7 @@ local new_input = require("components/hotbar/input")
 
 local LCTRL, RCTRL, LSHIFT, RSHIFT, LALT, RALT = 29, 157, 42, 54, 56, 184
 local ONE, TWO, ZERO = 2, 3, 11
+local UP, DOWN = 200, 208
 
 local function world(overrides)
   local env = { chat_open = false, suppressed = false, layout = false, edit = false, disabled = false }
@@ -136,6 +137,59 @@ describe("the hotbar's keys", function()
     assert.is_nil(intent)
     assert.is_false(block, "the latch went with the focus")
     assert.are.equal("bar1", press(machine, TWO).bar, "SHIFT is no longer held")
+  end)
+
+  it("cycles the active set on CTRL+Up and CTRL+Down, exactly, and claims neither edge", function()
+    local machine = world()
+    press(machine, LCTRL)
+    local intent, block = press(machine, UP)
+    assert.are.same({ cycle = 1 }, intent)
+    assert.is_false(block, "a chord cannot be kept from the game, so the down is not claimed")
+    assert.is_nil((press(machine, UP)), "its auto-repeat does not cycle again")
+    intent, block = release(machine, UP)
+    assert.is_nil(intent)
+    assert.is_false(block, "nor the up: the game saw the down, and CTRL may have lifted first")
+    assert.are.same({ cycle = -1 }, (press(machine, DOWN)))
+    release(machine, DOWN)
+    press(machine, LSHIFT)
+    intent, block = press(machine, UP)
+    assert.is_nil(intent, "CTRL+SHIFT+Up is nobody's")
+    assert.is_false(block)
+    release(machine, UP)
+    release(machine, LSHIFT)
+    release(machine, LCTRL)
+    intent, block = press(machine, UP)
+    assert.is_nil(intent, "a bare arrow is the game's camera")
+    assert.is_false(block)
+  end)
+
+  it("leaves the cycle keys alone under a guard", function()
+    local machine, env = world()
+    env.chat_open = true
+    press(machine, LCTRL)
+    local intent, block = press(machine, UP)
+    assert.is_nil(intent)
+    assert.is_false(block)
+  end)
+
+  it("leaves an arrow that went down as the game's to the game when CTRL arrives under it", function()
+    local machine = world()
+    assert.are.same({ nil, false }, { machine.on_key(UP, true, nil, false) }, "bare Up: the camera's")
+    machine.on_key(LCTRL, true, nil, false)
+    assert.are.same({ nil, false }, { machine.on_key(UP, true, nil, false) }, "its auto-repeat stays the game's")
+    assert.are.same({ nil, false }, { machine.on_key(UP, false, nil, false) }, "and so does its release")
+    local intent, block = machine.on_key(UP, true, nil, false)
+    assert.are.same({ cycle = 1 }, intent, "a fresh press under CTRL is ours")
+    assert.is_false(block)
+  end)
+
+  it("leaves a number that went down under a guard to the game when the guard lifts", function()
+    local machine, env = world({ chat_open = true })
+    assert.are.same({ nil, false }, { machine.on_key(ONE, true, nil, false) })
+    env.chat_open = false
+    assert.are.same({ nil, false }, { machine.on_key(ONE, true, nil, false) }, "its auto-repeat stays the game's")
+    assert.are.same({ nil, false }, { machine.on_key(ONE, false, nil, false) })
+    assert.is_not_nil(press(machine, ONE), "a fresh press is ours")
   end)
 
   it("does not fire on auto-repeat of a key already down", function()

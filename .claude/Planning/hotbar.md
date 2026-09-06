@@ -149,6 +149,15 @@ moves, read 2026-09-05:
     and **nothing migrates**: a stored crossbar `layout.lua` with that anchor
     in it carries dead weight, and the indicator comes up at its own shipped
     default.
+15. **CTRL+Up cycles the hotbar's active set forward and CTRL+Down back**
+    (Kevin, 2026-09-06), knowing the game cycles its macro SETS on the same
+    chord - the caveat the rows already carry. `cycle back` joins both bars'
+    CLI, and `bindings.cycle(-1)` is the backward walk under both. Built the
+    same day, after the PR opened. The chord claims NEITHER edge (review
+    round 2): a block cannot keep a CTRL chord from the game, and an arrow
+    whose up was swallowed after CTRL lifted is a camera that keeps
+    turning; the machine's press-edge table keeps the auto-repeats from
+    cycling again.
 
 ## Interpretations flagged open (mine, not Kevin's)
 
