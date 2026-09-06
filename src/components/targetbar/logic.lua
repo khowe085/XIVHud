@@ -250,9 +250,16 @@ local function band_for(percent)
   return "normal"
 end
 
-local function new(initial_config, resources)
+--[[ `variant` is the anchor this instance draws - "main" or "subtarget" - and
+     is used for one thing: naming the bar in what the commands say back, since
+     two bars answering identically would leave the user unable to tell which
+     one they had just changed. It defaults to the target bar rather than to a
+     nameless one: the widget always passes it, and a bar with no name in its
+     own replies is not a state worth carrying code for. ]]
+local function new(initial_config, resources, variant)
   local self = {}
   local config = initial_config or {}
+  variant = variant or "main"
 
   local target = nil
   local preview = false
@@ -560,10 +567,22 @@ local function new(initial_config, resources)
     return table.concat(MODES, "|")
   end
 
+  -- How this bar names itself in a reply.
+  local function label()
+    return ("targetbar %s"):format(variant)
+  end
+
+  -- The command as it would be retyped for this bar, which is what a hint has
+  -- to print. The bar word is optional at the parser, but a hint that left it
+  -- out would point one bar's user at the other's setting.
+  local function command_prefix()
+    return ("//hud targetbar %s"):format(variant)
+  end
+
   local function status()
     local configured = configured_mode()
     local effective = self.resolve_mode(configured, self_main_job)
-    local line = ("targetbar range mode: %s"):format(configured)
+    local line = ("%s range mode: %s"):format(label(), configured)
     if configured == "auto" then
       line = line .. (" (%s)"):format(effective)
     end
@@ -587,7 +606,7 @@ local function new(initial_config, resources)
     if verb == "mode" then
       local wanted = args[2] and args[2]:lower() or nil
       if not wanted or not IS_MODE[wanted] then
-        return ("//hud targetbar mode needs one of: %s"):format(mode_list()), false
+        return ("%s mode needs one of: %s"):format(command_prefix(), mode_list()), false
       end
       -- Replaced outright when mangled: assigning into a user's scalar would
       -- throw inside the addon command handler.
@@ -595,10 +614,10 @@ local function new(initial_config, resources)
         config.distance = {}
       end
       config.distance.mode = wanted
-      return ("targetbar range mode set to %s"):format(wanted), true
+      return ("%s range mode set to %s"):format(label(), wanted), true
     end
 
-    return ("targetbar has no '%s' setting (mode %s)"):format(tostring(args[1]), mode_list()), false
+    return ("%s has no '%s' setting (mode %s)"):format(label(), tostring(args[1]), mode_list()), false
   end
 
   --[[ Layout ------------------------------------------------------------- ]]

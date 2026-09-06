@@ -28,34 +28,34 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --[[ Target Bar configuration defaults.
 
+     TWO bars, under `bars.main` and `bars.subtarget`: the target and the
+     `<st>` selection cursor. The two ship identical - the subtarget's smaller
+     size is its anchor's scale, not a smaller font - but they are separate
+     tables, because a command edits the bar it names.
+
      Colours come from three separate sources and are deliberately kept apart:
      the text colour and stroke are partylist's (this widget is styled to match
      it), the hp bands are partylist's too, and the fill palette is enemybar's
      claim colours - moved from its text, where the reference put them, onto
      the bar fill. ]]
 
--- Mirrors logic.lua's row arithmetic (leading inset + three reserves,
--- floored at the frame) so the first-run slot can centre the widget before
--- any config exists to derive it from. giltracker does the same with its
--- reserved width; the duplication is the price of defaults being built before
--- logic sees a config. At this font the frame's 512 wins, which makes drift
--- here latent rather than harmless - keep the terms matched.
-local FONT_SIZE = 14
-local RATIO = 0.75
-local FRAME_WIDTH = 512
-local ROW_WIDTH = math.max(
-  1 * FONT_SIZE * RATIO
-    + math.ceil(5 * FONT_SIZE * RATIO)
-    + math.ceil(5 * FONT_SIZE * RATIO)
-    + math.ceil(17 * FONT_SIZE * RATIO),
-  FRAME_WIDTH
-)
+local new_logic = require("components/targetbar/logic")
 
--- Builds a fresh defaults table for a screen of the given size.
-return function(screen_width, _screen_height)
+local ANCHORS = { "main", "subtarget" }
+
+-- Roughly the reference's 300 against the target bar's 600. The art is the
+-- same at either size; only the framework's scale differs.
+local SUBTARGET_SCALE = 0.6
+-- Between the target bar's box and the subtarget's, at the first-run slots.
+-- The boxes take in the art's bottom padding, so the drawn gap reads wider.
+local BAR_GAP = 8
+-- The target bar's own first-run row, unchanged.
+local MAIN_Y = 50
+
+local function bar_defaults()
   return {
     font = "Arial",
-    font_size = FONT_SIZE,
+    font_size = 14,
     -- partylist's own text colour and stroke: this widget is meant to read as
     -- part of the same HUD.
     text_color = { a = 255, r = 240, g = 255, b = 255 },
@@ -110,12 +110,47 @@ return function(screen_width, _screen_height)
       -- an animation of this length rather than a measurement.
       tp_move_sweep = 2,
     },
+  }
+end
+
+-- Builds a fresh defaults table for a screen of the given size.
+return function(screen_width, _screen_height)
+  local bars = {}
+  for _, name in ipairs(ANCHORS) do
+    bars[name] = bar_defaults()
+  end
+
+  --[[ Measured through the very maths the widget draws by, rather than a copy
+       of the row arithmetic kept in step by hand - which is what stood here,
+       under a comment calling its own drift latent, and which a second bar at
+       a second scale would have doubled. logic holds no ctx and reads no
+       client, so building one to ask it a question costs nothing. ]]
+  local function box(name, scale)
+    local _, _, width, height = new_logic(bars[name]).bounds(0, 0, scale)
+    return width, height
+  end
+
+  local main_width, main_height = box("main", 1)
+  local sub_width = box("subtarget", SUBTARGET_SCALE)
+
+  local function centred(width)
+    return math.max(0, math.floor(((screen_width or 0) - width) / 2))
+  end
+
+  return {
+    bars = bars,
+    -- No top-level pos or scale: layout.repair keys the anchored branch off
+    -- the defaults, and would shed a stray pair from every file it repaired
+    -- anyway. Neither anchor carries `visible` - absent means shown, and both
+    -- bars ship on.
     layout = {
-      pos = {
-        x = math.max(0, math.floor(((screen_width or 0) - ROW_WIDTH) / 2)),
-        y = 50,
+      anchors = {
+        main = { pos = { x = centred(main_width), y = MAIN_Y }, scale = 1 },
+        subtarget = {
+          pos = { x = centred(sub_width), y = math.floor(MAIN_Y + main_height + BAR_GAP) },
+          scale = SUBTARGET_SCALE,
+        },
       },
-      scale = 1,
       visible = true,
     },
   }

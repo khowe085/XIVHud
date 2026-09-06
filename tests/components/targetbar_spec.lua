@@ -3,7 +3,9 @@ local fakes = require("tests/support/fakes")
 
 describe("targetbar widget", function()
   local prims, assets, widget
-  local target, party, player, me, clock, saves, target_reads
+  local target, subtarget, party, player, me, clock, saves
+  local target_reads, subtarget_reads, party_reads
+  local screen_w, screen_h
   local generation_count, generation_deadline
 
   -- The prims are built in draw order: the hp layers, then the cast's.
@@ -41,6 +43,20 @@ describe("targetbar widget", function()
 
   local function name()
     return prims.texts[3]
+  end
+
+  -- The subtarget bar is built after the main one, so its prims follow the
+  -- first bar's six images and four texts.
+  local function sub_fill()
+    return prims.images[8]
+  end
+
+  local function sub_name()
+    return prims.texts[7]
+  end
+
+  local function sub_cast_frame()
+    return prims.images[12]
   end
 
   --[[ A distinct table, the way core hands one over: settings deep-copies the
@@ -87,23 +103,31 @@ describe("targetbar widget", function()
     prims = fakes.prims()
     assets = {}
     target = nil
+    subtarget = nil
     party = {}
     player = { main_job = "WAR" }
     me = { id = 1, model_size = 1.0 }
     clock = 0
     saves = 0
     target_reads = 0
+    subtarget_reads = 0
+    party_reads = 0
+    screen_w, screen_h = 1920, 1080
     generation_count, generation_deadline = 0, nil
     widget = new_targetbar({
       new_text = prims.new_text,
       new_image = prims.new_image,
       screen = function()
-        return 1920, 1080
+        return screen_w, screen_h
       end,
       get_mob_by_target = function(kind)
         if kind == "t" then
           target_reads = target_reads + 1
           return target
+        end
+        if kind == "st" then
+          subtarget_reads = subtarget_reads + 1
+          return subtarget
         end
         if kind == "me" then
           return me
@@ -111,6 +135,7 @@ describe("targetbar widget", function()
         return nil
       end,
       get_party = function()
+        party_reads = party_reads + 1
         return party
       end,
       get_player = function()
@@ -158,26 +183,72 @@ describe("targetbar widget", function()
       assert.are.equal("tb", widget.alias)
     end)
 
-    it("centres its default slot on the row it draws", function()
-      local slot = widget.defaults.layout
+    it("centres the target bar's default slot on the row it draws", function()
+      local slot = widget.defaults.layout.anchors.main
       assert.are.equal(704, slot.pos.x)
       assert.are.equal(50, slot.pos.y)
     end)
 
-    it("builds four texts and six bar layers", function()
-      assert.are.equal(4, #prims.texts)
-      assert.are.equal(6, #prims.images)
+    --[[ layout.repair keys the anchored branch off the defaults, and sheds a
+         stray top-level pair from every anchored entry it repairs anyway. ]]
+    it("seeds a placement per anchor and none above them", function()
+      local layout = widget.defaults.layout
+      assert.is_table(layout.anchors.main.pos)
+      assert.is_table(layout.anchors.subtarget.pos)
+      assert.is_nil(layout.pos)
+      assert.is_nil(layout.scale)
     end)
 
+    -- Roughly the reference's 300-against-600: the subtarget bar is the same
+    -- art at a smaller scale, never a second geometry.
+    it("ships the subtarget bar smaller than the target bar", function()
+      assert.are.equal(0.6, widget.defaults.layout.anchors.subtarget.scale)
+    end)
+
+    --[[ Both anchors ship shown, so neither carries the key: absent means
+         shown, and only an explicit false hides one. ]]
+    it("ships both bars on", function()
+      local layout = widget.defaults.layout
+      assert.is_true(layout.visible)
+      assert.is_nil(layout.anchors.main.visible)
+      assert.is_nil(layout.anchors.subtarget.visible)
+    end)
+
+    it("seeds the subtarget bar clear of the target bar", function()
+      local anchors = widget.defaults.layout.anchors
+      attach()
+      for anchor, slot in pairs(anchors) do
+        widget.set_pos(slot.pos.x, slot.pos.y, anchor)
+        widget.set_scale(slot.scale, anchor)
+      end
+      local _, main_y, _, main_height = widget.get_bounds("main")
+      local _, sub_y = widget.get_bounds("subtarget")
+      assert.is_true(sub_y >= main_y + main_height)
+    end)
+
+    --[[ Distinct tables, not one shared: a command edits the bar it names,
+         and a shared table would have it edit both. ]]
+    it("gives each bar its own settings", function()
+      local bars = widget.defaults.bars
+      assert.are.same(bars.main, bars.subtarget)
+      assert.is_false(rawequal(bars.main, bars.subtarget))
+    end)
+
+    it("builds four texts and six bar layers for each of the two bars", function()
+      assert.are.equal(8, #prims.texts)
+      assert.are.equal(12, #prims.images)
+    end)
+
+    -- The same six textures twice: each bar owns its own layers, and the
+    -- library gives no way to share one prim between two placements.
     it("points every layer at its own copy of the art", function()
-      assert.are.same({
-        "assets/xiv/wide/BarBG.png",
-        "assets/xiv/wide/Bar.png",
-        "assets/xiv/wide/BarFG.png",
-        "assets/xiv/wide/CastBG.png",
-        "assets/xiv/wide/CastBar.png",
-        "assets/xiv/wide/CastFG.png",
-      }, assets)
+      local wanted = {}
+      for _ = 1, 2 do
+        for _, file in ipairs({ "BarBG", "Bar", "BarFG", "CastBG", "CastBar", "CastFG" }) do
+          wanted[#wanted + 1] = "assets/xiv/wide/" .. file .. ".png"
+        end
+      end
+      assert.are.same(wanted, assets)
     end)
 
     -- The one right-justified text in the addon: the cast name grows leftward
@@ -232,6 +303,308 @@ describe("targetbar widget", function()
     end)
   end)
 
+  --[[ Two bars, one component: the target and the `<st>` selection cursor,
+       each placed and scaled on its own. Everything routes by anchor name,
+       and main leads - the order `//hud list` prints, and the order layout
+       mode hit-tests reversed, so the subtarget wins an overlap. ]]
+  describe("anchors", function()
+    it("declares the target and the subtarget", function()
+      assert.are.same({ "main", "subtarget" }, widget.anchors())
+    end)
+
+    it("draws the selection cursor on the second bar", function()
+      attach()
+      subtarget = mob({ id = 200, name = "Chocobo", hpp = 50 })
+      widget.set_pos(100, 100, "subtarget")
+      widget.show()
+      widget.update()
+      assert.are.equal("Chocobo", sub_name().last.text)
+    end)
+
+    -- Two mobs, two bars: neither instance may read the other's token.
+    it("keeps the two bars on their own targets", function()
+      attach()
+      target = mob({ name = "Greater Colibri" })
+      subtarget = mob({ id = 200, name = "Chocobo" })
+      widget.set_pos(100, 100, "main")
+      widget.set_pos(100, 300, "subtarget")
+      widget.show()
+      widget.update()
+      assert.are.equal("Greater Colibri", name().last.text)
+      assert.are.equal("Chocobo", sub_name().last.text)
+    end)
+
+    it("places each bar where its own anchor was put", function()
+      attach()
+      widget.set_pos(100, 100, "main")
+      widget.set_pos(700, 300, "subtarget")
+      local x = widget.get_bounds("main")
+      local sub_x = widget.get_bounds("subtarget")
+      assert.are.equal(100, x)
+      assert.are.equal(700, sub_x)
+    end)
+
+    it("scales each bar on its own anchor", function()
+      attach()
+      widget.set_pos(0, 0, "main")
+      widget.set_pos(0, 0, "subtarget")
+      widget.set_scale(0.5, "subtarget")
+      local _, _, full = widget.get_bounds("main")
+      local _, _, half = widget.get_bounds("subtarget")
+      assert.is_true(half < full)
+    end)
+
+    --[[ Core names an anchor for every placement it makes on an anchored
+         widget, so a nil is a wiring slip - and one that silently moved the
+         main bar would leave the framework looking as though it worked. ]]
+    it("ignores a placement that names no anchor", function()
+      attach()
+      widget.set_pos(100, 100)
+      widget.set_scale(0.5)
+      assert.is_nil(widget.get_bounds("main"))
+      assert.is_nil(widget.get_bounds("subtarget"))
+    end)
+
+    it("ignores a placement naming an anchor that is not its own", function()
+      attach()
+      widget.set_pos(100, 100, "alliance1")
+      assert.is_nil(widget.get_bounds("main"))
+      assert.is_nil(widget.get_bounds("alliance1"))
+    end)
+
+    describe("switching one bar", function()
+      before_each(function()
+        attach()
+        widget.set_pos(100, 100, "main")
+        widget.set_pos(100, 300, "subtarget")
+        target = mob()
+        subtarget = mob({ id = 200, name = "Chocobo" })
+        widget.show()
+        widget.update()
+      end)
+
+      it("takes down the anchor named and leaves the other drawing", function()
+        widget.hide("subtarget")
+        widget.update()
+        assert.is_true(fill().visible)
+        assert.is_false(sub_fill().visible)
+      end)
+
+      --[[ The bare show is the whole of what layout mode force-shows with, so
+           a bar a per-anchor hide took down has to come back on it - hidden, it
+           could never be dragged or switched back on. ]]
+      it("brings a hidden anchor back on the bare show", function()
+        widget.hide("subtarget")
+        widget.update()
+        widget.show()
+        widget.update()
+        assert.is_true(sub_fill().visible)
+      end)
+
+      it("takes both bars down on the bare hide", function()
+        widget.hide()
+        widget.update()
+        assert.is_false(fill().visible)
+        assert.is_false(sub_fill().visible)
+      end)
+
+      -- An anchor that is not ours must not be read as the bare call.
+      it("switches nothing for an anchor it does not have", function()
+        widget.hide("alliance1")
+        widget.update()
+        assert.is_true(fill().visible)
+        assert.is_true(sub_fill().visible)
+      end)
+    end)
+
+    --[[ Both cast trackers hear every action packet and each keeps the one
+         aimed at the mob it is drawing: the entry point decodes 0x028 once for
+         every component that wants it, and neither bar can be told apart from
+         the other at that point. ]]
+    it("raises the cast bar of whichever bar the caster is on", function()
+      attach()
+      widget.set_pos(100, 100, "main")
+      widget.set_pos(100, 300, "subtarget")
+      subtarget = mob({ id = 200, name = "Chocobo" })
+      widget.show()
+      widget.update()
+      widget.update("chunk", 0x028, "raw action bytes", {
+        actor_id = 200,
+        category = 8,
+        param = 0,
+        targets = { { id = 1, actions = { { param = 144, message = 327 } } } },
+      })
+      widget.update()
+      assert.is_true(sub_cast_frame().visible)
+      assert.is_false(cast_frame().visible)
+    end)
+
+    --[[ core.apply fans set_scale, set_pos and set_preview out over EVERY
+         anchor on every call, and layout mode calls it per raw mouse-move
+         event - so a drag of one bar re-applies the other's placement dozens
+         of times a second. Only a value that actually moved may reach a prim:
+         partylist measured two thirds of its drag cost in exactly these
+         no-op re-applies. ]]
+    describe("re-applying a placement that has not moved", function()
+      before_each(function()
+        attach()
+        widget.set_pos(100, 100, "main")
+        widget.set_pos(100, 300, "subtarget")
+        widget.set_scale(0.5, "main")
+        widget.show()
+        target = mob()
+        subtarget = mob({ id = 200, name = "Chocobo" })
+        widget.update()
+      end)
+
+      it("writes nothing to the bar it names", function()
+        local before = #fill().calls
+        widget.set_pos(100, 100, "main")
+        widget.set_scale(0.5, "main")
+        assert.are.equal(before, #fill().calls)
+      end)
+
+      it("writes nothing to the bar it does not name", function()
+        local before = #sub_fill().calls
+        widget.set_pos(200, 200, "main")
+        widget.set_scale(0.75, "main")
+        assert.are.equal(before, #sub_fill().calls)
+      end)
+
+      -- Still moves when the value really changes, which is the whole point.
+      it("still lays the bar out when the placement does move", function()
+        local before = #fill().calls
+        widget.set_pos(101, 100, "main")
+        assert.is_true(#fill().calls > before)
+      end)
+
+      --[[ apply_layout re-reads the screen, because the cast name is right
+           justified and its x pre-subtracts the width the library adds back.
+           A resolution change moves that text without moving the origin, and
+           core re-pushes the same origin afterwards - so the gate has to let
+           that through or the name sits off screen by the delta until
+           something else moves the bar. ]]
+      it("lays the bar out again when the screen changed under it", function()
+        local before = #cast_name().calls
+        screen_w, screen_h = 2560, 1440
+        widget.set_pos(100, 100, "main")
+        assert.is_true(#cast_name().calls > before)
+      end)
+    end)
+
+    --[[ Nothing is read while no bar could draw with the answer: an unplaced
+         or detached bar renders nothing, and a poll for it would be a whole
+         get_party nobody uses. ]]
+    describe("reading the client for two bars", function()
+      it("reads nothing at all while neither bar has been placed", function()
+        attach()
+        widget.show()
+        widget.update()
+        assert.are.equal(0, party_reads)
+        assert.are.equal(0, target_reads)
+        assert.are.equal(0, subtarget_reads)
+      end)
+
+      it("reads nothing once both bars are detached", function()
+        attach()
+        widget.set_pos(100, 100, "main")
+        widget.update()
+        widget.detach()
+        local before = party_reads
+        clock = clock + 1
+        widget.update()
+        assert.are.equal(before, party_reads)
+      end)
+
+      -- Each bar reads its own token, and only where it could draw with it.
+      it("reads only the token of a bar that has been placed", function()
+        attach()
+        widget.set_pos(100, 100, "main")
+        widget.show()
+        widget.update()
+        assert.is_true(target_reads > 0)
+        assert.are.equal(0, subtarget_reads)
+      end)
+
+      it("reads the second token once its bar is placed too", function()
+        attach()
+        widget.set_pos(100, 100, "main")
+        widget.set_pos(100, 300, "subtarget")
+        widget.show()
+        widget.update()
+        assert.is_true(subtarget_reads > 0)
+      end)
+
+      -- The action chunk feeds both cast trackers and reads no client at all.
+      it("reads neither token for an event it did not ask for", function()
+        attach()
+        widget.set_pos(100, 100, "main")
+        widget.set_pos(100, 300, "subtarget")
+        widget.show()
+        widget.update()
+        local seen, sub_seen = target_reads, subtarget_reads
+        begin_cast()
+        widget.update("chunk", 0x00A, "raw bytes")
+        assert.are.equal(seen, target_reads)
+        assert.are.equal(sub_seen, subtarget_reads)
+      end)
+    end)
+
+    --[[ Layout mode opens with set_preview plus the bare show, so a bar that
+         drew no sample could not be seen or dragged - and with nothing
+         targeted, the sample is the only thing either bar has to draw. ]]
+    it("previews both bars", function()
+      attach()
+      widget.set_pos(100, 100, "main")
+      widget.set_pos(100, 300, "subtarget")
+      widget.set_preview(true)
+      widget.show()
+      widget.update()
+      assert.are.equal("Greater Colibri", name().last.text)
+      assert.are.equal("Greater Colibri", sub_name().last.text)
+      assert.is_true(sub_fill().visible)
+    end)
+
+    it("destroys both bars' prims", function()
+      widget.destroy()
+      for _, prim in ipairs(prims.all) do
+        assert.are.equal(1, prim.destroyed)
+      end
+    end)
+
+    --[[ A config file is code and `//hud copy` imports another character's, so
+         a bar's entry can be any shape by the time it reaches attach. ]]
+    describe("a config it cannot use", function()
+      it("replaces an unusable bar entry with a fresh copy of the defaults", function()
+        local config = copy(widget.defaults)
+        config.bars.subtarget = "broken"
+        attach(config)
+        assert.are.equal(14, config.bars.subtarget.font_size)
+      end)
+
+      -- Fresh, and written back: handing a bar the widget's own defaults table
+      -- would have every later command write where save() never looks.
+      it("seeds from a copy rather than from its own defaults table", function()
+        local config = copy(widget.defaults)
+        config.bars.main = nil
+        attach(config)
+        assert.is_false(rawequal(config.bars.main, widget.defaults.bars.main))
+      end)
+
+      it("survives a config carrying no bars at all", function()
+        assert.has_no.errors(function()
+          attach({})
+        end)
+      end)
+
+      it("survives a config that is not a table", function()
+        assert.has_no.errors(function()
+          widget.attach("broken", function() end)
+        end)
+      end)
+    end)
+  end)
+
   describe("styling", function()
     before_each(function()
       attach()
@@ -269,9 +642,9 @@ describe("targetbar widget", function()
 
     it("honours a translucent text colour", function()
       local restyled = copy(widget.defaults)
-      restyled.text_color = { a = 120, r = 1, g = 2, b = 3 }
+      restyled.bars.main.text_color = { a = 120, r = 1, g = 2, b = 3 }
       attach(restyled)
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
       target = mob({ hpp = 90 })
       widget.update()
@@ -280,9 +653,9 @@ describe("targetbar widget", function()
 
     it("honours a translucent fill colour", function()
       local restyled = copy(widget.defaults)
-      restyled.fill_colors.unclaimed = { a = 90, r = 230, g = 230, b = 138 }
+      restyled.bars.main.fill_colors.unclaimed = { a = 90, r = 230, g = 230, b = 138 }
       attach(restyled)
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
       target = mob({ claim_id = 0 })
       widget.update()
@@ -291,11 +664,11 @@ describe("targetbar widget", function()
 
     it("adopts the config it is handed, not the one it was built with", function()
       local loaded = copy(widget.defaults)
-      loaded.font = "Consolas"
-      loaded.text_stroke = { width = 4, a = 100, r = 1, g = 2, b = 3 }
-      loaded.name_max_chars = 3
+      loaded.bars.main.font = "Consolas"
+      loaded.bars.main.text_stroke = { width = 4, a = 100, r = 1, g = 2, b = 3 }
+      loaded.bars.main.name_max_chars = 3
       attach(loaded)
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
       target = mob({ name = "Bugbear" })
       widget.update()
@@ -311,8 +684,8 @@ describe("targetbar widget", function()
          sections belong - on the attach path, which runs at every login. ]]
     it("survives style sections that are not tables", function()
       local mangled = copy(widget.defaults)
-      mangled.text_color = "red"
-      mangled.text_stroke = 3
+      mangled.bars.main.text_color = "red"
+      mangled.bars.main.text_stroke = 3
       assert.has_no.errors(function()
         attach(mangled)
       end)
@@ -326,16 +699,16 @@ describe("targetbar widget", function()
     -- missing channels must be filled in rather than passed through.
     it("never hands the colour setter a channel of nothing", function()
       local bare = copy(widget.defaults)
-      bare.text_color = {}
+      bare.bars.main.text_color = {}
       attach(bare)
       assert.are.same({ 255, 255, 255 }, hp().last.color)
     end)
 
     it("fills missing channels on the per-frame colour path too", function()
       local bare = copy(widget.defaults)
-      bare.fill_colors.unclaimed = { a = 90 }
+      bare.bars.main.fill_colors.unclaimed = { a = 90 }
       attach(bare)
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
       target = mob({ claim_id = 0 })
       widget.update()
@@ -347,7 +720,7 @@ describe("targetbar widget", function()
   describe("visibility", function()
     before_each(function()
       attach()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       target = mob()
     end)
 
@@ -433,7 +806,7 @@ describe("targetbar widget", function()
   describe("drawing", function()
     before_each(function()
       attach()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
       target = mob()
     end)
@@ -526,32 +899,32 @@ describe("targetbar widget", function()
 
     -- Core clamps the widget by comparing this to what it passed set_pos.
     it("hands back exactly the origin it was given", function()
-      widget.set_pos(300, 400)
-      local x, y = widget.get_bounds()
+      widget.set_pos(300, 400, "main")
+      local x, y = widget.get_bounds("main")
       assert.are.equal(300, x)
       assert.are.equal(400, y)
     end)
 
     it("has no bounds before it has been positioned", function()
-      assert.is_nil(widget.get_bounds())
+      assert.is_nil(widget.get_bounds("main"))
     end)
 
     it("reports the row's full width", function()
-      widget.set_pos(300, 400)
-      local _, _, width = widget.get_bounds()
+      widget.set_pos(300, 400, "main")
+      local _, _, width = widget.get_bounds("main")
       assert.are.equal(512, width)
     end)
 
     it("shrinks with the scale", function()
-      widget.set_pos(300, 400)
-      local _, _, full = widget.get_bounds()
-      widget.set_scale(0.5)
-      local _, _, half = widget.get_bounds()
+      widget.set_pos(300, 400, "main")
+      local _, _, full = widget.get_bounds("main")
+      widget.set_scale(0.5, "main")
+      local _, _, half = widget.get_bounds("main")
       assert.is_true(half < full)
     end)
 
     it("places the three segments across the row at the drawn font size", function()
-      widget.set_pos(300, 400)
+      widget.set_pos(300, 400, "main")
       assert.are.equal(310.5, hp().x)
       assert.are.equal(400, hp().y)
       assert.are.equal(363.5, distance().x)
@@ -567,39 +940,39 @@ describe("targetbar widget", function()
     -- A prim cannot draw a fractional font, so the size it is handed has to be
     -- the whole-pixel one the reserves were measured against.
     it("rounds the drawn font when scaled", function()
-      widget.set_pos(300, 400)
-      widget.set_scale(0.25)
+      widget.set_pos(300, 400, "main")
+      widget.set_scale(0.25, "main")
       assert.are.equal(4, hp().font_size)
     end)
 
     it("insets the fill inside the frame rather than leaving it at the origin", function()
-      widget.set_pos(300, 400)
+      widget.set_pos(300, 400, "main")
       assert.are.equal(frame().x + 13, fill().x)
       assert.are.equal(frame().y, fill().y)
     end)
 
     it("drops the bar below the text rather than over it", function()
-      widget.set_pos(300, 400)
+      widget.set_pos(300, 400, "main")
       assert.is_true(frame().y > hp().y)
     end)
 
     it("moves the whole group when repositioned", function()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       target = mob()
       widget.update()
       local first = frame().x
-      widget.set_pos(200, 100)
+      widget.set_pos(200, 100, "main")
       assert.are.equal(first + 100, frame().x)
     end)
 
     -- Fill widths are only written when the health moves, so a scale change
     -- has to push them itself or the bar keeps the old scale's size.
     it("resizes the fill when the scale changes, not just on the next hit", function()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       target = mob({ hpp = 100 })
       widget.update()
       local before = fill().width
-      widget.set_scale(0.5)
+      widget.set_scale(0.5, "main")
       widget.update()
       assert.is_true(fill().width < before)
     end)
@@ -608,7 +981,7 @@ describe("targetbar widget", function()
   describe("polling", function()
     before_each(function()
       attach()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
       target = mob()
     end)
@@ -646,11 +1019,16 @@ describe("targetbar widget", function()
         end,
       })
       widget.attach(widget.defaults, function() end)
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.update()
       assert.are.equal(1, reads)
     end)
 
+    --[[ One client read per interval, and one roster per bar off the table it
+         returned: get_party allocates eighteen member tables and is called
+         once, while each bar walks those eighteen keys for its own claim set -
+         lookups, not allocations, and the price of the two keeping separate
+         logic. ]]
     it("does not read the party again inside the interval", function()
       local reads = 0
       party = setmetatable({}, {
@@ -659,10 +1037,25 @@ describe("targetbar widget", function()
           return nil
         end,
       })
+      widget.set_pos(100, 300, "subtarget")
       widget.update()
       widget.update()
       widget.update()
-      -- Eighteen keys per poll; three frames inside one window is still one.
+      -- Eighteen keys per bar per poll; three frames inside one window is
+      -- still one poll.
+      assert.are.equal(36, reads)
+    end)
+
+    -- And no roster at all for a bar that could not draw with one.
+    it("builds no roster for a bar that has not been placed", function()
+      local reads = 0
+      party = setmetatable({}, {
+        __index = function()
+          reads = reads + 1
+          return nil
+        end,
+      })
+      widget.update()
       assert.are.equal(18, reads)
     end)
 
@@ -677,7 +1070,7 @@ describe("targetbar widget", function()
   describe("the cast bar", function()
     before_each(function()
       attach()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
       target = mob()
       widget.update()
@@ -832,9 +1225,9 @@ describe("targetbar widget", function()
 
     it("truncates the cast name at the configured cap", function()
       local trimmed = copy(widget.defaults)
-      trimmed.cast.name_max_chars = 3
+      trimmed.bars.main.cast.name_max_chars = 3
       attach(trimmed)
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
       target = mob()
       widget.update()
@@ -858,7 +1251,7 @@ describe("targetbar widget", function()
   describe("events it is handed but does not want", function()
     before_each(function()
       attach()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
       target = mob()
     end)
@@ -906,12 +1299,46 @@ describe("targetbar widget", function()
   describe("commands", function()
     before_each(function()
       attach()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
     end)
 
-    it("reports its range mode", function()
-      assert.is_truthy(widget.handle_command({}):find("auto"))
+    -- One line per bar, each naming its own: partylist's shape, and core says
+    -- each line of a list.
+    it("reports both bars' range modes", function()
+      local reply = widget.handle_command({})
+      assert.are.equal(2, #reply)
+      assert.is_truthy(reply[1]:find("main"))
+      assert.is_truthy(reply[2]:find("subtarget"))
+      assert.is_truthy(reply[1]:find("auto"))
+    end)
+
+    it("reports one bar when it is named", function()
+      local reply = widget.handle_command({ "subtarget" })
+      assert.are.equal("string", type(reply))
+      assert.is_truthy(reply:find("subtarget"))
+    end)
+
+    -- The bar word matches the way every other word in `//hud` does.
+    it("takes the bar word in any case", function()
+      local reply = widget.handle_command({ "SubTarget" })
+      assert.is_truthy(reply:find("subtarget"))
+    end)
+
+    it("sets the mode of the bar named and leaves the other alone", function()
+      local config = attach()
+      widget.handle_command({ "subtarget", "mode", "bow" })
+      assert.are.equal("bow", config.bars.subtarget.distance.mode)
+      assert.are.equal("auto", config.bars.main.distance.mode)
+    end)
+
+    --[[ Absent, the bar word means the target bar - so every line that worked
+         before the subtarget existed still means what it meant. ]]
+    it("addresses the target bar when no bar is named", function()
+      local config = attach()
+      widget.handle_command({ "mode", "bow" })
+      assert.are.equal("bow", config.bars.main.distance.mode)
+      assert.are.equal("auto", config.bars.subtarget.distance.mode)
     end)
 
     it("saves the config when a command changes it", function()
@@ -919,8 +1346,21 @@ describe("targetbar widget", function()
       assert.are.equal(1, saves)
     end)
 
+    it("saves a change made to the other bar too", function()
+      widget.handle_command({ "subtarget", "mode", "bow" })
+      assert.are.equal(1, saves)
+    end)
+
     it("does not save when nothing changed", function()
       widget.handle_command({ "mode", "trebuchet" })
+      assert.are.equal(0, saves)
+    end)
+
+    -- A first word that is not a bar is a verb, which is what keeps the verb
+    -- grammar behind the bar word untouched.
+    it("reads an unknown first word as a verb rather than a bar", function()
+      local reply = widget.handle_command({ "trebuchet" })
+      assert.is_truthy(reply:find("trebuchet"))
       assert.are.equal(0, saves)
     end)
   end)
@@ -933,7 +1373,7 @@ describe("targetbar widget", function()
   describe("reading the player", function()
     before_each(function()
       attach()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
     end)
 
@@ -987,7 +1427,7 @@ describe("targetbar widget", function()
          one's target is claimed by a friend. ]]
     it("forgets the old character's party when it detaches", function()
       attach()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
       party = { p0 = { name = "Ally", mob = { id = 77 } } }
       target = mob({ claim_id = 77 })
@@ -1010,7 +1450,7 @@ describe("targetbar widget", function()
          the old health to the new instead of simply showing it. ]]
     it("does not ease from the last character's target onto a reused id", function()
       attach()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.show()
       target = mob({ id = 42, hpp = 100 })
       widget.update()
@@ -1034,7 +1474,7 @@ describe("targetbar widget", function()
         end,
       })
       attach()
-      widget.set_pos(100, 100)
+      widget.set_pos(100, 100, "main")
       widget.update()
       local first = reads
       widget.detach()
