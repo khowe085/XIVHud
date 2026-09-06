@@ -54,7 +54,7 @@ describe("targetbar logic", function()
   local logic, config
 
   before_each(function()
-    config = build_defaults(1920, 1080)
+    config = build_defaults(1920, 1080).bars.main
     logic = new_logic(config)
   end)
 
@@ -807,6 +807,17 @@ describe("targetbar logic", function()
   end)
 
   describe("the mode command", function()
+    --[[ Two bars answer this command, so a reply that named neither would
+         leave the user unable to tell which one had just changed. Absent, the
+         variant leaves every reply reading as it did while there was one. ]]
+    it("names its own bar in what it says back", function()
+      local sub = new_logic(config, nil, "subtarget")
+      assert.is_truthy(sub.command({}):find("targetbar subtarget"))
+      assert.is_truthy(sub.command({ "mode", "bow" }):find("targetbar subtarget"))
+      assert.is_truthy(sub.command({ "mode", "trebuchet" }):find("//hud targetbar subtarget mode"))
+      assert.is_truthy(sub.command({ "trebuchet" }):find("targetbar subtarget has no"))
+    end)
+
     it("reports the mode it is on when asked nothing", function()
       local reply, changed = logic.command({})
       assert.is_false(changed)
@@ -872,10 +883,6 @@ describe("targetbar logic", function()
     end)
   end)
 
-  -- defaults.lua re-derives the row width locally (it runs before logic has a
-  -- config), so this is the one place the two computations are held together:
-  -- if either side's arithmetic drifts, the default slot stops centring the
-  -- box the widget actually draws.
   it("caps the name identically with and without the config key", function()
     local unconfigured = new_logic({})
     local target = mob({ name = "Absolutely Enormous Name" })
@@ -886,11 +893,16 @@ describe("targetbar logic", function()
     assert.are.equal(17, #logic.texts().name.text)
   end)
 
-  it("centres the default slot on the row logic actually computes", function()
+  --[[ defaults.lua asks logic for the box rather than re-deriving the row
+       width beside it, so the two cannot drift - this pins that it really is
+       asking, and at each bar's own scale. ]]
+  it("centres each bar's default slot on the row logic actually computes", function()
     local screen_width = 1920
     local defaults = build_defaults(screen_width, 1080)
-    local _, _, row_width = new_logic(defaults).bounds(0, 0, 1)
-    assert.are.equal(math.floor((screen_width - row_width) / 2), defaults.layout.pos.x)
+    for name, slot in pairs(defaults.layout.anchors) do
+      local _, _, row_width = new_logic(defaults.bars[name]).bounds(0, 0, slot.scale)
+      assert.are.equal(math.floor((screen_width - row_width) / 2), slot.pos.x)
+    end
   end)
 
   describe("layout", function()

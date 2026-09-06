@@ -27,12 +27,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
 --[[ Target Bar - the current target's health, name and distance, on the same
-     xiv bar art the party list uses.
+     xiv bar art the party list uses, and the same again for the `<st>`
+     selection cursor on a second bar of its own.
 
      This file owns prims and nothing else: what to draw comes from logic.lua,
      whether to draw comes from the framework. The prims are built once at
-     construction rather than on demand - there are only six of them, and a
-     widget that builds them lazily has to dispose them somewhere too.
+     construction rather than on demand - there are only six of them a bar, and
+     a widget that builds them lazily has to dispose them somewhere too.
 
      It runs every frame, which is what shapes the rest of it:
 
@@ -55,21 +56,27 @@ local ASSET_DIR = "assets/xiv/wide/"
 -- windower.packets.parse_action once for every component that wants it.
 local ACTION_CHUNK = 0x028
 
-local function new(ctx)
-  local self = { name = "targetbar", alias = "tb" }
+--[[ The two bars. `main` follows the target, `subtarget` the `<st>` selection
+     cursor - the only difference between the two instances is the token each
+     one reads. Main leads: the order `//hud list` prints, and the order layout
+     mode hit-tests REVERSED, so the subtarget wins where the two overlap. ]]
+local ANCHORS = { "main", "subtarget" }
+local TOKEN = { main = "t", subtarget = "st" }
 
-  local screen_width, screen_height = ctx.screen()
-  self.defaults = build_defaults(screen_width, screen_height)
+--[[ One bar: its own prims, its own logic, its own placement. The token is
+     the only thing that tells the two apart - everything below draws whatever
+     mob it is handed. ]]
+local function new_bar(ctx, variant, config)
+  local bar = {}
+  local token = TOKEN[variant]
 
-  local config = self.defaults
+  local screen_width = ctx.screen()
+
   -- Without the resources library there is no spell name or cast time to
   -- show, so logic quietly runs with the cast feature off.
-  local logic = new_logic(config, ctx.resources)
+  local logic = new_logic(config, ctx.resources, variant)
 
   local attached = false
-  -- The service's read counter as of the last rebuild of the claim roster.
-  local last_generation = nil
-  local save = nil
   local pos = nil
   local scale = 1
   local visible = false
@@ -260,26 +267,13 @@ local function new(ctx)
       return
     end
 
-    --[[ The target can change between any two frames, so it is read every one -
-         and lib/player memoizes that read for the frame, so the party list
-         asking for the same target costs nothing extra.
-
-         The rest is rebuilt only when the service actually read the client:
-         set_party walks eighteen member tables, which is not worth doing sixty
-         times a second for data that changes five. The service's counter is the
-         gate rather than a clock of our own, which would sit out of phase with
-         it and leave this bar up to two intervals behind. An absent counter
-         falls back to rebuilding every frame rather than never. ]]
-    local generation = ctx.generation and ctx.generation() or nil
-    if generation == nil or generation ~= last_generation then
-      last_generation = generation
-      local me = ctx.get_mob_by_target("me")
-      local player = ctx.get_player()
-      logic.set_self(me and me.id, me and me.model_size, player and player.main_job)
-      logic.set_party(ctx.get_party())
-    end
-
-    local mob = ctx.get_mob_by_target("t")
+    --[[ The bar's own mob is read every frame, because the cursor can move
+         between any two of them and nothing announces it - and lib/player
+         memoizes the read for the frame, so the sibling bar and the party list
+         asking for the same one cost nothing extra. The player's own facts
+         come from the outer widget instead: both bars want the same answer,
+         and it is worth reading once. ]]
+    local mob = ctx.get_mob_by_target(token)
     if mob then
       logic.set_target(mob)
     else
@@ -321,23 +315,42 @@ local function new(ctx)
     end
   end
 
-  --[[ The widget contract ---------------------------------------------------- ]]
+  --[[ What the outer widget drives ------------------------------------------ ]]
 
-  function self.attach(loaded_config, persist)
+  function bar.attach(loaded_config)
     config = loaded_config
-    save = persist
     attached = true
-    -- Forget the last read: a relog inside one interval would otherwise keep
-    -- the previous character's roster until the service next reads.
-    last_generation = nil
     logic.set_config(config)
     apply_style()
     apply_layout()
   end
 
-  function self.detach()
+  --[[ Whether this bar is in a state to draw, which is what decides whether
+       the outer widget reads the client at all: an unplaced or detached bar
+       renders nothing, and a poll for it would be a get_party nobody uses. ]]
+  function bar.ready()
+    return attached and pos ~= nil and geometry ~= nil
+  end
+
+  -- The player's own facts, read once by the outer widget and pushed into
+  -- both bars.
+  function bar.set_client(me, player, party)
+    logic.set_self(me and me.id, me and me.model_size, player and player.main_job)
+    logic.set_party(party)
+  end
+
+  bar.render = render
+
+  function bar.on_action(parsed, now)
+    logic.on_action(parsed, now)
+  end
+
+  function bar.command(args)
+    return logic.command(args)
+  end
+
+  function bar.detach()
     attached = false
-    save = nil
     --[[ Only the target is dropped. The roster and the player need no clearing
          because attach reopens the poll gate and render polls before it reads
          anything, so the next character's first frame already has its own.
@@ -348,74 +361,59 @@ local function new(ctx)
          health nobody has watched in minutes rather than snapping to what is
          actually there. ]]
     logic.clear_target()
-    self.hide()
+    bar.hide()
   end
 
-  function self.set_pos(x, y)
+  --[[ Both setters are change-gated. Core fans a placement over every anchor
+       on every apply and layout mode applies per raw mouse-move event, so a
+       drag of one bar re-states the other's position and scale dozens of times
+       a second - and `apply_layout` clears the write cache, which would put a
+       full set of prim writes behind each of those. ]]
+  function bar.set_pos(x, y)
+    --[[ The screen is part of what a placement means here, not just the
+         origin: apply_layout re-reads it because the cast name is right
+         justified and its x pre-subtracts the width the library adds back, so
+         a resolution change moves that text without moving the origin. Core
+         re-pushes the same origin afterwards, and a gate on the origin alone
+         would swallow it. ]]
+    if pos and pos.x == x and pos.y == y and ctx.screen() == screen_width then
+      return
+    end
     pos = { x = x, y = y }
     apply_layout()
   end
 
-  function self.set_scale(new_scale)
+  function bar.set_scale(new_scale)
+    if scale == new_scale then
+      return
+    end
     scale = new_scale
     apply_layout()
   end
 
-  function self.set_preview(on)
+  function bar.set_preview(on)
     logic.set_preview(on)
   end
 
-  function self.show()
+  function bar.show()
     visible = true
   end
 
-  function self.hide()
+  function bar.hide()
     visible = false
     hide_all()
   end
 
   -- The origin set_pos was given, exactly: core clamps the widget on screen by
   -- comparing the two, and layout mode's drag offsets assume it.
-  function self.get_bounds()
+  function bar.get_bounds()
     if not pos then
       return nil
     end
     return logic.bounds(pos.x, pos.y, scale)
   end
 
-  --[[ No arguments is the per-frame tick. Of the events the entry point
-       forwards to every component, exactly one is wanted: the action chunk,
-       which feeds the cast tracker and nothing else - no render, no client
-       read. Everything else is ignored quietly, which is the contract:
-       core.dispatch has no idea who wants what, and a handler that threw
-       would be disabled for the rest of the session. ]]
-  function self.update(event, id, _original, parsed)
-    if event == nil then
-      render()
-      return
-    end
-    if event ~= "chunk" or id ~= ACTION_CHUNK or not attached then
-      return
-    end
-    -- Already decoded, by the one dispatch that sees the packet: nil when the
-    -- parse failed, which reads the same as nothing having happened.
-    if parsed then
-      logic.on_action(parsed, ctx.now())
-    end
-  end
-
-  function self.handle_command(args)
-    local reply, changed = logic.command(args)
-    -- No re-layout: the only setting here picks a colour scheme, and the next
-    -- tick pushes the colour that follows from it. Add one back alongside the
-    -- first command that actually moves something.
-    if changed and save then
-      save()
-    end
-    return reply
-  end
-
-  function self.destroy()
+  function bar.destroy()
     background.destroy()
     fill.destroy()
     frame.destroy()
@@ -426,6 +424,240 @@ local function new(ctx)
     for _, prim in pairs(texts) do
       prim.destroy()
     end
+  end
+
+  return bar
+end
+
+--[[ The widget contract ---------------------------------------------------- ]]
+
+--[[ Two bars under one registration: the outer widget owns the contract and
+     routes it by anchor, and a bar knows only its own token. partylist's
+     shape, and for its reason - a second component would have to require this
+     one to share the logic, which the isolation rule forbids outright. ]]
+local function new(ctx)
+  local self = { name = "targetbar", alias = "tb" }
+
+  local screen_width, screen_height = ctx.screen()
+  self.defaults = build_defaults(screen_width, screen_height)
+
+  local save = nil
+  local attached = false
+  --[[ The service's read counter as of the last rebuild of the claim roster,
+       held here rather than in either bar: both want the same answer, and
+       set_party walks eighteen member tables to reach it. ]]
+  local last_generation = nil
+
+  local bars = {}
+  for _, anchor in ipairs(ANCHORS) do
+    bars[anchor] = new_bar(ctx, anchor, self.defaults.bars[anchor])
+  end
+
+  local function each(method, ...)
+    for _, anchor in ipairs(ANCHORS) do
+      bars[anchor][method](...)
+    end
+  end
+
+  function self.anchors()
+    return ANCHORS
+  end
+
+  --[[ Core fans a placement out over every anchor on every apply, and layout
+       mode drags one of them - so a name that is not ours has to cost nothing
+       rather than crash the apply. An absent name is the same case and not a
+       shorthand for the main bar: core names an anchor for every placement it
+       makes on an anchored widget, so a nil is a wiring slip, and one that
+       quietly moved the main bar would leave the slip looking like success. ]]
+  local function bar_at(anchor)
+    return anchor ~= nil and bars[anchor] or nil
+  end
+
+  --[[ The player's own facts, read once for both bars and pushed into each.
+       Gated on the service's read counter rather than a clock of our own,
+       which would sit out of phase with it and leave the bars up to two
+       intervals behind; an absent counter falls back to reading every frame
+       rather than never. Nothing is read while neither bar could draw. ]]
+  local function refresh_client()
+    local wanted = false
+    for _, anchor in ipairs(ANCHORS) do
+      wanted = wanted or bars[anchor].ready()
+    end
+    if not wanted then
+      return
+    end
+    local generation = ctx.generation and ctx.generation() or nil
+    if generation ~= nil and generation == last_generation then
+      return
+    end
+    last_generation = generation
+    local me = ctx.get_mob_by_target("me")
+    local player = ctx.get_player()
+    local party = ctx.get_party()
+    -- Per bar, not `each`: building a claim roster walks all eighteen party
+    -- keys, and a bar that could not draw with one has no use for it.
+    for _, anchor in ipairs(ANCHORS) do
+      if bars[anchor].ready() then
+        bars[anchor].set_client(me, player, party)
+      end
+    end
+  end
+
+  --[[ A config file is code and is hand-editable, and `//hud copy` imports
+       another character's, so a bar's entry can be any shape at all by the
+       time it reaches here. Anything unusable is replaced with a FRESH copy of
+       the defaults and written back into the config - fresh, because handing a
+       bar `self.defaults` would have every later command write into the
+       defaults table, which `save()` does not serialise. ]]
+  function self.attach(loaded_config, persist)
+    save = persist
+    attached = true
+    -- Forget the last read: a relog inside one interval would otherwise keep
+    -- the previous character's roster until the service next reads.
+    last_generation = nil
+    local config = type(loaded_config) == "table" and loaded_config or {}
+    if type(config.bars) ~= "table" then
+      config.bars = {}
+    end
+    local seed = nil
+    for _, anchor in ipairs(ANCHORS) do
+      if type(config.bars[anchor]) ~= "table" then
+        -- Built at most once per attach, however many entries are unusable.
+        seed = seed or build_defaults(screen_width, screen_height)
+        config.bars[anchor] = seed.bars[anchor]
+      end
+      bars[anchor].attach(config.bars[anchor])
+    end
+  end
+
+  function self.detach()
+    attached = false
+    save = nil
+    each("detach")
+  end
+
+  function self.set_pos(x, y, anchor)
+    local placed = bar_at(anchor)
+    if placed then
+      placed.set_pos(x, y)
+    end
+  end
+
+  function self.set_scale(scale, anchor)
+    local placed = bar_at(anchor)
+    if placed then
+      placed.set_scale(scale)
+    end
+  end
+
+  function self.set_preview(on)
+    each("set_preview", on)
+  end
+
+  --[[ Core sends the widget's own switch with no anchor and one bar's with its
+       name; a whole-widget show is also what layout mode force-shows with, so
+       it has to bring back a bar a per-anchor hide took down. ]]
+  function self.show(anchor)
+    local shown = bar_at(anchor)
+    if anchor ~= nil then
+      if shown then
+        shown.show()
+      end
+      return
+    end
+    each("show")
+  end
+
+  function self.hide(anchor)
+    local hidden = bar_at(anchor)
+    if anchor ~= nil then
+      if hidden then
+        hidden.hide()
+      end
+      return
+    end
+    each("hide")
+  end
+
+  function self.get_bounds(anchor)
+    local placed = bar_at(anchor)
+    if not placed then
+      return nil
+    end
+    return placed.get_bounds()
+  end
+
+  --[[ No arguments is the per-frame tick. Of the events the entry point
+       forwards to every component, exactly one is wanted: the action chunk,
+       which feeds both cast trackers and nothing else - no render, no client
+       read. Everything else is ignored quietly, which is the contract:
+       core.dispatch has no idea who wants what, and a handler that threw
+       would be disabled for the rest of the session. ]]
+  function self.update(event, id, _original, parsed)
+    if event == nil then
+      refresh_client()
+      each("render")
+      return
+    end
+    if event ~= "chunk" or id ~= ACTION_CHUNK or not attached then
+      return
+    end
+    -- Already decoded, by the one dispatch that sees the packet: nil when the
+    -- parse failed, which reads the same as nothing having happened.
+    if parsed then
+      each("on_action", parsed, ctx.now())
+    end
+  end
+
+  -- What `//hud targetbar <bar>` reports: that bar's own settings. Whether it
+  -- is on screen at all is the framework's answer, and `//hud list` prints it
+  -- per anchor.
+  local function status_of(anchor)
+    -- Parenthesised: `command` answers (line, changed), and a report has no
+    -- second value to hand its caller.
+    return (bars[anchor].command({}))
+  end
+
+  --[[ `//hud targetbar [<bar>] <verb> ...`, the bar word leading so the verb
+       grammar behind it is untouched. Absent, the target bar is addressed -
+       which is what every line that worked before the subtarget bar existed
+       still means. A first word that is not a bar is a verb, so an unknown one
+       still reaches the verb parser and answers with its hint. ]]
+  function self.handle_command(args)
+    args = args or {}
+    local first = args[1] and args[1]:lower() or nil
+    if not first then
+      local lines = {}
+      for _, anchor in ipairs(ANCHORS) do
+        lines[#lines + 1] = status_of(anchor)
+      end
+      return lines
+    end
+
+    local anchor = bars[first] and first or nil
+    local rest = args
+    if anchor then
+      rest = {}
+      for index = 2, #args do
+        rest[index - 1] = args[index]
+      end
+    end
+    if rest[1] == nil then
+      return status_of(anchor or "main")
+    end
+
+    local reply, changed = bars[anchor or "main"].command(rest)
+    -- No re-layout: the only setting here picks a colour scheme, and the next
+    -- tick pushes the colour that follows from it. Add one back alongside the
+    -- first command that actually moves something.
+    if changed and save then
+      save()
+    end
+    return reply
+  end
+
+  function self.destroy()
+    each("destroy")
   end
 
   return self
