@@ -13,6 +13,8 @@ local FACTORIES = {
   { module = "components/equipviewer/equipviewer" },
   { module = "components/targetbar/targetbar" },
   { module = "components/crossbar/crossbar" },
+  { module = "components/hotbar/hotbar" },
+  { module = "components/skillchain/skillchain" },
   { module = "components/partylist/partylist" },
   { module = "components/statusbar/statusbar" },
   { module = "components/speedcheck/speedcheck" },
@@ -28,7 +30,7 @@ describe("component aliases", function()
   -- against, prim constructors, and the two libraries a component may look for.
   local function build(entry)
     local prims = fakes.prims()
-    return require(entry.module)({
+    local ctx = {
       name = entry.name,
       variant = entry.variant,
       new_text = prims.new_text,
@@ -47,7 +49,12 @@ describe("component aliases", function()
         return 0
       end,
       say = function() end,
-    })
+    }
+    -- The bars read execution off the action service, and refuse to build
+    -- without it: the one ctx member that is a hard error rather than a
+    -- degrade, since the entry point always hands one over.
+    ctx.actions = fakes.action_service(ctx)
+    return require(entry.module)(ctx)
   end
 
   before_each(function()
@@ -72,9 +79,11 @@ describe("component aliases", function()
       ev = "equipviewer",
       tb = "targetbar",
       cb = "crossbar",
+      hb = "hotbar",
       pl = "partylist",
       sb = "statusbar",
-      sc = "speedcheck",
+      sc = "skillchain",
+      spd = "speedcheck",
       eb = "expbar",
       inv = "invtracker",
     }, registry.alias_map())

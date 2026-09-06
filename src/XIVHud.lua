@@ -185,6 +185,9 @@ end)
 local new_player_service = step("loading lib/player", function()
   return require("lib/player")
 end)
+local new_action_service = step("loading lib/actionbar/service", function()
+  return require("lib/actionbar/service")
+end)
 local new_parambar = step("loading the parambar component", function()
   return require("components/parambar/parambar")
 end)
@@ -212,6 +215,12 @@ local new_targetbar = step("loading the targetbar component", function()
 end)
 local new_crossbar = step("loading the crossbar component", function()
   return require("components/crossbar/crossbar")
+end)
+local new_hotbar = step("loading the hotbar component", function()
+  return require("components/hotbar/hotbar")
+end)
+local new_skillchain = step("loading the skillchain component", function()
+  return require("components/skillchain/skillchain")
 end)
 local new_speedcheck = step("loading the speedcheck component", function()
   return require("components/speedcheck/speedcheck")
@@ -712,9 +721,124 @@ local function chat_open()
   return ok and info ~= nil and info.chat_open == true
 end
 
+--[[ The client accessors the action service and the crossbar share. Each is
+     one closure handed to both, so the entry point spec can pin that the two
+     read the client the same way. ]]
+
+--[[ The zone id, for mount roulette's zone rule (res.zones carries
+     `can_mount`). Read while drawing, so it goes through the player service:
+     this was the heaviest get_info caller in the addon, once a frame. A zone
+     id is safe to hold for an interval, and `zone change` invalidates anyway.
+     Nil-tolerant like chat_open. ]]
+local function read_zone()
+  local ok, info = pcall(read_info)
+  return ok and info ~= nil and info.zone or nil
+end
+
+local function send_command(command)
+  windower.send_command(command)
+end
+
+local function get_spells()
+  return windower.ffxi.get_spells()
+end
+
+-- The client's own lists of job abilities and weaponskills, which is what
+-- "known" means for those.
+local function get_abilities()
+  return windower.ffxi.get_abilities()
+end
+
+-- Argument-agnostic: whole bags and (bag, index) reads both go through here,
+-- and a wrapper must not narrow the API's arity.
+local function get_items(...)
+  return windower.ffxi.get_items(...)
+end
+
+-- The recast tables, for a slot's sweep and the retry's probe.
+local function get_spell_recasts()
+  return windower.ffxi.get_spell_recasts()
+end
+
+local function get_ability_recasts()
+  return windower.ffxi.get_ability_recasts()
+end
+
+-- Behind a pcall because this runs on the prerender warp poll and the
+-- keyboard press path: extdata.decode raises (a nil item, an unknown id, a
+-- non-24-byte extdata field), and a throw there would hand guard a repeating
+-- failure until it disables the shared handler - the same posture as
+-- parse_packet and parse_action above.
+local function decode_extdata(item)
+  if extdata == nil then
+    return nil
+  end
+  local ok, ext = pcall(extdata.decode, item)
+  return ok and ext or nil
+end
+
 -- Everything from here on can fail on a broken install, so each part is a step
 -- and the command handler is registered regardless of how they go.
 local command_handler = nil
+
+--[[ The action service (lib/actionbar/service): the one place a press is
+     executed, built BEFORE core - which takes it as a dep for `//hud warp`
+     and its kin, ticks it each frame and seeds core.lua with its tuning - and
+     handed to every bar as `ctx.actions`. It is fed its events from the
+     handlers below, never by a bar, or two bars would feed one engine twice.
+     Its reads of core (suppression, layout mode, the config) close over the
+     `core` local, which the next step fills in. ]]
+local action_service = step("building the action service", function()
+  -- Safe mode loads the framework and the commands and nothing that acts:
+  -- a service with no render loop to tick it would hold a GearSwap slot
+  -- for the session on the first warp.
+  if safe_mode then
+    return nil
+  end
+  -- `random` feeds mount roulette; unseeded, Lua's generator would deal the
+  -- same mount sequence every client start.
+  math.randomseed(os.time())
+  return new_action_service({
+    say = say,
+    send_command = send_command,
+    send_ipc = function(message)
+      windower.send_ipc_message(message)
+    end,
+    now = os.clock,
+    -- Wall clock for the warp machine: extdata timestamps are os.time
+    -- offsets, which the monotonic os.clock cannot answer.
+    time = os.time,
+    get_player = read_player,
+    get_mob_by_target = read_mob_by_target,
+    get_items = get_items,
+    get_spells = get_spells,
+    get_abilities = get_abilities,
+    get_key_items = function()
+      return windower.ffxi.get_key_items()
+    end,
+    -- Argument-agnostic on purpose: set_equip's exact arity is an in-client
+    -- question, and a wrapper must not encode a guess.
+    set_equip = function(...)
+      return windower.ffxi.set_equip(...)
+    end,
+    decode_extdata = decode_extdata,
+    random = math.random,
+    -- nil when the resource library failed to load: mount roulette then sits
+    -- out and the ladders degrade rung by rung.
+    resources = libraries_error == nil and res or nil,
+    zone = read_zone,
+    suppressed = function()
+      return core.suppressed()
+    end,
+    chat_open = chat_open,
+    layout_active = function()
+      return core.layout_active()
+    end,
+    config = function()
+      return core and core.config() or nil
+    end,
+  })
+end)
 
 step("building the framework", function()
   core = new_core({
@@ -744,6 +868,10 @@ step("building the framework", function()
     -- For `//hud buffs active` to name a buff; nil without the library, and
     -- the answer then says `buff 33`.
     resources = libraries_error == nil and res or nil,
+    -- `//hud warp` and its kin, and the tuning core.lua carries for them.
+    actions = action_service,
+    -- The memoized target read, for `//hud wsgate`'s state line.
+    get_mob_by_target = read_mob_by_target,
     screen = screen,
     now = os.clock,
     chat = chat,
@@ -921,10 +1049,9 @@ step("building the crossbar component", function()
   if safe_mode then
     return
   end
-  -- The ctx's `random` feeds mount roulette; unseeded, Lua's generator would
-  -- deal the same mount sequence every client start.
-  math.randomseed(os.time())
   core.register(new_crossbar({
+    -- Execution: the shared action service, never a scheduler of its own.
+    actions = action_service,
     new_text = wrap_text,
     new_image = wrap_image,
     screen = screen,
@@ -935,15 +1062,6 @@ step("building the crossbar component", function()
     time = os.time,
     say = say,
     chat_open = chat_open,
-    --[[ The zone id, for the crossbar's mount rule (res.zones carries
-         `can_mount`). Read while drawing, so it goes through the service: this
-         was the heaviest get_info caller in the addon, once a frame. A zone id
-         is safe to hold for an interval, and `zone change` invalidates anyway.
-         Nil-tolerant like chat_open. ]]
-    zone = function()
-      local ok, info = pcall(read_info)
-      return ok and info ~= nil and info.zone or nil
-    end,
     suppressed = function()
       return core.suppressed()
     end,
@@ -955,41 +1073,16 @@ step("building the crossbar component", function()
     layout_active = function()
       return core.layout_active()
     end,
-    -- Action execution (CB5).
-    send_command = function(command)
-      windower.send_command(command)
-    end,
-    send_ipc = function(message)
-      windower.send_ipc_message(message)
-    end,
-    -- Client state (CB5); each returns nil-tolerantly like the rest of the
-    -- entry point's accessors.
     get_player = read_player,
     get_mob_by_target = read_mob_by_target,
     generation = read_generation,
-    get_spell_recasts = function()
-      return windower.ffxi.get_spell_recasts()
-    end,
-    get_ability_recasts = function()
-      return windower.ffxi.get_ability_recasts()
-    end,
-    get_key_items = function()
-      return windower.ffxi.get_key_items()
-    end,
-    get_spells = function()
-      return windower.ffxi.get_spells()
-    end,
-    -- The binder's catalog (CB8): the client's own lists of job abilities
-    -- and weaponskills, which is what "known" means for those.
-    get_abilities = function()
-      return windower.ffxi.get_abilities()
-    end,
-    -- Argument-agnostic: the widget reads whole bags and, through the warp
-    -- machine, could grow an index argument - a wrapper must not narrow the
-    -- API's arity.
-    get_items = function(...)
-      return windower.ffxi.get_items(...)
-    end,
+    get_spell_recasts = get_spell_recasts,
+    get_ability_recasts = get_ability_recasts,
+    -- The binder's catalog: what the client says is known.
+    get_spells = get_spells,
+    get_abilities = get_abilities,
+    -- The slot counters' bag reads.
+    get_items = get_items,
     -- What is in the main hand, for the weapon binding layer. The SAME
     -- accessor equipviewer takes, so the addon has one reading of the
     -- equipment table rather than two that could disagree about what an
@@ -1001,31 +1094,80 @@ step("building the crossbar component", function()
          pre-parses: only this component wants it, so parsing it once here
          would be a decode every other component pays for. ]]
     parse_packet = parse_packet,
-    -- Argument-agnostic on purpose: set_equip's exact arity is a CB5,
-    -- in-client question, and a wrapper must not encode a guess.
-    set_equip = function(...)
-      return windower.ffxi.set_equip(...)
-    end,
-    -- Behind a pcall because this runs on the prerender warp poll and the
-    -- keyboard press path: extdata.decode raises (a nil item, an unknown
-    -- id, a non-24-byte extdata field), and a throw there would hand guard
-    -- a repeating failure until it disables the shared handler - the same
-    -- posture as parse_packet and parse_action above.
-    decode_extdata = function(item)
-      if extdata == nil then
-        return nil
-      end
-      local ok, ext = pcall(extdata.decode, item)
-      return ok and ext or nil
-    end,
-    random = math.random,
+    -- The enchanted-gear counts in a slot's corner read the same decode the
+    -- service's warp machine does.
+    decode_extdata = decode_extdata,
     file_exists = file_exists,
     read_dat = read_dat,
     write_binary = write_binary,
     game_path = game_path,
-    -- nil when the resource library failed to load: mount roulette and the
-    -- catalog then sit out, the bar itself carries on.
+    -- nil when the resource library failed to load: the catalog and the
+    -- weapon layer then sit out, the bar itself carries on.
     resources = libraries_error == nil and res or nil,
+  }))
+end)
+
+--[[ The hotbar: the crossbar's engine with a different face, so it reads the
+     same client as the crossbar does, member for member, and the same
+     action service. Registered AFTER the crossbar on purpose: the two own
+     overlapping keys (the crossbar's slot keys are the number row while a
+     side is held, the hotbar's the bare row), and core's keyboard walk hands
+     a later component the block an earlier one took - so this order is the
+     whole of the arbitration between them. ]]
+step("building the hotbar component", function()
+  if safe_mode then
+    return
+  end
+  core.register(new_hotbar({
+    actions = action_service,
+    new_text = wrap_text,
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
+    now = os.clock,
+    time = os.time,
+    say = say,
+    chat_open = chat_open,
+    suppressed = function()
+      return core.suppressed()
+    end,
+    component_visible = function()
+      return core.component_visible("hotbar")
+    end,
+    layout_active = function()
+      return core.layout_active()
+    end,
+    get_player = read_player,
+    get_mob_by_target = read_mob_by_target,
+    generation = read_generation,
+    get_spell_recasts = get_spell_recasts,
+    get_ability_recasts = get_ability_recasts,
+    get_spells = get_spells,
+    get_abilities = get_abilities,
+    get_items = get_items,
+    get_equipment = get_equipment,
+    parse_packet = parse_packet,
+    decode_extdata = decode_extdata,
+    file_exists = file_exists,
+    read_dat = read_dat,
+    write_binary = write_binary,
+    game_path = game_path,
+    resources = libraries_error == nil and res or nil,
+  }))
+end)
+
+--[[ The skillchain window indicator: reads the action service's engine once a
+     frame and draws it. It receives no packets of its own - the engine is fed
+     above - so it needs no library gate. ]]
+step("building the skillchain component", function()
+  if safe_mode then
+    return
+  end
+  core.register(new_skillchain({
+    actions = action_service,
+    new_image = wrap_image,
+    screen = screen,
+    asset = asset,
   }))
 end)
 
@@ -1246,6 +1388,10 @@ windower.register_event(
 windower.register_event(
   "unload",
   guard.wrap("unload", function()
+    -- Every GearSwap slot the service holds is released before the bars go.
+    if action_service ~= nil then
+      action_service.on_unload()
+    end
     core.on_unload()
     -- The permanent handlers too: nothing may stay hooked on the way out.
     release_input(true)
@@ -1297,6 +1443,11 @@ windower.register_event(
          player of its own, and the one read on a re-attach takes the raw
          accessor. ]]
     player_service.invalidate("player")
+    -- The service first: a bar's own handler mirrors the weapon state it
+    -- reads back, so the service must have heard the engage already.
+    if action_service ~= nil then
+      action_service.on_status(new_status)
+    end
     core.on_status_change(new_status, old_status)
   end)
 )
@@ -1379,6 +1530,9 @@ if not safe_mode and not libraries_error then
         -- failure that guard would count towards disabling the whole thing.
         parsed = parse_packet(original)
       end
+      -- The service first, with the same parse: the skillchain engine, the
+      -- retry's refusal branch and roulette read from here and nowhere else.
+      action_service.on_chunk(id, original, parsed)
       core.dispatch("chunk", id, original, parsed)
     end)
   )
@@ -1446,6 +1600,15 @@ for _, event in ipairs({ "gain focus", "lose focus", "gain buff", "lose buff", "
              about fifty attempts, and the binding reload lands up to ~200ms
              later than it used to on a change that takes a menu to make. ]]
         player_service.invalidate("player")
+      end
+      -- The service before the bars: a job change ends the trip it was
+      -- holding, and `warp all` is answered here rather than by a bar.
+      if action_service ~= nil then
+        if event == "job change" then
+          action_service.on_job_change()
+        elseif event == "ipc message" then
+          action_service.on_ipc(...)
+        end
       end
       core.dispatch(event, ...)
     end)

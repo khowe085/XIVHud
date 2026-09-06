@@ -1,5 +1,36 @@
 local new_crossbar = require("components/crossbar/crossbar")
 local new_render = require("components/crossbar/render")
+local fakes = require("tests/support/fakes")
+
+--[[ The action service the widget under test was built over. `push` mirrors
+     the entry point: the service hears every event first and ticks before
+     any bar does, so a spec drives the pair exactly as the client would. ]]
+local service_under_test
+
+local function push(widget, event, ...)
+  local service = service_under_test
+  if service ~= nil then
+    if event == nil then
+      service.tick()
+    elseif event == "chunk" then
+      service.on_chunk(...)
+    elseif event == "status" then
+      service.on_status(...)
+    elseif event == "job change" then
+      service.on_job_change()
+    elseif event == "ipc message" then
+      service.on_ipc(...)
+    end
+  end
+  return widget.update(event, ...)
+end
+
+-- `//hud draw` as core runs it, then the frame on which the bar mirrors the
+-- weapon state it moved.
+local function hud_draw(widget)
+  service_under_test.builtin("draw")
+  push(widget)
+end
 
 -- Default DIKs: `;` is the left side, `1`-`8` sit on DIK 2-9.
 local SIDE = 39
@@ -50,6 +81,8 @@ describe("crossbar stand-in", function()
         return env.layout
       end,
     }
+    ctx.actions = fakes.action_service(ctx)
+    service_under_test = ctx.actions
     widget = new_crossbar(ctx)
   end)
 
@@ -160,7 +193,7 @@ describe("crossbar stand-in", function()
   it("resets its held state when focus is lost", function()
     attach()
     widget.on_keyboard(SIDE, true, 0, false)
-    widget.update("lose focus")
+    push(widget, "lose focus")
     assert.is_false(widget.on_keyboard(SIDE, false, 0, false), "the latch went with the focus")
   end)
 
@@ -203,11 +236,11 @@ describe("crossbar stand-in", function()
   -- boxes give them a visible, draggable footprint even though the stand-in
   -- itself draws nothing. CB4's render.lua replaces the placeholder sizes.
   describe("anchors", function()
-    it("declares the six anchors, main first", function()
+    it("declares the five anchors, main first", function()
       --[[ The set label and the sword became anchors of their own on
            2026-08-29 (Kevin): both rode `main` at a fixed offset, so the
            only way to move either was to move the whole bar. ]]
-      assert.are.same({ "main", "wxhb_left", "wxhb_right", "set", "weapon", "skillchain_indicator" }, widget.anchors())
+      assert.are.same({ "main", "wxhb_left", "wxhb_right", "set", "weapon" }, widget.anchors())
     end)
 
     it("places the set label and the sword independently of the bar", function()
@@ -236,10 +269,10 @@ describe("crossbar stand-in", function()
 
     it("returns the origin set_pos gave it, per anchor", function()
       widget.set_pos(100, 900, "main")
-      widget.set_pos(600, 700, "skillchain_indicator")
+      widget.set_pos(600, 700, "wxhb_left")
       local x, y = widget.get_bounds("main")
       assert.are.same({ 100, 900 }, { x, y })
-      x, y = widget.get_bounds("skillchain_indicator")
+      x, y = widget.get_bounds("wxhb_left")
       assert.are.same({ 600, 700 }, { x, y })
     end)
 
@@ -280,7 +313,6 @@ end)
 -- anchors and bounds all work headless (which is also what keeps the specs
 -- above honest about never having drawn anything).
 describe("crossbar widget", function()
-  local fakes = require("tests/support/fakes")
   local RIGHT = 40 -- default DIK for the right side (')
 
   local env, ctx, prims, widget
@@ -310,6 +342,8 @@ describe("crossbar widget", function()
         return "addon/" .. path
       end,
     }
+    ctx.actions = fakes.action_service(ctx)
+    service_under_test = ctx.actions
     widget = require("components/crossbar/crossbar")(ctx)
     widget.attach(widget.defaults)
     place_all(widget, 100, 900)
@@ -336,7 +370,7 @@ describe("crossbar widget", function()
     return count
   end
 
-  it("creates the panel, six images plus three texts per slot, and the indicator pair", function()
+  it("creates the panel, six images plus three texts per slot, and the sword", function()
     -- 1 panel + 40 slots (XHB 16, WXHB 16, Expanded 8) x (background, chain
     -- overlay, icon, sweep-overlay, frame, feedback - upstream's layering,
     -- bottom to top); the sweep overlay doubles as the red X, upstream's own
@@ -344,7 +378,7 @@ describe("crossbar widget", function()
     -- Then the sword that marks the drawn weapon state, and the skillchain
     -- indicator's bg and fill closing the list. Texts: name, cost and
     -- recast per slot, plus the one set label between the crosses.
-    assert.are.equal(1 + 40 * 6 + 1 + 2, #prims.images)
+    assert.are.equal(1 + 40 * 6 + 1, #prims.images)
     assert.are.equal(40 * 3 + 1, #prims.texts)
   end)
 
@@ -570,7 +604,7 @@ describe("crossbar widget", function()
          right for the chrome and wrong for the sword, and a missing
          texture draws the prim's fill rather than complaining. Nothing
          caught it, so this checks the path AND that the file is there. ]]
-    local sword = prims.images[#prims.images - 2]
+    local sword = prims.images[#prims.images]
     assert.are.equal("addon/assets/icons/weapons/sword.png", sword.last.path)
     local file = io.open("src/assets/icons/weapons/sword.png", "rb")
     assert.is_not_nil(file, "the sword art must ship")
@@ -578,9 +612,9 @@ describe("crossbar widget", function()
   end)
 
   it("keeps the sword down while the weapon is sheathed", function()
-    -- Sheathed is the state a fresh attach starts in. The sword sits just
-    -- before the indicator pair, which is last in the image list.
-    assert.is_false(prims.images[#prims.images - 2].visible)
+    -- Sheathed is the state a fresh attach starts in. The sword is the last
+    -- image in the list.
+    assert.is_false(prims.images[#prims.images].visible)
   end)
 
   it("does not strand the panel across hide and show", function()
@@ -611,9 +645,6 @@ describe("crossbar widget", function()
     widget.set_pos(5, 6, "wxhb_left")
     local _, _, wxhb_width, wxhb_height = widget.get_bounds("wxhb_left")
     assert.are.same({ 330, 180 }, { wxhb_width, wxhb_height })
-    widget.set_pos(7, 8, "skillchain_indicator")
-    local _, _, indicator_width, indicator_height = widget.get_bounds("skillchain_indicator")
-    assert.are.same({ 604, 14 }, { indicator_width, indicator_height })
   end)
 
   it("hides and normalises every prim at construction", function()
@@ -627,7 +658,7 @@ describe("crossbar widget", function()
     bare_ctx.new_image = fresh.new_image
     bare_ctx.new_text = fresh.new_text
     require("components/crossbar/crossbar")(bare_ctx)
-    assert.are.equal(1 + 40 * 6 + 1 + 2, #fresh.images)
+    assert.are.equal(1 + 40 * 6 + 1, #fresh.images)
     for _, prim in ipairs(fresh.images) do
       assert.is_false(prim.visible)
       assert.are.same({ 1, 1 }, prim.last.repeat_xy)
@@ -739,8 +770,6 @@ end)
 -- own prims, and the per-frame tick drives recasts, costs, counters and the
 -- press flash from live data.
 describe("crossbar live widget", function()
-  local fakes = require("tests/support/fakes")
-
   local LEFT, RIGHT, LAYER, SWITCH, SHORTCUT = 39, 40, 43, 41, 13
   -- Slot keys: DIK 2-9 = slots 1-8.
   local DIK_SLOT = { 2, 3, 4, 5, 6, 7, 8, 9 }
@@ -1099,6 +1128,14 @@ describe("crossbar live widget", function()
         env.store_files[name] = value
       end,
     }
+    -- The tuning core.lua would hold; the service reads it live.
+    env.service_config = {
+      retry = require("lib/actionbar/retry")({}).defaults(),
+      wsgate = require("lib/actionbar/wsgate")({}).defaults(),
+      delay = 5,
+    }
+    ctx.actions = fakes.action_service(ctx, env.service_config)
+    service_under_test = ctx.actions
     widget = new_crossbar(ctx)
     config = widget.defaults
     if opts.tune_config then
@@ -1124,13 +1161,9 @@ describe("crossbar live widget", function()
     return prims.images[1 + (GROUP_INDEX[group] * 8 + slot - 1) * 6 + IMAGE_KIND[kind]]
   end
 
-  local function indicator_prims()
-    return prims.images[#prims.images - 1], prims.images[#prims.images]
-  end
-
-  -- The sword sits immediately before the indicator pair, which is last.
+  -- The sword is the last image built.
   local function sword_icon()
-    return prims.images[#prims.images - 2]
+    return prims.images[#prims.images]
   end
 
   local function text_of(group, slot, kind)
@@ -1228,7 +1261,7 @@ describe("crossbar live widget", function()
         image_of("xhb_left", 3, "icon").last.path
       )
       widget.handle_command({ "icon", "1L3", "map" })
-      widget.update()
+      push(widget)
       assert.are.equal("addon/assets/icons/map.png", image_of("xhb_left", 3, "icon").last.path)
       -- The memo must still settle on the override, or an re-iconed slot
       -- stats the disk every frame for the life of the binding.
@@ -1239,7 +1272,7 @@ describe("crossbar live widget", function()
       end
       -- And back off again: clearing the override restores the action's own.
       widget.handle_command({ "icon", "1L3" })
-      widget.update()
+      push(widget)
       assert.are.equal(
         "addon/assets/icons/weaponskills/sword/savage-blade.png",
         image_of("xhb_left", 3, "icon").last.path
@@ -1358,8 +1391,8 @@ describe("crossbar live widget", function()
            shipped posture has a test of its own, below. ]]
       local function gated()
         build_world({
-          tune_config = function(tuned)
-            tuned.wsgate.enabled = true
+          tune_config = function()
+            env.service_config.wsgate.enabled = true
           end,
         })
       end
@@ -1520,20 +1553,18 @@ describe("crossbar live widget", function()
         env.target = { id = 99, hpp = 75, is_npc = true, distance = 400, model_size = 1 }
         weaponskill()
         assert.are.same({}, env.commands, "twenty yalms out, at the shipped four")
-        local reply = widget.handle_command({ "wsgate", "range", "30" })
-        assert.is_not_nil(tostring(reply):find("30", 1, true), tostring(reply))
+        env.service_config.wsgate.melee_range = 30
         weaponskill()
         assert.are.equal(1, #env.commands, "and inside a reach the player just set")
       end)
 
-      it("is switched off by its own verb, and back on again", function()
+      it("is switched off by its tuning, and back on again", function()
         gated()
         env.player.vitals.tp = 999
-        local reply = widget.handle_command({ "wsgate", "off" })
-        assert.is_not_nil(tostring(reply):find("off", 1, true), tostring(reply))
+        env.service_config.wsgate.enabled = false
         weaponskill()
         assert.are.equal(1, #env.commands, "switched off, the press goes out")
-        widget.handle_command({ "wsgate", "on" })
+        env.service_config.wsgate.enabled = true
         weaponskill()
         assert.are.equal(1, #env.commands, "and is refused again")
       end)
@@ -1667,10 +1698,10 @@ describe("crossbar live widget", function()
       local flash = image_of("xhb_left", 3, "feedback")
       assert.is_true(flash.visible)
       assert.are.equal(config.feedback.alpha, flash.last.alpha)
-      widget.update()
+      push(widget)
       assert.are.equal(config.feedback.alpha - config.feedback.speed, flash.last.alpha)
       for _ = 1, 10 do
-        widget.update()
+        push(widget)
       end
       assert.is_false(flash.visible, "the flash is spent")
     end)
@@ -1707,7 +1738,7 @@ describe("crossbar live widget", function()
            entering drawn LANDS on the first set of that rotation before any
            cycling (2026-08-24), so this starts from 1 rather than from the
            3 it was on. ]]
-      widget.update("status", 1)
+      push(widget, "status", 1)
       assert.are.equal(1, env.store_files.WAR.active_set, "engaging landed on the first drawn set")
       press(SWITCH)
       release(SWITCH)
@@ -1716,8 +1747,8 @@ describe("crossbar live widget", function()
 
     it("keeps the drawn state when the mob dies, until an explicit draw", function()
       build_world()
-      widget.update("status", 1)
-      widget.update("status", 0)
+      push(widget, "status", 1)
+      push(widget, "status", 0)
       -- Still drawn: the draw toggle now disengages.
       press(LAYER)
       press(SWITCH)
@@ -1759,6 +1790,22 @@ describe("crossbar live widget", function()
       assert.are.same({}, env.commands)
       assert.are.same({}, env.chat, "no complaint")
       assert.is_true(sword_icon().visible)
+    end)
+
+    it("still fires the framework's verbs from a shortcut key", function()
+      build_world({
+        tune_config = function(tuned)
+          tuned.input.shortcuts[58] = { tap = "draw" }
+          tuned.input.shortcuts[59] = { tap = "warp" }
+        end,
+      })
+      press(58)
+      release(58)
+      assert.are.equal("drawn", service_under_test.weapon_state())
+      assert.is_true(sword_icon().visible, "and the bar mirrored it at once")
+      press(59)
+      release(59)
+      assert.is_not_nil(said():lower():find("warp"), "the ladder was walked: " .. said())
     end)
 
     it("ignores a hand-edited non-string shortcut verb", function()
@@ -1874,7 +1921,6 @@ describe("crossbar live widget", function()
         { "main", 100, 900 },
         { "wxhb_left", 400, 100 },
         { "wxhb_right", 800, 100 },
-        { "skillchain_indicator", 600, 700 },
       }
       env.layout = true
       local function core_apply(main_x, main_y)
@@ -2079,7 +2125,7 @@ describe("crossbar live widget", function()
       env.player = war_player()
       env.player.main_job = "DRK"
       env.player.main_job_id = 8
-      widget.update("job change", 8, 99, 20, 49)
+      push(widget, "job change", 8, 99, 20, 49)
       widget.handle_command({ "set", "6" })
       press(LEFT)
       press(DIK_SLOT[1])
@@ -2096,14 +2142,14 @@ describe("crossbar live widget", function()
       local files = war_bindings()
       files.WAR.sub = { DNC = { [1] = { left = { [8] = { type = "ja", action = "Provoke", target = "me" } } } } }
       build_world({ store_files = files })
-      widget.update("job change", 1, 99, 19, 49)
+      push(widget, "job change", 1, 99, 19, 49)
       press(LEFT)
       press(DIK_SLOT[8])
       assert.are.same({}, env.commands, "the stale SCH sub must not be scoped as final")
       release(DIK_SLOT[8])
       env.player.sub_job = "DNC"
       env.player.sub_job_id = 19
-      widget.update()
+      push(widget)
       press(DIK_SLOT[8])
       assert.are.same({ 'input /ja "Provoke" <me>' }, env.commands, "the DNC sub layer resolves once scoped")
     end)
@@ -2114,17 +2160,17 @@ describe("crossbar live widget", function()
       -- down after 10s, re-armed by the next job change event.
       build_world()
       widget.hide()
-      widget.update("job change", 8, 99, 13, 49)
+      push(widget, "job change", 8, 99, 13, 49)
       env.player_reads = 0
       env.now = 1
-      widget.update()
+      push(widget)
       assert.is_true(env.player_reads > 0, "the retry is live inside the window")
       env.now = 11
-      widget.update()
+      push(widget)
       env.player_reads = 0
       env.now = 12
-      widget.update()
-      widget.update()
+      push(widget)
+      push(widget)
       assert.are.equal(0, env.player_reads, "the retry has stood down")
     end)
 
@@ -2132,14 +2178,14 @@ describe("crossbar live widget", function()
       build_world()
       -- The job change event outruns get_player: the stale player still
       -- says WAR. Nothing rescopes until the ids agree.
-      widget.update("job change", 8, 99, 20, 49)
+      push(widget, "job change", 8, 99, 20, 49)
       press(LEFT)
       press(DIK_SLOT[3])
       assert.are.same({ 'input /ws "Savage Blade" <t>' }, env.commands, "still WAR until the client catches up")
       release(DIK_SLOT[3])
       env.player.main_job = "DRK"
       env.player.main_job_id = 8
-      widget.update()
+      push(widget)
       press(DIK_SLOT[3])
       assert.are.equal(1, #env.commands, "DRK has no binding in that slot")
     end)
@@ -2176,7 +2222,7 @@ describe("crossbar live widget", function()
       holding(16535)
       -- No packet: the attach arms the first read, or a character who logs
       -- in and changes nothing would never resolve a class at all.
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "the sword layer covered the base")
     end)
 
@@ -2185,7 +2231,7 @@ describe("crossbar live widget", function()
       files.WAR.weapons["Great Axe"] = nil
       build_world({ store_files = files })
       holding(16800)
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Savage Blade" <t>', press_slot(3), "the great axe has no layer")
     end)
 
@@ -2195,17 +2241,17 @@ describe("crossbar live widget", function()
     it("re-reads the main hand on the equip packet, and not before it", function()
       build_world({ store_files = weapon_files() })
       holding(16535)
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Vorpal" <t>', press_slot(3))
       -- The gear moved, and nothing has said so: several intervals go by
       -- without the widget noticing.
       holding(16800)
       for _ = 1, 3 do
         env.now = env.now + 0.5
-        widget.update()
+        push(widget)
       end
       assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "no packet, no re-read")
-      widget.update("chunk", 0x050, "raw equip bytes")
+      push(widget, "chunk", 0x050, "raw equip bytes")
       --[[ Past the client interval: the answer is taken at most once per
            generation, so the packet lands on the next one rather than at
            once. And past the weaponskill gate's in-flight lock, which the
@@ -2213,7 +2259,7 @@ describe("crossbar live widget", function()
            to prove the layer moved, which no player could do inside the
            lock's second. ]]
       env.now = env.now + 1.5
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Ukko" <t>', press_slot(3), "the equip packet moved the layer")
     end)
 
@@ -2223,16 +2269,16 @@ describe("crossbar live widget", function()
     it("ignores an equip packet for a slot that is not the main hand", function()
       build_world({ store_files = weapon_files() })
       holding(16535)
-      widget.update()
+      push(widget)
       holding(16800)
-      widget.update("chunk", 0x050, { ["Equipment Slot"] = 13 })
+      push(widget, "chunk", 0x050, { ["Equipment Slot"] = 13 })
       env.now = env.now + 0.5
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "a ring moved, not the weapon")
-      widget.update("chunk", 0x050, { ["Equipment Slot"] = 0 })
+      push(widget, "chunk", 0x050, { ["Equipment Slot"] = 0 })
       -- Past the gate's in-flight lock too: the press above armed it.
       env.now = env.now + 1.5
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Ukko" <t>', press_slot(3), "and the main hand did")
     end)
 
@@ -2241,26 +2287,26 @@ describe("crossbar live widget", function()
     it("re-reads on an equip packet it cannot decode", function()
       build_world({ store_files = weapon_files() })
       holding(16535)
-      widget.update()
+      push(widget)
       holding(16800)
-      widget.update("chunk", 0x050, "bytes nothing here can parse")
+      push(widget, "chunk", 0x050, "bytes nothing here can parse")
       env.now = env.now + 0.5
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Ukko" <t>', press_slot(3))
     end)
 
     it("asks again when a bag finishes loading", function()
       build_world({ store_files = weapon_files() })
       holding(16535)
-      widget.update()
+      push(widget)
       holding(16800)
       env.now = env.now + 0.5
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "still the sword until something says otherwise")
-      widget.update("chunk", 0x01D, "raw inventory-ready bytes")
+      push(widget, "chunk", 0x01D, "raw inventory-ready bytes")
       -- Past the gate's in-flight lock too: the press above armed it.
       env.now = env.now + 1.5
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Ukko" <t>', press_slot(3), "the finished bag moved the layer")
     end)
 
@@ -2274,12 +2320,12 @@ describe("crossbar live widget", function()
       }
       build_world({ store_files = files })
       holding(16535)
-      widget.update()
+      push(widget)
       env.player.main_job = "DRK"
       env.player.main_job_id = 8
-      widget.update("job change", 8, 99, 20, 49)
+      push(widget, "job change", 8, 99, 20, 49)
       env.now = env.now + 0.5
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Torcleaver" <t>', press_slot(3), "DRK's own sword layer")
     end)
 
@@ -2291,10 +2337,10 @@ describe("crossbar live widget", function()
     it("keeps asking while the client cannot be read", function()
       build_world({ store_files = weapon_files() })
       env.equipment = nil
-      widget.update()
+      push(widget)
       holding(16535)
       env.now = env.now + 0.5
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "the layer landed without a packet")
     end)
 
@@ -2307,12 +2353,12 @@ describe("crossbar live widget", function()
     it("re-reads the main hand on a re-attach", function()
       build_world({ store_files = weapon_files() })
       holding(16535)
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Vorpal" <t>', press_slot(3))
       widget.attach(widget.defaults, function() end, store)
       widget.show()
       env.now = env.now + 0.5
-      widget.update()
+      push(widget)
       assert.are.equal('input /ws "Vorpal" <t>', press_slot(3), "the class came back with the new model")
     end)
 
@@ -2327,7 +2373,7 @@ describe("crossbar live widget", function()
       assert.has_no.errors(function()
         for _ = 1, 3 do
           env.now = env.now + 0.5
-          widget.update()
+          push(widget)
         end
       end)
       assert.are.equal('input /ws "Savage Blade" <t>', press_slot(3), "the base carried on")
@@ -2340,7 +2386,7 @@ describe("crossbar live widget", function()
     it("names the class in hand in the status line", function()
       build_world({ store_files = weapon_files() })
       holding(16535)
-      widget.update()
+      push(widget)
       local status = table.concat(widget.handle_command({}), "\n")
       assert.is_not_nil(status:find("Sword", 1, true), status)
     end)
@@ -2349,12 +2395,12 @@ describe("crossbar live widget", function()
     it("repaints the bar when the class in hand changes", function()
       build_world({ store_files = weapon_files() })
       holding(16535)
-      widget.update()
+      push(widget)
       assert.are.equal("Vorpal", text_of("xhb_left", 3, "name").last.text)
       holding(16800)
-      widget.update("chunk", 0x050, "raw equip bytes")
+      push(widget, "chunk", 0x050, "raw equip bytes")
       env.now = env.now + 0.5
-      widget.update()
+      push(widget)
       assert.are.equal("Ukko", text_of("xhb_left", 3, "name").last.text, "the slot was repainted")
     end)
 
@@ -2363,15 +2409,15 @@ describe("crossbar live widget", function()
     it("reads the equipment only when something says it may have moved", function()
       build_world()
       holding(16535)
-      widget.update("chunk", 0x050, "raw equip bytes")
-      widget.update()
+      push(widget, "chunk", 0x050, "raw equip bytes")
+      push(widget)
       local reads = env.equipment_reads
       assert.is_true(reads > 0, "the equip packet was answered")
       for _ = 1, 5 do
         -- Past the service's own interval each time, so a read gated on the
         -- generation counter would have taken its chance.
         env.now = env.now + 0.5
-        widget.update()
+        push(widget)
       end
       assert.are.equal(reads, env.equipment_reads, "and nothing else asked again")
     end)
@@ -2383,12 +2429,12 @@ describe("crossbar live widget", function()
       assert.are.same({}, env.commands, "slot 2 is empty in the base")
       release(DIK_SLOT[2])
       env.player.buffs = { 358 }
-      widget.update("gain buff", 358)
+      push(widget, "gain buff", 358)
       press(DIK_SLOT[2])
       assert.are.same({ 'input /ja "Penury" <me>' }, env.commands)
       release(DIK_SLOT[2])
       env.player.buffs = {}
-      widget.update("lose buff", 358)
+      push(widget, "lose buff", 358)
       press(DIK_SLOT[2])
       assert.are.equal(1, #env.commands, "the layer dropped with the buff")
     end)
@@ -2398,7 +2444,7 @@ describe("crossbar live widget", function()
       -- the full-list resync plus the any_of implication must survive it.
       build_world()
       env.player.buffs = { 401 }
-      widget.update("gain buff", 401)
+      push(widget, "gain buff", 401)
       press(LEFT)
       press(DIK_SLOT[2])
       assert.are.same({ 'input /ja "Penury" <me>' }, env.commands)
@@ -2413,17 +2459,17 @@ describe("crossbar live widget", function()
          counter still while the clock runs on. ]]
     it("waits for the counter rather than for its own clock", function()
       build_world()
-      widget.update()
+      push(widget)
       env.player_reads, env.spell_reads, env.ability_reads = 0, 0, 0
 
       env.generation_hold = true
       env.now = env.now + 5
-      widget.update()
+      push(widget)
       assert.are.equal(0, env.player_reads, "re-read on a clock while the counter stood still")
       assert.are.equal(0, env.spell_reads + env.ability_reads)
 
       env.generation_hold = false
-      widget.update()
+      push(widget)
       assert.are.equal(1, env.player_reads, "the counter moved and nothing was re-read")
       assert.are.equal(1, env.spell_reads)
       assert.are.equal(1, env.ability_reads)
@@ -2436,14 +2482,14 @@ describe("crossbar live widget", function()
          served for the rest of the interval. ]]
     it("reads again on the first frame after a fresh attach", function()
       build_world()
-      widget.update()
+      push(widget)
 
       widget.attach(widget.defaults, function() end)
       -- Counted from after the attach, which does client reads of its own:
       -- what is under test is the first TICK, with the counter standing still.
       env.player_reads, env.spell_reads, env.ability_reads = 0, 0, 0
       env.generation_hold = true
-      widget.update()
+      push(widget)
       assert.are.equal(1, env.player_reads, "a relog waited out the interval before reading")
       assert.are.equal(1, env.spell_reads)
       assert.are.equal(1, env.ability_reads)
@@ -2454,13 +2500,13 @@ describe("crossbar live widget", function()
       env.player_reads, env.spell_reads, env.ability_reads = 0, 0, 0
       for i = 1, 12 do
         env.now = i * 0.01
-        widget.update()
+        push(widget)
       end
       assert.are.equal(1, env.player_reads, "12 frames inside 200ms are one read")
       assert.are.equal(1, env.spell_reads)
       assert.are.equal(1, env.ability_reads)
       env.now = 0.4
-      widget.update()
+      push(widget)
       assert.are.equal(2, env.player_reads, "the next cadence window reads again")
     end)
 
@@ -2470,7 +2516,7 @@ describe("crossbar live widget", function()
       env.player_reads, env.spell_reads, env.ability_reads = 0, 0, 0
       for i = 1, 3 do
         env.now = i
-        widget.update()
+        push(widget)
       end
       assert.are.equal(0, env.player_reads + env.spell_reads + env.ability_reads)
     end)
@@ -2482,12 +2528,12 @@ describe("crossbar live widget", function()
       build_world()
       env.ability_recasts = { [5] = 30 }
       env.spell_recasts = { [1] = 600 }
-      widget.update()
+      push(widget)
       local before = 0
       for _, prim in ipairs(prims.all) do
         before = before + #prim.calls
       end
-      widget.update()
+      push(widget)
       local after = 0
       for _, prim in ipairs(prims.all) do
         after = after + #prim.calls
@@ -2506,7 +2552,7 @@ describe("crossbar live widget", function()
         end,
       })
       env.spell_recasts = { [1] = 1800 }
-      widget.update()
+      push(widget)
       assert.is_false(image_of("xhb_left", 1, "background").visible, "empty_slots: an empty slot draws nothing")
       assert.is_true(image_of("xhb_left", 3, "background").visible, "a bound slot still draws")
       assert.is_false(text_of("xhb_left", 3, "name").visible, "action_name")
@@ -2521,7 +2567,7 @@ describe("crossbar live widget", function()
       build_world()
       widget.set_pos(400, 100, "wxhb_left")
       env.ability_recasts = { [5] = 30 }
-      widget.update()
+      push(widget)
       assert.is_false(text_of("wxhb_left", 1, "cost").visible)
       assert.is_false(image_of("wxhb_left", 1, "sweep").visible)
       assert.is_false(text_of("wxhb_left", 1, "recast").visible)
@@ -2530,11 +2576,11 @@ describe("crossbar live widget", function()
     it("re-learns the sweep denominator when a set switch changes the action", function()
       build_world()
       env.ability_recasts = { [5] = 300 }
-      widget.update()
+      push(widget)
       widget.handle_command({ "set", "2" })
       env.now = 0.3
       env.ability_recasts = { [1] = 25 }
-      widget.update()
+      push(widget)
       local sweep = image_of("xhb_left", 4, "sweep")
       assert.are.equal(
         "addon/assets/cooldown/frame_32.png",
@@ -2552,7 +2598,7 @@ describe("crossbar live widget", function()
       env.ability_recasts = { [5] = 30 }
       press(LEFT)
       press(LAYER)
-      widget.update()
+      push(widget)
       local recast = text_of("wxhb_left", 1, "recast")
       local sweep = image_of("wxhb_left", 1, "sweep")
       assert.is_true(recast.visible)
@@ -2561,7 +2607,7 @@ describe("crossbar live widget", function()
       assert.is_false(recast.visible, "the bar dropped with the layer")
       press(LAYER)
       env.now = 0.3
-      widget.update()
+      push(widget)
       assert.is_true(recast.visible, "the second hold draws the recast again")
       assert.is_true(sweep.visible)
     end)
@@ -2569,7 +2615,7 @@ describe("crossbar live widget", function()
     it("blanks the dynamic prims on hide and on detach", function()
       build_world()
       env.spell_recasts = { [1] = 1800 }
-      widget.update()
+      push(widget)
       local cost = text_of("xhb_left", 5, "cost")
       local sweep = image_of("xhb_left", 5, "sweep")
       assert.is_true(cost.visible)
@@ -2578,7 +2624,7 @@ describe("crossbar live widget", function()
       assert.is_false(cost.visible)
       assert.is_false(sweep.visible)
       widget.show()
-      widget.update()
+      push(widget)
       assert.is_true(sweep.visible, "the tick brings them back")
       widget.detach()
       assert.is_false(cost.visible)
@@ -2590,7 +2636,7 @@ describe("crossbar live widget", function()
       local sweep = image_of("xhb_left", 4, "sweep")
       local recast = text_of("xhb_left", 4, "recast")
       env.ability_recasts = { [5] = 30 }
-      widget.update()
+      push(widget)
       assert.is_true(sweep.visible)
       assert.are.equal(150, sweep.last.alpha, "upstream's fixed overlay alpha")
       assert.are.equal("addon/assets/cooldown/frame_32.png", sweep.last.path)
@@ -2598,11 +2644,11 @@ describe("crossbar live widget", function()
       assert.is_true(recast.visible)
       env.now = 0.3
       env.ability_recasts = { [5] = 15 }
-      widget.update()
+      push(widget)
       assert.are.equal("addon/assets/cooldown/frame_16.png", sweep.last.path)
       env.now = 0.6
       env.ability_recasts = {}
-      widget.update()
+      push(widget)
       assert.is_false(sweep.visible)
       assert.is_false(recast.visible)
     end)
@@ -2611,36 +2657,36 @@ describe("crossbar live widget", function()
       build_world()
       -- 3570 sixtieths = 59.5s: the seconds branch rounds UP.
       env.spell_recasts = { [1] = 3570 }
-      widget.update()
+      push(widget)
       local label = text_of("xhb_left", 5, "recast")
       assert.are.equal("60s", label.last.text, "seconds ceil, not floor")
       env.now = 0.3
       env.spell_recasts = { [1] = 3600 }
-      widget.update()
+      push(widget)
       assert.are.equal("1m", label.last.text, "60s exactly is a minute")
       env.now = 0.6
       env.spell_recasts = { [1] = 3660 }
-      widget.update()
+      push(widget)
       assert.are.equal("1m", label.last.text)
       env.now = 0.9
       env.spell_recasts = {}
       env.ability_recasts = { [5] = 3599 }
-      widget.update()
+      push(widget)
       assert.are.equal("59m", text_of("xhb_left", 4, "recast").last.text)
       env.now = 1.2
       env.ability_recasts = { [5] = 3600 }
-      widget.update()
+      push(widget)
       assert.are.equal("1h", text_of("xhb_left", 4, "recast").last.text, "3600s exactly is an hour")
     end)
 
     it("labels minutes and hours on long recasts", function()
       build_world()
       env.ability_recasts = { [5] = 300 }
-      widget.update()
+      push(widget)
       assert.are.equal("5m", text_of("xhb_left", 4, "recast").last.text)
       env.now = 0.3
       env.ability_recasts = { [5] = 7200 }
-      widget.update()
+      push(widget)
       assert.are.equal("2h", text_of("xhb_left", 4, "recast").last.text)
     end)
 
@@ -2655,8 +2701,8 @@ describe("crossbar live widget", function()
         build_world({ store_files = files })
         env.zone = zone
         env.key_items = { 3000 }
-        widget.update("chunk", 0x055)
-        widget.update()
+        push(widget, "chunk", 0x055)
+        push(widget)
         return image_of("xhb_left", 2, "icon")
       end
 
@@ -2679,17 +2725,17 @@ describe("crossbar live widget", function()
         local icon = mount_world("mr", 100)
         -- The command frontend, which reaches the same resolve -> travel wait
         -- -> execute path a slot press does.
-        widget.handle_command({ "mr" })
+        service_under_test.builtin("mr")
         env.now = 5
-        widget.update()
+        push(widget)
         assert.are.same({ 'input /mount "chocobo"' }, env.commands, "the travel wait is over")
         assert.are.equal(config.disabled_alpha, icon.last.alpha, "and the slot is cooling")
         assert.are.equal("1m", text_of("xhb_left", 2, "recast").last.text, "a full minute reads as 1m")
         env.now = 25
-        widget.update()
+        push(widget)
         assert.are.equal("40s", text_of("xhb_left", 2, "recast").last.text)
         env.now = 66
-        widget.update()
+        push(widget)
         assert.are.equal(255, icon.last.alpha, "a minute after the summon it is back")
       end)
 
@@ -2700,16 +2746,16 @@ describe("crossbar live widget", function()
            downstream to cancel. The slot stays grey because of the ZONE -
            and lights the moment you leave town, not a minute later. ]]
         local icon = mount_world("mr", 200)
-        widget.handle_command({ "mr" })
+        service_under_test.builtin("mr")
         env.now = 5
-        widget.update()
+        push(widget)
         assert.are.same({}, env.commands, "nothing was sent")
         assert.is_false(text_of("xhb_left", 2, "recast").visible, "and nothing is counting down")
         assert.are.equal(config.disabled_alpha, icon.last.alpha, "still grey - the zone, not a recast")
 
         -- Leaving town clears it: the zone was the only thing holding it.
         env.zone = 100
-        widget.update()
+        push(widget)
         assert.are.equal(255, icon.last.alpha)
       end)
 
@@ -2721,26 +2767,26 @@ describe("crossbar live widget", function()
            so it runs, and dims the slot with it (Kevin's call), even though
            the press itself would dismount you. ]]
         local icon = mount_world("mr", 100)
-        widget.handle_command({ "mr" })
+        service_under_test.builtin("mr")
         env.now = 5
-        widget.update()
+        push(widget)
         assert.are.same({ 'input /mount "chocobo"' }, env.commands)
 
         env.player.buffs = { 252 }
         env.now = 25
-        widget.update()
+        push(widget)
         assert.are.equal("40s", text_of("xhb_left", 2, "recast").last.text, "the recast rides with you")
         assert.are.equal(config.disabled_alpha, icon.last.alpha)
 
         -- Off the mount with time still on the clock: unchanged, still dim.
         env.player.buffs = {}
         env.now = 45
-        widget.update()
+        push(widget)
         assert.are.equal("20s", text_of("xhb_left", 2, "recast").last.text)
         assert.are.equal(config.disabled_alpha, icon.last.alpha)
 
         env.now = 66
-        widget.update()
+        push(widget)
         assert.are.equal(255, icon.last.alpha, "and back when the minute is up")
       end)
 
@@ -2751,23 +2797,23 @@ describe("crossbar live widget", function()
            to refuse. A cooling slot is a no-op on exactly the same terms as
            a zone-blocked one. ]]
         mount_world("mr", 100)
-        widget.handle_command({ "mr" })
+        service_under_test.builtin("mr")
         env.now = 5
-        widget.update()
+        push(widget)
         assert.are.same({ 'input /mount "chocobo"' }, env.commands)
 
         -- Dismount, which is always allowed, then press again while the
         -- minute is still running: that second press must do nothing.
         env.player.buffs = { 252 }
-        widget.update()
-        widget.handle_command({ "mr" })
+        push(widget)
+        service_under_test.builtin("mr")
         env.now = 12
-        widget.update()
+        push(widget)
         env.player.buffs = {}
-        widget.update()
-        widget.handle_command({ "mr" })
+        push(widget)
+        service_under_test.builtin("mr")
         env.now = 20
-        widget.update()
+        push(widget)
         assert.are.same({
           'input /mount "chocobo"',
           "input /dismount",
@@ -2775,10 +2821,10 @@ describe("crossbar live widget", function()
 
         -- Once the minute is up it works again.
         env.now = 66
-        widget.update()
-        widget.handle_command({ "mr" })
+        push(widget)
+        service_under_test.builtin("mr")
         env.now = 71
-        widget.update()
+        push(widget)
         assert.are.same({
           'input /mount "chocobo"',
           "input /dismount",
@@ -2790,14 +2836,14 @@ describe("crossbar live widget", function()
         -- Getting off is never held up by the timer that says when you could
         -- get back on.
         mount_world("mr", 100)
-        widget.handle_command({ "mr" })
+        service_under_test.builtin("mr")
         env.now = 5
-        widget.update()
+        push(widget)
         env.player.buffs = { 252 }
-        widget.update()
-        widget.handle_command({ "mr" })
+        push(widget)
+        service_under_test.builtin("mr")
         env.now = 10
-        widget.update()
+        push(widget)
         assert.are.same({ 'input /mount "chocobo"', "input /dismount" }, env.commands)
       end)
 
@@ -2806,7 +2852,7 @@ describe("crossbar live widget", function()
         -- never arms it - no "Chocobo in 5 seconds" for a trip that is not
         -- going to happen.
         mount_world("mr", 200)
-        widget.handle_command({ "mr" })
+        service_under_test.builtin("mr")
         local announced = table.concat(env.chat, "\n")
         assert.is_nil(announced:find("seconds"), "no countdown was announced: " .. announced)
       end)
@@ -2816,10 +2862,10 @@ describe("crossbar live widget", function()
         -- rode in. Getting out is never blocked.
         mount_world("mr", 200)
         env.player.buffs = { 252 }
-        widget.update()
-        widget.handle_command({ "mr" })
+        push(widget)
+        service_under_test.builtin("mr")
         env.now = 5
-        widget.update()
+        push(widget)
         assert.are.same({ "input /dismount" }, env.commands)
       end)
 
@@ -2829,7 +2875,7 @@ describe("crossbar live widget", function()
         -- it keeps running while you ride; see below.
         local icon = mount_world("mr", 200)
         env.player.buffs = { 252 }
-        widget.update()
+        push(widget)
         assert.are.equal(255, icon.last.alpha)
       end)
 
@@ -2845,18 +2891,18 @@ describe("crossbar live widget", function()
       build_world()
       local icon = image_of("xhb_left", 5, "icon")
       env.spell_recasts = { [1] = 1800 }
-      widget.update()
+      push(widget)
       assert.are.equal("30s", text_of("xhb_left", 5, "recast").last.text)
       assert.are.equal(config.disabled_alpha, icon.last.alpha, "a cooling slot dims")
       env.now = 0.3
       env.spell_recasts = {}
-      widget.update()
+      push(widget)
       assert.are.equal(255, icon.last.alpha)
     end)
 
     it("prices a spell and dims it when unaffordable", function()
       build_world()
-      widget.update()
+      push(widget)
       local cost = text_of("xhb_left", 5, "cost")
       assert.are.equal("8", cost.last.text)
       assert.are.same({ 230, 91, 151 }, cost.last.color)
@@ -2864,7 +2910,7 @@ describe("crossbar live widget", function()
       assert.are.equal(255, image_of("xhb_left", 5, "icon").last.alpha)
       env.now = 0.3
       env.player.vitals.mp = 5
-      widget.update()
+      push(widget)
       assert.are.equal(config.disabled_alpha, image_of("xhb_left", 5, "icon").last.alpha)
     end)
 
@@ -2886,12 +2932,12 @@ describe("crossbar live widget", function()
         end,
       })
       env.ability_recasts = { [231] = 0 }
-      widget.update()
+      push(widget)
       assert.are.equal("3", text_of("xhb_left", 1, "cost").last.text)
       assert.are.same({ 255, 255, 255 }, text_of("xhb_left", 1, "cost").last.color, "explicit white, never inherited")
       env.now = 0.3
       env.ability_recasts = { [231] = 100 }
-      widget.update()
+      push(widget)
       assert.are.equal("1", text_of("xhb_left", 1, "cost").last.text, "ceil(100/80) = 2 of 3 spent")
     end)
 
@@ -2903,14 +2949,14 @@ describe("crossbar live widget", function()
       player.sub_job = "WAR"
       build_world({ store_files = files, player = player })
       env.items[0] = { { id = 1179, count = 10, slot = 1 }, { id = 2972, count = 45, slot = 2 } }
-      widget.update()
+      push(widget)
       local cost = text_of("xhb_left", 1, "cost")
       assert.are.equal("55", cost.last.text, "master tools count on main NIN")
       assert.are.same({ 255, 255, 0 }, cost.last.color, "only the total clears 50")
       -- A count is not a cost: hide.cost leaves it visible.
       config.hide.cost = true
       env.now = 0.3
-      widget.update()
+      push(widget)
       assert.is_true(cost.visible, "the tool count survives hide.cost")
     end)
 
@@ -2920,13 +2966,13 @@ describe("crossbar live widget", function()
       player.main_job = "NIN"
       build_world({ store_files = files, player = player })
       env.items[0] = { { id = 1179, count = 10, slot = 1 } }
-      widget.update()
+      push(widget)
       assert.are.equal("10", text_of("xhb_left", 1, "cost").last.text)
       env.items[0] = {}
-      widget.update()
+      push(widget)
       assert.are.equal("10", text_of("xhb_left", 1, "cost").last.text, "no event, no re-read")
-      widget.update("remove item", 1179)
-      widget.update()
+      push(widget, "remove item", 1179)
+      push(widget)
       assert.are.equal("0", text_of("xhb_left", 1, "cost").last.text)
     end)
 
@@ -2938,13 +2984,13 @@ describe("crossbar live widget", function()
       player.main_job_id = 17
       build_world({ store_files = files, player = player })
       env.items[0] = { { id = 2176, count = 3, slot = 1 }, { id = 2974, count = 10, slot = 2 } }
-      widget.update()
+      push(widget)
       assert.are.equal("13", text_of("xhb_left", 1, "cost").last.text, "Trump Card rides the same machinery")
       -- The same slot without COR anywhere on the pair: no count, no X.
       files = { WAR = { sets = { [1] = { left = { [1] = { type = "ja", action = "Fire Shot", target = "t" } } } } } }
       build_world({ store_files = files })
       env.items[0] = { { id = 2176, count = 3, slot = 1 } }
-      widget.update()
+      push(widget)
       assert.is_false(text_of("xhb_left", 1, "cost").visible)
       assert.is_false(image_of("xhb_left", 1, "sweep").visible, "no red X either")
     end)
@@ -2957,7 +3003,7 @@ describe("crossbar live widget", function()
       player.main_job = "WHM"
       player.sub_job = "BLM"
       build_world({ store_files = files, player = player })
-      widget.update()
+      push(widget)
       assert.is_false(text_of("xhb_left", 1, "cost").visible)
       assert.is_false(image_of("xhb_left", 1, "sweep").visible, "no red X either")
     end)
@@ -2967,13 +3013,13 @@ describe("crossbar live widget", function()
       local player = war_player()
       player.main_job = "NIN"
       build_world({ store_files = files, player = player })
-      widget.update()
+      push(widget)
       local reads = env.item_reads
-      widget.update("add item", 4165)
-      widget.update()
+      push(widget, "add item", 4165)
+      push(widget)
       assert.are.equal(reads, env.item_reads, "an untracked item is no reason to re-read the bag")
-      widget.update("remove item", 1179)
-      widget.update()
+      push(widget, "remove item", 1179)
+      push(widget)
       --[[ Exact, not merely "more": the read budget is the point of the
            gate. ONE bag per recount here - nothing is bound to an item id,
            so the temporary bag has nothing it could answer for and is not
@@ -2986,7 +3032,7 @@ describe("crossbar live widget", function()
       local player = war_player()
       player.main_job = "NIN"
       build_world({ store_files = files, player = player })
-      widget.update()
+      push(widget)
       local cost = text_of("xhb_left", 1, "cost")
       assert.are.equal("0", cost.last.text)
       assert.are.same({ 255, 0, 0 }, cost.last.color)
@@ -3001,7 +3047,7 @@ describe("crossbar live widget", function()
       files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
       build_world({ store_files = files })
       env.items[0] = { { id = 4165, count = 7, slot = 1 } }
-      widget.update()
+      push(widget)
       local cost = text_of("xhb_left", 6, "cost")
       assert.are.equal("7", cost.last.text)
       assert.are.same({ 255, 255, 255 }, cost.last.color, "no bands - there is no defined low for a consumable")
@@ -3012,7 +3058,7 @@ describe("crossbar live widget", function()
       files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
       build_world({ store_files = files })
       env.items[0] = {}
-      widget.update()
+      push(widget)
       assert.are.equal("0", text_of("xhb_left", 6, "cost").last.text)
       assert.is_true(image_of("xhb_left", 6, "sweep").visible, "the red X, the same one a spent tool raises")
     end)
@@ -3023,9 +3069,9 @@ describe("crossbar live widget", function()
       -- 0, crosses itself out and dims until something unrelated moves.
       build_world({ store_files = war_bindings() })
       env.items[0] = { { id = 4165, count = 7, slot = 1 } }
-      widget.update()
+      push(widget)
       widget.handle_command({ "bind", "1L6", "item", "Prism Powder", "me" })
-      widget.update()
+      push(widget)
       assert.are.equal("7", text_of("xhb_left", 6, "cost").last.text)
       assert.is_false(image_of("xhb_left", 6, "sweep").visible, "no red X on an item we are holding")
     end)
@@ -3038,7 +3084,7 @@ describe("crossbar live widget", function()
       build_world({ store_files = files })
       env.items[0] = { enabled = true }
       env.items[8] = { enabled = true, { id = 27546, slot = 2, status = 0, count = 1 } }
-      widget.update()
+      push(widget)
       assert.are.equal("1", text_of("xhb_left", 6, "cost").last.text)
       assert.is_false(image_of("xhb_left", 6, "sweep").visible)
     end)
@@ -3050,13 +3096,13 @@ describe("crossbar live widget", function()
       -- changes it.
       build_world({ store_files = war_bindings() })
       env.items[0] = { { id = 4165, count = 7, slot = 1 } }
-      widget.update()
+      push(widget)
       local reads = env.item_reads
       widget.handle_command({ "bind", "1L5", "ma", "Cure", "me" })
-      widget.update()
+      push(widget)
       assert.are.equal(reads, env.item_reads, "a spell is not something to count")
       widget.handle_command({ "bind", "1L6", "item", "Prism Powder", "me" })
-      widget.update()
+      push(widget)
       assert.is_true(env.item_reads > reads, "an item is")
       assert.are.equal("7", text_of("xhb_left", 6, "cost").last.text)
     end)
@@ -3071,10 +3117,10 @@ describe("crossbar live widget", function()
       env.items[0] = { enabled = true }
       env.items[8] = { enabled = true, { id = 27546, slot = 2, status = 0, count = 1 } }
       widget.handle_command({ "bind", "1L6", "item", "Vocation Ring" })
-      widget.update()
+      push(widget)
       assert.are.equal("0", text_of("xhb_left", 6, "cost").last.text, "an item is not reachable in a wardrobe")
       widget.handle_command({ "bind", "1L6", "enchanteditem", "Vocation Ring" })
-      widget.update()
+      push(widget)
       assert.are.equal("1", text_of("xhb_left", 6, "cost").last.text, "gear is")
     end)
 
@@ -3085,7 +3131,7 @@ describe("crossbar live widget", function()
       local label = prims.texts[#prims.texts]
       assert.are.equal("Set 1", label.last.text)
       widget.handle_command({ "set", "5" })
-      widget.update()
+      push(widget)
       assert.are.equal("Set 5", label.last.text)
     end)
 
@@ -3104,7 +3150,7 @@ describe("crossbar live widget", function()
       build_world({ store_files = files })
       env.items[0] = { enabled = true }
       env.items[3] = { enabled = true, { id = 4165, slot = 1, count = 2 } }
-      widget.update()
+      push(widget)
       assert.are.equal("2", text_of("xhb_left", 6, "cost").last.text)
       assert.is_false(image_of("xhb_left", 6, "sweep").visible, "no red X on a working binding")
     end)
@@ -3119,7 +3165,7 @@ describe("crossbar live widget", function()
       files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
       build_world({ store_files = files, no_temporary_bag = true })
       env.items[0] = { enabled = true }
-      widget.update()
+      push(widget)
       assert.are.equal("0", text_of("xhb_left", 6, "cost").last.text, "the count is still honest")
       assert.is_false(image_of("xhb_left", 6, "sweep").visible, "but it does not claim to know")
     end)
@@ -3134,7 +3180,7 @@ describe("crossbar live widget", function()
       build_world({ store_files = files })
       env.items[0] = { enabled = true }
       env.items[8] = { enabled = true, { id = 17040, slot = 2, status = 0, count = 1 } }
-      widget.update()
+      push(widget)
       assert.are.equal("0", text_of("xhb_left", 5, "cost").last.text, "not usable as an item from there")
       assert.are.equal("1", text_of("xhb_left", 6, "cost").last.text, "but usable as gear")
     end)
@@ -3147,7 +3193,7 @@ describe("crossbar live widget", function()
       build_world({ store_files = files })
       env.items[0] = { enabled = true }
       env.items[8] = { enabled = false, { id = 27546, slot = 2, status = 0, count = 1 } }
-      widget.update()
+      push(widget)
       assert.are.equal("0", text_of("xhb_left", 6, "cost").last.text)
     end)
 
@@ -3157,7 +3203,7 @@ describe("crossbar live widget", function()
       build_world({ store_files = files })
       env.items[0] = { enabled = true }
       env.items[8] = { enabled = true, { id = 4165, slot = 2, count = 12 } }
-      widget.update()
+      push(widget)
       assert.are.equal("0", text_of("xhb_left", 6, "cost").last.text, "a powder in a wardrobe is not usable")
     end)
 
@@ -3168,14 +3214,14 @@ describe("crossbar live widget", function()
       files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
       build_world({ store_files = files })
       env.items[0] = { { id = 4165, count = 7, slot = 1 } }
-      widget.update()
+      push(widget)
       local reads = env.item_reads
-      widget.update("add item", 999)
-      widget.update()
+      push(widget, "add item", 999)
+      push(widget)
       assert.are.equal(reads, env.item_reads, "nothing is bound to 999")
       env.items[0] = { { id = 4165, count = 2, slot = 1 } }
-      widget.update("remove item", 4165)
-      widget.update()
+      push(widget, "remove item", 4165)
+      push(widget)
       assert.is_true(env.item_reads > reads, "the recount ran")
       assert.are.equal("2", text_of("xhb_left", 6, "cost").last.text)
     end)
@@ -3191,13 +3237,13 @@ describe("crossbar live widget", function()
       files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
       build_world({ store_files = files })
       env.items[0] = { { id = 4165, count = 5, slot = 1 } }
-      widget.update()
+      push(widget)
       assert.are.equal("5", text_of("xhb_left", 6, "cost").last.text)
       env.items[0] = { { id = 4165, count = 4, slot = 1 } }
-      widget.update()
+      push(widget)
       assert.are.equal("5", text_of("xhb_left", 6, "cost").last.text, "no packet, no re-read")
-      widget.update("chunk", 0x01E, "raw inventory bytes")
-      widget.update()
+      push(widget, "chunk", 0x01E, "raw inventory bytes")
+      push(widget)
       assert.are.equal("4", text_of("xhb_left", 6, "cost").last.text)
     end)
 
@@ -3210,11 +3256,11 @@ describe("crossbar live widget", function()
       player.main_job = "NIN"
       build_world({ store_files = files, player = player })
       env.items[0] = { { id = 1179, count = 10, slot = 1 } }
-      widget.update()
+      push(widget)
       assert.are.equal("10", text_of("xhb_left", 1, "cost").last.text)
       env.items[0] = { { id = 1179, count = 9, slot = 1 } }
-      widget.update("chunk", 0x01E, "raw inventory bytes")
-      widget.update()
+      push(widget, "chunk", 0x01E, "raw inventory bytes")
+      push(widget)
       assert.are.equal("9", text_of("xhb_left", 1, "cost").last.text)
     end)
 
@@ -3223,10 +3269,10 @@ describe("crossbar live widget", function()
            packet arrives far more often than they do - every equip status
            change is one. A bar drawing no count has nothing to refresh. ]]
       build_world()
-      widget.update()
+      push(widget)
       local reads = env.item_reads
-      widget.update("chunk", 0x01E, "raw inventory bytes")
-      widget.update()
+      push(widget, "chunk", 0x01E, "raw inventory bytes")
+      push(widget)
       assert.are.equal(reads, env.item_reads)
     end)
 
@@ -3240,7 +3286,7 @@ describe("crossbar live widget", function()
       widget.show()
       local icon = image_of("xhb_left", 6, "icon")
       assert.are.equal("addon/assets/icons/usable-item.png", icon.last.path, "fallback first")
-      widget.update()
+      push(widget)
       assert.are.equal("icons/4165.bmp", env.writes[1], "one extraction, queued off the packet path")
       assert.are.equal("addon/icons/4165.bmp", icon.last.path, "the cache landing repaints the slot")
     end)
@@ -3272,7 +3318,7 @@ describe("crossbar live widget", function()
           tuned.game_path = ""
         end,
       })
-      widget.update()
+      push(widget)
       assert.are.equal(1, #env.dat_paths)
       assert.is_not_nil(env.dat_paths[1]:find("C:/FFXI/", 1, true), "read: " .. env.dat_paths[1])
     end)
@@ -3286,7 +3332,7 @@ describe("crossbar live widget", function()
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
-      widget.update()
+      push(widget)
       widget.handle_command({ "set", "1" })
       env.stats = {}
       widget.handle_command({ "set", "1" })
@@ -3306,7 +3352,7 @@ describe("crossbar live widget", function()
       widget.set_pos(100, 900, "main")
       widget.show()
       env.stats = {}
-      widget.update()
+      push(widget)
       assert.are.equal("addon/icons/4165.bmp", image_of("xhb_left", 6, "icon").last.path)
       for _, path in ipairs(env.stats) do
         assert.is_nil(path:find("savage%-blade"), "a settled slot must not be re-stat'd: " .. path)
@@ -3336,199 +3382,12 @@ describe("crossbar live widget", function()
     -- The dispatch's shape: the raw bytes, and the action already parsed out
     -- of them.
     local function open_chain(ws_id)
-      widget.update("chunk", 0x028, "raw action bytes", ws_act(ws_id))
+      push(widget, "chunk", 0x028, "raw action bytes", ws_act(ws_id))
     end
 
     before_each(function()
       build_world()
       env.target = { id = 99, hpp = 75 }
-      widget.set_pos(1000, 500, "skillchain_indicator")
-    end)
-
-    describe("the indicator", function()
-      --[[ The action packet is decoded once, in the entry point's chunk
-           dispatch, and handed down as the fourth argument -- this engine and
-           targetbar's cast bar used to parse it one apiece. So the widget is
-           given an action, never a parser: the raw bytes beside it are bytes,
-           and nothing in this fixture could decode them. ]]
-      it("opens a chain from the action the dispatch already parsed", function()
-        local _, fill = indicator_prims()
-        widget.update("chunk", 0x028, "raw action bytes", ws_act(8))
-        env.now = 1.5
-        widget.update()
-        assert.is_true(fill.visible)
-      end)
-
-      it("tracks a chain: red and thin while waiting, green and thick while open, then gone", function()
-        local bg, fill = indicator_prims()
-        open_chain(8) -- Dragon Kick: Fragmentation, 3s delay
-        env.now = 1.5
-        widget.update()
-        assert.is_true(fill.visible)
-        assert.is_true(bg.visible)
-        assert.are.same({ 237, 28, 36 }, fill.last.color, "the waiting colour")
-        assert.are.equal(220, fill.last.alpha)
-        -- Waiting at fraction 0.5: 300 wide, grown out of the centre.
-        assert.are.same({ 1152, 505, 300, 4 }, { fill.x, fill.y, fill.width, fill.height })
-        assert.are.same({ 1150, 503, 304, 8 }, { bg.x, bg.y, bg.width, bg.height })
-        assert.are.same({ 0, 0, 0 }, bg.last.color)
-        assert.are.equal(150, bg.last.alpha)
-        -- Open at 4s: window 6 of 7 remains.
-        env.now = 4
-        widget.update()
-        assert.are.same({ 15, 205, 5 }, fill.last.color, "the open colour")
-        assert.are.same({ 1045, 502, 514, 10 }, { fill.x, fill.y, fill.width, fill.height })
-        assert.are.same({ 1043, 500, 518, 14 }, { bg.x, bg.y, bg.width, bg.height })
-        -- Expired.
-        env.now = 12
-        widget.update()
-        assert.is_false(fill.visible)
-        assert.is_false(bg.visible)
-      end)
-
-      --[[ The indicator is the one anchor whose hide is not answered by
-           refresh() - refresh takes it down with the WIDGET, so the per-anchor
-           hide is served by the next tick reading anchor_at. One frame of
-           latency, and it must actually arrive. ]]
-      it("goes down on the tick after its own anchor is hidden, and comes back", function()
-        local bg, fill = indicator_prims()
-        open_chain(8)
-        env.now = 1.5
-        widget.update()
-        assert.is_true(fill.visible)
-
-        widget.hide("skillchain_indicator")
-        widget.update()
-        assert.is_false(fill.visible)
-        assert.is_false(bg.visible)
-
-        widget.show("skillchain_indicator")
-        widget.update()
-        assert.is_true(fill.visible, "and the chain is still running underneath")
-      end)
-
-      it("leaves the hidden indicator alone on every refresh after the first", function()
-        -- refresh() takes the indicator down with the widget, and core runs a
-        -- refresh per mouse move of a layout-mode drag; the second one has
-        -- nothing to say.
-        local bg, fill = indicator_prims()
-        open_chain(8)
-        env.now = 1.5
-        widget.update()
-        widget.hide()
-        local settled = #bg.calls + #fill.calls
-        widget.set_preview(true)
-        widget.set_preview(false)
-        assert.are.equal(settled, #bg.calls + #fill.calls, "a hidden indicator costs nothing to keep hidden")
-        assert.is_false(fill.visible)
-      end)
-
-      it("comes back against an origin that moved while it was hidden", function()
-        -- The indicator has no resting geometry - the tick draws it from the
-        -- live plan - so the anchor moving under a hidden indicator must not
-        -- leave the change-gate cache pointing at the old origin.
-        local _, fill = indicator_prims()
-        open_chain(8)
-        env.now = 1.5
-        widget.update()
-        widget.hide()
-        widget.set_pos(1200, 700, "skillchain_indicator")
-        widget.show()
-        widget.update()
-        assert.is_true(fill.visible)
-        assert.are.same({ 1200 + 152, 700 + 5 }, { fill.x, fill.y })
-      end)
-
-      it("scales with its own anchor", function()
-        widget.set_scale(2, "skillchain_indicator")
-        local _, fill = indicator_prims()
-        open_chain(8)
-        env.now = 1.5
-        widget.update()
-        assert.are.same({ 1000 + 152 * 2, 500 + 5 * 2, 600, 8 }, { fill.x, fill.y, fill.width, fill.height })
-      end)
-
-      it("stays down with no target or a dead one", function()
-        local bg, fill = indicator_prims()
-        open_chain(8)
-        env.now = 1.5
-        env.target = nil
-        widget.update()
-        assert.is_false(fill.visible)
-        env.target = { id = 99, hpp = 0 }
-        widget.update()
-        assert.is_false(fill.visible)
-        assert.is_false(bg.visible)
-      end)
-
-      it("obeys the skillchain.indicator config switch", function()
-        build_world({
-          tune_config = function(tuned)
-            tuned.skillchain.indicator = false
-          end,
-        })
-        env.target = { id = 99, hpp = 75 }
-        widget.set_pos(1000, 500, "skillchain_indicator")
-        local bg, fill = indicator_prims()
-        open_chain(8)
-        env.now = 1.5
-        widget.update()
-        assert.is_false(fill.visible)
-        assert.is_false(bg.visible)
-      end)
-
-      it("survives a hand-broken skillchain block on the shipped colours", function()
-        -- The duplicate constants ARE the fallback path (render.lua's own
-        -- MP/TP colour pattern): a garbage config block degrades to the
-        -- shipped waiting colour and opacity, never a crash or a bare bar.
-        build_world({
-          tune_config = function(tuned)
-            tuned.skillchain = "garbage"
-          end,
-        })
-        env.target = { id = 99, hpp = 75 }
-        widget.set_pos(1000, 500, "skillchain_indicator")
-        local _, fill = indicator_prims()
-        open_chain(8)
-        env.now = 1.5
-        widget.update()
-        assert.is_true(fill.visible)
-        assert.are.same({ 237, 28, 36 }, fill.last.color)
-        assert.are.equal(220, fill.last.alpha)
-      end)
-
-      it("goes down with hide() and does not linger past detach", function()
-        local bg, fill = indicator_prims()
-        open_chain(8)
-        env.now = 1.5
-        widget.update()
-        assert.is_true(fill.visible)
-        widget.hide()
-        assert.is_false(fill.visible)
-        assert.is_false(bg.visible)
-        widget.show()
-        widget.update()
-        assert.is_true(fill.visible, "back with the widget")
-        widget.detach()
-        assert.is_false(fill.visible)
-        -- The chain state went with the detach: the same clock shows nothing.
-        widget.attach(config, function() end, store)
-        widget.show()
-        widget.update()
-        assert.is_false(fill.visible)
-      end)
-
-      it("previews its footprint for layout placement", function()
-        local bg, fill = indicator_prims()
-        widget.set_preview(true)
-        widget.update()
-        assert.is_true(fill.visible)
-        assert.is_true(bg.visible)
-        assert.are.same({ 1000, 500, 604, 14 }, { bg.x, bg.y, bg.width, bg.height })
-        widget.set_preview(false)
-        widget.update()
-        assert.is_false(fill.visible)
-      end)
     end)
 
     describe("the per-slot chain results", function()
@@ -3537,7 +3396,7 @@ describe("crossbar live widget", function()
         -- Blade (Fragmentation, Scission) would continue to Fragmentation.
         open_chain(9)
         env.now = 4
-        widget.update()
+        push(widget)
         local chain = image_of("xhb_left", 3, "chain")
         assert.is_true(chain.visible)
         assert.are.equal("addon/assets/icons/skillchain/fragmentation.png", chain.last.path)
@@ -3547,7 +3406,7 @@ describe("crossbar live widget", function()
         assert.is_false(text_of("xhb_left", 3, "cost").visible, "at full TP the cost hides too")
         -- The border animation steps every five ticks.
         for _ = 1, 5 do
-          widget.update()
+          push(widget)
         end
         assert.are.equal("addon/assets/own/frame_step2.png", image_of("xhb_left", 3, "frame").last.path)
         -- A slot whose action forms nothing stays put: Cure is a spell.
@@ -3565,7 +3424,7 @@ describe("crossbar live widget", function()
         widget.show()
         open_chain(9)
         env.now = 4
-        widget.update()
+        push(widget)
         local icon = image_of("xhb_left", 3, "icon")
         assert.is_true(image_of("xhb_left", 3, "chain").visible)
         assert.is_false(icon.visible)
@@ -3574,7 +3433,7 @@ describe("crossbar live widget", function()
         -- the bug is visible: the tick re-pushes the right answer, so a
         -- check after it passes with or without refresh's chain term.
         assert.is_false(icon.visible, "not even for the one frame between the refresh and the tick")
-        widget.update()
+        push(widget)
         assert.is_false(icon.visible, "refresh must not resurrect the icon under the chain result")
         widget.on_keyboard(39, false, 0, false)
         assert.is_false(icon.visible, "and the release runs a refresh of its own")
@@ -3591,7 +3450,7 @@ describe("crossbar live widget", function()
         -- emptied slot, over) whatever is there now.
         open_chain(9)
         env.now = 4
-        widget.update()
+        push(widget)
         local chain = image_of("xhb_left", 3, "chain")
         assert.is_true(chain.visible)
         -- Set 2 has nothing in slot 3.
@@ -3602,13 +3461,13 @@ describe("crossbar live widget", function()
       it("restores the slot when the window closes", function()
         -- The real icon exists on disk so the restore has something to show.
         env.files["addon/assets/icons/weaponskills/sword/savage-blade.png"] = true
-        widget.update("job change")
+        push(widget, "job change")
         open_chain(9)
         env.now = 4
-        widget.update()
+        push(widget)
         assert.is_true(image_of("xhb_left", 3, "chain").visible)
         env.now = 15
-        widget.update()
+        push(widget)
         local chain = image_of("xhb_left", 3, "chain")
         assert.is_false(chain.visible)
         assert.are.equal("addon/assets/own/frame.png", image_of("xhb_left", 3, "frame").last.path)
@@ -3626,7 +3485,7 @@ describe("crossbar live widget", function()
         widget.show()
         open_chain(9)
         env.now = 4
-        widget.update()
+        push(widget)
         assert.is_true(image_of("xhb_left", 3, "chain").visible)
         widget.hide()
         widget.show()
@@ -3634,7 +3493,7 @@ describe("crossbar live widget", function()
         -- it out again, but the slot is never empty.
         assert.is_true(image_of("xhb_left", 3, "icon").visible)
         assert.is_false(image_of("xhb_left", 3, "chain").visible)
-        widget.update()
+        push(widget)
         assert.is_false(image_of("xhb_left", 3, "icon").visible, "the tick re-swaps to the result")
         assert.is_true(image_of("xhb_left", 3, "chain").visible)
       end)
@@ -3643,7 +3502,7 @@ describe("crossbar live widget", function()
         env.player.vitals.tp = 900
         open_chain(9)
         env.now = 4
-        widget.update()
+        push(widget)
         assert.are.equal(75, image_of("xhb_left", 3, "chain").last.alpha)
         assert.are.equal(150, image_of("xhb_left", 3, "frame").last.alpha)
         assert.is_true(text_of("xhb_left", 3, "cost").visible, "1000 TP is still owed")
@@ -3661,7 +3520,7 @@ describe("crossbar live widget", function()
         -- (Impaction) continues the Induration leg to Impaction.
         open_chain(13)
         env.now = 4
-        widget.update()
+        push(widget)
         local chain = image_of("xhb_left", 6, "chain")
         assert.is_true(chain.visible)
         assert.are.equal("addon/assets/icons/skillchain/impaction.png", chain.last.path)
@@ -3677,27 +3536,26 @@ describe("crossbar live widget", function()
         -- (Gravitation, Scission) continues the Detonation leg to Scission.
         open_chain(13)
         env.now = 4
-        widget.update()
+        push(widget)
         local chain = image_of("xhb_left", 6, "chain")
         assert.is_true(chain.visible)
         assert.are.equal("addon/assets/icons/skillchain/scission.png", chain.last.path)
         assert.are.equal(255, chain.last.alpha, "no TP gate off the ws type")
       end)
 
-      it("honours hide.skillchain_icon without touching the indicator", function()
+      it("honours hide.skillchain_icon without touching the engine's window", function()
         build_world({
           tune_config = function(tuned)
             tuned.hide.skillchain_icon = true
           end,
         })
         env.target = { id = 99, hpp = 75 }
-        widget.set_pos(1000, 500, "skillchain_indicator")
         open_chain(9)
         env.now = 4
-        widget.update()
+        push(widget)
         assert.is_false(image_of("xhb_left", 3, "chain").visible)
-        local _, fill = indicator_prims()
-        assert.is_true(fill.visible)
+        local _, window = service_under_test.skillchain.window()
+        assert.is_true(window > 0, "the window is open whatever the bar draws")
       end)
     end)
 
@@ -3714,10 +3572,10 @@ describe("crossbar live widget", function()
       it("reads the target from the client once per tick, never once per slot", function()
         open_chain(9)
         env.now = 4
-        widget.update()
+        push(widget)
         env.target_reads = 0
         for _ = 1, 5 do
-          widget.update()
+          push(widget)
         end
         -- The contract: ONE get_mob_by_target per tick (targetbar's "the
         -- target itself is read per frame" precedent; fresher than the
@@ -3727,29 +3585,30 @@ describe("crossbar live widget", function()
         assert.are.equal(5, env.target_reads)
       end)
 
-      it("feeds 0x63 through: a spell under Immanence opens the indicator", function()
-        local _, fill = indicator_prims()
-        widget.update("chunk", 0x63, "raw", buff_refresh(470))
-        widget.update("chunk", 0x028, "raw action bytes", {
+      it("feeds 0x63 through: a spell under Immanence opens a window", function()
+        push(widget, "chunk", 0x63, "raw", buff_refresh(470))
+        push(widget, "chunk", 0x028, "raw action bytes", {
           category = 4,
           param = 144,
           actor_id = 777,
           targets = { { id = 99, actions = { { message = 2 } } } },
         })
         env.now = 1.5
-        widget.update()
-        assert.is_true(fill.visible)
+        push(widget)
+        local delay = service_under_test.skillchain.window()
+        assert.is_true(delay > 0, "a window is running")
       end)
 
       it("feeds the zone-out through: 0x0B drops the chain", function()
-        local _, fill = indicator_prims()
         open_chain(8)
         env.now = 1.5
-        widget.update()
-        assert.is_true(fill.visible)
-        widget.update("chunk", 0x0B, "HDRX")
-        widget.update()
-        assert.is_false(fill.visible)
+        push(widget)
+        local delay = service_under_test.skillchain.window()
+        assert.is_true(delay > 0)
+        push(widget, "chunk", 0x0B, "HDRX")
+        push(widget)
+        local _, window = service_under_test.skillchain.window()
+        assert.are.equal(0, window)
       end)
     end)
   end)
@@ -3787,11 +3646,11 @@ describe("crossbar live widget", function()
       assert.are.same({ "gs disable ring1" }, env.commands, "ring1, the lowest slot the ring fits")
       assert.are.same({ { 4, 13, 0 } }, env.equips, "bag slot 4 into equip slot 13 from bag 0")
       env.ext.activation_time = env.time - 18000 + 10
-      widget.update()
+      push(widget)
       assert.are.equal(1, #env.commands, "still warming")
       env.ext.usable = true
       env.now = 1.5
-      widget.update()
+      push(widget)
       assert.are.same({ "gs disable ring1", 'input /item "Vocation Ring" <me>', "gs enable ring1" }, env.commands)
     end)
 
@@ -3804,11 +3663,11 @@ describe("crossbar live widget", function()
       vocation_world()
       env.ext.activation_time = env.time - 18000 - 600 -- some equip, long ago
       fire()
-      widget.update()
+      push(widget)
       assert.are.same({ "gs disable ring1" }, env.commands, "the wait waits")
       env.ext.usable = true
       env.now = 1.5
-      widget.update()
+      push(widget)
       assert.are.same({ "gs disable ring1", 'input /item "Vocation Ring" <me>', "gs enable ring1" }, env.commands)
     end)
 
@@ -3825,11 +3684,11 @@ describe("crossbar live widget", function()
       fire()
       env.items[0] = { enabled = true, { id = 27546, slot = 4, status = 5, count = 1 } }
       env.now = 1.5
-      widget.update()
+      push(widget)
       assert.are.same({ "gs disable ring1" }, env.commands, "the equip landed; the enchantment has not")
       env.ext.usable = true
       env.now = 3
-      widget.update()
+      push(widget)
       assert.are.equal('input /item "Vocation Ring" <me>', env.commands[2], "the flag is what ends this wait")
     end)
 
@@ -3855,7 +3714,7 @@ describe("crossbar live widget", function()
       env.target = { id = 9999 }
       env.ext.usable = true
       env.now = 1.5
-      widget.update()
+      push(widget)
       assert.are.equal('input /item "Vocation Ring" 4242', env.commands[2], "the mob from the press, not the new one")
     end)
 
@@ -3918,11 +3777,11 @@ describe("crossbar live widget", function()
       env.ext.activation_time = env.time - 18000
       env.items[0] = { enabled = true, { id = 27546, slot = 4, status = 0, count = 1 } }
       env.now = 1.5
-      widget.update()
+      push(widget)
       assert.are.same({ "gs disable ring1", "gs disable ring2" }, env.commands, "no /item on a ring not worn")
       env.ext.usable = true
       env.now = 3
-      widget.update()
+      push(widget)
       assert.are.equal('input /item "Vocation Ring" <me>', env.commands[3], "the flag still speaks for itself")
     end)
 
@@ -3937,7 +3796,7 @@ describe("crossbar live widget", function()
       assert.are.same({ { 7, 13, 8 } }, env.equips, "bag slot 7 into equip slot 13 from bag 8")
       env.ext.usable = true
       env.now = 1.5
-      widget.update()
+      push(widget)
       assert.are.same({ "gs disable ring1", 'input /item "Vocation Ring" <me>', "gs enable ring1" }, env.commands)
     end)
 
@@ -3951,7 +3810,7 @@ describe("crossbar live widget", function()
       -- today. What it pins is the decision - adding enchanteditem to that
       -- list later would fail here, which is the point.
       vocation_world(5)
-      config.delay = 5
+      env.service_config.delay = 5
       fire()
       assert.are.same({ 'input /item "Vocation Ring" <me>' }, env.commands, "no countdown between press and use")
     end)
@@ -3996,9 +3855,9 @@ describe("crossbar live widget", function()
         activation_time = env.time - 18000 + 5,
         usable = false,
       }
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.now = 6
-      widget.update()
+      push(widget)
       assert.are.same({ "gs disable ring1" }, env.commands, "the warp holds the ring slot")
       fire()
       assert.are.same({ "gs disable ring1" }, env.commands, "the enchanted press adds nothing")
@@ -4017,7 +3876,7 @@ describe("crossbar live widget", function()
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
       env.ext.usable = true
       env.now = 2
-      widget.update()
+      push(widget)
       assert.are.equal(2, #env.commands, "nothing fires from the replaced configuration")
     end)
 
@@ -4025,7 +3884,7 @@ describe("crossbar live widget", function()
       vocation_world()
       fire()
       env.suppressed = true
-      widget.update()
+      push(widget)
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
       assert.is_not_nil(
         said():find("enchanted item abandoned"),
@@ -4034,7 +3893,7 @@ describe("crossbar live widget", function()
       env.ext.usable = true
       env.suppressed = false
       env.now = 2
-      widget.update()
+      push(widget)
       assert.are.equal(2, #env.commands, "nothing fires after the abort")
     end)
 
@@ -4050,7 +3909,7 @@ describe("crossbar live widget", function()
       assert.are.same({}, env.equips, "already on - re-equipping could restart the warmup")
       env.ext.usable = true
       env.now = 1.5
-      widget.update()
+      push(widget)
       assert.are.same({
         "gs disable ring1",
         "gs disable ring2",
@@ -4104,7 +3963,7 @@ describe("crossbar live widget", function()
 
     it("counts the ring in the slot corner like any other item", function()
       vocation_world(5)
-      widget.update()
+      push(widget)
       assert.are.equal("1", text_of("xhb_left", 1, "cost").last.text)
     end)
   end)
@@ -4153,17 +4012,17 @@ describe("crossbar live widget", function()
         activation_time = env.time - 18000 + 31,
         usable = false,
       }
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.now = 6
-      widget.update()
+      push(widget)
       assert.are.same({ "gs disable ring1" }, env.commands, "ring1, off the resource's own slots")
       assert.are.same({ { 4, 13, 0 } }, env.equips)
       env.now = 7
-      widget.update()
+      push(widget)
       assert.are.equal(1, #env.commands, "past the default bound, inside this ring's own")
       env.ext.usable = true
       env.now = 8
-      widget.update()
+      push(widget)
       assert.are.equal('input /item "Tavnazian Ring" <me>', env.commands[2])
     end)
 
@@ -4182,15 +4041,15 @@ describe("crossbar live widget", function()
         activation_time = env.time - 18000 + 30,
         usable = false,
       }
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       -- Past 45s, which is where the flat ceiling used to end it.
       env.time = env.time + 50
       env.now = 51
-      widget.update()
+      push(widget)
       assert.are.equal(1, #env.commands, "still waiting, not abandoned")
       env.ext.usable = true
       env.now = 52
-      widget.update()
+      push(widget)
       assert.are.equal('input /item "Tavnazian Ring" <me>', env.commands[2])
     end)
 
@@ -4205,10 +4064,10 @@ describe("crossbar live widget", function()
         activation_time = env.time - 18000 + 30,
         usable = false,
       }
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.time = env.time + 60
       env.now = 61
-      widget.update()
+      push(widget)
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
       assert.is_not_nil(said():find("took too long"), "said: " .. said())
     end)
@@ -4220,26 +4079,26 @@ describe("crossbar live widget", function()
       env.player.main_job_id = 4
       env.player.vitals.mp = 200
       env.known_spells = { [261] = true }
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.now = 5
-      widget.update()
+      push(widget)
       assert.are.same({ 'input /ma "Warp" <me>' }, env.commands)
     end)
 
     it("equips the ring GearSwap-safely, waits, uses, re-enables", function()
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       assert.are.same({ "gs disable ring1" }, env.commands)
       assert.are.same({ { 5, 13, 0 } }, env.equips, "bag slot 5 into equip slot 13 from bag 0")
       env.ext.activation_time = env.time - 18000 + 10
-      widget.update()
+      push(widget)
       assert.are.equal(1, #env.commands, "still warming: 10s is inside the 30s bound")
       env.ext.usable = true
       env.now = 1.5
-      widget.update()
+      push(widget)
       assert.are.same({ "gs disable ring1", 'input /item "Warp Ring" <me>', "gs enable ring1" }, env.commands)
       env.now = 3
-      widget.update()
+      push(widget)
       assert.are.equal(3, #env.commands, "the machine is done")
     end)
 
@@ -4247,30 +4106,30 @@ describe("crossbar live widget", function()
       -- MyHome's own cadence; a per-frame poll would read the whole bag
       -- sixty times a second.
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.now = 0
       local reads = env.item_reads
-      widget.update()
+      push(widget)
       local first = env.item_reads
       assert.is_true(first > reads, "the first poll runs at once")
-      widget.update()
-      widget.update()
+      push(widget)
+      push(widget)
       assert.are.equal(first, env.item_reads, "no further bag reads inside the second")
       env.now = 1.5
-      widget.update()
+      push(widget)
       assert.is_true(env.item_reads > first, "the next second polls again")
     end)
 
     it("aborts when the remembered slot no longer holds the ring", function()
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.items[0] = { enabled = true, { id = 12345, slot = 5, status = 0, count = 1 } }
-      widget.update()
+      push(widget)
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
       assert.is_not_nil(said():lower():find("missing"), "said: " .. said())
       env.ext.usable = true
       env.now = 2
-      widget.update()
+      push(widget)
       assert.are.equal(2, #env.commands, "nothing fires after the abort")
     end)
 
@@ -4278,9 +4137,9 @@ describe("crossbar live widget", function()
       -- A sort, a trade or GearSwap itself can move the ring; the poll
       -- matches id AND slot, and a moved ring is a warp abandoned.
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.items[0] = { enabled = true, { id = 28540, slot = 9, status = 0, count = 1 } }
-      widget.update()
+      push(widget)
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
       assert.is_not_nil(said():lower():find("missing"), "said: " .. said())
     end)
@@ -4289,46 +4148,50 @@ describe("crossbar live widget", function()
       -- extdata.decode raises on foreign input; the entry point's wrapper
       -- pcalls it and answers nil, which the widget treats as unreadable.
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       ctx.decode_extdata = function()
         local ok, ext = pcall(error, "unknown item class")
         return ok and ext or nil
       end
-      widget.update()
+      push(widget)
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
       assert.is_not_nil(said():lower():find("cannot be read"), "said: " .. said())
     end)
 
     it("aborts rather than throws on an ext that is not enchanted-shaped", function()
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.ext = { type = "General" }
       assert.has_no.errors(function()
-        widget.update()
+        push(widget)
       end)
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
     end)
 
     it("refuses a second warp while one is pending", function()
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       -- Swapped straight back off, so the wait is still trying to get it on
       -- when the second press arrives - which is the state the guard is
       -- about, and no longer the state the first press leaves behind.
       env.items[0][1].status = 0
       local before = #env.commands
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       assert.are.equal(before, #env.commands, "no second gs disable, no second equip")
       assert.are.equal(1, #env.equips)
       assert.is_not_nil(said():lower():find("in progress"), "said: " .. said())
     end)
 
-    it("re-enables GearSwap on destroy", function()
-      -- core.on_unload calls destroy, not detach: gs enable on EVERY exit.
+    it("re-enables GearSwap on unload", function()
+      -- The entry point's unload tells the service before core destroys
+      -- the bars: gs enable on EVERY exit, this one in silence.
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
+      local lines = #env.chat
+      service_under_test.on_unload()
       widget.destroy()
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
+      assert.are.equal(lines, #env.chat)
     end)
 
     it("re-equips a ring something else swapped straight back off", function()
@@ -4343,14 +4206,14 @@ describe("crossbar live widget", function()
            question that mattered: is it actually ON. It asks now, and puts
            it back. ]]
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       local first = #env.equips
       assert.is_true(first > 0, "the press equipped it once")
       -- GearSwap takes it straight back off, which is what `gs disable`
       -- cannot stop once a swap is already in flight.
       env.items[0][1].status = 0
       env.now = 2
-      widget.update()
+      push(widget)
       assert.is_true(#env.equips > first, "and the poll puts it back on")
       -- The extdata of a ring that is not worn is never acted on, whatever
       -- it says - firing /item at a ring in the bag is refused by the game
@@ -4358,7 +4221,7 @@ describe("crossbar live widget", function()
       env.items[0][1].status = 0
       env.ext.usable = true
       env.now = 3
-      widget.update()
+      push(widget)
       for _, command in ipairs(env.commands) do
         assert.is_nil(command:find("/item", 1, true), "nothing fires at a ring in the bag")
       end
@@ -4370,14 +4233,14 @@ describe("crossbar live widget", function()
            GearSwap burst can outlast several seconds, and the deadline is
            already the one exit that always fires. ]]
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       local tries = #env.equips
       env.chat = {}
       for second = 2, 12 do
         -- Stolen again every single poll.
         env.items[0][1].status = 0
         env.now = second
-        widget.update()
+        push(widget)
       end
       assert.is_true(#env.equips > tries + 5, "it kept trying, once a poll")
       assert.are.same({}, env.chat, "and said nothing while it was still trying")
@@ -4385,7 +4248,7 @@ describe("crossbar live widget", function()
       -- The wall clock is what ends it, and it releases the slot.
       env.time = env.time + 46
       env.now = 13
-      widget.update()
+      push(widget)
       assert.is_not_nil(said():lower():find("abandoned"), "said: " .. said())
       assert.are.equal("gs enable ring1", env.commands[#env.commands], "and lets the slot go")
     end)
@@ -4395,44 +4258,44 @@ describe("crossbar live widget", function()
       -- leaving activation_time stale and the step answering "wait"
       -- forever; the deadline is the one exit that still fires.
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.ext.activation_time = env.time - 18000 + 5
-      widget.update()
+      push(widget)
       assert.are.equal(1, #env.commands, "still waiting inside the 30s bound")
       env.time = env.time + 46
       env.now = 2
-      widget.update()
+      push(widget)
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
       assert.is_not_nil(said():lower():find("abandoned"), "said: " .. said())
       env.ext.usable = true
       env.now = 4
-      widget.update()
+      push(widget)
       assert.are.equal(2, #env.commands, "nothing fires after the deadline abort")
     end)
 
     it("gives up at once when the wait exceeds the bound", function()
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.ext.activation_time = env.time - 18000 + 31
-      widget.update()
+      push(widget)
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
       assert.is_not_nil(said():lower():find("warp"), "the give-up is said")
     end)
 
     it("aborts on suppression, re-enabling GearSwap", function()
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.suppressed = true
-      widget.update()
+      push(widget)
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
       env.ext.usable = true
-      widget.update()
+      push(widget)
       assert.are.equal(2, #env.commands, "nothing fires after the abort")
     end)
 
     it("re-enables GearSwap on detach", function()
       ring_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       widget.detach()
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
     end)
@@ -4442,21 +4305,21 @@ describe("crossbar live widget", function()
       -- press commits nothing: the alts must not be home while this
       -- character is still waiting on a ring that may yet be abandoned.
       ring_world()
-      widget.handle_command({ "warp", "all" })
+      service_under_test.warp(true)
       assert.are.same({ "gs disable ring1" }, env.commands)
       assert.are.same({}, env.ipc, "nobody is sent while the ring is still warming")
       env.ext.usable = true
       env.now = 1.5
-      widget.update()
+      push(widget)
       assert.are.same({ "gs disable ring1", 'input /item "Warp Ring" <me>', "gs enable ring1" }, env.commands)
-      assert.are.same({ "xivhud crossbar warp" }, env.ipc, "and they go when it does")
+      assert.are.same({ "xivhud warp" }, env.ipc, "and they go when it does")
     end)
 
     it("sends nobody when the warm-up is abandoned", function()
       ring_world()
-      widget.handle_command({ "warp", "all" })
+      service_under_test.warp(true)
       env.items[0] = { enabled = true, { id = 12345, slot = 5, status = 0, count = 1 } }
-      widget.update()
+      push(widget)
       assert.are.equal("gs enable ring1", env.commands[#env.commands])
       assert.are.same({}, env.ipc, "a warp that never happened sends nobody home")
     end)
@@ -4466,17 +4329,17 @@ describe("crossbar live widget", function()
       env.player.main_job_id = 4
       env.player.vitals.mp = 200
       env.known_spells = { [261] = true }
-      widget.handle_command({ "warp", "all" })
+      service_under_test.warp(true)
       -- Since CB10 the broadcast goes when the local warp does, not when
       -- it is pressed: a cancelled countdown must call the alts off too.
       env.now = 5
-      widget.update()
-      assert.are.same({ "xivhud crossbar warp" }, env.ipc)
+      push(widget)
+      assert.are.same({ "xivhud warp" }, env.ipc)
       assert.are.same({ 'input /ma "Warp" <me>' }, env.commands, "and warps locally")
-      widget.update("ipc message", "xivhud crossbar warp")
+      push(widget, "ipc message", "xivhud warp")
       assert.are.equal(2, #env.commands, "the receiver warps without re-broadcasting")
       assert.are.equal(1, #env.ipc)
-      widget.update("ipc message", "myhome")
+      push(widget, "ipc message", "myhome")
       assert.are.equal(2, #env.commands, "a real MyHome next door is not our message")
     end)
   end)
@@ -4497,7 +4360,7 @@ describe("crossbar live widget", function()
     local function mount_world(opts)
       build_world(opts)
       env.key_items = { 3000 }
-      widget.update("chunk", KEY_ITEM_CHUNK)
+      push(widget, "chunk", KEY_ITEM_CHUNK)
     end
 
     -- A BLM with the MP and the spell for the ladder's first rung.
@@ -4510,7 +4373,7 @@ describe("crossbar live widget", function()
 
     local function tick_to(seconds)
       env.now = seconds
-      widget.update()
+      push(widget)
     end
 
     local function last_said()
@@ -4519,9 +4382,9 @@ describe("crossbar live widget", function()
 
     it("counts a mount roulette down, one line a second, and then rides", function()
       mount_world()
-      widget.handle_command({ "mr" })
+      service_under_test.builtin("mr")
       assert.are.same({}, env.commands, "the press itself fires nothing")
-      assert.are.equal("crossbar: Mount roulette in 5 seconds. /heal to cancel.", last_said())
+      assert.are.equal("Mount roulette in 5 seconds. /heal to cancel.", last_said())
       for second = 1, 4 do
         tick_to(second)
         assert.are.equal((5 - second) .. "...", last_said(), "second " .. second)
@@ -4546,10 +4409,10 @@ describe("crossbar live widget", function()
       -- The per-frame budget: with nothing counting down the tick must be
       -- the same frame it was before the feature existed.
       mount_world()
-      widget.update()
+      push(widget)
       env.player_reads, env.spell_reads, env.ability_reads = 0, 0, 0
       env.chat_reads, env.layout_reads = 0, 0
-      widget.update()
+      push(widget)
       assert.are.equal(0, env.player_reads + env.spell_reads + env.ability_reads, "no client read of its own")
       assert.are.equal(0, env.chat_reads + env.layout_reads)
     end)
@@ -4563,7 +4426,7 @@ describe("crossbar live widget", function()
       press(LEFT)
       press(DIK_SLOT[2])
       assert.are.same({}, env.commands)
-      assert.are.equal("crossbar: Mount roulette in 5 seconds. /heal to cancel.", last_said())
+      assert.are.equal("Mount roulette in 5 seconds. /heal to cancel.", last_said())
       tick_to(5)
       assert.are.same({ RIDE }, env.commands)
     end)
@@ -4574,7 +4437,7 @@ describe("crossbar live widget", function()
       mount_world({ store_files = files })
       press(LEFT)
       press(DIK_SLOT[2])
-      assert.are.equal("crossbar: Mount Chocobo in 5 seconds. /heal to cancel.", last_said())
+      assert.are.equal("Mount Chocobo in 5 seconds. /heal to cancel.", last_said())
       tick_to(5)
       assert.are.same({ 'input /mount "Chocobo"' }, env.commands)
     end)
@@ -4627,7 +4490,7 @@ describe("crossbar live widget", function()
     it("dismounts at once - the delay is for summoning, not for getting off", function()
       build_world()
       env.player.buffs = { 252 }
-      widget.handle_command({ "mr" })
+      service_under_test.builtin("mr")
       assert.are.same({ "input /dismount" }, env.commands)
       assert.are.equal(0, #env.chat, "nothing to count down, nothing to say")
     end)
@@ -4651,17 +4514,17 @@ describe("crossbar live widget", function()
       -- Instant means no countdown. Entering drawn sends nothing at all
       -- now, so the disengage is what this can watch go straight out.
       build_world()
-      widget.handle_command({ "draw" })
-      widget.handle_command({ "draw" })
+      hud_draw(widget)
+      hud_draw(widget)
       assert.are.same({ "input /attack off" }, env.commands)
       assert.are.equal(0, #env.chat, "no countdown either way")
     end)
 
     it("counts a spell-rung warp down before casting it", function()
       warp_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       assert.are.same({}, env.commands)
-      assert.are.equal("crossbar: Warp in 5 seconds. /heal to cancel.", last_said())
+      assert.are.equal("Warp in 5 seconds. /heal to cancel.", last_said())
       tick_to(5)
       assert.are.same({ WARP }, env.commands)
     end)
@@ -4675,7 +4538,7 @@ describe("crossbar live widget", function()
       press(LEFT)
       press(DIK_SLOT[2])
       assert.are.same({}, env.commands)
-      assert.are.equal("crossbar: Warp in 5 seconds. /heal to cancel.", last_said())
+      assert.are.equal("Warp in 5 seconds. /heal to cancel.", last_said())
       env.player.vitals.mp = 150
       env.known_spells = { [262] = true }
       tick_to(5)
@@ -4698,7 +4561,7 @@ describe("crossbar live widget", function()
         activation_time = env.time - 18000,
         usable = false,
       }
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       assert.are.same({ "gs disable ring1" }, env.commands, "the ring is equipped on the press")
       assert.is_nil(said():find("5 seconds", 1, true), "said: " .. said())
     end)
@@ -4715,10 +4578,10 @@ describe("crossbar live widget", function()
         activation_time = env.time - 18000,
         usable = true,
       }
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       assert.are.same({}, env.commands, "no instant warp: this one waits like a spell")
       -- The RUNG's name, so the line says which way you are going home.
-      assert.are.equal("crossbar: Warp Ring in 5 seconds. /heal to cancel.", last_said())
+      assert.are.equal("Warp Ring in 5 seconds. /heal to cancel.", last_said())
       tick_to(5)
       assert.are.same({ 'input /item "Warp Ring" <me>' }, env.commands)
     end)
@@ -4726,11 +4589,11 @@ describe("crossbar live widget", function()
     it("fires at once when the delay is configured off", function()
       -- Zero is the off switch; there is no separate toggle verb.
       mount_world({
-        tune_config = function(tuned)
-          tuned.delay = 0
+        tune_config = function()
+          env.service_config.delay = 0
         end,
       })
-      widget.handle_command({ "mr" })
+      service_under_test.builtin("mr")
       assert.are.same({ RIDE }, env.commands)
       assert.are.equal(0, #env.chat)
     end)
@@ -4752,8 +4615,8 @@ describe("crossbar live widget", function()
         activation_time = env.time - 18000 + 10,
         usable = false,
       }
-      widget.handle_command({ "warp" })
-      assert.are.equal("crossbar: warp with Warp Ring - equipping it first.", last_said())
+      service_under_test.warp(false)
+      assert.are.equal("warp with Warp Ring - equipping it first.", last_said())
       assert.are.equal("gs disable ring1", env.commands[1])
 
       -- The first poll can read the warmup, so the length is spoken then.
@@ -4762,7 +4625,7 @@ describe("crossbar live widget", function()
       assert.is_not_nil(said():find("/heal to cancel", 1, true), said())
 
       -- Resting calls it off, and lets go of the slot it was holding.
-      widget.update("status", RESTING)
+      push(widget, "status", RESTING)
       assert.is_not_nil(said():find("warp cancelled", 1, true), said())
       local released = false
       for _, command in ipairs(env.commands) do
@@ -4793,7 +4656,7 @@ describe("crossbar live widget", function()
         activation_time = env.time - 18000,
         usable = false,
       }
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       tick_to(1)
       assert.is_nil(said():find("ready in 0", 1, true), "no zero-second promise: " .. said())
 
@@ -4841,7 +4704,7 @@ describe("crossbar live widget", function()
         activation_time = env.time - 18000 + 10,
         usable = false,
       }
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.chat = {}
       -- A re-attach: what `//hud reset crossbar` and the reload after
       -- `//hud copy` both do.
@@ -4899,7 +4762,7 @@ describe("crossbar live widget", function()
         activation_time = env.time - 18000 + 10,
         usable = false,
       }
-      widget.handle_command({ "warp", "all" })
+      service_under_test.warp(true)
       env.chat, env.ipc = {}, {}
       env.layout = true
       -- The enchantment comes up in the same breath the mode opens.
@@ -4932,12 +4795,12 @@ describe("crossbar live widget", function()
           activation_time = env.time - 18000 + 10,
           usable = false,
         }
-        widget.handle_command({ "warp" })
+        service_under_test.warp(false)
         env.chat = {}
         if ending == "death" then
-          widget.update("status", DEAD)
+          push(widget, "status", DEAD)
         else
-          widget.update("chunk", 0x0B, "HDRX")
+          push(widget, "chunk", 0x0B, "HDRX")
         end
         local released = false
         for _, command in ipairs(env.commands) do
@@ -4959,7 +4822,7 @@ describe("crossbar live widget", function()
            slightly stale choice (Kevin, 2026-08-22). Five seconds is long
            enough for the ladder to move under you - and it must not. ]]
       warp_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       local announced = last_said()
       env.known_spells = { [262] = true }
       env.player.vitals.mp = 150
@@ -4973,7 +4836,7 @@ describe("crossbar live widget", function()
       -- something: what was promised is attempted, where the re-walk would
       -- have quietly found something else to do.
       warp_world()
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       env.known_spells = {}
       tick_to(5)
       assert.are.same({ WARP }, env.commands, "what it promised, whatever the ladder says now")
@@ -4982,10 +4845,10 @@ describe("crossbar live widget", function()
     it("broadcasts warp all when it goes, not when it is pressed", function()
       -- Otherwise a cancelled press still sends every other character home.
       warp_world()
-      widget.handle_command({ "warp", "all" })
+      service_under_test.warp(true)
       assert.are.same({}, env.ipc, "the alts are not sent until this one goes")
       tick_to(5)
-      assert.are.same({ "xivhud crossbar warp" }, env.ipc)
+      assert.are.same({ "xivhud warp" }, env.ipc)
       assert.are.same({ WARP }, env.commands)
     end)
 
@@ -4993,18 +4856,18 @@ describe("crossbar live widget", function()
       -- The sender's own countdown was the window; the message is the
       -- moment, and a second wait on every alt buys nothing.
       warp_world()
-      widget.update("ipc message", "xivhud crossbar warp")
+      push(widget, "ipc message", "xivhud warp")
       assert.are.same({ WARP }, env.commands)
     end)
 
     it("replaces a countdown with the newer press", function()
       warp_world()
       env.key_items = { 3000 }
-      widget.update("chunk", KEY_ITEM_CHUNK)
-      widget.handle_command({ "mr" })
+      push(widget, "chunk", KEY_ITEM_CHUNK)
+      service_under_test.builtin("mr")
       tick_to(2)
-      widget.handle_command({ "warp" })
-      assert.are.equal("crossbar: Warp in 5 seconds. /heal to cancel.", last_said())
+      service_under_test.warp(false)
+      assert.are.equal("Warp in 5 seconds. /heal to cancel.", last_said())
       tick_to(5)
       assert.are.same({}, env.commands, "the press that was replaced never fires")
       tick_to(7)
@@ -5016,19 +4879,19 @@ describe("crossbar live widget", function()
       -- mount counting down behind it would summon one three seconds after
       -- the player got off.
       mount_world()
-      widget.handle_command({ "mr" })
+      service_under_test.builtin("mr")
       env.player.buffs = { 252 }
       tick_to(2)
-      widget.handle_command({ "mr" })
+      service_under_test.builtin("mr")
       assert.are.same({ "input /dismount" }, env.commands)
-      assert.are.equal("crossbar: Mount roulette cancelled.", last_said())
+      assert.are.equal("Mount roulette cancelled.", last_said())
       tick_to(7)
       assert.are.same({ "input /dismount" }, env.commands, "and nothing is summoned afterwards")
     end)
 
     it("ends a countdown with a warp that skips its own", function()
       mount_world()
-      widget.handle_command({ "mr" })
+      service_under_test.builtin("mr")
       env.items[0] = { enabled = true, { id = 28540, slot = 5, status = 0, count = 1 } }
       env.ext = {
         type = "Enchanted Equipment",
@@ -5038,12 +4901,12 @@ describe("crossbar live widget", function()
         usable = false,
       }
       tick_to(2)
-      widget.handle_command({ "warp" })
+      service_under_test.warp(false)
       assert.are.equal("gs disable ring1", env.commands[1])
       -- The cancel is still said; the warm-up's own opening line follows it,
       -- so the cancel is no longer the LAST thing spoken.
       assert.is_not_nil(said():find("Mount roulette cancelled.", 1, true), said())
-      assert.are.equal("crossbar: warp with Warp Ring - equipping it first.", last_said())
+      assert.are.equal("warp with Warp Ring - equipping it first.", last_said())
       tick_to(6)
       for _, command in ipairs(env.commands) do
         assert.is_nil(command:find("/mount", 1, true), "no mount lands in the middle of the ring's wait")
@@ -5069,11 +4932,11 @@ describe("crossbar live widget", function()
     describe("what calls it off", function()
       local function armed()
         mount_world()
-        widget.handle_command({ "mr" })
+        service_under_test.builtin("mr")
       end
 
       local function assert_cancelled(context)
-        assert.are.equal("crossbar: Mount roulette cancelled.", last_said(), context)
+        assert.are.equal("Mount roulette cancelled.", last_said(), context)
         tick_to(9)
         assert.are.same({}, env.commands, context .. ": and nothing fires afterwards")
       end
@@ -5082,25 +4945,25 @@ describe("crossbar live widget", function()
         -- Sel-Include.lua:2313's shape: /heal is the idiom, the status is
         -- the trigger, so it catches resting however it was entered.
         armed()
-        widget.update("status", RESTING, 0)
+        push(widget, "status", RESTING, 0)
         assert_cancelled("resting")
       end)
 
       it("cancels on death", function()
         armed()
-        widget.update("status", DEAD, 0)
+        push(widget, "status", DEAD, 0)
         assert_cancelled("death")
       end)
 
       it("cancels on a zone", function()
         armed()
-        widget.update("chunk", ZONE_OUT_CHUNK, "\0\0\0\0")
+        push(widget, "chunk", ZONE_OUT_CHUNK, "\0\0\0\0")
         assert_cancelled("zone")
       end)
 
       it("cancels on a job change", function()
         armed()
-        widget.update("job change", 5, 75, 13, 37)
+        push(widget, "job change", 5, 75, 13, 37)
         assert_cancelled("job change")
       end)
 
@@ -5137,8 +5000,8 @@ describe("crossbar live widget", function()
         mount_world()
         env.layout = true
         widget.set_preview(true)
-        widget.handle_command({ "mr" })
-        assert.are.equal("crossbar: Mount roulette - not while //hud layout is open", last_said())
+        service_under_test.builtin("mr")
+        assert.are.equal("Mount roulette - not while //hud layout is open", last_said())
         assert.are.equal(1, #env.chat, "one line, not an arming line and then a cancel")
         tick_to(9)
         assert.are.same({}, env.commands)
@@ -5147,8 +5010,8 @@ describe("crossbar live widget", function()
       it("refuses a trip pressed while the binder is already open", function()
         mount_world()
         assert.is_string(widget.handle_command({ "edit" }))
-        widget.handle_command({ "mr" })
-        assert.are.equal("crossbar: Mount roulette - not while edit mode is open", last_said())
+        service_under_test.builtin("mr")
+        assert.are.equal("Mount roulette - not while edit mode is open", last_said())
         assert.are.equal(1, #env.chat)
         tick_to(9)
         assert.are.same({}, env.commands)
@@ -5162,7 +5025,7 @@ describe("crossbar live widget", function()
         env.player.buffs = { 252 }
         env.layout = true
         widget.set_preview(true)
-        widget.handle_command({ "mr" })
+        service_under_test.builtin("mr")
         assert.are.same({ "input /dismount" }, env.commands)
       end)
 
@@ -5182,7 +5045,7 @@ describe("crossbar live widget", function()
         -- armed beforehand belongs to the configuration just thrown away.
         armed()
         widget.attach(widget.defaults, function() end, store)
-        assert.are.equal("crossbar: Mount roulette in 5 seconds. /heal to cancel.", last_said())
+        assert.are.equal("Mount roulette in 5 seconds. /heal to cancel.", last_said())
         tick_to(9)
         assert.are.same({}, env.commands)
       end)
@@ -5190,14 +5053,14 @@ describe("crossbar live widget", function()
       it("drops the countdown on a logout, without a word to a chat nobody is reading", function()
         armed()
         widget.detach()
-        assert.are.equal("crossbar: Mount roulette in 5 seconds. /heal to cancel.", last_said())
+        assert.are.equal("Mount roulette in 5 seconds. /heal to cancel.", last_said())
         tick_to(9)
         assert.are.same({}, env.commands)
       end)
 
       it("keeps counting through the statuses that mean nothing to it", function()
         armed()
-        widget.update("status", 1, 0)
+        push(widget, "status", 1, 0)
         tick_to(5)
         assert.are.same({ RIDE }, env.commands)
       end)
@@ -5239,7 +5102,7 @@ describe("crossbar live widget", function()
     local function live(tune)
       build_world({
         tune_config = function(tuned)
-          tuned.retry.enabled = true
+          env.service_config.retry.enabled = true
           if tune ~= nil then
             tune(tuned)
           end
@@ -5257,7 +5120,7 @@ describe("crossbar live widget", function()
     -- Cast, take the refusal, and run the clock past the backoff.
     local function refused()
       cast()
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
     end
 
@@ -5266,29 +5129,29 @@ describe("crossbar live widget", function()
            which DOES drop the watch: that press never happened, so the
            moment the held cast belongs to has not moved on. ]]
       build_world({
-        tune_config = function(tuned)
-          tuned.retry.enabled = true
-          tuned.wsgate.enabled = true
+        tune_config = function()
+          env.service_config.retry.enabled = true
+          env.service_config.wsgate.enabled = true
         end,
       })
       cast()
       env.player.vitals.tp = 999
       cast(DIK_SLOT[3])
       assert.are.same({ CURE }, env.commands, "the weaponskill never went out")
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
-      widget.update()
+      push(widget)
       -- Pinned to the mob it was pressed against, as any re-send is.
       assert.are.same({ CURE, 'input /ma "Cure" 99' }, env.commands, "the Cure is still what is watched")
     end)
 
     it("ships off: nothing is remembered and nothing is re-sent", function()
       build_world()
-      assert.is_false(widget.defaults.retry.enabled, "off until the trigger is confirmed in client")
+      assert.is_false(env.service_config.retry.enabled, "off until the trigger is confirmed in client")
       cast()
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = 5
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands, "the press went out once, and only once")
     end)
 
@@ -5296,14 +5159,14 @@ describe("crossbar live widget", function()
       live()
       cast()
       assert.are.same({ CURE }, env.commands, "a press is never delayed by this feature")
-      widget.update("chunk", 0x29, refusal(env.player.id))
-      widget.update()
+      push(widget, "chunk", 0x29, refusal(env.player.id))
+      push(widget)
       assert.are.same({ CURE }, env.commands, "and nothing goes out before the backoff")
       env.now = 1
-      widget.update()
+      push(widget)
       assert.are.same({ CURE, CURE_PINNED }, env.commands)
       env.now = 2
-      widget.update()
+      push(widget)
       assert.are.same({ CURE, CURE_PINNED }, env.commands, "one refusal buys one re-send")
     end)
 
@@ -5315,29 +5178,29 @@ describe("crossbar live widget", function()
     it("keeps re-sending after the bar's main anchor alone is hidden", function()
       live()
       cast()
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       widget.hide("main")
       env.now = 1
-      widget.update()
+      push(widget)
       assert.are.same({ CURE, CURE_PINNED }, env.commands)
     end)
 
     it("still drops what it holds when the whole widget is hidden", function()
       live()
       cast()
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       widget.hide()
       env.now = 1
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands)
     end)
 
     it("ignores a refusal that names somebody else", function()
       live()
       cast()
-      widget.update("chunk", 0x29, refusal(4242))
+      push(widget, "chunk", 0x29, refusal(4242))
       env.now = 1
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands)
     end)
 
@@ -5346,13 +5209,13 @@ describe("crossbar live widget", function()
       cast(PROVOKE_SLOT)
       assert.are.same({ PROVOKE }, env.commands)
       -- 17 is the SPELL refusal: it is not an answer to this press.
-      widget.update("chunk", 0x29, refusal(env.player.id, 17))
+      push(widget, "chunk", 0x29, refusal(env.player.id, 17))
       env.now = 1
-      widget.update()
+      push(widget)
       assert.are.same({ PROVOKE }, env.commands, "a spell's refusal does not answer an ability")
-      widget.update("chunk", 0x29, refusal(env.player.id, 71))
+      push(widget, "chunk", 0x29, refusal(env.player.id, 71))
       env.now = 2
-      widget.update()
+      push(widget)
       assert.are.same({ PROVOKE, PROVOKE }, env.commands)
     end)
 
@@ -5360,10 +5223,10 @@ describe("crossbar live widget", function()
       live()
       cast(DIK_SLOT[3])
       assert.are.same({ SAVAGE }, env.commands)
-      widget.update("chunk", 0x29, refusal(env.player.id, 72))
+      push(widget, "chunk", 0x29, refusal(env.player.id, 72))
       env.now = 1
       env.target = { id = 4242 }
-      widget.update()
+      push(widget)
       assert.are.same({ SAVAGE, 'input /ws "Savage Blade" 99' }, env.commands)
     end)
 
@@ -5373,10 +5236,10 @@ describe("crossbar live widget", function()
       widget.handle_command({ "bind", "1L6", "item", "Prism Powder", "me" })
       cast(DIK_SLOT[6])
       for _, message in ipairs({ 17, 71, 72 }) do
-        widget.update("chunk", 0x29, refusal(env.player.id, message))
+        push(widget, "chunk", 0x29, refusal(env.player.id, message))
       end
       env.now = 1
-      widget.update()
+      push(widget)
       assert.are.same({ 'input /item "Prism Powder" <me>' }, env.commands)
     end)
 
@@ -5389,10 +5252,10 @@ describe("crossbar live widget", function()
       widget.handle_command({ "bind", "1L6", "pet", "Eclipse Bite", "t" })
       cast(DIK_SLOT[6])
       for _, message in ipairs({ 17, 18, 71, 72 }) do
-        widget.update("chunk", 0x29, refusal(env.player.id, message))
+        push(widget, "chunk", 0x29, refusal(env.player.id, message))
       end
       env.now = env.now + 1
-      widget.update()
+      push(widget)
       assert.are.same({ 'input /pet "Eclipse Bite" <t>' }, env.commands)
     end)
 
@@ -5403,10 +5266,10 @@ describe("crossbar live widget", function()
       live()
       widget.handle_command({ "bind", "1L6", "ma", "Cure", "pet" })
       cast(DIK_SLOT[6])
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
       env.target = { id = 4242 }
-      widget.update()
+      push(widget)
       assert.are.same({ 'input /ma "Cure" <pet>', 'input /ma "Cure" <pet>' }, env.commands)
     end)
 
@@ -5420,9 +5283,9 @@ describe("crossbar live widget", function()
         widget.handle_command({ "bind", "1L6", "ma", "Cure", target })
         env.commands = {}
         cast(DIK_SLOT[6])
-        widget.update("chunk", 0x29, refusal(env.player.id))
+        push(widget, "chunk", 0x29, refusal(env.player.id))
         env.now = env.now + 1
-        widget.update()
+        push(widget)
         assert.are.same({ 'input /ma "Cure" <' .. target .. ">" }, env.commands, target)
       end
     end)
@@ -5430,10 +5293,10 @@ describe("crossbar live widget", function()
     it("is replaced outright by a newer press", function()
       live()
       cast()
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       cast(PROVOKE_SLOT)
       env.now = 1
-      widget.update()
+      push(widget)
       assert.are.same({ CURE, PROVOKE }, env.commands, "the moment the cast belonged to has passed")
     end)
 
@@ -5444,7 +5307,7 @@ describe("crossbar live widget", function()
       refused()
       press(LEFT)
       press(DIK_SLOT[1])
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands)
     end)
 
@@ -5453,11 +5316,11 @@ describe("crossbar live widget", function()
       live()
       refused()
       env.spell_recasts = { [1] = 300 }
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands)
       env.spell_recasts = {}
       env.now = env.now + 1
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands, "and it is dropped, not waiting for the recast")
     end)
 
@@ -5465,7 +5328,7 @@ describe("crossbar live widget", function()
       live()
       refused()
       env.player.vitals = { mp = 2, tp = 1000 }
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands)
     end)
 
@@ -5479,7 +5342,7 @@ describe("crossbar live widget", function()
       live()
       -- One tick first, so the snapshot really holds the ORIGINAL player: with
       -- no tick it is still nil, every read refreshes, and the two are the same.
-      widget.update()
+      push(widget)
       refused()
 
       env.generation_hold = true
@@ -5495,7 +5358,7 @@ describe("crossbar live widget", function()
         buffs = {},
         status = 0,
       }
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands, "re-sent off a stale snapshot of the player")
     end)
 
@@ -5503,7 +5366,7 @@ describe("crossbar live widget", function()
       live()
       refused()
       env.player.buffs = { 6 }
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands)
     end)
 
@@ -5515,10 +5378,10 @@ describe("crossbar live widget", function()
       live()
       cast()
       assert.are.same({ CURE }, env.commands, "the first send is untouched")
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
       env.target = { id = 4242 }
-      widget.update()
+      push(widget)
       assert.are.same({ CURE, 'input /ma "Cure" 99' }, env.commands)
     end)
 
@@ -5529,9 +5392,9 @@ describe("crossbar live widget", function()
       env.targets = { t = { id = 7 }, bt = { id = 99 } }
       widget.handle_command({ "bind", "1L6", "ma", "Cure", "bt" })
       cast(DIK_SLOT[6])
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
-      widget.update()
+      push(widget)
       assert.are.same({ 'input /ma "Cure" <bt>', 'input /ma "Cure" 99' }, env.commands)
     end)
 
@@ -5541,10 +5404,10 @@ describe("crossbar live widget", function()
       live()
       widget.handle_command({ "bind", "1L6", "ma", "Cure", "me" })
       cast(DIK_SLOT[6])
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
       env.target = { id = 4242 }
-      widget.update()
+      push(widget)
       assert.are.same({ 'input /ma "Cure" <me>', 'input /ma "Cure" <me>' }, env.commands)
     end)
 
@@ -5555,10 +5418,10 @@ describe("crossbar live widget", function()
       live()
       env.target = nil
       cast()
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
       env.target = { id = 4242 }
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands)
     end)
 
@@ -5568,9 +5431,9 @@ describe("crossbar live widget", function()
       live()
       widget.handle_command({ "bind", "1L6", "ma", "Cure" })
       cast(DIK_SLOT[6])
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
-      widget.update()
+      push(widget)
       assert.are.same({ 'input /ma "Cure"' }, env.commands)
     end)
 
@@ -5580,7 +5443,7 @@ describe("crossbar live widget", function()
       -- Rebound out from under the press. The address is what the retry
       -- remembers, so what matters is the record living at it.
       widget.handle_command({ "bind", "1L5", "ma", "Dia", "t" })
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands)
     end)
 
@@ -5592,9 +5455,9 @@ describe("crossbar live widget", function()
       -- job's spell re-sends under the new one.
       live()
       refused()
-      widget.update("job change", 4, 99, 13, 49)
+      push(widget, "job change", 4, 99, 13, 49)
       assert.are.equal("WAR", widget.handle_command({})[1]:match("WAR") and "WAR" or "", "still scoped to the old job")
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands)
     end)
 
@@ -5606,16 +5469,16 @@ describe("crossbar live widget", function()
     it("drops on a zone, either death and a hide", function()
       local drops = {
         function()
-          widget.update("chunk", 0x0B, "HDRX")
+          push(widget, "chunk", 0x0B, "HDRX")
         end,
         function()
-          widget.update("status", 2)
+          push(widget, "status", 2)
         end,
         function()
           -- Engaged dead: the common one, since you usually die fighting.
           -- Death is not a suppression trigger, so this clear is the only
           -- thing standing between a corpse and a re-sent cast.
-          widget.update("status", 3)
+          push(widget, "status", 3)
         end,
         function()
           widget.hide()
@@ -5631,7 +5494,7 @@ describe("crossbar live widget", function()
         live()
         refused()
         drop()
-        widget.update()
+        push(widget)
         assert.are.same({ CURE }, env.commands, "clear trigger " .. index)
       end
     end)
@@ -5677,12 +5540,12 @@ describe("crossbar live widget", function()
         live()
         refused()
         guard.shut()
-        widget.update()
+        push(widget)
         assert.are.same({ CURE }, env.commands, guard.name .. " shuts the re-send out")
         -- And it is dropped, not queued behind the guard.
         guard.open()
         env.now = env.now + 1
-        widget.update()
+        push(widget)
         assert.are.same({ CURE }, env.commands, guard.name .. " dropped it rather than deferring it")
       end
     end)
@@ -5703,11 +5566,11 @@ describe("crossbar live widget", function()
       widget.detach()
       widget.attach(config, function() end, store)
       widget.show()
-      widget.update()
+      push(widget)
       cast()
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
-      widget.update()
+      push(widget)
       assert.are.same({ 'input /ma "Cure" <T>', 'input /ma "Cure" 99' }, env.commands)
     end)
 
@@ -5718,9 +5581,9 @@ describe("crossbar live widget", function()
       live()
       widget.handle_command({ "bind", "1L6", "ma", "Cure", "stpc" })
       cast(DIK_SLOT[6])
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
-      widget.update()
+      push(widget)
       assert.are.same({ 'input /ma "Cure" <stpc>' }, env.commands)
     end)
 
@@ -5730,7 +5593,7 @@ describe("crossbar live widget", function()
       -- press itself already reads the target once (draw_state), so the
       -- measure is the difference between the two builds.
       build_world()
-      assert.is_false(widget.defaults.retry.enabled, "the shipped posture")
+      assert.is_false(env.service_config.retry.enabled, "the shipped posture")
       env.target_tokens = {}
       cast()
       local off = #env.target_tokens
@@ -5746,22 +5609,28 @@ describe("crossbar live widget", function()
       widget.handle_command({ "bind", "1L6", "ma", "Cure", "bt" })
       cast(DIK_SLOT[6])
       cast()
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = env.now + 1
-      widget.update()
+      push(widget)
       for _, token in ipairs(env.target_tokens) do
         assert.is_true(token == "t" or token == "bt", "unvetted target token asked of the client: " .. token)
       end
     end)
 
+    -- What `//hud retry on|off` does in core: the write, then the sync that
+    -- drops whatever a switched-off retry was holding.
+    local function switch_retry(on)
+      env.service_config.retry.enabled = on
+      service_under_test.retry.sync()
+    end
+
     it("drops a pending cast when the feature is switched off, rather than firing a last one", function()
       live()
       refused()
-      local reply = widget.handle_command({ "retry", "off" })
-      assert.is_not_nil(tostring(reply):find("off", 1, true), tostring(reply))
-      widget.update()
+      switch_retry(false)
+      push(widget)
       env.now = env.now + 5
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands)
     end)
 
@@ -5771,11 +5640,11 @@ describe("crossbar live widget", function()
       -- before the feature was live.
       live()
       cast()
-      widget.handle_command({ "retry", "off" })
-      widget.handle_command({ "retry", "on" })
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      switch_retry(false)
+      switch_retry(true)
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = 1
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands)
     end)
 
@@ -5787,21 +5656,21 @@ describe("crossbar live widget", function()
       files.WAR.sets[1].left[2] = { type = "mr" }
       build_world({
         store_files = files,
-        tune_config = function(tuned)
-          tuned.retry.enabled = true
+        tune_config = function()
+          env.service_config.retry.enabled = true
         end,
       })
       env.key_items = { 3000 }
-      widget.update("chunk", 0x055)
+      push(widget, "chunk", 0x055)
       cast()
       cast(DIK_SLOT[2])
       assert.are.same({ CURE }, env.commands, "the travel press has fired nothing yet")
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = 2
-      widget.update()
+      push(widget)
       assert.are.same({ CURE }, env.commands, "and the cure is not re-sent: a newer press replaced it")
       env.now = 5
-      widget.update()
+      push(widget)
       assert.are.same({ CURE, 'input /mount "chocobo"' }, env.commands)
     end)
 
@@ -5812,19 +5681,19 @@ describe("crossbar live widget", function()
       files.WAR.sets[1].left[2] = { type = "mr" }
       build_world({
         store_files = files,
-        tune_config = function(tuned)
-          tuned.retry.enabled = true
+        tune_config = function()
+          env.service_config.retry.enabled = true
         end,
       })
       env.key_items = { 3000 }
-      widget.update("chunk", 0x055)
+      push(widget, "chunk", 0x055)
       cast(DIK_SLOT[2])
       env.now = 5
-      widget.update()
+      push(widget)
       assert.are.equal(1, #env.commands)
-      widget.update("chunk", 0x29, refusal(env.player.id))
+      push(widget, "chunk", 0x29, refusal(env.player.id))
       env.now = 7
-      widget.update()
+      push(widget)
       assert.are.equal(1, #env.commands, "nothing is re-sent")
     end)
 
@@ -5832,7 +5701,7 @@ describe("crossbar live widget", function()
       -- The per-frame budget: with the feature on and nothing pending, the
       -- tick must be the same two identical frames it was without it.
       live()
-      widget.update()
+      push(widget)
       local before = 0
       for _, prim in ipairs(prims.all) do
         before = before + #prim.calls
@@ -5841,7 +5710,7 @@ describe("crossbar live widget", function()
       -- get_info() is a client call like any other, and chat_open() is a
       -- wrapper over it: a settled frame with nothing pending must not ask.
       env.chat_reads, env.layout_reads = 0, 0
-      widget.update()
+      push(widget)
       local after = 0
       for _, prim in ipairs(prims.all) do
         after = after + #prim.calls
@@ -5925,16 +5794,16 @@ describe("crossbar live widget", function()
     it("rides mount roulette as a command", function()
       build_world()
       env.player.buffs = { 252 }
-      widget.handle_command({ "mr" })
+      service_under_test.builtin("mr")
       assert.are.same({ "input /dismount" }, env.commands)
     end)
 
     it("runs the draw toggle as a command", function()
       build_world()
-      widget.handle_command({ "draw" })
+      hud_draw(widget)
       assert.are.same({}, env.commands, "entering drawn sends nothing")
       assert.is_true(sword_icon().visible, "the sword is what says it worked")
-      widget.handle_command({ "draw" })
+      hud_draw(widget)
       assert.are.same({ "input /attack off" }, env.commands)
     end)
 
@@ -5953,8 +5822,8 @@ describe("crossbar live widget", function()
       -- available to check against. A collision is said, never thrown.
       build_world()
       assert.are.equal(0, #env.chat, "no collision today, and nothing said about it")
-      local actions = require("components/crossbar/actions")({})
-      local commands = require("components/crossbar/commands")({})
+      local actions = require("lib/actionbar/actions")({})
+      local commands = require("lib/actionbar/commands")({})
       assert.are.same({}, actions.check_collisions(commands.verbs()))
       -- The check is real: a verb that DID collide would be reported.
       assert.are.same({ "draw", "mr" }, actions.check_collisions({ "draw", "mr", "bind" }))
@@ -5963,7 +5832,7 @@ describe("crossbar live widget", function()
     it("reports each view once, from the CLI's own map", function()
       build_world()
       local text = table.concat(widget.handle_command({}), "\n")
-      local commands = require("components/crossbar/commands")({})
+      local commands = require("lib/actionbar/commands")({})
       assert.are.equal(4, #commands.views)
       for _, view in ipairs(commands.views) do
         assert.is_not_nil(text:find(view.cli, 1, true), view.cli .. " missing from: " .. text)
@@ -6033,7 +5902,7 @@ describe("crossbar live widget", function()
     local function slot_point(side, slot)
       local render = require("components/crossbar/render")({
         config = config,
-        icon_for = require("components/crossbar/actions")({}).icon_for,
+        icon_for = require("lib/actionbar/actions")({}).icon_for,
       })
       local x, y = render.slot_pos("xhb", side, slot)
       local size = render.metrics().slot
@@ -6088,7 +5957,7 @@ describe("crossbar live widget", function()
       env.items[0] = { [1] = { id = 16535, count = 1 } }
       env.equipment = { main = 1, main_bag = 0 }
       env.now = env.now + 0.5
-      widget.update()
+      push(widget)
       assert.is_nil(binder_line("^3L3"), "and it closed with the set it was opened on")
     end)
 
@@ -6102,7 +5971,7 @@ describe("crossbar live widget", function()
       env.items[0] = { [1] = { id = 17040, count = 1 } }
       env.equipment = { main = 1, main_bag = 0 }
       env.now = env.now + 0.5
-      widget.update()
+      push(widget)
       widget.handle_command({ "edit" })
       click(slot_point("left", 1))
       -- Step one is the layer; the catalog's categories are step two.
@@ -6226,7 +6095,7 @@ describe("crossbar live widget", function()
       files.WAR.sub = { SCH = { [1] = { left = { [4] = { type = "ja", action = "Berserk" } } } } }
       build_world({ store_files = files })
       env.player.buffs = { 358 }
-      widget.update("gain buff", 358)
+      push(widget, "gain buff", 358)
       assert.are.equal("Penury", text_of("xhb_left", 2, "name").last.text, "the live context wins")
       widget.handle_command({ "edit" })
       assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text, "a context is marked")
@@ -6256,7 +6125,7 @@ describe("crossbar live widget", function()
       click_line("light%-arts:")
       assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text)
       env.player.buffs = { 359 }
-      widget.update("gain buff", 359)
+      push(widget, "gain buff", 359)
       assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text, "the preview survived the buff")
       assert.is_not_nil(binder_line("viewing: LIGHT ARTS"), "and the header still means it")
       widget.handle_command({ "edit" })
@@ -6273,7 +6142,7 @@ describe("crossbar live widget", function()
       click(slot_point("left", 2))
       click_line("light%-arts:")
       env.player.buffs = { 359 }
-      widget.update("gain buff", 359)
+      push(widget, "gain buff", 359)
       widget.handle_command({ "edit" })
       assert.are.equal("Berserk", text_of("xhb_left", 5, "name").last.text, "dark arts really is up now")
     end)
@@ -6291,7 +6160,7 @@ describe("crossbar live widget", function()
       assert.is_not_nil(binder_line("recast: 30s left"), "the column filled in on the hover")
       env.ability_recasts[5] = 9
       env.now = env.now + 1
-      widget.update()
+      push(widget)
       assert.is_not_nil(binder_line("recast: 9s left"), "and counts down though the cursor never moved")
     end)
 
@@ -6367,8 +6236,8 @@ describe("crossbar live widget", function()
       env.player.main_job = "NIN"
       env.player.main_job_id = 13
       env.player.sub_job_id = 49
-      widget.update("job change", 13, 99, 49, 49)
-      widget.update()
+      push(widget, "job change", 13, 99, 49, 49)
+      push(widget)
       assert.is_nil(binder_line("^3L4"), "the window went with the set")
     end)
 
@@ -6482,7 +6351,7 @@ describe("crossbar live widget", function()
       -- has to be re-asserted or the bar reverts under a header still
       -- claiming the simulated view.
       env.player.main_job, env.player.main_job_id = "SCH", 20
-      widget.update("job change", 20, 99, 20, 49)
+      push(widget, "job change", 20, 99, 20, 49)
       assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text, "the preview survived the job change")
       assert.is_not_nil(binder_line("viewing: LIGHT ARTS"))
       widget.handle_command({ "edit" })
@@ -6501,7 +6370,7 @@ describe("crossbar live widget", function()
       click_line("light%-arts:")
       assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text)
       env.player.sub_job, env.player.sub_job_id = "WAR", 2
-      widget.update("job change", 1, 99, 2, 49)
+      push(widget, "job change", 1, 99, 2, 49)
       assert.are.equal("", text_of("xhb_left", 2, "name").last.text, "the preview came down with the layer")
       assert.is_nil(binder_line("viewing: LIGHT ARTS"), "and the header stopped claiming it")
     end)
@@ -6565,7 +6434,7 @@ describe("crossbar live widget", function()
     end
 
     local function draw_weapon()
-      widget.handle_command({ "draw" })
+      hud_draw(widget)
       env.commands = {}
     end
 
@@ -6597,7 +6466,7 @@ describe("crossbar live widget", function()
       build_world()
       draw_weapon()
       env.player.buffs = { 252 }
-      widget.update()
+      push(widget)
       assert.is_true(widget.on_mouse(MOUSE_LEFT_DOWN, sword_point()))
       assert.are.same({ "input /attack off" }, env.commands)
     end)
@@ -6694,6 +6563,18 @@ describe("crossbar live widget", function()
        Always on, like the sword: no setting. ]]
   describe("clicking a slot", function()
     local MOUSE_MOVE, MOUSE_LEFT_DOWN, MOUSE_LEFT_UP = 0, 1, 2
+
+    it("leaves a click and the slot keys to another bar's binder while that is open", function()
+      build_world()
+      service_under_test.set_edit_mode("hotbar", true)
+      local render = new_render({ config = widget.defaults })
+      local x, y = render.slot_pos("xhb", "left", 3)
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, 100 + x + 5, 900 + y + 5, 0))
+      press(LEFT)
+      press(DIK_SLOT[3])
+      assert.are.same({}, env.commands)
+      service_under_test.set_edit_mode("hotbar", false)
+    end)
 
     -- The centre of a drawn slot, through the same geometry the bar draws
     -- it at, from the origin build_world places the main anchor at.
@@ -6837,7 +6718,7 @@ describe("crossbar live widget", function()
            placed by hand, and moving it off the bar is how the slot under
            it is reached. ]]
       build_world()
-      widget.handle_command({ "draw" })
+      hud_draw(widget)
       env.commands = {}
       local x, y = slot_point("left", 4)
       -- The sword's own 36x36, dropped square on top of that slot.

@@ -86,6 +86,19 @@ local function build_stubs(boot, options)
       boot.core_deps = deps
       return boot.core
     end,
+    -- The action service: its deps are recorded, and the instance records
+    -- every call the entry point makes on it.
+    ["lib/actionbar/service"] = function(deps)
+      boot.service_deps = deps
+      local service = {}
+      for _, name in ipairs({ "tick", "on_chunk", "on_status", "on_job_change", "on_ipc", "on_logout", "on_unload" }) do
+        service[name] = function(...)
+          boot.service_calls[#boot.service_calls + 1] = { name = name, n = select("#", ...), ... }
+        end
+      end
+      boot.service = service
+      return service
+    end,
     ["components/parambar/parambar"] = component("parambar"),
     ["components/partylist/partylist"] = component("partylist"),
     ["components/statusbar/statusbar"] = component("statusbar"),
@@ -93,6 +106,8 @@ local function build_stubs(boot, options)
     ["components/equipviewer/equipviewer"] = component("equipviewer"),
     ["components/targetbar/targetbar"] = component("targetbar"),
     ["components/crossbar/crossbar"] = component("crossbar"),
+    ["components/hotbar/hotbar"] = component("hotbar"),
+    ["components/skillchain/skillchain"] = component("skillchain"),
     ["components/speedcheck/speedcheck"] = component("speedcheck"),
     ["components/expbar/expbar"] = component("expbar"),
     ["components/invtracker/invtracker"] = component("invtracker"),
@@ -272,6 +287,12 @@ local function build_core(boot)
     return false
   end
 
+  -- Core's own config, which the action service reads its tuning from.
+  boot.core_config = { snap = 10 }
+  function core.config()
+    return boot.core_config
+  end
+
   for _, name in ipairs({
     "suppressed",
     "component_visible",
@@ -314,6 +335,7 @@ function M.boot(options)
     built = {},
     registered = {},
     dispatches = {},
+    service_calls = {},
     parsed_packets = {},
     action_parses = {},
     require_fails = {},

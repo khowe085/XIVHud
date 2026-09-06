@@ -1,6 +1,6 @@
 local new_render = require("components/crossbar/render")
 local build_defaults = require("components/crossbar/defaults")
-local kebab = require("components/crossbar/kebab")
+local kebab = require("lib/actionbar/kebab")
 
 -- The upstream constants render.lua transcribes (decided: port xivcrossbar's
 -- drawing verbatim, don't re-derive): 40px slots on a 40+6 column pitch, a
@@ -305,9 +305,7 @@ describe("crossbar render", function()
       assert.are.same({ PANEL_W, PANEL_H }, { width, height })
       width, height = render.bounds("wxhb_right")
       assert.are.same({ PANEL_W, PANEL_H }, { width, height })
-      width, height = render.bounds("skillchain_indicator")
-      -- The skillchain bg at its widest displayed state (open: 604 x 14).
-      assert.are.same({ 604, 14 }, { width, height })
+      assert.is_nil(render.bounds("skillchain_indicator"), "the indicator is its own component now")
     end)
 
     it("scales a footprint by the anchor's scale", function()

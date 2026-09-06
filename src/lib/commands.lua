@@ -47,7 +47,22 @@ local RESERVED = {
   slot = true,
   copy = true,
   buffs = true,
+  -- The action service's own verbs and its three tuning words.
+  warp = true,
+  mr = true,
+  sneak = true,
+  invisible = true,
+  draw = true,
+  retry = true,
+  wsgate = true,
+  delay = true,
 }
+
+-- Framework-level presses: run by the action service, never by a bar.
+local ACTION_VERBS = { mr = true, sneak = true, invisible = true, draw = true }
+-- The service's tuning: the words after the verb go through untouched, and
+-- core answers them over its own config.
+local TUNING_VERBS = { retry = true, wsgate = true, delay = true }
 
 local SLOT_OPS = { list = true, create = true, delete = true }
 
@@ -244,6 +259,20 @@ local function new(deps)
       return parse_copy(words)
     elseif verb == "buffs" then
       return parse_buffs(words)
+    elseif verb == "warp" then
+      local all = words[2] ~= nil and words[2]:lower() == "all"
+      if #words > 2 or (words[2] ~= nil and not all) then
+        return fail("'//hud warp [all]' - all sends every instance home")
+      end
+      return { action = "action", verb = "warp", all = all }
+    elseif ACTION_VERBS[verb] then
+      return no_extra(words, verb) or { action = "action", verb = verb }
+    elseif TUNING_VERBS[verb] then
+      local rest = {}
+      for index = 2, #words do
+        rest[index - 1] = words[index]
+      end
+      return { action = "tune", verb = verb, words = rest }
     end
 
     local component = resolve_component(verb)
