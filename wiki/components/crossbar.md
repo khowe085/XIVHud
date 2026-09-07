@@ -290,11 +290,11 @@ commands, they work with `//bind` and in in-game macros too.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar draw` | sheathe / unsheathe — or dismount, if mounted |
-| `//hud crossbar mr` | summon a random mount you own, or dismount if you are on one. Summoning waits five seconds first — see **Travel waits five seconds** below |
-| `//hud crossbar warp [all]` | warp home by the best means you have, after the same five-second wait; `all` warps your other characters running XIVHud, and sends them only when this character's own warp actually goes |
-| `//hud crossbar sneak` | picks the cheapest way this character has to get the effect and fires it: the ninjutsu first (Monomi: Ichi / Tonko: Ichi, if you have the tool), then Spectral Jig, then the spell, then a Silent Oil / Prism Powder. The order is the same on every job, so the press behaves the same wherever it is bound; what changes is which rungs you qualify for, which is read from the client - the spells you know and the levels your main and sub actually have. Self-only rungs stay on you; the spell and the item go to a targeted party member if you have one selected. |
-| `//hud crossbar invisible` | the same ladder for invisible |
+| `//hud draw` | sheathe / unsheathe — or dismount, if mounted |
+| `//hud mr` | summon a random mount you own, or dismount if you are on one. Summoning waits five seconds first — see **Travel waits five seconds** below |
+| `//hud warp [all]` | warp home by the best means you have, after the same five-second wait; `all` warps your other characters running XIVHud, and sends them only when this character's own warp actually goes |
+| `//hud sneak` | picks the first way this character has to get the effect and fires it, cheapest first: the spell (Sneak / Invisible), then Spectral Jig, then the ninjutsu if you have the tool (Tonko: Ni over Tonko: Ichi, on Shinobi-Tabi; Monomi: Ichi, on Sanjaku-Tenugui), then a Silent Oil / Prism Powder. The spell and the jig consume nothing, which is why both sit above the ninjutsu. The order is the same on every job, so the press behaves the same wherever it is bound; what changes is which rungs you qualify for, which is read from the client - the spells you know and the levels your main and sub actually have. Self-only rungs stay on you; the spell and the item go to a targeted party member if you have one selected. |
+| `//hud invisible` | the same ladder for invisible |
 | `//hud crossbar open <name>` | open a game screen (`map`, `equipment`, …) |
 
 ---
@@ -691,7 +691,7 @@ script is the way to put a sequence on a slot.
 | `mr` | mount roulette — picks at random from the mounts you actually own, and dismounts if you are already up. In the binder it is filed at the head of **Mounts** rather than under General, and it only appears if you own something to ride. |
 | `mount <name>` | summons that mount, or dismounts if you are already up |
 | `warp` | picks the best warp you have, in order: the Warp or Warp II spell, then a Warp Ring, an Instant Warp, a Warp Cudgel, a Treat Staff II, and a Tavnazian Ring as the last resort. The scroll sits above the two weapons because it costs no swap and no warm-up. Equips the ring or cudgel for you and waits out the enchantment — though if it has more than about 30 seconds left to charge it gives up rather than waiting. The Tavnazian Ring is allowed longer, because its own warm-up is roughly that. A piece already on your finger is not assumed to be ready either: if its enchantment is still coming up, the crossbar waits it out for you, the same as it would for a ring it equipped itself. `warp all` sends your other characters running XIVHud home — when this character's warp actually fires, so calling the countdown off, or a ring warm-up that gets abandoned, leaves them where they are. |
-| `sneak` / `invisible` | picks the cheapest way this character has to get the effect and fires it: the ninjutsu first (Monomi: Ichi / Tonko: Ichi, if you have the tool), then Spectral Jig, then the spell, then a Silent Oil / Prism Powder. The order is the same on every job, so the press behaves the same wherever it is bound; what changes is which rungs you qualify for, which is read from the client - the spells you know and the levels your main and sub actually have. Self-only rungs stay on you; the spell and the item go to a targeted party member if you have one selected. Both take the White Magic icon whichever rung fires, so the slot's face does not change with your subjob. |
+| `sneak` / `invisible` | picks the first way this character has to get the effect and fires it, cheapest first: the spell (Sneak / Invisible), then Spectral Jig, then the ninjutsu if you have the tool (Tonko: Ni over Tonko: Ichi, on Shinobi-Tabi; Monomi: Ichi, on Sanjaku-Tenugui), then a Silent Oil / Prism Powder. The spell and the jig consume nothing, which is why both sit above the ninjutsu. The order is the same on every job, so the press behaves the same wherever it is bound; what changes is which rungs you qualify for, which is read from the client - the spells you know and the levels your main and sub actually have. Self-only rungs stay on you; the spell and the item go to a targeted party member if you have one selected. Both take the White Magic icon whichever rung fires, so the slot's face does not change with your subjob. |
 | `open <name>` | opens a game screen |
 
 `mr` and `warp` count five seconds down before they go, and so does the
@@ -898,11 +898,13 @@ switch is visible even on a bar you have not bound anything to yet.
 its full name, which is what `//hud crossbar list` shows you and what the game
 is sent when you press it.
 
-A **sword** appears above it while your weapon is drawn. That is the
-crossbar's own idea of drawn, the one that picks which set rotation is
-live — so `//hud crossbar draw` lights it even with nothing targeted, which
-is the point: you can put yourself in the combat rotation without picking a
-fight.
+A **sword** sits above it and shows whether your weapon is drawn: the
+attack glyph while it is, the disengage glyph while it is sheathed. That
+is the crossbar's own idea of drawn, the one that picks which set rotation
+is live — so `//hud draw` flips it even with nothing targeted,
+which is the point: you can put yourself in the combat rotation without
+picking a fight. A left-click on the sword flips it the same way: sheathes
+while drawn, draws while sheathed.
 
 **Positioning.** In `//hud layout` you place six things independently: the
 XHB, the WXHB's **left and right sides separately**, the **set label**, the

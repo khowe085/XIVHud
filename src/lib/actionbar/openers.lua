@@ -37,14 +37,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      additions; each new chord entry needs in-client verification, and the
      chords assume the client's default keyboard bindings.
 
-     `icon` is per entry, not per kind: only `map` and the bag family have
-     matches in the default pack's top-level singles. An entry without one
-     takes the render-time fallback (a generic opener glyph plus the slot's
-     name label). ]]
+     `icon` is per entry, not per kind, and named from the default pack's
+     top-level singles: the equipment screen takes `assist`, the four bag
+     screens `usable-item` and the wardrobes `item` (Kevin, 2026-09-06). An
+     entry without one takes the render-time fallback (a generic opener
+     glyph plus the slot's name label). ]]
 
 local openers = {
-  equipment = { chord = { "ctrl", "e" } },
-  inventory = { chord = { "ctrl", "i" }, icon = "item" },
+  equipment = { chord = { "ctrl", "e" }, icon = "assist" },
+  inventory = { chord = { "ctrl", "i" }, icon = "usable-item" },
   wardrobe = { command = "/wardrobe", icon = "item" },
   wardrobe2 = { command = "/wardrobe2", icon = "item" },
   wardrobe3 = { command = "/wardrobe3", icon = "item" },
@@ -53,9 +54,9 @@ local openers = {
   wardrobe6 = { command = "/wardrobe6", icon = "item" },
   wardrobe7 = { command = "/wardrobe7", icon = "item" },
   wardrobe8 = { command = "/wardrobe8", icon = "item" },
-  case = { command = "/case", icon = "item" },
-  sack = { command = "/sack", icon = "item" },
-  satchel = { command = "/satchel", icon = "item" },
+  case = { command = "/case", icon = "usable-item" },
+  sack = { command = "/sack", icon = "usable-item" },
+  satchel = { command = "/satchel", icon = "usable-item" },
   quests = { command = "/quest" }, -- needs in-client verification: a wrong slash command fails silently
   linkshell = { command = "/sea all linkshell", icon = "party-member" },
   linkshell2 = { command = "/sea all linkshell2", icon = "party-member" },

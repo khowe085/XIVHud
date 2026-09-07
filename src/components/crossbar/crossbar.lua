@@ -87,6 +87,10 @@ local GROUPS = {
 -- XIVHud's own chrome, `icons/` for the imported pack and `cooldown/` for
 -- the sweep frames, each with its own licence beside it.
 local ASSETS = "assets/"
+
+-- The sword's art per weapon state (Kevin, 2026-09-06): the pack's own
+-- attack and disengage glyphs, the two a `draw` slot already draws.
+local SWORD_ART = { drawn = "icons/attack.png", sheathed = "icons/disengage.png" }
 local SLOT_COUNT = 8
 local MOUNTED_BUFF = 252
 -- Windower's own mouse-event numbers, and only the two edges the sword's
@@ -222,6 +226,8 @@ local function new(ctx)
        because, unlike the X, it must draw WITH the sweep, not instead of
        it. ]]
   local prims = nil
+  -- Which state's art the sword prim currently carries.
+  local sword_art = "sheathed"
   if ctx.new_image ~= nil and ctx.new_text ~= nil and ctx.asset ~= nil then
     --[[ Sibling-component construction hygiene: draggable off, one tile,
          never fit-to-texture (fit(true) silently defeats size()), an
@@ -279,9 +285,12 @@ local function new(ctx)
       end
       prims.groups[group.key] = slots
     end
-    prims.set_icon = image("icons/weapons/sword.png")
+    --[[ Sheathed is where CONSTRUCTION starts, not where an attach does:
+         the weapon state lives in the action service and outlives a
+         re-attach, so the first refresh reconciles the art to it. ]]
+    prims.set_icon = image(SWORD_ART.sheathed)
     -- The active set, written between the two crosses, with the sword that
-    -- marks the drawn weapon state to its left.
+    -- shows the weapon state to its left.
     prims.set_label = text()
   end
 
@@ -391,12 +400,14 @@ local function new(ctx)
   end
 
   --[[ The sword, placed, or nil when there is none on screen. ONE predicate
-       for drawing it and for hit-testing it (a click on it sheathes): a
-       sword nobody can see must not answer a click, and one on screen must.
-       `visible` and `machine` are the widget's own ways of being off - a
-       user hide, suppression, or nothing scoped yet. ]]
+       for drawing it and for hit-testing it (a click on it flips the weapon
+       state): a sword nobody can see must not answer a click, and one on
+       screen must. `visible` and `machine` are the widget's own ways of
+       being off - a user hide, suppression, or nothing scoped yet. It is
+       on screen in BOTH weapon states (Kevin, 2026-09-06; it drew only
+       while drawn until then), and says which through its art. ]]
   local function sword_at()
-    if not visible or machine == nil or bar.bindings().weapon_state() ~= "drawn" then
+    if not visible or machine == nil then
       return nil
     end
     local entry = anchor_at("weapon")
@@ -554,17 +565,23 @@ local function new(ctx)
     else
       prims.set_label.hide()
     end
-    --[[ The sword, likewise its own: shown while the weapon is drawn,
-         hidden while it is sheathed. Nothing reserves its space any more
-         and nothing needs to - the label cannot move when the sword goes,
-         because the two no longer share an origin.
+    --[[ The sword, likewise its own: always up, wearing `attack.png` while
+         the weapon is drawn and `disengage.png` while it is sheathed
+         (Kevin, 2026-09-06). The art is pushed only when the state it shows
+         changes - `path` reloads the texture, and this repaints far more
+         often than the state moves.
 
          This is the component's OWN weapon state, not the client's status
          - the same state that picks which set rotation is live - so it
-         lights on `draw` even with nothing targeted, which is what makes
+         flips on `draw` even with nothing targeted, which is what makes
          that press visible at all. ]]
     local weapon_at = sword_at()
     if weapon_at ~= nil then
+      local state = bar.bindings().weapon_state()
+      if SWORD_ART[state] ~= nil and state ~= sword_art then
+        prims.set_icon.path(ctx.asset(ASSETS .. SWORD_ART[state]))
+        sword_art = state
+      end
       local icon_size = render.set_icon_size() * weapon_at.scale
       prims.set_icon.pos(weapon_at.pos.x, weapon_at.pos.y)
       prims.set_icon.size(icon_size, icon_size)
@@ -1211,9 +1228,9 @@ local function new(ctx)
     if service.edit_owner() ~= nil then
       return false
     end
-    --[[ A left-click on the sword sheathes. The sword is drawn only while
-         the weapon state is DRAWN, so the click is one way and resolves
-         straight to `sheathe` rather than through the `draw` verb, which
+    --[[ A left-click on the sword flips the weapon state: drawn it
+         sheathes, sheathed it draws. Each direction resolves straight to
+         its own one-way plan rather than through the `draw` verb, which
          answers the state it is given and mounted would dismount instead
          (Kevin, 2026-09-05). Preview is layout mode opening: core stops
          dispatching then, and this refuses in the same breath rather than
@@ -1256,7 +1273,11 @@ local function new(ctx)
       -- a nil height would compare against nothing.
       local width, height = render.bounds("weapon", entry.scale)
       if width ~= nil and inside(x, y, entry.pos.x, entry.pos.y, width, height) then
-        service.sheathe()
+        if bar.bindings().weapon_state() == "drawn" then
+          service.sheathe()
+        else
+          service.draw()
+        end
         bar.sync_weapon()
         swallow_left_up = true
         return true

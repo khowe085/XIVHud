@@ -32,14 +32,21 @@ describe("crossbar openers", function()
 
   it("carries per-entry icons where the default pack has a match", function()
     assert.equal("map", openers.map.icon)
-    assert.equal("item", openers.inventory.icon)
     assert.equal("item", openers.wardrobe.icon)
-    assert.equal("item", openers.satchel.icon)
     assert.equal("party-member", openers.linkshell.icon)
     assert.equal("party-member", openers.linkshell2.icon)
-    -- No match in the pack: these take the render-time fallback.
-    assert.is_nil(openers.equipment.icon)
+    -- No match in the pack: this takes the render-time fallback.
     assert.is_nil(openers.quests.icon)
+  end)
+
+  it("draws the equipment screen as the assist glyph (Kevin, 2026-09-06)", function()
+    assert.equal("assist", openers.equipment.icon)
+  end)
+
+  it("draws the four bag screens as the usable-item glyph (Kevin, 2026-09-06)", function()
+    for _, name in ipairs({ "inventory", "satchel", "sack", "case" }) do
+      assert.equal("usable-item", openers[name].icon, name)
+    end
   end)
 
   it("gives every entry exactly one opener", function()

@@ -1295,9 +1295,11 @@ local function check_assets()
     -- The generic opener glyph and ra's art, both resolved by render.lua.
     "icons/check.png",
     "icons/ranged.png",
-    -- openers.lua: every icon its entries carry.
+    -- openers.lua: every icon its entries carry (usable-item is above).
     "icons/item.png",
+    "icons/assist.png",
     "icons/map.png",
+    "icons/party-member.png",
     -- contexts.lua: the icons the roster entries name - the arts/addendum
     -- books, and BLU's job icon for unbridled (the shipped ability sheet is
     -- keyed by recast id, which nothing here can look up). Load-checked with
@@ -1312,12 +1314,12 @@ local function check_assets()
     "icons/spells/00261.png",
     "icons/spells/00137.png",
     "icons/spells/00136.png",
+    -- The first two are also the sword beside the crossbar's set label,
+    -- which drew a bare square when its path went wrong and said nothing
+    -- about it.
     "icons/attack.png",
     "icons/disengage.png",
     "icons/dismount.png",
-    -- The sword beside the set label, which drew a bare square when its
-    -- path went wrong and said nothing about it.
-    "icons/weapons/sword.png",
     -- The pre-rendered job icons, XivParty art rather than the pack -
     -- their own generation step, so their own sample.
     "icons/jobs/whm.png",

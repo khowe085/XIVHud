@@ -401,12 +401,13 @@ describe("crossbar widget", function()
 
   it("keeps everything hidden until show() and blanks again on hide()", function()
     -- 32 slot pieces, plus the set label, which says which set the XHB is
-    -- on whether or not a side is held.
-    assert.are.equal(33, visible_count(), "the panel stays down while nothing is held")
+    -- on whether or not a side is held, plus the sword, which says the
+    -- weapon state whether or not the weapon is drawn.
+    assert.are.equal(34, visible_count(), "the panel stays down while nothing is held")
     widget.hide()
     assert.are.equal(0, visible_count())
     widget.show()
-    assert.are.equal(33, visible_count())
+    assert.are.equal(34, visible_count())
   end)
 
   it("scales the grid with the main anchor", function()
@@ -461,8 +462,8 @@ describe("crossbar widget", function()
     end
     assert.is_not_nil(panel)
     assert.is_false(panel.visible, "the wxhb anchor was never placed")
-    -- 32 slot pieces plus the set label.
-    assert.are.equal(33, visible_count(), "the XHB stays up, inactive")
+    -- 32 slot pieces plus the set label and the sword.
+    assert.are.equal(34, visible_count(), "the XHB stays up, inactive")
   end)
 
   it("survives a scale applied before any position", function()
@@ -503,11 +504,12 @@ describe("crossbar widget", function()
     local panel = images_at(100 + 150, 900)[1]
     assert.is_not_nil(panel, "the Expanded panel sits centred on main")
     assert.is_true(panel.visible)
-    -- Eight slots of background+frame, the panel, and the set label -
-    -- which names the XHB's set whether or not Expanded has replaced it.
-    assert.are.equal(16 + 1 + 1, visible_count(), "eight slots, the panel, the set label")
+    -- Eight slots of background+frame, the panel, the set label - which
+    -- names the XHB's set whether or not Expanded has replaced it - and the
+    -- sword.
+    assert.are.equal(16 + 1 + 1 + 1, visible_count(), "eight slots, the panel, the set label, the sword")
     widget.on_keyboard(RIGHT, false, 0, false)
-    assert.are.equal(32 + 1 + 1, visible_count(), "the survivor's XHB side returns, panelled, label and all")
+    assert.are.equal(32 + 1 + 1 + 1, visible_count(), "the survivor's XHB side returns, panelled, label and all")
   end)
 
   --[[ Per-anchor visibility. Core sends hide(<anchor>) for one the user has
@@ -533,10 +535,10 @@ describe("crossbar widget", function()
 
     it("takes the whole XHB down on hide('main')", function()
       local label = prims.texts[#prims.texts]
-      assert.are.equal(33, visible_count(), "32 XHB slot prims and the set label")
+      assert.are.equal(34, visible_count(), "32 XHB slot prims, the set label and the sword")
       widget.hide("main")
-      assert.are.equal(1, visible_count(), "only the set label is left")
-      assert.is_true(label.visible, "and it is the set label, on its own anchor")
+      assert.are.equal(2, visible_count(), "only the set label and the sword are left")
+      assert.is_true(label.visible, "and one is the set label, on its own anchor")
     end)
 
     -- Core walks the anchors in declared order, so a named show arrives among
@@ -548,7 +550,7 @@ describe("crossbar widget", function()
       widget.hide("set")
       widget.show("set")
       assert.is_true(label.visible, "the set label was the one asked for")
-      assert.are.equal(1, visible_count(), "main must stay down")
+      assert.are.equal(2, visible_count(), "main must stay down; the label and the sword are up")
     end)
 
     it("undoes every per-anchor hide on a whole-widget show", function()
@@ -603,18 +605,26 @@ describe("crossbar widget", function()
          the prim builder put `own/` in front of every texture, which is
          right for the chrome and wrong for the sword, and a missing
          texture draws the prim's fill rather than complaining. Nothing
-         caught it, so this checks the path AND that the file is there. ]]
+         caught it, so this checks the path AND that the file is there -
+         for both states' art, since the sword swaps between them. ]]
     local sword = prims.images[#prims.images]
-    assert.are.equal("addon/assets/icons/weapons/sword.png", sword.last.path)
-    local file = io.open("src/assets/icons/weapons/sword.png", "rb")
-    assert.is_not_nil(file, "the sword art must ship")
-    file:close()
+    assert.are.equal("addon/assets/icons/disengage.png", sword.last.path, "sheathed is where a build starts")
+    for _, art in ipairs({ "attack", "disengage" }) do
+      local file = io.open("src/assets/icons/" .. art .. ".png", "rb")
+      assert.is_not_nil(file, "the sword art must ship: " .. art)
+      file:close()
+    end
   end)
 
-  it("keeps the sword down while the weapon is sheathed", function()
-    -- Sheathed is the state a fresh attach starts in. The sword is the last
-    -- image in the list.
-    assert.is_false(prims.images[#prims.images].visible)
+  it("shows the sword sheathed, wearing the disengage art", function()
+    --[[ The sword is always on screen (Kevin, 2026-09-06): it drew only
+         while the weapon was drawn until then, and says the state through
+         its art now - `attack.png` drawn, `disengage.png` sheathed.
+         Sheathed is the state a fresh attach starts in, and the sword is
+         the last image in the list. ]]
+    local sword = prims.images[#prims.images]
+    assert.is_true(sword.visible)
+    assert.are.equal("addon/assets/icons/disengage.png", sword.last.path)
   end)
 
   it("does not strand the panel across hide and show", function()
@@ -747,7 +757,7 @@ describe("crossbar widget", function()
     widget.detach()
     assert.are.equal(0, visible_count(), "detach blanks every prim")
     widget.attach(widget.defaults)
-    assert.are.equal(33, visible_count(), "re-attach redraws the resting bar")
+    assert.are.equal(34, visible_count(), "re-attach redraws the resting bar")
     assert.is_false(panel.visible, "the old side is forgotten")
     -- A re-attach straight over a live hold forgets it too: the fresh
     -- machine holds nothing, and the widget's memory must not outlive it.
@@ -1166,6 +1176,11 @@ describe("crossbar live widget", function()
     return prims.images[#prims.images]
   end
 
+  -- Which state the sword's art says: `attack` drawn, `disengage` sheathed.
+  local function sword_art()
+    return (sword_icon().last.path or ""):match("([^/]+)%.png$")
+  end
+
   local function text_of(group, slot, kind)
     return prims.texts[(GROUP_INDEX[group] * 8 + slot - 1) * 3 + TEXT_KIND[kind]]
   end
@@ -1340,13 +1355,13 @@ describe("crossbar live widget", function()
       player.buffs = { 252 }
       build_world({ store_files = files, player = player })
       env.files["addon/assets/icons/mounts/mount-roulette.png"] = true
-      env.files["addon/assets/icons/check.png"] = true
+      env.files["addon/assets/icons/assist.png"] = true
       env.files["addon/assets/icons/dismount.png"] = true
       widget.attach(config, function() end, store)
       widget.set_pos(100, 900, "main")
       widget.show()
       assert.are.equal("addon/assets/icons/mounts/mount-roulette.png", image_of("xhb_left", 1, "icon").last.path)
-      assert.are.equal("addon/assets/icons/check.png", image_of("xhb_left", 2, "icon").last.path)
+      assert.are.equal("addon/assets/icons/assist.png", image_of("xhb_left", 2, "icon").last.path)
       assert.are.equal(
         "addon/assets/icons/dismount.png",
         image_of("xhb_left", 7, "icon").last.path,
@@ -1768,14 +1783,15 @@ describe("crossbar live widget", function()
       release(SWITCH)
       release(LAYER)
       assert.are.same({}, env.commands, "nothing sent on the way in")
-      assert.is_true(sword_icon().visible, "but the sword says the state flipped")
+      assert.are.equal("attack", sword_art(), "but the sword says the state flipped")
       -- Drawn now; the same gesture disengages.
       press(LAYER)
       press(SWITCH)
       release(SWITCH)
       release(LAYER)
       assert.are.same({ "input /attack off" }, env.commands)
-      assert.is_false(sword_icon().visible)
+      assert.are.equal("disengage", sword_art())
+      assert.is_true(sword_icon().visible, "the sword stays up sheathed")
     end)
 
     it("sends nothing on the way in whether or not anything is targeted", function()
@@ -1789,7 +1805,7 @@ describe("crossbar live widget", function()
       release(LAYER)
       assert.are.same({}, env.commands)
       assert.are.same({}, env.chat, "no complaint")
-      assert.is_true(sword_icon().visible)
+      assert.are.equal("attack", sword_art())
     end)
 
     it("still fires the framework's verbs from a shortcut key", function()
@@ -1802,7 +1818,7 @@ describe("crossbar live widget", function()
       press(58)
       release(58)
       assert.are.equal("drawn", service_under_test.weapon_state())
-      assert.is_true(sword_icon().visible, "and the bar mirrored it at once")
+      assert.are.equal("attack", sword_art(), "and the bar mirrored it at once")
       press(59)
       release(59)
       assert.is_not_nil(said():lower():find("warp"), "the ladder was walked: " .. said())
@@ -5802,7 +5818,7 @@ describe("crossbar live widget", function()
       build_world()
       hud_draw(widget)
       assert.are.same({}, env.commands, "entering drawn sends nothing")
-      assert.is_true(sword_icon().visible, "the sword is what says it worked")
+      assert.are.equal("attack", sword_art(), "the sword is what says it worked")
       hud_draw(widget)
       assert.are.same({ "input /attack off" }, env.commands)
     end)
@@ -6417,12 +6433,13 @@ describe("crossbar live widget", function()
       end
     end)
   end)
-  --[[ The sword's click. The sword is drawn only while the weapon state is
-       drawn, so a left-click on it can mean exactly one thing - sheathe -
-       and it resolves straight to that rather than through the `draw` verb,
-       which mounted would dismount instead (Kevin, 2026-09-05). There is no
-       setting: the sword is either on screen and clickable or not there at
-       all. ]]
+  --[[ The sword's click. The sword is always on screen and wears the
+       state (Kevin, 2026-09-06 - it drew only while DRAWN until then), so a
+       left-click on it flips the state one way or the other: drawn it
+       sheathes, sheathed it draws. Each resolves straight to that rather
+       than through the `draw` verb, which mounted would dismount instead
+       (Kevin, 2026-09-05). There is no setting: the sword is on screen and
+       clickable whenever the widget is. ]]
   describe("the sword's click", function()
     local MOUSE_MOVE, MOUSE_LEFT_DOWN, MOUSE_LEFT_UP = 0, 1, 2
 
@@ -6441,22 +6458,49 @@ describe("crossbar live widget", function()
     it("sheathes on a click of the sword, and swallows both edges", function()
       build_world()
       draw_weapon()
-      assert.is_true(sword_icon().visible, "the sword is on screen to be clicked")
+      assert.are.equal("attack", sword_art(), "the sword is on screen to be clicked")
       local x, y = sword_point()
       assert.is_true(widget.on_mouse(MOUSE_LEFT_DOWN, x, y, 0), "the press is ours")
       assert.are.same({ "input /attack off" }, env.commands)
-      assert.is_false(sword_icon().visible, "and the state really flipped")
+      assert.are.equal("disengage", sword_art(), "and the state really flipped")
       assert.is_true(widget.on_mouse(MOUSE_LEFT_UP, x, y, 0), "the release goes with it")
     end)
 
-    it("leaves the click to the game while the weapon is sheathed", function()
-      -- Sheathed is where a fresh attach starts, and nothing is drawn there
-      -- to click: the square is the game's like any other empty pixel.
+    it("draws on a click of the sword while sheathed, and swallows both edges", function()
+      -- Sheathed is where a fresh attach starts. Entering drawn sends
+      -- nothing, the way the draw toggle enters it: the sword's art is what
+      -- says it worked.
       build_world()
+      assert.are.equal("disengage", sword_art())
       local x, y = sword_point()
-      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, x, y, 0))
-      assert.is_false(widget.on_mouse(MOUSE_LEFT_UP, x, y, 0))
+      assert.is_true(widget.on_mouse(MOUSE_LEFT_DOWN, x, y, 0), "the press is ours")
       assert.are.same({}, env.commands)
+      assert.are.equal("drawn", service_under_test.weapon_state())
+      assert.are.equal("attack", sword_art())
+      assert.is_true(widget.on_mouse(MOUSE_LEFT_UP, x, y, 0), "the release goes with it")
+    end)
+
+    it("swaps the sword's art only when the state changes", function()
+      -- `path` reloads the texture, so a settled bar must not push it on
+      -- every repaint.
+      build_world()
+      local function path_pushes()
+        local count = 0
+        for _, call in ipairs(sword_icon().calls) do
+          if call.name == "path" then
+            count = count + 1
+          end
+        end
+        return count
+      end
+      local before = path_pushes()
+      push(widget)
+      push(widget)
+      assert.are.equal(before, path_pushes(), "a repaint in the same state pushes no art")
+      draw_weapon()
+      assert.are.equal(before + 1, path_pushes(), "the flip pushes it once")
+      push(widget)
+      assert.are.equal(before + 1, path_pushes())
     end)
 
     it("sheathes rather than dismounting while mounted", function()
@@ -6469,6 +6513,17 @@ describe("crossbar live widget", function()
       push(widget)
       assert.is_true(widget.on_mouse(MOUSE_LEFT_DOWN, sword_point()))
       assert.are.same({ "input /attack off" }, env.commands)
+    end)
+
+    it("draws rather than dismounting while mounted and sheathed", function()
+      -- The other direction of the same rule: the sword says sheathed, the
+      -- click says draw, and being mounted cannot reach it.
+      build_world()
+      env.player.buffs = { 252 }
+      push(widget)
+      assert.is_true(widget.on_mouse(MOUSE_LEFT_DOWN, sword_point()))
+      assert.are.same({}, env.commands)
+      assert.are.equal("drawn", service_under_test.weapon_state())
     end)
 
     it("hands back every click that is not on the sword", function()
