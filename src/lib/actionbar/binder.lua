@@ -277,6 +277,10 @@ local function new(deps)
   -- nested, so coming back out to page 1 would only lose your place.
   local submenu = nil
   local submenu_page = 1
+  -- The page the target step was reached from, restored when backing out of
+  -- it: the list behind it has not moved, and on a 91-row blood pact submenu
+  -- landing back at page 1 is six pages of finding your place again.
+  local target_page = 1
   local catalog_groups = nil
   local category_index, page = 1, 1
   local press = nil
@@ -1313,7 +1317,7 @@ local function new(deps)
     if step == STEP_TARGET then
       -- Back to whichever list the action was picked from: the children where
       -- one was nested, the catalog where it was not.
-      step, page, pending = submenu ~= nil and STEP_SUBMENU or STEP_CATALOG, 1, nil
+      step, page, pending = submenu ~= nil and STEP_SUBMENU or STEP_CATALOG, target_page, nil
     elseif step == STEP_SUBMENU then
       step, page, submenu = STEP_CATALOG, submenu_page, nil
     elseif step == STEP_CATALOG then
@@ -1355,17 +1359,24 @@ local function new(deps)
       --[[ A type that takes a target gets the third step; the rest bind
            where they stand. Skipping the step for a `draw` or an `open`
            would otherwise ask which mob to aim a menu at. ]]
+      local record = target.entry.record
       if target.entry.children ~= nil then
         -- A menu, not an action: its children are the step, and binding the
         -- parent would write a command the game refuses.
         submenu, submenu_page, step, page = target.entry, page, STEP_SUBMENU, 1
         details, hovered = nil, nil
-      elseif TARGETED_TYPES[target.entry.record.type] then
-        pending = copy_record(target.entry.record)
-        step, page = STEP_TARGET, 1
+      elseif type(record) ~= "table" then
+        -- Neither a menu nor an action. Nothing here builds one, but this is a
+        -- MOUSE handler: an unguarded index is a crash `lib/guard` answers by
+        -- disabling input outright, which is a bad way to meet a malformed
+        -- entry. Inert rather than fatal.
+        return
+      elseif TARGETED_TYPES[record.type] then
+        pending = copy_record(record)
+        step, target_page, page = STEP_TARGET, page, 1
         details, hovered = nil, nil
       else
-        commit(target.entry.record)
+        commit(record)
       end
     elseif target.kind == "target" then
       if pending ~= nil then
@@ -1511,6 +1522,10 @@ local function new(deps)
          walks to the end, and only the write says the layer is out of
          reach. Back to the layer step, with the preview taken down. ]]
     if not cursor_offered() then
+      -- `submenu` is redundant here and kept deliberately: the only way
+      -- forward from the layer step is a row click, which clears it too. It
+      -- belongs to the "every route out of a nested view clears it" rule, so
+      -- no assertion can isolate it.
       cursor, pending, submenu = nil, nil, nil
       step, page = STEP_LAYER, 1
       details, hovered = nil, nil

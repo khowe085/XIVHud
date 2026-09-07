@@ -88,7 +88,7 @@ client's list is the source, because that list is already level-filtered by the
 client - but it is exactly what breaks the moment we synthesize entries the
 client did not list.
 
-The rule for this work, applied identically to all nine families:
+The rule for this work, applied identically to all sixteen families:
 
 > Children are the `res.job_abilities` entries of the family's `type`. A child
 > the client's `get_abilities().job_abilities` lists is included. If the client
@@ -126,8 +126,13 @@ command word. `pet` already fires as `/pet "<name>" <target>`
 (`binder.lua:135-143`), so **blood pacts and ready moves need no execution
 work at all** - this is a catalog and picker change end to end.
 
-The only hardcoded data in the change is the nine-row parent table above:
-parent id -> child type. Everything else is derived.
+**That last claim was WRONG and is corrected below** (review round 14): the
+change does reach the action service once, to add `pet` to `RETRY_KINDS`.
+
+The hardcoded data in the change is the sixteen-row parent table above
+(parent id, the parent's own resource type, child type), the one-row `MENUS`
+table for `Pet commands` (55), and `PREFIX_TYPES` mapping the resource's two
+prefixes onto record types. Everything else is derived.
 
 ## The picker: a nested fourth step (Kevin, 2026-09-07)
 
@@ -186,11 +191,40 @@ where the old ones stay.
 - the X closes from the submenu step
 - committing from a submenu writes the child's record and drops to the layer
 
+## The retry reversal (Kevin, 2026-09-07)
+
+Deriving a record's type from `prefix` does not only affect the families. It
+also re-types the ~30 ordinary `PetCommand` abilities in the flat list - Fight,
+Heel, Deploy, the eight maneuvers, Avatar's Favor - from `ja` to `pet`. Two
+sources say that is right (the resource's own `prefix`, and upstream, which
+maps its `PET_COMMAND` type to `/pet` and lists the maneuvers under it), but
+whether `/ja` was actually broken for them is unverified: the game may accept
+both.
+
+It also cost them their cast retry. `service.lua`'s `RETRY_KINDS` had no `pet`
+entry, and that absence was DELIBERATE - `crossbar_spec` pinned it, with the
+reasoning that nobody has seen which message refuses a `/pet` and guessing it
+is the job ability's 71 "is the one thing this feature must not do".
+
+Kevin's call: **keep the retype and add `pet` to `RETRY_KINDS` under the
+ABILITY kind**, reversing that decision and rewriting the test that pinned it.
+What changed is the COST, not the evidence: `pet` was CLI-only before, so
+sitting the retry out cost nothing; now thirty abilities that had coverage lose
+it. Watching them on a guessed id is the lesser risk - a wrong id means the
+retry never fires, which is exactly the behaviour being replaced. Blood pacts
+gain a retry they never had.
+
+Still unverified, and carried in `service.lua` beside the entry: the message a
+refused `/pet` actually carries, and whether AMNESIA blocks one. Live-client
+rows 8.6a-8.6c. Row 8.6c records a further doubt raised in review - `render.lua`
+says pacts share recast id 0 with the 1-hour SP abilities, which if true would
+make the pacts' new retry inert while the SP is down.
+
 ## Settled, not open
 
 - The category column stays live during the submenu step (above).
 - **The long lists ship as they are** (Kevin, 2026-09-07): a SMN is offered all
-  91 blood pacts and a BST all 120 ready moves - the longest of the nine, and
+  91 blood pacts and a BST all 120 ready moves - the longest of them, and
   worse than the 91 first quoted - unfiltered by level, avatar or jug pet;
   six pages of wheel. Narrowing blood pacts by the avatar currently out
   would need a pact -> avatar map transcribed by hand and unverifiable here,
@@ -206,7 +240,10 @@ Implemented 2026-09-07 on `work/claude/edit-binder`, cut from origin/dev at
 round 1 found a job-change strand, round 2 a second strand on the subjob path,
 round 3 the seven missing DNC families, round 4 `Pet commands` (55), round 5 a
 parentless family and a hollow assertion, round 8 an overclaimed `/pet` note
-and two unpinned step resets - all fixed under TDD. Rounds 6, 7 and 9 CLEAN.
+and two unpinned step resets, round 10 the retry gap below and an untested
+branch, round 12 a wiki page still saying pet abilities are not retried, round
+14 three stale claims in THIS file - all fixed under TDD. Rounds 6, 7, 9, 11
+and 13 CLEAN.
 
 Kevin then asked for one thing beyond the feature (2026-09-07): `refresh`
 compared only the MAIN job, so a subjob change rebuilt nothing and the picker

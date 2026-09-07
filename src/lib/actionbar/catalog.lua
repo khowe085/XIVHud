@@ -66,10 +66,15 @@ local INVENTORY_BAG = 0
      A wrong id here WOULD BE a silent removal rather than a no-op: `parents`
      keeps an id out of the flat list even where no submenu is built, so an id
      naming a real usable ability would make it unbindable from the picker with
-     no message anywhere. Which is why `parent_type` is checked at runtime -
-     an id that is not the menu it was taken for is left FLAT, the direction
-     everything else here degrades in, and the table above can be wrong without
-     costing anyone an ability. ]]
+     no message anywhere. Which is why `parent_type` is checked at runtime: an
+     id landing on a record of the wrong type is left FLAT, the direction
+     everything else here degrades in.
+
+     That is NOT a proof the table is right. Thirteen of the seventeen parents
+     are `JobAbility`, which is what nearly every ordinary ability is, so an id
+     that slipped onto another `JobAbility` still passes the check and still
+     disappears. What it catches is the LIKELIEST slip - an off-by-one into the
+     family's own children - and it costs one comparison. ]]
 local FAMILIES = {
   { parent = 223, children = "Scholar", parent_type = "JobAbility" }, -- Stratagems
   { parent = 97, children = "CorsairRoll", parent_type = "JobAbility" }, -- Phantom Roll
@@ -244,8 +249,14 @@ local function new(deps)
     end
   end
 
-  local function ability_record(ability)
-    return { type = PREFIX_TYPES[ability.prefix] or "ja", action = ability.en }
+  --[[ `fallback` is the family's own parent prefix where there is one: a
+       `BloodPactRage` record whose resource entry omitted `prefix` would
+       otherwise bind as `/ja "Volt Strike"`, a guaranteed dead bind and the
+       exact failure this file exists to remove. The flat list has no family to
+       borrow from and keeps `ja`, which is what every ability bound before
+       this used. ]]
+  local function ability_record(ability, fallback)
+    return { type = PREFIX_TYPES[ability.prefix] or fallback or "ja", action = ability.en }
   end
 
   --[[ A family's submenu, and which child types are spoken for.
@@ -283,8 +294,18 @@ local function new(deps)
          runs past a thousand entries with the pacts and Ready moves in it, and
          sixteen traversals of it is the same work done sixteen times. Built
          here rather than at load, because `deps.resources` is injected. ]]
+    --[[ Nothing to bucket for a job whose client lists no menu at all, which
+         is most of them: the pass below is a whole traversal of
+         `res.job_abilities` and every entry in it allocates. ]]
+    local wanted = false
+    for _, family in ipairs(FAMILIES) do
+      if listed_ids[family.parent] then
+        wanted = true
+        break
+      end
+    end
     local by_type = {}
-    for id, ability in pairs(job_abilities) do
+    for id, ability in pairs(wanted and job_abilities or {}) do
       if type(ability) == "table" and type(ability.en) == "string" and ability.type ~= nil then
         local bucket = by_type[ability.type]
         if bucket == nil then
@@ -317,7 +338,10 @@ local function new(deps)
                its own submenu and, where the client lists only the parent, be
                the ONLY row in it - the exact dead bind this removes. ]]
           if row.id ~= family.parent then
-            local entry = { label = row.ability.en, record = ability_record(row.ability) }
+            local entry = {
+              label = row.ability.en,
+              record = ability_record(row.ability, PREFIX_TYPES[parent.prefix]),
+            }
             all[#all + 1] = entry
             if listed_ids[row.id] then
               named[#named + 1] = entry
