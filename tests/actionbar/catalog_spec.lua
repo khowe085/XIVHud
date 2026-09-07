@@ -675,6 +675,26 @@ describe("crossbar catalog", function()
       assert.same({ "Accession", "Addendum: White" }, child_labels(list, "Stratagems"))
     end)
 
+    it("leaves the children flat when the resources cannot supply the parent", function()
+      --[[ The mirror of the case below. A family is only spoken for once the
+           PARENT RECORD is there to open it: without one no submenu can be
+           built, and suppressing the children too would take them off the
+           picker with no message - the silent removal this file warns about,
+           and the opposite of degrading toward offering more. ]]
+      local degraded = family_resources()
+      degraded.job_abilities[223] = nil
+      local catalog = build({
+        resources = degraded,
+        spells = {},
+        items = { [0] = {} },
+        mounts = {},
+        abilities = { job_abilities = { 223, 218 }, weapon_skills = {} },
+      })
+      local list = catalog.build()
+      assert.is_nil(entry_named(list, "Job Abilities", "Stratagems"))
+      assert.same({ type = "ja", action = "Accession" }, entry_named(list, "Job Abilities", "Accession").record)
+    end)
+
     it("drops a parent whose children the resources cannot supply", function()
       local degraded = family_resources()
       degraded.job_abilities[218] = nil

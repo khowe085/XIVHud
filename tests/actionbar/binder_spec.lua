@@ -2019,7 +2019,7 @@ describe("crossbar binder", function()
       assert.is_nil(binder.details(), "a menu describes no action")
       for _, prim in ipairs(env.prims.images) do
         if prim.visible and prim.destroyed == 0 then
-          assert.are_not.equal(parent.y, prim.last.y, "no icon sits on the menu row")
+          assert.are_not.equal(parent.y, prim.y, "no icon sits on the menu row")
         end
       end
     end)

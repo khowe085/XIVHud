@@ -53,19 +53,15 @@ local INVENTORY_BAG = 0
      command the game refuses, and until this the children could not be reached
      from the picker at all (Kevin, live client, 2026-09-07).
 
-     Ids and type names are the resource's own, read off Windower/Resources
-     2026-09-07 rather than recalled.
-
-     ONE entry that looks like a parent and is deliberately absent: `Sic` (72)
-     is directly USABLE - `/pet "Sic" <t>` is a real command - even though the
-     moves it fires are the same `Monster` pool `Ready` (251) opens. ]]
---[[ Each row is `id -- name (the parent's OWN type) -> child type`, every
-     field read off the resource data rather than recalled. A parent's own type
-     is recorded because it is load-bearing: no parent's type is any family's
-     CHILD type, which is what keeps a parent from being swept into its own
-     submenu - and, since a client-listed child beats the whole-family
-     fallback, from being the only row in it. `Sic` (72, PetCommand) is the
-     same shape and is likewise never collected.
+     Each row is `id -- name (the parent's OWN type) -> child type`, every
+     field read off Windower/Resources 2026-09-07 rather than recalled. The
+     parent's own type is written down because it is load-bearing: no parent's
+     type is any family's CHILD type, which is what keeps a parent from being
+     swept into its own submenu - and, since a client-listed child beats the
+     whole-family fallback, from being the only row in it. `Sic` (72,
+     PetCommand) has that same shape and is likewise never collected: it is
+     directly USABLE, `/pet "Sic" <t>` being a real command, even though the
+     moves it fires are the same `Monster` pool `Ready` (251) opens.
 
      A WRONG ID HERE IS A SILENT REMOVAL, not a no-op: `parents[id]` keeps an
      id out of the flat list even where no submenu is built, so an id that
@@ -276,7 +272,13 @@ local function new(deps)
       parents[id] = true
     end
     for _, family in ipairs(FAMILIES) do
-      if listed_ids[family.parent] then
+      --[[ The parent RECORD, not just the id on the client's list: without one
+           there is nothing to open the submenu from, and marking the family
+           spoken for anyway would suppress every child as well - taking the
+           whole family off the picker with no message, which is the silent
+           removal this file warns about above and the opposite of degrading
+           toward offering more. ]]
+      if listed_ids[family.parent] and type(job_abilities[family.parent]) == "table" then
         spoken_for[family.children] = true
         parents[family.parent] = true
         local all, named = {}, {}

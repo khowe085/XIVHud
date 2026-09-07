@@ -172,7 +172,9 @@ where the old ones stay.
 - the parent never appears as a bindable entry
 - a child the client lists is not ALSO in the flat `Job Abilities` list
 - `prefix` picks the record type: `/pet` children bind as `pet`
-- Sic stays a plain bindable ability; DNC families stay flat
+- Sic stays a plain bindable ability, and `Pet commands` (55) is dropped with
+  no submenu (its children are already bindable one by one)
+- the seven plural DNC menus are parents like the rest
 
 `tests/actionbar/binder_spec.lua`:
 
