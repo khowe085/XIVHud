@@ -368,6 +368,10 @@ local function new(deps)
       step = STEP_CATALOG
     end
     submenu = nil
+    -- The column describes an action from the listing just replaced, and
+    -- `hovered` would rebuild those same stale lines every cadence tick until
+    -- the cursor moved. The idiom every other transition here uses.
+    details, hovered = nil, nil
     -- The memo is keyed by record identity, and those records are new.
     icon_memo = {}
   end

@@ -278,12 +278,24 @@ local function new(deps)
            whole family off the picker with no message, which is the silent
            removal this file warns about above and the opposite of degrading
            toward offering more. ]]
-      if listed_ids[family.parent] and type(job_abilities[family.parent]) == "table" then
+      local parent = job_abilities[family.parent]
+      if listed_ids[family.parent] and type(parent) == "table" and type(parent.en) == "string" then
         spoken_for[family.children] = true
         parents[family.parent] = true
         local all, named = {}, {}
         for id, ability in pairs(job_abilities) do
-          if type(ability) == "table" and ability.type == family.children and type(ability.en) == "string" then
+          --[[ `id ~= family.parent` is belt to the braces of the table above:
+               no parent's own type IS its family's child type, so this cannot
+               fire today. It is here so that fact does not have to hold - a
+               parent that ever typed itself as its own child would land in its
+               own submenu and, where the client lists only the parent, be the
+               ONLY row in it: the exact dead bind this change removes. ]]
+          if
+            id ~= family.parent
+            and type(ability) == "table"
+            and ability.type == family.children
+            and type(ability.en) == "string"
+          then
             local entry = { label = ability.en, record = ability_record(ability) }
             all[#all + 1] = entry
             if listed_ids[id] then

@@ -1990,6 +1990,9 @@ describe("crossbar binder", function()
       assert.are.equal("General", binder.catalog_view().category)
       assert.is_nil(binder.catalog_view().submenu, "the submenu does not survive the switch")
       assert.is_not_nil(entry_named(env, "Attack"))
+      -- The STEP comes back with it: left on STEP_SUBMENU the header reads
+      -- "pick from ?", the submenu it names having just been dropped.
+      assert.is_not_nil(shown_text(env, "pick an action"))
     end)
 
     it("pages a submenu longer than one page", function()
@@ -2057,6 +2060,7 @@ describe("crossbar binder", function()
       env.bindings.set_job("MNK", "NIN")
       binder.refresh()
       assert.is_nil(binder.catalog_view().submenu, "back out to the rebuilt catalog")
+      assert.is_not_nil(shown_text(env, "pick an action"), "and the step came back with it")
       assert.is_nil(entry_named(env, "SCH child"), "the old job's children are gone")
       assert.is_not_nil(entry_named(env, "Stratagems"))
     end)
