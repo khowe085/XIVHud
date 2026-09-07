@@ -1,6 +1,6 @@
 # Global buff verbs (`//hud buffs`) - plan
 
-Status: BUILT 2026-09-05 on `work/claude/global-buffs`, awaiting review and PR.
+Status: DONE. Merged into dev as PR #44 (6d22342) on 2026-09-05; the worktree and branch are gone.
 Two deviations from the design below, both flagged in the summary to Kevin:
 the bare `//hud buffs statusbar` keeps listing EVERY bar (the existing
 behaviour - a bar word narrows it) rather than defaulting to bar1, and the
