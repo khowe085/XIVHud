@@ -599,7 +599,7 @@ In edit mode:
 window: drag a slot onto another slot to swap them entirely, or drag a slot
 onto **genuinely empty screen** to clear it — which removes it from the layer
 you are editing, and leaves every other layer alone. Dragging an action out
-of the list does nothing; the three steps are the way to bind. A drop that
+of the list does nothing; the steps are the way to bind. A drop that
 lands on any part of the binder — the window, the bar itself — cancels
 quietly and changes nothing.
 
@@ -613,9 +613,26 @@ Then a single window opens dead centre and walks you through:
 3. **Pick a target** — the common target tokens, with `(no target)` first (`stal`, `lastst`, `scan` and `r` are `bind`-command only). Actions
    that cannot take a target skip this step and bind straight away.
 
+**Menus get a fourth step.** Some entries in the action list are the game's own
+menus rather than actions — **Stratagems** on SCH, **Phantom Roll** and **Quick
+Draw** on COR, **Waltzes**, **Sambas**, **Jigs**, **Steps** and **Flourishes
+I/II/III** on DNC, **Rune Enchantment**, **Ward** and **Effusion** on RUN,
+**Blood Pact: Rage** and **Blood Pact: Ward** on SMN, **Ready** on BST. Clicking
+one opens what is behind it, and you pick the real action there: Stratagems
+then Accession, Blood Pact: Rage then Volt Strike. `[ < back ]` steps back out
+of the list, and the categories down the left stay live — clicking one leaves
+the menu.
+
+Before this the picker offered the menu itself, and binding that does nothing
+at all in game, so these were reachable only from `//hud crossbar bind`. How
+many entries a menu holds depends on what the game reports: it may list
+everything the job can ever learn rather than only what you can use yet, in
+which case binding one you have not learned gives a slot the game refuses.
+
 A **details column** on the right shows whatever the cursor is over: name,
 cost, recast, skillchain property, and for a slot the layer its binding comes
-from. **`[ < back ]`**, in the top left, steps back one screen; it is absent
+from. A menu row is not an action and has nothing to describe, so the column
+is blank over one. **`[ < back ]`**, in the top left, steps back one screen; it is absent
 on the first step. **`[ X ]`**, in the top right, closes the window from any
 step.
 
