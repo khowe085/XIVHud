@@ -63,20 +63,23 @@ local INVENTORY_BAG = 0
      directly USABLE, `/pet "Sic" <t>` being a real command, even though the
      moves it fires are the same `Monster` pool `Ready` (251) opens.
 
-     A WRONG ID HERE IS A SILENT REMOVAL, not a no-op: `parents[id]` keeps an
-     id out of the flat list even where no submenu is built, so an id that
-     named a real usable ability would make it unbindable from the picker with
-     no message anywhere. That is the reason for spelling the table out. ]]
+     A wrong id here WOULD BE a silent removal rather than a no-op: `parents`
+     keeps an id out of the flat list even where no submenu is built, so an id
+     naming a real usable ability would make it unbindable from the picker with
+     no message anywhere. Which is why `parent_type` is checked at runtime -
+     an id that is not the menu it was taken for is left FLAT, the direction
+     everything else here degrades in, and the table above can be wrong without
+     costing anyone an ability. ]]
 local FAMILIES = {
-  { parent = 223, children = "Scholar" }, -- Stratagems (JobAbility)
-  { parent = 97, children = "CorsairRoll" }, -- Phantom Roll (JobAbility)
-  { parent = 124, children = "CorsairShot" }, -- Quick Draw (JobAbility)
-  { parent = 357, children = "Rune" }, -- Rune Enchantment (JobAbility)
-  { parent = 379, children = "Ward" }, -- Ward (JobAbility)
-  { parent = 380, children = "Effusion" }, -- Effusion (JobAbility)
-  { parent = 91, children = "BloodPactRage" }, -- Blood Pact: Rage (PetCommand)
-  { parent = 172, children = "BloodPactWard" }, -- Blood Pact: Ward (PetCommand)
-  { parent = 251, children = "Monster" }, -- Ready (PetCommand)
+  { parent = 223, children = "Scholar", parent_type = "JobAbility" }, -- Stratagems
+  { parent = 97, children = "CorsairRoll", parent_type = "JobAbility" }, -- Phantom Roll
+  { parent = 124, children = "CorsairShot", parent_type = "JobAbility" }, -- Quick Draw
+  { parent = 357, children = "Rune", parent_type = "JobAbility" }, -- Rune Enchantment
+  { parent = 379, children = "Ward", parent_type = "JobAbility" }, -- Ward
+  { parent = 380, children = "Effusion", parent_type = "JobAbility" }, -- Effusion
+  { parent = 91, children = "BloodPactRage", parent_type = "PetCommand" }, -- Blood Pact: Rage
+  { parent = 172, children = "BloodPactWard", parent_type = "PetCommand" }, -- Blood Pact: Ward
+  { parent = 251, children = "Monster", parent_type = "PetCommand" }, -- Ready
   --[[ The DNC menus, all `JobAbility`. Missed on the first pass and added
        2026-09-07: the resource names them in the PLURAL, so a search for
        `Waltz` finds the eight children and no parent, and the family read as
@@ -84,13 +87,13 @@ local FAMILIES = {
        `/ja "Stratagems"` is - several even share the family recast id the way
        Stratagems (223) shares 233: `Jigs` carries Spectral Jig's 218, `Steps`
        Quickstep's 220. ]]
-  { parent = 183, children = "Waltz" }, -- Waltzes (JobAbility)
-  { parent = 182, children = "Samba" }, -- Sambas (JobAbility)
-  { parent = 198, children = "Jig" }, -- Jigs (JobAbility)
-  { parent = 199, children = "Step" }, -- Steps (JobAbility)
-  { parent = 200, children = "Flourish1" }, -- Flourishes I (JobAbility)
-  { parent = 213, children = "Flourish2" }, -- Flourishes II (JobAbility)
-  { parent = 263, children = "Flourish3" }, -- Flourishes III (JobAbility)
+  { parent = 183, children = "Waltz", parent_type = "JobAbility" }, -- Waltzes
+  { parent = 182, children = "Samba", parent_type = "JobAbility" }, -- Sambas
+  { parent = 198, children = "Jig", parent_type = "JobAbility" }, -- Jigs
+  { parent = 199, children = "Step", parent_type = "JobAbility" }, -- Steps
+  { parent = 200, children = "Flourish1", parent_type = "JobAbility" }, -- Flourishes I
+  { parent = 213, children = "Flourish2", parent_type = "JobAbility" }, -- Flourishes II
+  { parent = 263, children = "Flourish3", parent_type = "JobAbility" }, -- Flourishes III
 }
 
 --[[ Menus with NO submenu of their own. `Pet commands` (55) opens the same
@@ -101,7 +104,7 @@ local FAMILIES = {
      and given no step. Kept apart from FAMILIES rather than folded in with
      `children = "PetCommand"`, which would sweep the three /pet PARENTS and
      Sic into a submenu of their own and break the invariant above. ]]
-local MENUS = { [55] = true }
+local MENUS = { [55] = "JobAbility" }
 
 --[[ The command word an ability is fired with, taken from the resource's own
      `prefix` rather than written down per family, so a family cannot be given
@@ -268,8 +271,28 @@ local function new(deps)
        list IS the level filter, wherever it answers. ]]
   local function families(listed_ids, job_abilities)
     local submenus, spoken_for, parents = {}, {}, {}
-    for id in pairs(MENUS) do
-      parents[id] = true
+    for id, parent_type in pairs(MENUS) do
+      -- Type-checked exactly as a family's parent is, and for the same
+      -- reason: a wrong id must cost nobody an ability.
+      local menu = job_abilities[id]
+      if type(menu) == "table" and menu.type == parent_type then
+        parents[id] = true
+      end
+    end
+    --[[ One pass over the resource, not one per family: `res.job_abilities`
+         runs past a thousand entries with the pacts and Ready moves in it, and
+         sixteen traversals of it is the same work done sixteen times. Built
+         here rather than at load, because `deps.resources` is injected. ]]
+    local by_type = {}
+    for id, ability in pairs(job_abilities) do
+      if type(ability) == "table" and type(ability.en) == "string" and ability.type ~= nil then
+        local bucket = by_type[ability.type]
+        if bucket == nil then
+          bucket = {}
+          by_type[ability.type] = bucket
+        end
+        bucket[#bucket + 1] = { id = id, ability = ability }
+      end
     end
     for _, family in ipairs(FAMILIES) do
       --[[ The parent RECORD, not just the id on the client's list: without one
@@ -279,26 +302,24 @@ local function new(deps)
            removal this file warns about above and the opposite of degrading
            toward offering more. ]]
       local parent = job_abilities[family.parent]
-      if listed_ids[family.parent] and type(parent) == "table" and type(parent.en) == "string" then
+      if
+        listed_ids[family.parent]
+        and type(parent) == "table"
+        and type(parent.en) == "string"
+        and parent.type == family.parent_type
+      then
         spoken_for[family.children] = true
         parents[family.parent] = true
         local all, named = {}, {}
-        for id, ability in pairs(job_abilities) do
-          --[[ `id ~= family.parent` is belt to the braces of the table above:
-               no parent's own type IS its family's child type, so this cannot
-               fire today. It is here so that fact does not have to hold - a
-               parent that ever typed itself as its own child would land in its
-               own submenu and, where the client lists only the parent, be the
-               ONLY row in it: the exact dead bind this change removes. ]]
-          if
-            id ~= family.parent
-            and type(ability) == "table"
-            and ability.type == family.children
-            and type(ability.en) == "string"
-          then
-            local entry = { label = ability.en, record = ability_record(ability) }
+        for _, row in ipairs(by_type[family.children] or {}) do
+          --[[ `id ~= family.parent` is belt to the braces of `parent_type`
+               above: a parent that typed itself as its own child would land in
+               its own submenu and, where the client lists only the parent, be
+               the ONLY row in it - the exact dead bind this removes. ]]
+          if row.id ~= family.parent then
+            local entry = { label = row.ability.en, record = ability_record(row.ability) }
             all[#all + 1] = entry
-            if listed_ids[id] then
+            if listed_ids[row.id] then
               named[#named + 1] = entry
             end
           end

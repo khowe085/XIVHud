@@ -5290,8 +5290,10 @@ describe("crossbar live widget", function()
       assert.are.same({ sent }, env.commands, "only an ability's refusal answers it")
       push(widget, "chunk", 0x29, refusal(env.player.id, 71))
       env.now = 2
+      -- Tabbed to something else between the press and the re-send: the pin is
+      -- taken at the PRESS, so the pact still goes at what it was aimed at.
+      env.target = { id = 4242 }
       push(widget)
-      -- Target pinned to the mob id at the press, as every watched kind is.
       assert.are.same({ sent, 'input /pet "Eclipse Bite" 99' }, env.commands)
     end)
 

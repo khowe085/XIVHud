@@ -695,6 +695,28 @@ describe("crossbar catalog", function()
       assert.same({ type = "ja", action = "Accession" }, entry_named(list, "Job Abilities", "Accession").record)
     end)
 
+    --[[ The seventeen ids are hand-transcribed and cannot be checked here, and
+         the file's own warning is that a wrong one REMOVES a usable ability
+         from the picker with no message. Checking the parent's own type turns
+         that into a no-op: an id naming something that is not the menu it was
+         meant to be is left flat, which is the direction everything else here
+         degrades in. ]]
+    it("leaves an id flat when it is not the menu it was taken for", function()
+      local wrong = family_resources()
+      -- 223 is Stratagems, a JobAbility. Something else entirely lives here.
+      wrong.job_abilities[223] = { id = 223, en = "Berserk", prefix = "/jobability", type = "Scholar" }
+      local catalog = build({
+        resources = wrong,
+        spells = {},
+        items = { [0] = {} },
+        mounts = {},
+        abilities = { job_abilities = { 223, 218 }, weapon_skills = {} },
+      })
+      local list = catalog.build()
+      assert.same({ type = "ja", action = "Berserk" }, entry_named(list, "Job Abilities", "Berserk").record)
+      assert.is_not_nil(entry_named(list, "Job Abilities", "Accession"), "and its family is not swallowed")
+    end)
+
     it("drops a parent whose children the resources cannot supply", function()
       local degraded = family_resources()
       degraded.job_abilities[218] = nil

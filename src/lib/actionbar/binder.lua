@@ -964,9 +964,9 @@ local function new(deps)
     end
     if frame.step == STEP_SUBMENU then
       -- "pick from Stratagems" rather than "pick a stratagems": the menu names
-      -- are plural, possessive and colon-bearing (`Blood Pact: Rage`), so no
-      -- article fits all nine. Taken off the VIEW, which is the one thing that
-      -- knows what is actually on screen.
+      -- are plural, possessive and colon-bearing (`Blood Pact: Rage`,
+      -- `Flourishes I`), so no article fits all sixteen. Taken off the VIEW,
+      -- which is the one thing that knows what is actually on screen.
       local menu = (catalog_view or {}).submenu or "?"
       return "pick from " .. menu, where .. "   layer: " .. layer .. viewing
     end

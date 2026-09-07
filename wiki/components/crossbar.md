@@ -896,9 +896,15 @@ MP has gone, or you have been silenced — and it will not re-send into an open
 chat line, the binder, or `//hud layout`. **A spell on cooldown is never
 held**; that press fails as it always did.
 
+**Pet abilities are retried** — blood pacts, ready moves, maneuvers and the
+rest — as of 2026-09-07. They were not before, because nobody had confirmed
+which refusal message a `/pet` carries and the retry would not guess. It now
+treats one as a job ability. If a pet ability never seems to re-send, that
+guess is wrong and nothing else is affected; amnesia is also assumed to stop
+one, so a retry is skipped under it.
+
 **What it will not retry.** Items, chat lines, console commands and the
-built-ins — nothing refuses those in words the crossbar reads. Pet abilities
-are not retried either. Anything bound to a subtarget (`<stpc>` and the rest), which
+built-ins — nothing refuses those in words the crossbar reads. Anything bound to a subtarget (`<stpc>` and the rest), which
 would re-open the selection cursor after you had already answered it. Anything
 aimed at a **party or alliance slot** (`<p3>`, `<a13>`) — a position is
 whoever is standing in it, and someone leaving or zoning would send the retry
