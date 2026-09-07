@@ -1307,6 +1307,22 @@ describe("crossbar binder", function()
          just been replaced - but a slot's details are resolved from the
          bindings and are still describable, and `refresh_details` cannot
          rebuild what it is no longer told is hovered. ]]
+    --[[ The positive half of the same decision as the slot test below: a
+         CATALOG row describes an action from the listing that has just been
+         replaced, and `refresh_details` would rebuild those stale lines every
+         cadence tick until the cursor moved. ]]
+    it("drops a hovered catalog row's details across a job change", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      binder.mouse(MOVE, centre(entry_named(env, "Berserk")))
+      assert.is_not_nil(binder.details(), "over a catalog row")
+      env.bindings.set_job("MNK", "NIN")
+      binder.refresh()
+      binder.refresh_details()
+      assert.is_nil(binder.details(), "the listing it described is gone")
+    end)
+
     it("keeps describing a hovered slot across a job change", function()
       local binder, env = build({
         files = {

@@ -122,8 +122,25 @@ local DEAD_STATUSES = { [2] = true, [3] = true }
      cast retry decision for the cases (party slots in particular). ]]
 local FIXED_TARGETS = { me = true, pet = true }
 local PINNED_TARGETS = { t = true, bt = true }
--- The record types the retry can watch, by the kind retry.lua refuses in.
-local RETRY_KINDS = { ma = "spell", ja = "ability", ws = "weaponskill" }
+--[[ The record types the retry can watch, by the kind retry.lua refuses in.
+
+     `pet` rides the ABILITY kind (Kevin, 2026-09-07): a blood pact, a ready
+     move and a maneuver are job abilities under another command word, and the
+     game refuses one as too soon exactly as it refuses a `ja`. It was added
+     when the binder began deriving a record's type from the resource's own
+     `prefix`, which moved the thirty flat pet abilities (Fight, Heel, Deploy,
+     the eight maneuvers) off `ja` - without an entry here they would have
+     dropped out of retry coverage silently.
+
+     TWO halves of that are UNVERIFIED and want a live client. Whether a
+     refused pet command carries message 71 like a job ability's, and whether
+     AMNESIA blocks one the way it blocks a `ja` - the ability kind's whole
+     blocking set. Both fail safe in opposite directions and neither is worse
+     than the `ja` behaviour these binds already had: a wrong message id means
+     the retry never fires, and a wrong blocking buff means one retry is
+     skipped under amnesia. The ability message id is called out in retry.lua
+     as the weaker guess of the three already. ]]
+local RETRY_KINDS = { ma = "spell", ja = "ability", ws = "weaponskill", pet = "ability" }
 
 local function new(deps)
   local self = { ipc_warp_message = IPC_WARP_MESSAGE }
