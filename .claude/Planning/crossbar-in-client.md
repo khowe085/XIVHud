@@ -134,6 +134,24 @@ unverified is the **wired component** behaving the same way.
 | 7.13 | CTRL+Up, CTRL+Down with the hotbar on | Row 1 moves to the next / previous set of the rotation; the game's macro set changes too (expected); a bare arrow still turns the camera; `//hud hotbar cycle back` does the same from the console | The chord cannot be kept from the game; the number row's own caveat |
 | 7.14 | `//hud hotbar bar1 rows 10` and `rows 5` | The set number sits clear above slot 1 (a 14pt digit is reserved 20px, an estimate); if it still touches, `LABEL_HEIGHT` in components/hotbar/render.lua is the knob | Reported over slot 1 at 18px on 2026-09-06 |
 
+## 8. The edit binder's parent-menu families (2026-09-07)
+
+The picker offered a MENU entry (`Stratagems`, `Waltzes`, `Blood Pact: Rage`)
+and could not reach what is behind it. Sixteen families now open a submenu.
+Row 8.2 is the one that matters most: the whole design turns on whether the
+client enumerates a family's children or only its parent, and nothing here can
+answer it.
+
+| # | Do this | Expect | Notes |
+| --- | --- | --- | --- |
+| 8.1 | On SCH, `//hud crossbar edit`, click a slot, a layer, then `Job Abilities` | `Stratagems` opens the STRATAGEMS, it does not go to the target step; `Accession` is in the list and binds | The defect this section exists for (Kevin, 2026-09-07): the menu used to bind `/ja "Stratagems"`, which the game refuses |
+| 8.2 | Count what that submenu holds on a level-99 SCH, then on a low-level one | SIXTEEN either way if the client reports only the parent 223; exactly what the character has learned if it reports the children | **The one unverified premise of the change.** The rule is correct on both answers, but the observable behaviour differs sharply. Whichever it is, record it - it also settles the SMN and BST cases below |
+| 8.3 | Same on COR (`Phantom Roll`, `Quick Draw`) and RUN (`Rune Enchantment`, `Ward`, `Effusion`) | Each opens its own children | Upstream reads rolls and shots off the client but stratagems off a static table, so these two families may well answer differently from 8.2 |
+| 8.4 | Same on DNC (`Waltzes`, `Sambas`, `Jigs`, `Steps`, `Flourishes I/II/III`) | Seven menus, each opening its own children; none of the seven binds | Missed on the first pass - the resource names them in the PLURAL. Confirm the client actually lists these parent ids |
+| 8.5 | Same on SMN and BST (`Blood Pact: Rage`/`Ward`, `Ready`) | Each opens its children, bound as `/pet` and firing | The long-list case: 91 pacts and 120 ready moves if the client reports only the parents. Kevin accepted that 2026-09-07 - this is where to say whether it is actually usable |
+| 8.6 | On a job with a pet, look for `Pet commands` in `Job Abilities` | It is NOT listed; Fight, Heel, Sic, Deploy and the maneuvers are, and each fires | 55 is a menu with no submenu of its own. Also confirms the `prefix`-derived record type: these bound as `/ja` before and could never fire |
+| 8.7 | Open a submenu, then change job (or subjob) without closing the binder | The window drops back out of the submenu rather than going on offering the old job's children | Two review rounds found strands here; the base-layer subjob case is still uncovered by construction |
+
 ---
 
 ## Open questions — answers, not checks
