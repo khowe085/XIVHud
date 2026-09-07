@@ -272,8 +272,11 @@ local function new(deps)
   local cursor = nil
   local pending = nil
   -- The catalog entry whose children are on screen, nil at every other step.
-  -- It outlives the target step so back can return to it.
+  -- It outlives the target step so back can return to it, and carries the
+  -- catalog page it was opened from: the listing does not move while you are
+  -- nested, so coming back out to page 1 would only lose your place.
   local submenu = nil
+  local submenu_page = 1
   local catalog_groups = nil
   local category_index, page = 1, 1
   local press = nil
@@ -347,13 +350,20 @@ local function new(deps)
 
   --[[ Prims ---------------------------------------------------------------- ]]
 
-  -- The job the catalog listing was built for: a job change under an open
-  -- binder leaves the old job's spells in the picker otherwise.
-  local catalog_job = nil
+  --[[ The job PAIR the catalog listing was built for: a job change under an
+       open binder leaves the old job's spells in the picker otherwise. Both
+       halves, because the catalog is scoped to the pair - `catalog.job_pair`
+       lists what the SUBJOB brings as well - so comparing the main job alone
+       went on offering a departed subjob's actions until the main one moved
+       (Kevin, 2026-09-07). ]]
+  local catalog_job, catalog_sub = nil, nil
 
   local function rebuild_catalog()
     local bindings = model()
-    catalog_job = bindings ~= nil and bindings.job() or nil
+    catalog_job, catalog_sub = nil, nil
+    if bindings ~= nil then
+      catalog_job, catalog_sub = bindings.job()
+    end
     catalog_groups = deps.catalog ~= nil and deps.catalog.build() or {}
     category_index, page = 1, 1
     --[[ The submenu is the one piece of picker state that outlives a rebuild:
@@ -368,10 +378,15 @@ local function new(deps)
       step = STEP_CATALOG
     end
     submenu = nil
-    -- The column describes an action from the listing just replaced, and
-    -- `hovered` would rebuild those same stale lines every cadence tick until
-    -- the cursor moved. The idiom every other transition here uses.
-    details, hovered = nil, nil
+    --[[ Only an ENTRY's details go: they describe an action from the listing
+         just replaced, and `hovered` would rebuild those same stale lines
+         every cadence tick until the cursor moved. A SLOT is resolved from the
+         bindings rather than the listing, so it is still describable - and
+         clearing it there would blank the column with no way back, since
+         `refresh_details` needs `hovered` to rebuild anything. ]]
+    if hovered ~= nil and hovered.kind == "entry" then
+      details, hovered = nil, nil
+    end
     -- The memo is keyed by record identity, and those records are new.
     icon_memo = {}
   end
@@ -1300,7 +1315,7 @@ local function new(deps)
       -- one was nested, the catalog where it was not.
       step, page, pending = submenu ~= nil and STEP_SUBMENU or STEP_CATALOG, 1, nil
     elseif step == STEP_SUBMENU then
-      step, page, submenu = STEP_CATALOG, 1, nil
+      step, page, submenu = STEP_CATALOG, submenu_page, nil
     elseif step == STEP_CATALOG then
       cursor, step, page = nil, STEP_LAYER, 1
       apply_preview()
@@ -1343,7 +1358,7 @@ local function new(deps)
       if target.entry.children ~= nil then
         -- A menu, not an action: its children are the step, and binding the
         -- parent would write a command the game refuses.
-        submenu, step, page = target.entry, STEP_SUBMENU, 1
+        submenu, submenu_page, step, page = target.entry, page, STEP_SUBMENU, 1
         details, hovered = nil, nil
       elseif TARGETED_TYPES[target.entry.record.type] then
         pending = copy_record(target.entry.record)
@@ -1485,8 +1500,11 @@ local function new(deps)
       return
     end
     local bindings = model()
-    if bindings ~= nil and bindings.job() ~= catalog_job then
-      rebuild_catalog()
+    if bindings ~= nil then
+      local job, sub = bindings.job()
+      if job ~= catalog_job or sub ~= catalog_sub then
+        rebuild_catalog()
+      end
     end
     --[[ A stranded cursor is worse than a closed one: the bar goes on
          showing a context's world under a header naming it, the wizard

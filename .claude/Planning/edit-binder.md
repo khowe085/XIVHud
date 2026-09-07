@@ -204,4 +204,13 @@ Implemented 2026-09-07 on `work/claude/edit-binder`, cut from origin/dev at
 0539d3f. Plan written after reading the upstream fork
 (`khowe085/xivcrossbar@master`) and the Windower resource data. Review gate:
 round 1 found a job-change strand, round 2 a second strand on the subjob path,
-round 3 the seven missing DNC families - all fixed under TDD.
+round 3 the seven missing DNC families, round 4 `Pet commands` (55), round 5 a
+parentless family and a hollow assertion, round 8 an overclaimed `/pet` note
+and two unpinned step resets - all fixed under TDD. Rounds 6, 7 and 9 CLEAN.
+
+Kevin then asked for one thing beyond the feature (2026-09-07): `refresh`
+compared only the MAIN job, so a subjob change rebuilt nothing and the picker
+kept offering the departed subjob's spells and abilities. The catalog is scoped
+to the job PAIR (`job_pair` reads both), so it compares both halves now. That
+was a pre-existing bug the submenu merely inherited, raised by three separate
+review rounds.

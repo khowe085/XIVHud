@@ -740,6 +740,41 @@ describe("crossbar binder", function()
       assert.are.equal(2, built, "and only when the job really moved")
     end)
 
+    --[[ The catalog is scoped to the JOB PAIR, not the main job: `job_pair`
+         lists the subjob's spells and abilities too. Comparing only the main
+         job left the picker offering the departed subjob's actions until the
+         MAIN job happened to change. ]]
+    it("rebuilds the catalog when only the subjob changes", function()
+      local built = 0
+      local subs = { "SCH" }
+      local binder, env = build({
+        catalog_factory = function()
+          return {
+            build = function()
+              built = built + 1
+              return {
+                {
+                  name = "Job Abilities",
+                  entries = { { label = "/" .. subs[1] .. " thing", record = { type = "ja", action = subs[1] } } },
+                },
+              }
+            end,
+          }
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      assert.are.equal(1, built)
+      assert.is_not_nil(entry_named(env, "/SCH thing"))
+      subs[1] = "NIN"
+      env.bindings.set_job("WAR", "NIN")
+      binder.refresh()
+      assert.are.equal(2, built, "the subjob moved, so the listing is stale")
+      assert.is_not_nil(entry_named(env, "/NIN thing"))
+      binder.refresh()
+      assert.are.equal(2, built, "and only when it really moved")
+    end)
+
     it("clamps the wheel at both ends of the catalog rather than wrapping", function()
       --[[ It used to wrap, so scrolling off the end of a long list threw
            you silently back to the top and read as the list resetting
@@ -1268,6 +1303,30 @@ describe("crossbar binder", function()
          repainted the whole window while the cursor simply sat there. Two
          targets describe nothing: an EMPTY SLOT, which has always been so, and
          a MENU ROW, which is not an action at all. ]]
+    --[[ A job change blanks the details of a CATALOG row, whose listing has
+         just been replaced - but a slot's details are resolved from the
+         bindings and are still describable, and `refresh_details` cannot
+         rebuild what it is no longer told is hovered. ]]
+    it("keeps describing a hovered slot across a job change", function()
+      local binder, env = build({
+        files = {
+          WAR = { sets = { [1] = { left = { [3] = { type = "ja", action = "Provoke" } } } } },
+          MNK = { sets = { [1] = { left = { [3] = { type = "ja", action = "Boost" } } } } },
+        },
+      })
+      binder.open()
+      binder.mouse(MOVE, slot_point(env, "left", 3))
+      assert.is_not_nil(binder.details(), "slot 3 carries Provoke")
+      env.bindings.set_job("MNK", "NIN")
+      binder.refresh()
+      binder.refresh_details()
+      local lines = table.concat(binder.details().lines, "\n")
+      assert.is_not_nil(
+        lines:find("Boost", 1, true),
+        "still over the slot, now describing the new job's bind: " .. lines
+      )
+    end)
+
     it("pushes nothing while the cursor rests on an empty slot", function()
       local binder, env = build()
       binder.open()
@@ -2092,6 +2151,47 @@ describe("crossbar binder", function()
       assert.is_not_nil(shown_text(env, "pick from Stratagems"))
       back(binder, env)
       assert.is_not_nil(shown_text(env, "pick an action"), "and back to the catalog's own title")
+    end)
+
+    --[[ Backing out of a menu returns to the catalog page you opened it from.
+         The listing has not moved while you were nested - unlike a layer
+         change, which is why THAT drops the page - so landing back on page 1
+         of a long Job Abilities list just loses your place. ]]
+    it("returns to the catalog page the menu was opened from", function()
+      local long = {}
+      for index = 1, 40 do
+        long[index] = { label = ("Spell %02d"):format(index), record = { type = "ma", action = "Spell" } }
+      end
+      -- On page 2, so the menu is reached from a page that is not the top.
+      table.insert(long, 25, {
+        label = "Stratagems",
+        children = { { label = "Accession", record = { type = "ja", action = "Accession" } } },
+      })
+      local binder, env = build({ catalog = { { name = "Job Abilities", entries = long } } })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(binder.catalog_view().pager))
+      assert.are.equal(2, binder.catalog_view().page)
+      click(binder, centre(entry_named(env, "Stratagems")))
+      assert.are.equal(1, binder.catalog_view().page, "the menu starts at its own top")
+      back(binder, env)
+      assert.are.equal(2, binder.catalog_view().page, "and the catalog is where it was left")
+    end)
+
+    --[[ The base-layer half of the subjob gap: `cursor_offered` is true for
+         `base`, so nothing stranded the wizard, and only the main job was
+         compared - an open submenu went on offering the departed subjob's
+         children. The rebuild now fires, and dropping the submenu is its job. ]]
+    it("drops the submenu when only the subjob changes", function()
+      local binder, env = build({ catalog = stratagems() })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Stratagems")))
+      assert.are.equal("Stratagems", binder.catalog_view().submenu)
+      env.bindings.set_job("WAR", "NIN")
+      binder.refresh()
+      assert.is_nil(binder.catalog_view().submenu, "back out to the rebuilt catalog")
+      assert.is_not_nil(entry_named(env, "Berserk"))
     end)
 
     it("closes outright from the submenu step", function()

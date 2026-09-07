@@ -151,7 +151,7 @@ answer it.
 | 8.5 | Same on SMN and BST (`Blood Pact: Rage`/`Ward`, `Ready`) | Each opens its children, bound as `/pet` and firing | The long-list case: 91 pacts and 120 ready moves if the client reports only the parents. Kevin accepted that 2026-09-07 - this is where to say whether it is actually usable |
 | 8.6 | On a job with a pet, look for `Pet commands` in `Job Abilities` | It is NOT listed; Fight, Heel, Sic, Deploy and the maneuvers are | 55 is a menu with no submenu of its own |
 | 8.6a | Bind a maneuver on PUP (or Fight on BST) from the picker and press it | It fires | **A behaviour change outside this feature's purpose.** These thirty `PetCommand` abilities bound as `/ja` before and bind as `/pet` now - the resource's `prefix` and upstream both say `/pet`, but whether `/ja` was broken is unverified and the game may accept both. If `/pet` fails here, restrict the prefix derivation to family CHILDREN and leave the flat list on `ja` |
-| 8.7 | Open a submenu, then change job (or subjob) without closing the binder | The window drops back out of the submenu rather than going on offering the old job's children | Two review rounds found strands here; the base-layer subjob case is still uncovered by construction |
+| 8.7 | Open a submenu, then change job or SUBJOB without closing the binder | The window drops back out of the submenu, and the listing behind it is the new pair's | Three review rounds found strands here. The catalog is scoped to the job PAIR, so the rebuild compares both halves now (2026-09-07); comparing the main job alone left a departed subjob's spells and abilities in the picker - a pre-existing bug the submenu inherited |
 
 ---
 
