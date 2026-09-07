@@ -195,13 +195,25 @@ local function open_plan(name)
 end
 
 --[[ Leaving the drawn state, on its own: the draw toggle's own way out, and
-     what a click on the bar's sword resolves to directly. It reads no state
-     because it answers none - the sword is drawn only while the weapon is,
-     so a click on it can mean nothing else. ]]
+     what a click on the bar's sword resolves to directly while it wears the
+     drawn art. It reads no state because it answers none. ]]
 local function sheathe_plan()
   local plan = command_plan("input /attack off")
   plan.weapon_state = "sheathed"
   return plan
+end
+
+--[[ Entering drawn sends NOTHING (Kevin, 2026-08-22). The component's
+     weapon state is its own: it picks which set rotation is live and
+     lights the bar's sword. Wanting the combat rotation is not wanting to
+     swing at something, and the player engages and picks targets himself.
+
+     It used to `/attack <t>` with a target and refuse outright without
+     one. Both are gone, which is why nothing here asks whether anything
+     is targeted at all. The other one-way plan: what a click on the sword
+     resolves to while it wears the sheathed art. ]]
+local function draw_plan_one_way()
+  return { kind = "none", weapon_state = "drawn" }
 end
 
 -- Mounted outranks everything: you cannot engage while mounted, and the same
@@ -212,22 +224,13 @@ local function draw_plan(state)
   if state.mounted then
     return command_plan("input /dismount")
   end
+  --[[ Leaving drawn still sends `/attack off`, and deliberately: an
+       explicit `draw` while drawn means "I am done fighting", which is the
+       rule the whole one-way state machine is built on. ]]
   if state.weapon_drawn then
     return sheathe_plan()
   end
-  --[[ Entering drawn sends NOTHING (Kevin, 2026-08-22). The component's
-       weapon state is its own: it picks which set rotation is live and
-       lights the bar's sword. Wanting the combat rotation is not wanting to
-       swing at something, and the player engages and picks targets himself.
-
-       It used to `/attack <t>` with a target and refuse outright without
-       one. Both are gone, which is why this branch no longer asks whether
-       anything is targeted at all.
-
-       Leaving drawn still sends `/attack off`, and deliberately: an
-       explicit `draw` while drawn means "I am done fighting", which is the
-       rule the whole one-way state machine is built on. ]]
-  return { kind = "none", weapon_state = "drawn" }
+  return draw_plan_one_way()
 end
 
 local function new(deps)
@@ -353,10 +356,14 @@ local function new(deps)
     return nil, "unknown action type: " .. tostring(kind)
   end
 
-  -- The sword's click (crossbar.lua's on_mouse), which is one way and takes
-  -- no state: see sheathe_plan.
+  -- The sword's click (crossbar.lua's on_mouse), one way in each direction
+  -- and taking no state: see sheathe_plan and draw_plan_one_way.
   function self.sheathe()
     return sheathe_plan()
+  end
+
+  function self.draw()
+    return draw_plan_one_way()
   end
 
   -- The command frontend: `//hud crossbar <name> [<arg>]` -> the same record

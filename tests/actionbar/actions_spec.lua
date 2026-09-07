@@ -285,6 +285,17 @@ describe("crossbar actions", function()
       assert.equal("input /attack off", plan.command)
       assert.equal("sheathed", plan.weapon_state)
     end)
+
+    it("draws outright, where the draw toggle would have dismounted", function()
+      --[[ The sword is always on screen now (Kevin, 2026-09-06), so a click
+           on it sheathed means draw - the same one-way shape as sheathe,
+           and for the same reason: mounted, the toggle would dismount. ]]
+      local actions = build()
+      local plan = actions.draw()
+      assert.equal("none", plan.kind)
+      assert.equal("drawn", plan.weapon_state)
+      assert.is_nil(plan.command)
+    end)
   end)
 
   describe("a named mount", function()
@@ -512,7 +523,7 @@ describe("crossbar actions", function()
 
     it("leaves an opener with no pack match to the render fallback", function()
       local actions = build()
-      assert.is_nil(actions.icon_for({ type = "open", action = "equipment" }))
+      assert.is_nil(actions.icon_for({ type = "open", action = "quests" }))
     end)
   end)
 

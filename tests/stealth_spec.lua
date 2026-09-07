@@ -1,7 +1,7 @@
 local new_stealth = require("lib/stealth")
 
 local SNEAK, INVISIBLE = 137, 136
-local MONOMI, TONKO = 318, 353
+local MONOMI, TONKO, TONKO_NI = 318, 353, 354
 local JIG = 196
 local SANJAKU, SHINOBI, SHIKANOFUDA = 2553, 1194, 2972
 
@@ -27,6 +27,7 @@ local function resources()
       },
       [MONOMI] = { id = MONOMI, en = "Monomi: Ichi", prefix = "/ninjutsu", levels = { [13] = 25 }, targets = 1 },
       [TONKO] = { id = TONKO, en = "Tonko: Ichi", prefix = "/ninjutsu", levels = { [13] = 9 }, targets = 1 },
+      [TONKO_NI] = { id = TONKO_NI, en = "Tonko: Ni", prefix = "/ninjutsu", levels = { [13] = 34 }, targets = 1 },
     },
     job_abilities = {
       [JIG] = { id = JIG, en = "Spectral Jig", prefix = "/jobability", targets = 1 },
@@ -68,38 +69,87 @@ local function build(overrides)
   return stealth, world
 end
 
--- A NIN with tools: the top rung of both ladders.
+-- A NIN with tools and no white magic: the ninjutsu rung of both ladders.
 local function ninja(overrides)
   overrides = overrides or {}
-  overrides.spells = { [MONOMI] = true, [TONKO] = true }
-  overrides.tools = { [SANJAKU] = 99, [SHINOBI] = 99 }
+  overrides.spells = overrides.spells or { [MONOMI] = true, [TONKO] = true }
+  overrides.tools = overrides.tools or { [SANJAKU] = 99, [SHINOBI] = 99 }
   return build(overrides)
 end
 
 describe("crossbar stealth", function()
   describe("the ladder", function()
-    it("takes the ninjutsu first when the tools are there", function()
+    it("takes the ninjutsu with the tools there and no spell or jig known", function()
       local stealth = ninja()
       assert.equal('input /ninjutsu "Monomi: Ichi" <me>', stealth.plan("sneak"))
       assert.equal('input /ninjutsu "Tonko: Ichi" <me>', stealth.plan("invisible"))
     end)
 
-    it("prefers the ninjutsu over a spell the same character knows", function()
-      --[[ The order is fixed and the same on every job (Kevin, 2026-08-29):
-           a WHM main subbing NIN still throws the ninjutsu, because it is
-           free and instant. What the MAIN job offers does not win. ]]
+    it("prefers the white magic over a ninjutsu the same character knows", function()
+      --[[ The order is fixed and the same on every job: the SPELL first,
+           then the jig, then the ninjutsu, then the item (Kevin,
+           2026-09-06, reversing the 2026-08-29 order that had the ninjutsu
+           at the front and the spell last). A WHM main subbing NIN casts
+           Sneak rather than throwing Monomi. ]]
       local stealth = build({
         player = { main_job = "WHM", main_job_id = 3, main_job_level = 99, sub_job_id = 13, sub_job_level = 49 },
-        spells = { [MONOMI] = true, [SNEAK] = true },
-        tools = { [SANJAKU] = 5 },
+        spells = { [MONOMI] = true, [SNEAK] = true, [TONKO] = true, [INVISIBLE] = true },
+        tools = { [SANJAKU] = 5, [SHINOBI] = 5 },
         abilities = { job_abilities = { JIG } },
       })
-      -- Every rung of the sneak ladder is open to this character at once,
+      -- Every rung of both ladders is open to this character at once,
       -- which is what makes the answer an ORDERING and not a fallback.
-      assert.equal('input /ninjutsu "Monomi: Ichi" <me>', stealth.plan("sneak"))
+      assert.equal('input /magic "Sneak" <me>', stealth.plan("sneak"))
+      assert.equal('input /magic "Invisible" <me>', stealth.plan("invisible"))
     end)
 
-    it("falls to the jig when no ninjutsu is available", function()
+    it("prefers the jig over a ninjutsu the same character could throw", function()
+      --[[ A DNC subbing NIN with tools: the jig CONSUMES NOTHING and the
+           ninjutsu spends a tool, so the jig goes first (Kevin,
+           2026-09-06). ]]
+      local stealth = build({
+        player = { main_job = "DNC", main_job_id = 19, main_job_level = 99, sub_job_id = 13, sub_job_level = 49 },
+        spells = { [MONOMI] = true, [TONKO] = true },
+        tools = { [SANJAKU] = 5, [SHINOBI] = 5 },
+        abilities = { job_abilities = { JIG } },
+      })
+      assert.equal('input /jobability "Spectral Jig" <me>', stealth.plan("sneak"))
+      assert.equal('input /jobability "Spectral Jig" <me>', stealth.plan("invisible"))
+    end)
+
+    it("prefers Tonko: Ni over Tonko: Ichi when both are known", function()
+      -- Kevin, 2026-09-06. Monomi has no Ni in the game (id 319 is Aisha:
+      -- Ichi), so the sneak ladder has nothing to prefer there.
+      local stealth = ninja({ spells = { [MONOMI] = true, [TONKO] = true, [TONKO_NI] = true } })
+      assert.equal('input /ninjutsu "Tonko: Ni" <me>', stealth.plan("invisible"))
+    end)
+
+    it("gates Monomi: Ichi on Sanjaku-Tenugui", function()
+      --[[ Every ninjutsu rung wants its own tool in the bag - the press
+           would otherwise be spent on the game's refusal. Monomi's is
+           Sanjaku-Tenugui, Tonko's is Shinobi-Tabi, and neither stands in
+           for the other. ]]
+      local stealth = ninja({ tools = { [SHINOBI] = 99 } })
+      assert.equal('input /item "Silent Oil" <me>', stealth.plan("sneak"), "no Sanjaku-Tenugui, no Monomi")
+      assert.equal('input /ninjutsu "Tonko: Ichi" <me>', stealth.plan("invisible"), "Tonko has its own")
+    end)
+
+    it("gates both Tonko rungs on Shinobi-Tabi, Ni included", function()
+      -- The two share a tool, so an empty bag drops the pair of them and
+      -- the ladder carries on past both rather than stopping at Ni.
+      local stealth = ninja({
+        spells = { [TONKO] = true, [TONKO_NI] = true },
+        tools = { [SANJAKU] = 99 },
+      })
+      assert.equal('input /item "Prism Powder" <me>', stealth.plan("invisible"))
+    end)
+
+    it("falls to Tonko: Ichi when the character has not learned Ni", function()
+      local stealth = ninja()
+      assert.equal('input /ninjutsu "Tonko: Ichi" <me>', stealth.plan("invisible"))
+    end)
+
+    it("takes the jig on a character with no white magic", function()
       local stealth = build({
         player = { main_job = "DNC", main_job_id = 19, main_job_level = 99 },
         abilities = { job_abilities = { JIG } },
@@ -108,7 +158,7 @@ describe("crossbar stealth", function()
       assert.equal('input /jobability "Spectral Jig" <me>', stealth.plan("invisible"), "the jig grants both")
     end)
 
-    it("falls to the spell when there is no ninjutsu and no jig", function()
+    it("takes the spell over both, on a character with nothing else", function()
       local stealth = build({
         player = { main_job = "WHM", main_job_id = 3, main_job_level = 99 },
         spells = { [SNEAK] = true, [INVISIBLE] = true },

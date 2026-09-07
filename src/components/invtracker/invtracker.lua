@@ -38,7 +38,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      shrinks or is switched off hides its surplus rather than destroying it, so
      switching it back on costs nothing. Nothing is ever built per read - the
      reference addon cached the same way, and it is the only part of its draw
-     path worth keeping. ]]
+     path worth keeping.
+
+     Every square and label remembers what it last drew, and a repaint pushes
+     only what changed (2026-09-06). It used to hide every prim and show each
+     again as it was placed, on every read - and every packet that says an
+     item moved buys a read, so a GearSwap burst (one 0x050 per slot swapped)
+     repainted the grid frame after frame and it flickered in a live client
+     (Kevin). A square that stays where it is now hears nothing at all. ]]
 
 local new_logic = require("components/invtracker/logic")
 local build_defaults = require("components/invtracker/defaults")
@@ -69,11 +76,25 @@ local function new(ctx)
   --[[ Two prims per slot, keyed by bag and slot index: the darker `shadow`
        square and the `box` drawn on top of it, offset by nothing - the box is
        smaller, so what shows around it is the 1px shadow down the right and
-       bottom that gives the grid its relief. ]]
+       bottom that gives the grid its relief. `drawn` is what the pair last
+       drew, nil while it is hidden. ]]
   local squares = {}
   -- One text per block key, the bag's short name under it. Built and kept
-  -- exactly as the squares are.
+  -- exactly as the squares are, with the same `drawn` memory beside it.
   local labels = {}
+
+  --[[ Which config the colours and the label style on screen came from.
+       Bumped on attach, so every prim is re-pushed its palette and style by
+       the next render - WITHOUT forgetting whether it is up: a re-attach
+       arrives with no detach before it (`//hud slot`, `//hud reset`, `//hud
+       copy`), and a memory wiped there stranded the squares of a bag the
+       new config drops on screen for the session (caught in review).
+
+       The contract is that an attach is the ONLY thing that moves the
+       palette or the label style: no `//hud invtracker` verb touches
+       either today, and one that did would have to bump this as well or
+       its change would never reach a square already on screen. ]]
+  local dressing = 0
 
   -- An item id's stack size, for telling a full stack from a part one.
   -- Answers nil without the resources library, which costs only that colour.
@@ -103,7 +124,7 @@ local function new(ctx)
     end
     local square = bag[index]
     if not square then
-      square = { shadow = new_square(), box = new_square() }
+      square = { shadow = new_square(), box = new_square(), drawn = nil, memo = {} }
       bag[index] = square
     end
     return square
@@ -112,11 +133,12 @@ local function new(ctx)
   local function label_for(key)
     local label = labels[key]
     if not label then
-      label = ctx.new_text()
+      local prim = ctx.new_text()
       -- Deliberately not right-justified, like every text this addon draws:
       -- a right-justified prim is positioned from the screen's right edge.
-      label.draggable(false)
-      label.hide()
+      prim.draggable(false)
+      prim.hide()
+      label = { prim = prim, drawn = nil, memo = {}, dressing = nil }
       labels[key] = label
     end
     return label
@@ -137,15 +159,23 @@ local function new(ctx)
     label.bg_visible(false)
   end
 
-  local function hide_all()
-    for _, bag in pairs(squares) do
-      for _, square in pairs(bag) do
-        square.shadow.hide()
-        square.box.hide()
+  -- Takes down whatever was drawn last time and is not in `kept` - a slot
+  -- that has gone (a shrunken bag, a bag switched off), or everything.
+  local function hide_unkept(kept)
+    for key, bag in pairs(squares) do
+      for index, square in pairs(bag) do
+        if square.drawn ~= nil and not (kept.squares[key] and kept.squares[key][index]) then
+          square.shadow.hide()
+          square.box.hide()
+          square.drawn = nil
+        end
       end
     end
-    for _, label in pairs(labels) do
-      label.hide()
+    for key, label in pairs(labels) do
+      if label.drawn ~= nil and not kept.labels[key] then
+        label.prim.hide()
+        label.drawn = nil
+      end
     end
   end
 
@@ -160,49 +190,87 @@ local function new(ctx)
     square.box.alpha(box.a or 255)
   end
 
+  -- A square is pushed what differs from its last draw and nothing else.
+  -- The memory is one table per prim for its life, written in place: a
+  -- fresh one per render would be over a thousand allocations a repaint.
+  local function place_square(square, x, y, slot_size, box_size, colour)
+    local last = square.drawn
+    if last == nil or last.colour ~= colour or last.dressing ~= dressing then
+      paint(square, colour)
+    end
+    if last == nil or last.x ~= x or last.y ~= y or last.slot ~= slot_size or last.box ~= box_size then
+      square.shadow.pos(x, y)
+      square.shadow.size(slot_size, slot_size)
+      square.box.pos(x, y)
+      square.box.size(box_size, box_size)
+    end
+    if last == nil then
+      square.shadow.show()
+      square.box.show()
+      last = square.memo
+      square.drawn = last
+    end
+    last.x, last.y, last.slot, last.box, last.colour, last.dressing = x, y, slot_size, box_size, colour, dressing
+  end
+
+  local function place_label(label, value, x, y, size)
+    if label.dressing ~= dressing then
+      style_label(label.prim)
+      label.dressing = dressing
+    end
+    local last = label.drawn
+    if last == nil or last.text ~= value then
+      label.prim.text(value)
+    end
+    if last == nil or last.x ~= x or last.y ~= y then
+      label.prim.pos(x, y)
+    end
+    if last == nil or last.size ~= size then
+      label.prim.size(size)
+    end
+    if last == nil then
+      label.prim.show()
+      last = label.memo
+      label.drawn = last
+    end
+    last.text, last.x, last.y, last.size = value, x, y, size
+  end
+
   --[[ Lay the blocks out and push every square at them. Called on a read and
        on any change that moves things - never per frame, since nothing here
        animates and a settled grid costs nothing to leave alone. ]]
   local function render()
-    -- Everything is hidden first and shown as it is placed, so a slot that has
-    -- gone (a shrunken bag, a bag switched off) cannot be left on screen.
-    hide_all()
+    -- What this pass placed; whatever was up and is not in it comes down
+    -- afterwards, so a slot that has gone cannot be left on screen and a
+    -- slot that stays is never blinked.
+    local kept = { squares = {}, labels = {} }
 
-    if not visible or not pos then
-      return
-    end
+    if visible and pos then
+      local preview = logic.preview()
+      local sizes = preview and logic.preview_sizes(drawing.sizes) or drawing.sizes
+      local box_size = logic.box_size(scale)
+      local slot_size = logic.slot_size(scale)
 
-    local preview = logic.preview()
-    local sizes = preview and logic.preview_sizes(drawing.sizes) or drawing.sizes
-    local box_size = logic.box_size(scale)
-    local slot_size = logic.slot_size(scale)
+      for _, block in ipairs(logic.layout(sizes, pos.x, pos.y, scale)) do
+        local colours = drawing.colours[block.key] or {}
+        local kept_bag = {}
+        kept.squares[block.key] = kept_bag
+        for index = 1, block.slots do
+          local at = logic.slot_position(block, index, scale)
+          local colour = preview and logic.preview_colour(index) or colours[index] or "empty"
+          place_square(square_for(block.key, index), at.x, at.y, slot_size, box_size, colour)
+          kept_bag[index] = true
+        end
 
-    for _, block in ipairs(logic.layout(sizes, pos.x, pos.y, scale)) do
-      local colours = drawing.colours[block.key] or {}
-      for index = 1, block.slots do
-        local square = square_for(block.key, index)
-        local at = logic.slot_position(block, index, scale)
-
-        paint(square, preview and logic.preview_colour(index) or colours[index] or "empty")
-
-        square.shadow.pos(at.x, at.y)
-        square.shadow.size(slot_size, slot_size)
-        square.shadow.show()
-        square.box.pos(at.x, at.y)
-        square.box.size(box_size, box_size)
-        square.box.show()
-      end
-
-      if logic.labels_enabled() then
-        local label = label_for(block.key)
-        local at = logic.label_position(block, scale)
-        style_label(label)
-        label.text(block.label or block.key)
-        label.pos(at.x, at.y)
-        label.size(at.size)
-        label.show()
+        if logic.labels_enabled() then
+          local at = logic.label_position(block, scale)
+          place_label(label_for(block.key), block.label or block.key, at.x, at.y, at.size)
+          kept.labels[block.key] = true
+        end
       end
     end
+
+    hide_unkept(kept)
   end
 
   -- One read of the client, turned straight into what to draw. Every read is a
@@ -218,6 +286,8 @@ local function new(ctx)
     attached = true
     logic.set_config(config)
     logic.on_attach()
+    -- The palette and the label style are the new config's.
+    dressing = dressing + 1
     render()
   end
 
@@ -352,7 +422,7 @@ local function new(ctx)
     end
     squares = {}
     for _, label in pairs(labels) do
-      label.destroy()
+      label.prim.destroy()
     end
     labels = {}
   end

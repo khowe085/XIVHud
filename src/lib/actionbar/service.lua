@@ -823,10 +823,15 @@ local function new(deps)
     return nil
   end
 
-  -- The sword's click: one way, no state read - mounted, `draw` would
-  -- dismount instead, which is not what a click on a sword means.
+  -- The sword's click, one way in each direction and no state read -
+  -- mounted, the `draw` toggle would dismount instead, which is not what a
+  -- click on a sword means.
   function self.sheathe()
     execute(actions.sheathe())
+  end
+
+  function self.draw()
+    execute(actions.draw())
   end
 
   --[[ The warp verb. Walked ONCE, and the rung it picks is the rung that

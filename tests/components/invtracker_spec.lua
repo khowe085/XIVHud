@@ -277,6 +277,117 @@ describe("invtracker widget", function()
       assert.are.equal(before, after)
     end)
 
+    --[[ The grid flickered in a live client (Kevin, 2026-09-06). Every
+         repaint used to hide every square and show it again as it was
+         placed, and every read repainted - so a GearSwap burst, which is
+         one 0x050 per slot swapped, blinked the whole grid. A square now
+         remembers what it last drew and is pushed only what changed. ]]
+    local function calls_on(list)
+      local count = 0
+      for _, prim in ipairs(list) do
+        count = count + #prim.calls
+      end
+      return count
+    end
+
+    local function calls_named(list, name)
+      local count = 0
+      for _, prim in ipairs(list) do
+        for _, call in ipairs(prim.calls) do
+          if call.name == name then
+            count = count + 1
+          end
+        end
+      end
+      return count
+    end
+
+    it("pushes nothing for a read that changed nothing", function()
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+      local before = calls_on(prims.images) + calls_on(prims.texts)
+
+      widget.update("chunk", 0x020, "raw")
+      tick()
+
+      assert.are.equal(2, items.reads, "the client was read again")
+      assert.are.equal(before, calls_on(prims.images) + calls_on(prims.texts))
+    end)
+
+    it("never hides a square that stays on screen across a repaint", function()
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+      local hides = calls_named(prims.images, "hide")
+
+      widget.set_pos(300, 200)
+      widget.update("chunk", 0x020, "raw")
+      tick()
+
+      assert.are.equal(hides, calls_named(prims.images, "hide"))
+      assert.are.equal(20, drawn(), "and every square is still up")
+    end)
+
+    it("repaints only the squares whose colour moved", function()
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+      local colours = calls_named(prims.images, "color")
+
+      items.table.inventory = bag(10, 5)
+      widget.update("add item", 100)
+      tick()
+
+      -- One slot went from empty to held: its box and its shadow.
+      assert.are.equal(colours + 2, calls_named(prims.images, "color"))
+    end)
+
+    it("takes down a bag dropped by a re-attach that had no detach before it", function()
+      --[[ `//hud slot`, `//hud reset` and `//hud copy` re-attach a live,
+           shown widget without detaching it first. The squares of a bag
+           the new config does not draw were stranded on screen for the
+           session by the first diffing render (caught in review). ]]
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+      assert.are.equal(20, drawn())
+
+      attach({ bags = { inventory = { enabled = false, columns = 5 } } })
+      tick()
+
+      assert.are.equal(0, drawn(), "the dropped bag's squares came down")
+      widget.hide()
+      assert.are.equal(0, drawn())
+    end)
+
+    it("re-pushes every colour and style on a re-attach, keeping what is up", function()
+      -- The new config's palette may differ; the squares still on screen
+      -- take it without being blinked.
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+      local colours = calls_named(prims.images, "color")
+      local hides = calls_named(prims.images, "hide")
+      local fonts = calls_named(prims.texts, "font")
+
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+
+      -- Ten slots: ten boxes and ten shadows, one colour push apiece.
+      assert.are.equal(colours + 20, calls_named(prims.images, "color"), "every box and shadow repainted")
+      assert.are.equal(hides, calls_named(prims.images, "hide"), "and none was hidden to do it")
+      assert.are.equal(fonts + 1, calls_named(prims.texts, "font"), "the label restyled once")
+      assert.are.equal(20, drawn())
+    end)
+
+    it("styles a label once rather than on every repaint", function()
+      attach({ bags = { inventory = { enabled = true, columns = 5 } } })
+      tick()
+      local fonts = calls_named(prims.texts, "font")
+
+      widget.set_pos(300, 200)
+      widget.update("chunk", 0x020, "raw")
+      tick()
+
+      assert.are.equal(fonts, calls_named(prims.texts, "font"))
+    end)
+
     it("repaints when it is actually moved", function()
       attach({ bags = { inventory = { enabled = true, columns = 5 } } })
       tick()

@@ -30,11 +30,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      fixed list of ways to get the effect and fire the first one this
      character can actually use right now.
 
-     The order is CHEAPEST FIRST and the same on every job (Kevin,
-     2026-08-29) - ninjutsu, then the jig, then the spell, then the item -
-     rather than preferring whatever the main job happens to offer. The same
-     press then does the same thing whoever presses it, and the item is only
-     ever reached when nothing else is.
+     The order is FIXED and the same on every job - the white magic spell,
+     then Spectral Jig, then the ninjutsu (its Ni ahead of its Ichi), then
+     the item - rather than preferring whatever the main job happens to
+     offer. The same press then does the same thing whoever presses it, and
+     the item is only ever reached when nothing else is.
+
+     It is ordered by WHAT A RUNG SPENDS (Kevin, 2026-09-06, replacing the
+     2026-08-29 order that put the ninjutsu at the front and the spell
+     last): the spell and the jig consume nothing, and both ninjutsu spend
+     a tool, which is why the jig sits above them and the two consumables
+     are last of all.
 
      Every rung is gated on what the CLIENT says, never on hardcoded job
      levels: `get_spells`/`get_abilities` answer what this character knows,
@@ -53,24 +59,27 @@ local counters = require("lib/actionbar/counters")
 -- remembered: Sneak/Invisible are White Magic, the two ninjutsu are spells
 -- as well (the client lists them in get_spells), and the jig is an ability.
 local SNEAK, INVISIBLE = 137, 136
-local MONOMI_ICHI, TONKO_ICHI = 318, 353
+local MONOMI_ICHI, TONKO_ICHI, TONKO_NI = 318, 353, 354
 local SPECTRAL_JIG = 196
 
---[[ Cheapest first. `spell` and `ability` are resource lookups; `item` is a
-     name, because `/item` takes the name and the id only ever matters for
-     the bag count - which is resolved by name too, the way the temporary
-     bag and the resting status already are. ]]
+--[[ Spell, jig, ninjutsu, item. `spell` and `ability` are resource
+     lookups; `item` is a name, because `/item` takes the name and the id
+     only ever matters for the bag count - which is resolved by name too,
+     the way the temporary bag and the resting status already are. Monomi
+     has no Ni in the game (id 319 is Aisha: Ichi), which is why only the
+     invisible ladder carries two ninjutsu rungs. ]]
 local LADDERS = {
   sneak = {
-    { kind = "spell", id = MONOMI_ICHI },
-    { kind = "ability", id = SPECTRAL_JIG },
     { kind = "spell", id = SNEAK },
+    { kind = "ability", id = SPECTRAL_JIG },
+    { kind = "spell", id = MONOMI_ICHI },
     { kind = "item", name = "Silent Oil" },
   },
   invisible = {
-    { kind = "spell", id = TONKO_ICHI },
-    { kind = "ability", id = SPECTRAL_JIG },
     { kind = "spell", id = INVISIBLE },
+    { kind = "ability", id = SPECTRAL_JIG },
+    { kind = "spell", id = TONKO_NI },
+    { kind = "spell", id = TONKO_ICHI },
     { kind = "item", name = "Prism Powder" },
   },
 }

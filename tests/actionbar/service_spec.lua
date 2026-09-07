@@ -391,6 +391,15 @@ describe("the action service", function()
       assert.are.equal("sheathed", service.weapon_state())
     end)
 
+    it("draws on the sword's click, one way and sending nothing", function()
+      -- Mounted would make the draw toggle dismount; this reads no state.
+      local service, env = world()
+      env.player.buffs = { 252 }
+      service.draw()
+      assert.are.same({}, env.commands)
+      assert.are.equal("drawn", service.weapon_state())
+    end)
+
     it("releases a held slot silently on unload", function()
       local service, env = world()
       ring_in_bag(env)
