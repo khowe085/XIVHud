@@ -47,6 +47,7 @@ return function(screen_width, screen_height)
 
   local config = shared.cosmetics()
   config.set_flags = shared.set_flags()
+  config.numbers = true
   config.bars = {}
   for _, anchor in ipairs(ANCHORS) do
     config.bars[anchor] = { rows = 1 }

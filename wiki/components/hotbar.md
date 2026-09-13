@@ -56,6 +56,7 @@ over it.
 | Option | Default | What it does |
 | --- | --- | --- |
 | `bars.<bar>.rows` | `1` | that row's shape: `1` (10x1), `2` (5x2), `5` (2x5) or `10` (1x10) (`rows`) |
+| `numbers` | `true` | draw the set number beside every row; off, the slots move into its space (`numbers`) |
 | `set_flags[n].shared` | `false` | set `n` is shared by every job (`share`) |
 | `set_flags[n].cycle.drawn` / `.sheathed` | `true` / `true` | which rotations set `n` belongs to (`cycle`) |
 | `hide.empty_slots` | `false` | leave empty slots undrawn |
@@ -92,6 +93,7 @@ and the layer prefixes go in front as on the crossbar: `sub:3:7`, `wpn:3:7`,
 | `//hud hotbar` | the job, active set and weapon state, then one line per row: on or off, shape, the set it shows |
 | `//hud hotbar <bar>` | the head line and that row alone |
 | `//hud hotbar [<bar>] rows <1\|2\|5\|10>` | set a row's shape (row 1 when no row is named) |
+| `//hud hotbar numbers [on\|off]` | show or hide the set number on every row, or say which it is |
 | `//hud hotbar help` | list every command |
 | `//hud hotbar edit` | toggle the mouse binder |
 | `//hud hotbar set <1-8>` | switch the active set (and so row 1) |
