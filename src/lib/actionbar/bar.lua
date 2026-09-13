@@ -579,12 +579,22 @@ local function new(deps)
 
   --[[ The count drawn in a slot's cost corner, when the action carries
        one: SCH stratagem charges, NIN/COR tool counts, or how many of an
-       item the slot names are carried. At most one of the three can apply. ]]
+       item the slot names are carried. At most one of the three can apply.
+       A stratagem's also carries `recast` - the next charge's, which the
+       slot draws in place of the full refill the client reports - and
+       `charged`, which keeps the slot bright under it, XIV's own rule for
+       an action with charges. ]]
   function self.counter_for(record, meta, player, ability_recasts)
     if record.type == "ja" and counters.stratagem_ability(record.action) then
-      local charges = counters.stratagems(player, ability_recasts[231] or 0)
+      local recast = ability_recasts[231] or 0
+      local charges = counters.stratagems(player, recast)
       if charges ~= nil then
-        return { text = tostring(charges.available), color = PLAIN_COUNT_COLOR }
+        return {
+          text = tostring(charges.available),
+          color = PLAIN_COUNT_COLOR,
+          recast = counters.stratagem_next(player, recast),
+          charged = charges.available > 0,
+        }
       end
       return nil
     end

@@ -268,6 +268,34 @@ describe("one slot", function()
       assert.is_false(prims.texts[3].visible)
     end)
 
+    it("draws a counter's own recast in place of the action's", function()
+      local slot, prims = world()
+      paint(slot, { type = "ja", action = "Penury" }, { kind = "ability", recast_id = 231 })
+      slot.tick(facts({
+        ability_recasts = { [231] = 180 },
+        counter = function()
+          return { text = "0", recast = 20, charged = false }
+        end,
+      }))
+      assert.are.equal("20s", prims.texts[3].last.text)
+      assert.are.equal("addon/assets/cooldown/frame_32.png", prims.images[4].last.path, "the sweep runs on it too")
+      assert.are.equal(60, prims.images[3].last.alpha, "no charge in hand: dimmed")
+    end)
+
+    it("stays bright under a recast while the counter holds a charge", function()
+      local slot, prims = world()
+      paint(slot, { type = "ja", action = "Penury" }, { kind = "ability", recast_id = 231 })
+      slot.tick(facts({
+        ability_recasts = { [231] = 150 },
+        counter = function()
+          return { text = "1", recast = 70, charged = true }
+        end,
+      }))
+      assert.are.equal("1m", prims.texts[3].last.text)
+      assert.is_true(prims.texts[3].visible)
+      assert.are.equal(255, prims.images[3].last.alpha)
+    end)
+
     it("dims a mount the zone refuses and sweeps its own recast", function()
       local slot, prims = world()
       paint(slot, { type = "mr" }, nil)

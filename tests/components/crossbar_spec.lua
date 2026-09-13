@@ -2957,6 +2957,27 @@ describe("crossbar live widget", function()
       assert.are.equal("1", text_of("xhb_left", 1, "cost").last.text, "ceil(100/80) = 2 of 3 spent")
     end)
 
+    it("times a stratagem slot to its next charge and keeps it bright while one is in hand", function()
+      local files = war_bindings()
+      files.RDM = { sets = { [1] = { left = { [1] = { type = "ja", action = "Penury", target = "me" } } } } }
+      local player = war_player()
+      player.main_job = "RDM"
+      player.main_job_id = 5
+      player.sub_job = "SCH"
+      player.sub_job_level = 52
+      build_world({ store_files = files, player = player })
+      -- 3 charges at 80s each, all spent: the client's recast reads 240.
+      env.ability_recasts = { [231] = 240 }
+      push(widget)
+      assert.are.equal("1m", text_of("xhb_left", 1, "recast").last.text, "80s to the first charge, not 4m")
+      assert.are.equal(config.disabled_alpha, image_of("xhb_left", 1, "icon").last.alpha)
+      env.now = 0.3
+      env.ability_recasts = { [231] = 150 }
+      push(widget)
+      assert.are.equal("1m", text_of("xhb_left", 1, "recast").last.text, "70s to the second")
+      assert.are.equal(255, image_of("xhb_left", 1, "icon").last.alpha, "one charge in hand")
+    end)
+
     it("counts ninja tools with the master colours", function()
       local files = { NIN = { sets = { [1] = { left = { [1] = { type = "ma", action = "Utsusemi: Ichi" } } } } } }
       local player = war_player()
