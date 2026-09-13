@@ -392,6 +392,59 @@ describe("hotbar", function()
       )
     end)
 
+    it("switches the set number off on every row with numbers off, collapsing its space", function()
+      build_world()
+      push()
+      widget.show("bar2")
+      push()
+      local reply = widget.handle_command({ "numbers", "off" })
+      assert.are.equal("hotbar: set numbers off", reply)
+      assert.is_false(config.numbers)
+      assert.are.equal(1, env.config_saves)
+      assert.is_false(prims.texts[31].visible, "row 1's number")
+      assert.is_false(prims.texts[62].visible, "and row 2's")
+      local render = new_render({ config = config })
+      assert.are.equal(0, render.metrics(1).grid_x)
+      assert.are.same({ 100, 100 }, { prims.images[1].x, prims.images[1].y }, "slot 1 moved to the origin")
+      assert.are.equal(100, prims.images[61].x, "and row 2's slot 1 with it")
+      local _, _, w, h = widget.get_bounds("bar1")
+      assert.are.same({ render.bounds(1) }, { w, h })
+      reply = widget.handle_command({ "numbers", "on" })
+      assert.are.equal("hotbar: set numbers on", reply)
+      assert.is_true(config.numbers)
+      assert.is_true(prims.texts[31].visible)
+      assert.are.equal("1", prims.texts[31].last.text)
+      assert.are.equal(100 + render.metrics(1).grid_x, prims.images[1].x, "and back beside it")
+    end)
+
+    it("leaves the number off a row first built while numbers are off", function()
+      build_world({
+        tune = function(tuned)
+          tuned.numbers = false
+        end,
+      })
+      push()
+      widget.show("bar2")
+      push()
+      assert.are.equal(62, #prims.texts)
+      assert.is_false(prims.texts[31].visible)
+      assert.is_false(prims.texts[62].visible)
+    end)
+
+    it("reports numbers bare, and refuses a bad word or a row word", function()
+      build_world()
+      push()
+      assert.are.equal("hotbar: set numbers on", widget.handle_command({ "numbers" }))
+      local reply = widget.handle_command({ "numbers", "maybe" })
+      assert.is_not_nil(reply:find("numbers [on|off]", 1, true), reply)
+      reply = widget.handle_command({ "bar2", "numbers", "off" })
+      assert.is_not_nil(reply:find("every row", 1, true), reply)
+      assert.is_nil(reply:find("a set is a set", 1, true), reply)
+      assert.are.equal(true, config.numbers, "nothing was stored")
+      assert.is_nil(widget.handle_command({ "label", "off" }):find("^hotbar: set numbers"), "label is not a verb")
+      assert.are.equal(0, env.config_saves)
+    end)
+
     it("passes the common roster to the bar, and refuses a row word in front of it", function()
       build_world()
       push()
@@ -483,6 +536,19 @@ describe("hotbar", function()
     local found = false
     for _, line in ipairs(help) do
       if line:find("//hud hotbar [<bar>] rows <1|2|5|10>", 1, true) then
+        found = true
+      end
+    end
+    assert.is_true(found, table.concat(help, "\n"))
+  end)
+
+  it("lists its numbers verb in help", function()
+    build_world()
+    push()
+    local help = widget.handle_command({ "help" })
+    local found = false
+    for _, line in ipairs(help) do
+      if line:find("//hud hotbar numbers [on|off]", 1, true) then
         found = true
       end
     end

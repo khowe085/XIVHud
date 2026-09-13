@@ -16,6 +16,10 @@ describe("hotbar defaults", function()
     end
   end)
 
+  it("ships the set numbers on", function()
+    assert.is_true(defaults.numbers)
+  end)
+
   it("carries the shared cosmetics and eight set flags", function()
     assert.are.equal(6, defaults.slot_spacing)
     assert.are.equal(7, defaults.font_size)
