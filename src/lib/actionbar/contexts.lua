@@ -29,9 +29,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --[[ The code-defined context roster: buff-conditioned binding layers, in
      stack order -- later in the list wins. Definitions and their order are
      code; users author only the per-context overrides (in the per-job files).
-     Adding a context is one entry here. The roster is the SCH arts/addendum
-     family (buff ids ported from an xivcrossbar fork) plus BLU's Unbridled
-     Learning.
+     Adding a context is one entry here. The roster is RDM's Composure, the
+     SCH arts/addendum family (buff ids ported from an xivcrossbar fork) and
+     BLU's Unbridled Learning.
 
      Every entry names the JOB it belongs to, and off that job it is neither
      listed nor live (Kevin, 2026-09-04): a context watches a buff only one
@@ -48,6 +48,24 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      list rather than deltas -- belongs to the binding model.) ]]
 
 local contexts = {
+  --[[ FIRST, so the arts family overrides it (Kevin, 2026-09-13): `jobs`
+       counts the sub job for arts, so a RDM/SCH can hold Composure and Light
+       Arts at once and something has to win. Unbridled is BLU-main and this
+       RDM-main, so those two can never co-occur and their order says nothing.
+
+       The icon is the JOB's, for the reason unbridled's is: the shipped
+       ability sheet is keyed by RECAST id (render.lua), which this container
+       cannot look up. ]]
+  {
+    name = "composure",
+    label = "Composure",
+    any_of = { 419 },
+    icon = "jobs/rdm",
+    jobs = { "RDM" },
+    -- BG wiki: obtained at RDM 50, and "not accessible if Red Mage is set as
+    -- a sub job" - said outright, not inferred from the subjob level cap.
+    main_only = true,
+  },
   {
     name = "light-arts",
     label = "Light Arts",

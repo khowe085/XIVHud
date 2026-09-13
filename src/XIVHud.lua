@@ -1301,14 +1301,16 @@ local function check_assets()
     "icons/map.png",
     "icons/party-member.png",
     -- contexts.lua: the icons the roster entries name - the arts/addendum
-    -- books, and BLU's job icon for unbridled (the shipped ability sheet is
-    -- keyed by recast id, which nothing here can look up). Load-checked with
+    -- books, and the job icons for unbridled and composure (the shipped
+    -- ability sheet is keyed by recast id, which nothing here can look up,
+    -- so an entry with no book art borrows its job's). Load-checked with
     -- the rest though no surface draws a roster icon yet: the field is what
     -- the roster carries, and art that is missing should say so at load
     -- rather than the day something starts drawing it.
     "icons/abilities/book_white.png",
     "icons/abilities/book_black.png",
     "icons/jobs/blu.png",
+    "icons/jobs/rdm.png",
     -- actions.lua built-ins: mr, warp, and draw's three states.
     "icons/mounts/mount-roulette.png",
     "icons/spells/00261.png",
