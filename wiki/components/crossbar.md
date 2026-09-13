@@ -979,8 +979,11 @@ first job.
 The countdown tells you **which** way you are going home — `Warp Ring in 5
 seconds`, not a bare `Warp` — and only the last five seconds are counted out
 loud. A warp that has to put a ring on and wait for it to charge is announced
-the same way: the item at the press, how long once the game will say, then the
-last five seconds. `/heal` calls any of it off, warm-up included.
+the same way: the item at the press, and how long it will take — at the
+press too wherever the game's data names the item's warm-up (it does for the
+warp items), otherwise as soon as the game will say — then the last five
+seconds. If it comes up later than it said, it says so again. `/heal` calls
+any of it off, warm-up included.
 
 The ladder is walked **once**, when you press. Whatever it names is what
 fires, even if something better turns up during the countdown.

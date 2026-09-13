@@ -106,6 +106,14 @@ local PENDING_DEADLINE_MARGIN = 15
 local DEFAULT_GIVE_UP_SECONDS = enchanted.give_up_default()
 -- The last seconds of a warm-up are counted aloud one at a time, from here.
 local PENDING_COUNT_FROM = 5
+-- How much later than the wait already said a reading may put the use
+-- before it is said again: a remaining time is rounded up to the second.
+local PENDING_LATE_TOLERANCE = 1
+--[[ The same allowance for the first reading after a wait said at the
+     PRESS, which started counting before the piece was on: a second for the
+     equip to land, and a second for the game's warm-up stamps being whole
+     seconds. A first reading inside it quietly becomes the promise. ]]
+local PENDING_PRESS_SLOP = 2
 -- The buff the client raises while mounted; the draw built-in dismounts on it.
 local MOUNTED_BUFF = 252
 local ACTION_CHUNK = 0x028
@@ -532,6 +540,27 @@ local function new(deps)
     abort_pending(message)
   end
 
+  local function ready_line(name, seconds)
+    return tostring(name)
+      .. " ready in "
+      .. seconds
+      .. (seconds == 1 and " second" or " seconds")
+      .. ". /heal to cancel."
+  end
+
+  --[[ The equip delay the items resource names (`cast_delay`: the Warp
+       Cudgel's 3, the Warp Ring's 8), or nil where it names none. A piece
+       being equipped starts that warm-up from the top. Read off the
+       resource data on 2026-09-13 rather than confirmed field by field in a
+       client, but it agrees with both figures that have been: the Tavnazian
+       Ring's 30, and the cudgel's three-second window. ]]
+  local function equip_delay(item_id)
+    local items = resources ~= nil and resources.items or nil
+    local item = type(items) == "table" and items[item_id] or nil
+    local delay = type(item) == "table" and item.cast_delay or nil
+    return type(delay) == "number" and delay or nil
+  end
+
   --[[ Runs one of warp.lua's or enchanteditem.lua's plans - the same three
        shapes, so one scheduler serves both. `broadcast`, when given, is
        `warp all`'s IPC send, and it fires where the LOCAL warp commits and
@@ -589,8 +618,7 @@ local function new(deps)
       if deps.set_equip ~= nil and not plan.equipped then
         deps.set_equip(plan.bag_slot, plan.equip_slot, plan.bag)
       end
-      -- Said at the press: the wait that follows can be half a minute. How
-      -- long is not knowable yet; tick_pending speaks it once it has a number.
+      -- Said at the press: the wait that follows can be half a minute.
       local doing = plan.equipped and " - waiting for it to charge." or " - equipping it first."
       say(noun .. " with " .. tostring(plan.name) .. doing)
       --[[ A warp skips the travel countdown because its warm-up is the
@@ -616,6 +644,22 @@ local function new(deps)
         not_before = frame_now() + hold,
         deadline = time_now() + math.max(give_up, hold) + PENDING_DEADLINE_MARGIN,
       }
+      --[[ How long, said the moment the item is picked wherever the
+           resource names the equip delay: the count started a second late
+           otherwise, waiting on the extdata of a piece not yet on (Kevin,
+           live client, 2026-09-13). A piece already on reads its own clock
+           on the next frame's poll instead, and one the resource names no
+           delay for still waits for a reading tick_pending can believe. ]]
+      local delay = not plan.equipped and equip_delay(plan.id) or nil
+      if delay ~= nil then
+        local wait = math.ceil(math.max(delay, hold))
+        if wait > 0 then
+          pending_item.said = wait
+          pending_item.ready_at = frame_now() + wait
+          pending_item.promised_at_press = true
+          say(ready_line(plan.name, wait))
+        end
+      end
       return
     end
     if broadcast ~= nil then
@@ -693,20 +737,26 @@ local function new(deps)
     if known then
       local remaining = math.ceil(math.max(warm, hold))
       if remaining > 0 then
-        -- A warm-up that RESTARTED (the re-equip loop above wins a slot
-        -- back) pushes `remaining` up; re-seed and count the new one down.
-        if pending_item.said ~= nil and remaining > pending_item.said then
-          pending_item.said = remaining
+        --[[ A reading that puts the use later than the wait already said -
+             a warm-up that RESTARTED (the re-equip loop above wins a slot
+             back), or a ring landing later than the press-time figure
+             allowed - is said again, so the opening line is never a
+             promise the count quietly breaks. Measured as a time rather
+             than against the number, which the seconds spent getting the
+             piece on would otherwise hide. ]]
+        if pending_item.promised_at_press then
+          pending_item.promised_at_press = nil
+          if now + remaining <= pending_item.ready_at + PENDING_PRESS_SLOP then
+            pending_item.ready_at = now + remaining
+          end
+        end
+        if pending_item.ready_at ~= nil and now + remaining > pending_item.ready_at + PENDING_LATE_TOLERANCE then
+          pending_item.said = nil
         end
         if pending_item.said == nil then
           pending_item.said = remaining
-          say(
-            tostring(pending_item.name)
-              .. " ready in "
-              .. remaining
-              .. (remaining == 1 and " second" or " seconds")
-              .. ". /heal to cancel."
-          )
+          pending_item.ready_at = now + remaining
+          say(ready_line(pending_item.name, remaining))
         end
         if remaining < pending_item.said then
           pending_item.said = remaining
