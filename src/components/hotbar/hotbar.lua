@@ -120,15 +120,32 @@ local function new(ctx)
     return placed[anchor]
   end
 
+  local function bar_config(anchor)
+    local bars = type(config.bars) == "table" and config.bars or {}
+    return type(bars[anchor]) == "table" and bars[anchor] or {}
+  end
+
   --- The shape a row is drawn in, off its config; a hand-broken value draws
   --- the shipped 10x1 rather than nothing.
   local function rows_of(anchor)
-    local bars = type(config.bars) == "table" and config.bars or {}
-    local entry = type(bars[anchor]) == "table" and bars[anchor] or {}
+    local entry = bar_config(anchor)
     if render.columns_for(entry.rows) ~= nil then
       return entry.rows
     end
     return 1
+  end
+
+  --[[ Whether a row leaves its empty slots undrawn: its own `hide_empty`
+       once `hideempty` has written one, and the bar-wide
+       `hide.empty_slots` until then - which is why the defaults seed no
+       per-row key, or the merge would put one in every file and the
+       bar-wide key could never be reached. ]]
+  local function hides_empty(anchor)
+    local own = bar_config(anchor).hide_empty
+    if type(own) == "boolean" then
+      return own
+    end
+    return config_hide("empty_slots")
   end
 
   --- The set a row shows: the active set on row 1, its own number on the
@@ -236,9 +253,11 @@ local function new(ctx)
     end
   end
 
-  --[[ Whether a slot of a SHOWN row is actually drawn: `hide.empty_slots`
-       is the one thing that can hide one, and the binder gets empty slots
-       back regardless - an invisible slot is still a drop target. ONE
+  --[[ Whether a slot of a SHOWN row is actually drawn: hiding empty slots
+       is the one thing that can hide one, and the binder and layout mode
+       get them back regardless - an invisible slot is still a drop target,
+       and a row being placed shows every slot it holds (Kevin's call; the
+       crossbar keeps them hidden there). ONE
        predicate for drawing and for the click hit-test. ]]
   local function slot_drawn(anchor, slot)
     local row = rows[anchor]
@@ -246,7 +265,7 @@ local function new(ctx)
     if cell == nil then
       return false
     end
-    return cell.record() ~= nil or editing() or not config_hide("empty_slots")
+    return cell.record() ~= nil or editing() or preview or not hides_empty(anchor)
   end
 
   --[[ Only the rows on screen, with the placement they are drawn at and the
@@ -500,12 +519,14 @@ local function new(ctx)
   end
 
   --[[ Commands ------------------------------------------------------------
-       `//hud hotbar [<bar>] rows <1|2|5|10>` is the widget's; the bare form
-       lists every row; a bar word alone lists that row. The common roster
+       `//hud hotbar [<bar>] rows <1|2|5|10>`, `[<bar>] hideempty on|off`
+       and `numbers [on|off]` are the widget's; the bare form lists every
+       row; a bar word alone lists that row. The common roster
        (bind, set, cycle, list, edit ...) is the bar's and takes NO bar word:
        a set is a set whatever row draws it, so one in front is refused
        rather than dropped. ]]
   local COLUMNS_FORM = "rows <1|2|5|10> - 10x1, 5x2, 2x5 or 1x10"
+  local HIDE_EMPTY_FORM = "hideempty on|off - leave the row's empty slots undrawn"
   local NUMBERS_FORM = "numbers [on|off] - the set number beside every row"
 
   local function row_line(anchor)
@@ -516,6 +537,9 @@ local function new(ctx)
     local line = ("  %s: %s, %dx%d"):format(anchor, on and "on" or "off", render.columns_for(shape), shape)
     if set ~= nil then
       line = line .. ", set " .. set .. (anchor == "bar1" and " (active)" or "")
+    end
+    if hides_empty(anchor) then
+      line = line .. ", hides empty slots"
     end
     return line
   end
@@ -549,6 +573,21 @@ local function new(ctx)
     layout(anchor)
     repaint()
     return ("hotbar: %s now draws %d rows (%dx%d)"):format(anchor, shape, render.columns_for(shape), shape)
+  end
+
+  local function set_hide_empty(anchor, word)
+    word = type(word) == "string" and word:lower() or nil
+    if word ~= "on" and word ~= "off" then
+      return "hotbar: " .. HIDE_EMPTY_FORM
+    end
+    config.bars = type(config.bars) == "table" and config.bars or {}
+    config.bars[anchor] = type(config.bars[anchor]) == "table" and config.bars[anchor] or {}
+    config.bars[anchor].hide_empty = word == "on"
+    if save ~= nil then
+      save()
+    end
+    refresh()
+    return ("hotbar: %s %s empty slots"):format(anchor, word == "on" and "hides" or "draws")
   end
 
   local function numbers_state()
@@ -596,6 +635,12 @@ local function new(ctx)
       end
       return set_rows(row_word or "bar1", words[2])
     end
+    if verb == "hideempty" then
+      if #words > 2 then
+        return "hotbar: " .. HIDE_EMPTY_FORM
+      end
+      return set_hide_empty(row_word or "bar1", words[2])
+    end
     if verb == "numbers" then
       if row_word ~= nil then
         return "hotbar: numbers takes no row word - one switch for every row"
@@ -616,7 +661,11 @@ local function new(ctx)
     name = "hotbar",
     grammar = grammars.hotbar(),
     views = false,
-    help_extra = { "[<bar>] rows <1|2|5|10> - 10x1, 5x2, 2x5 or 1x10 (bar1 when no row is named)", NUMBERS_FORM },
+    help_extra = {
+      "[<bar>] rows <1|2|5|10> - 10x1, 5x2, 2x5 or 1x10 (bar1 when no row is named)",
+      "[<bar>] " .. HIDE_EMPTY_FORM .. " (bar1 when no row is named)",
+      NUMBERS_FORM,
+    },
     ctx = ctx,
     config = function()
       return config
