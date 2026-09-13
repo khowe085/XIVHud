@@ -2082,8 +2082,10 @@ describe("crossbar binder", function()
     --[[ A menu row carries no record, and both of these reach for one. Pinned
          rather than left to Lua's nil-tolerance: an unguarded index here is a
          crash in the DRAW path, sixty times a second, which `lib/guard` would
-         disable the whole handler over. ]]
-    it("draws no icon for a menu row and shows no details when it is hovered", function()
+         disable the whole handler over. A menu row CAN draw art - see the
+         `icon` test below - but only where the catalog names some, which this
+         fixture does not. ]]
+    it("draws no icon for a menu row with no art, and no details when hovered", function()
       local binder, env = build({
         catalog = stratagems(),
         icon = function()
@@ -2267,6 +2269,44 @@ describe("crossbar binder", function()
       assert.is_not_nil(binder.catalog_view(), "still on the catalog step, nothing bound")
       assert.is_nil(binder.target_view())
       assert.are.same({}, env.said, "and it said nothing it could not do")
+    end)
+
+    it("draws a menu row's own art, resolved like any other icon", function()
+      local binder, env = build({
+        catalog = {
+          {
+            name = "Job Abilities",
+            entries = {
+              {
+                label = "Stratagems",
+                icon = "abilities/book_white",
+                children = { { label = "Accession", record = { type = "ja", action = "Accession" } } },
+              },
+            },
+          },
+        },
+        icon = function(record)
+          return record.icon == "abilities/book_white" and "addon/assets/icons/abilities/book_white.png" or nil
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local parent = entry_named(env, "Stratagems")
+      local drawn = nil
+      for _, prim in ipairs(env.prims.images) do
+        if prim.visible and prim.last.path == "addon/assets/icons/abilities/book_white.png" then
+          drawn = prim
+        end
+      end
+      assert.is_not_nil(drawn, "the menu row drew its art")
+      assert.are.same({ parent.x, parent.y }, { drawn.x, drawn.y }, "beside its own row")
+      -- Memoized on the NAME: a menu row has no record to key the memo by, and
+      -- the panel redraws on every hover change.
+      local asked = env.icon_calls
+      for _ = 1, 5 do
+        binder.mouse(MOVE, parent.x + 1, parent.y + 1, 0)
+      end
+      assert.are.equal(asked, env.icon_calls, "asked once, not once per redraw")
     end)
 
     it("closes outright from the submenu step", function()

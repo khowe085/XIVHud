@@ -604,6 +604,17 @@ describe("crossbar catalog", function()
       return out
     end
 
+    --[[ A menu row carries no record, so nothing could resolve art for it and
+         Stratagems drew a blank gutter beside sixteen icon-bearing rows. The
+         field is the CONTEXT roster's own shape - a pack-relative name under
+         `assets/icons/` - so `icon_candidates` resolves it through the same
+         custom-override-then-pack chain a bound record's `icon=` override
+         takes, and a user can override it the same way. ]]
+    it("carries the grimoire art on the Stratagems menu", function()
+      local catalog = family_build({ 223 })
+      assert.equal("abilities/book_white", entry_named(catalog.build(), "Job Abilities", "Stratagems").icon)
+    end)
+
     it("offers the parent as a submenu rather than a bindable record", function()
       local catalog = family_build({ 223 })
       local parent = entry_named(catalog.build(), "Job Abilities", "Stratagems")

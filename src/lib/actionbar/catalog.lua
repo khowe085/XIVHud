@@ -76,7 +76,10 @@ local INVENTORY_BAG = 0
      disappears. What it catches is the LIKELIEST slip - an off-by-one into the
      family's own children - and it costs one comparison. ]]
 local FAMILIES = {
-  { parent = 223, children = "Scholar", parent_type = "JobAbility" }, -- Stratagems
+  -- `icon` is optional and pack-relative, the CONTEXT roster's own shape: a
+  -- menu row has no record for art to be resolved from, so without one it
+  -- draws a blank gutter beside sixteen icon-bearing children.
+  { parent = 223, children = "Scholar", parent_type = "JobAbility", icon = "abilities/book_white" }, -- Stratagems
   { parent = 97, children = "CorsairRoll", parent_type = "JobAbility" }, -- Phantom Roll
   { parent = 124, children = "CorsairShot", parent_type = "JobAbility" }, -- Quick Draw
   { parent = 357, children = "Rune", parent_type = "JobAbility" }, -- Rune Enchantment
@@ -281,7 +284,7 @@ local function new(deps)
        2026-09-07), which is why upstream hardcodes them. The client's own
        list IS the level filter, wherever it answers. ]]
   local function families(listed_ids, job_abilities)
-    local submenus, spoken_for, parents = {}, {}, {}
+    local submenus, spoken_for, parents, icons = {}, {}, {}, {}
     for id, parent_type in pairs(MENUS) do
       -- Type-checked exactly as a family's parent is, and for the same
       -- reason: a wrong id must cost nobody an ability.
@@ -360,10 +363,11 @@ local function new(deps)
         -- list is exactly the dead bind this whole change exists to remove.
         if #children > 0 then
           submenus[family.parent] = children
+          icons[family.parent] = family.icon
         end
       end
     end
-    return submenus, spoken_for, parents
+    return submenus, spoken_for, parents, icons
   end
 
   local function abilities(groups, jobs)
@@ -374,7 +378,7 @@ local function new(deps)
     for _, id in ipairs(table_or_empty(listed.job_abilities)) do
       listed_ids[id] = true
     end
-    local submenus, spoken_for, parents = families(listed_ids, job_abilities)
+    local submenus, spoken_for, parents, icons = families(listed_ids, job_abilities)
     for _, id in ipairs(table_or_empty(listed.job_abilities)) do
       local ability = job_abilities[id]
       if type(ability) == "table" and type(ability.en) == "string" then
@@ -387,7 +391,7 @@ local function new(deps)
              which is exactly why the order is pinned here rather than left to
              hold by accident. ]]
         if submenus[id] ~= nil then
-          add(groups, "Job Abilities", { label = ability.en, children = submenus[id] })
+          add(groups, "Job Abilities", { label = ability.en, children = submenus[id], icon = icons[id] })
         elseif not parents[id] and not spoken_for[ability.type] and available(ability, jobs) then
           -- A child the client named as well as its parent: it is already in
           -- the submenu, and a second copy out here would bind the same thing

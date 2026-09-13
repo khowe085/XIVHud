@@ -338,6 +338,24 @@ local function new(deps)
     return remembered or nil
   end
 
+  --[[ A MENU row's art. It has no record for `icon_for` to key on, so the
+       catalog hands it a pack-relative name instead and it goes through the
+       same resolver as an `icon=` override on a bound record - custom art
+       first, then the shipped pack - by way of a record-shaped table carrying
+       nothing but the name. Memoized on the NAME, since that table is built
+       fresh per call and the panel redraws on every hover change. ]]
+  local function menu_icon(name)
+    if type(name) ~= "string" or deps.icon == nil then
+      return nil
+    end
+    local remembered = icon_memo[name]
+    if remembered == nil then
+      remembered = deps.icon({ icon = name }) or false
+      icon_memo[name] = remembered
+    end
+    return remembered or nil
+  end
+
   -- A getter, like the model: the widget rebuilds its render instance over
   -- the user's own config on every attach.
   local function renderer()
@@ -760,6 +778,7 @@ local function new(deps)
         label = row.item.label,
         record = row.item.record,
         children = row.item.children,
+        icon = row.item.icon,
         x = row.x,
         y = row.y,
         width = row.width,
@@ -1079,7 +1098,7 @@ local function new(deps)
     draw_rows(prims.entries, rows)
     for index, prim in ipairs(prims.entry_icons) do
       local entry = icons[index]
-      local path = entry ~= nil and icon_for(entry.record) or nil
+      local path = entry ~= nil and (icon_for(entry.record) or menu_icon(entry.icon)) or nil
       if path == nil then
         prim.hide()
       else
