@@ -867,7 +867,9 @@ weaponskill, job ability and pet ability swaps its icon for the skillchain
 property it *would* make right now. A weaponskill you cannot yet pay for shows
 the property dimmed, with its TP cost still up.
 
-**Stratagem counts** show on the Scholar abilities that spend them.
+**Stratagem counts** show on the Scholar abilities that spend them. The
+countdown on those slots is the time until your **next** charge comes back, not
+until all of them are, and the slot stays lit while you have a charge left.
 
 **Ninja tool counts** show on ninjutsu slots — how many of that tool you are
 carrying, and the slot crossed out when you have none. The colour tells you
