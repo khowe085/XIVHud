@@ -185,10 +185,10 @@ local function sch_level(player)
   return nil
 end
 
---- Available and maximum stratagem charges, or nil when the counter draws
---- nothing at all (no SCH, or SCH below 10 - the formula's zero is not a
---- charge count, and CHARGE_TIME[0] does not exist).
-function counters.stratagems(player, recast_231)
+-- The maximum charge count, or nil when the counter draws nothing at all (no
+-- SCH, or SCH below 10 - the formula's zero is not a charge count, and
+-- CHARGE_TIME[0] does not exist).
+local function max_charges(player)
   if type(player) ~= "table" then
     return nil
   end
@@ -203,8 +203,33 @@ function counters.stratagems(player, recast_231)
   if points and (points.jp_spent or 0) >= 550 then
     max = max + 1
   end
+  return max
+end
+
+--- Available and maximum stratagem charges, or nil when the counter draws
+--- nothing at all.
+function counters.stratagems(player, recast_231)
+  local max = max_charges(player)
+  if max == nil then
+    return nil
+  end
   local used = math.ceil((recast_231 or 0) / CHARGE_TIME[max])
   return { available = math.max(0, max - used), max = max }
+end
+
+--- Seconds until the next stratagem charge comes back: 0 with every charge in
+--- hand, nil where `stratagems` is. Recast 231 counts to a FULL refill, and
+--- the charges return one at a time, so the next is the remainder over one
+--- charge's time.
+function counters.stratagem_next(player, recast_231)
+  local max = max_charges(player)
+  if max == nil then
+    return nil
+  end
+  local recast = recast_231 or 0
+  local charge_time = CHARGE_TIME[max]
+  local used = math.ceil(recast / charge_time)
+  return math.max(0, recast - math.max(0, used - 1) * charge_time)
 end
 
 --- The tool a ninjutsu consumes, by spell id.

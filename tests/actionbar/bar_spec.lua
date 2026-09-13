@@ -276,6 +276,34 @@ describe("one bar's state", function()
       assert.are.equal("3", counter.text)
       assert.is_false(counter.zero == true)
     end)
+
+    it("hands a stratagem slot the next charge's recast and whether one is in hand", function()
+      local bar = world()
+      local player = { main_job = "SCH", main_job_level = 50, sub_job = "WHM", sub_job_level = 25 }
+      local record = { type = "ja", action = "Penury" }
+      local spent = bar.counter_for(record, nil, player, { [231] = 240 })
+      assert.are.equal("0", spent.text)
+      assert.are.equal(80, spent.recast)
+      assert.is_false(spent.charged)
+      local one_back = bar.counter_for(record, nil, player, { [231] = 150 })
+      assert.are.equal("1", one_back.text)
+      assert.are.equal(70, one_back.recast)
+      assert.is_true(one_back.charged)
+    end)
+
+    it("leaves the recast alone on a counter that is not a stratagem", function()
+      local bar, env, _, store = world()
+      bar.attach(store)
+      bar.try_scope()
+      local counter = bar.counter_for(
+        { type = "item", action = "Potion" },
+        { kind = "item", item_id = 4112 },
+        env.player,
+        {}
+      )
+      assert.is_nil(counter.recast)
+      assert.is_nil(counter.charged)
+    end)
   end)
 
   describe("commands", function()

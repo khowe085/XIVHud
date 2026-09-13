@@ -421,7 +421,10 @@ local function new(deps)
          spell_recasts, ability_recasts
          chain_step                   the border animation's step while a
                                       chain window is open, or nil
-         counter(record, meta)        the cost-corner count, or nil
+         counter(record, meta)        the cost-corner count, or nil; one
+                                      carrying `recast` replaces the
+                                      action's, and `charged` keeps the
+                                      slot bright under it
          chain_result(record, meta)   the property the action would
                                       continue, or nil
          mount(record)                { blocked, cooldown } for a mount
@@ -464,13 +467,14 @@ local function new(deps)
 
     local usable = true
     local crossed_out = false
+    local counter = nil
 
     if chain_prop ~= nil and not chain_dim then
       -- The undimmed result owns the slot; counters and costs sit out for
       -- the window's few seconds, exactly as the reference blanks them.
       want(pair.cost, "cost.visible", false)
     else
-      local counter = facts.counter ~= nil and facts.counter(record, meta) or nil
+      counter = facts.counter ~= nil and facts.counter(record, meta) or nil
       if counter ~= nil then
         -- Deliberately NOT gated on hide.cost: a count is not a cost. The
         -- option hides prices; how many tools you carry stays visible.
@@ -498,6 +502,11 @@ local function new(deps)
     end
 
     local remaining = render().remaining_for(meta, facts.spell_recasts, facts.ability_recasts)
+    local charged = false
+    if counter ~= nil and counter.recast ~= nil then
+      remaining = counter.recast
+      charged = counter.charged == true
+    end
     --[[ A mount slot answers to neither a spell nor an ability recast, so
          its own two conditions land here - and they part company the moment
          you are actually mounted: the zone stops applying (the press is a
@@ -514,7 +523,7 @@ local function new(deps)
         end
       end
     end
-    if remaining > 0 then
+    if remaining > 0 and not charged then
       usable = false
     end
     -- No sweep work at all while the animation is configured away - the

@@ -106,6 +106,30 @@ describe("crossbar counters", function()
       assert.equal(5, counters.stratagems(player, 33).available, "gift counts in the minuend too")
     end)
 
+    it("times the NEXT charge, not the full refill the client's recast counts to", function()
+      -- 3 charges at L50: 80s each. All three spent reads 240 on recast 231,
+      -- and the first charge is back when that reaches 160.
+      assert.equal(80, counters.stratagem_next(sch(50), 240))
+      assert.equal(20, counters.stratagem_next(sch(50), 180))
+      assert.equal(80, counters.stratagem_next(sch(50), 160), "on the boundary: a full charge time to go")
+      assert.equal(0.5, counters.stratagem_next(sch(50), 0.5))
+      assert.equal(0, counters.stratagem_next(sch(50), 0), "every charge in hand")
+    end)
+
+    it("times the next charge on the gift's 33s", function()
+      local player = sch(99)
+      player.job_points = { sch = { jp_spent = 550 } }
+      assert.equal(33, counters.stratagem_next(player, 6 * 33))
+      assert.equal(7, counters.stratagem_next(player, 40))
+    end)
+
+    it("times nothing where the counter draws nothing", function()
+      assert.is_nil(counters.stratagem_next(sch(9), 100))
+      assert.is_nil(counters.stratagem_next({ main_job = "WAR", main_job_level = 99 }, 100))
+      assert.is_nil(counters.stratagem_next(nil, 100))
+      assert.equal(0, counters.stratagem_next(sch(50), nil), "no recast read is no recast")
+    end)
+
     it("tolerates a player the client has not filled in", function()
       assert.is_nil(counters.stratagems(nil, 0))
       assert.is_nil(counters.stratagems({}, 0))
