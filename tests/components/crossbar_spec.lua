@@ -5259,20 +5259,42 @@ describe("crossbar live widget", function()
       assert.are.same({ 'input /item "Prism Powder" <me>' }, env.commands)
     end)
 
-    it("does not watch a pet ability, whatever it is refused with", function()
-      -- Deliberate: a blood pact is an ability by every other measure in
-      -- this component, but it goes out as its own command word and nobody
-      -- has seen which message refuses one. Guessing it is the job
-      -- ability's is the one thing this feature must not do.
+    --[[ REVERSED 2026-09-07 (Kevin). This asserted that a `pet` record was
+         watched by nothing, deliberately: a blood pact is an ability by every
+         other measure in this component, but it goes out as its own command
+         word and nobody has seen which message refuses one, so guessing it is
+         the job ability's was the one thing the feature must not do.
+
+         What changed is the COST of leaving it out, not the evidence. `pet`
+         was reachable only from the CLI then, so nothing regressed by sitting
+         the retry out. The edit binder now derives a record's type from the
+         resource's own `prefix`, which moves the thirty flat pet abilities -
+         Fight, Heel, Deploy, the eight maneuvers - off `ja`, and they DID have
+         retry coverage. Watching them on a guessed message id is the lesser
+         risk of the two: a wrong id simply means the retry never fires, which
+         is the behaviour this test used to pin.
+
+         Still unverified, and carried in `service.lua` beside the entry: the
+         message a refused `/pet` actually carries, and whether AMNESIA blocks
+         one the way it blocks a `ja`. Live-client row 8.6b. ]]
+    it("watches a pet ability on an ability's refusal, and no other", function()
       live()
       widget.handle_command({ "bind", "1L6", "pet", "Eclipse Bite", "t" })
       cast(DIK_SLOT[6])
-      for _, message in ipairs({ 17, 18, 71, 72 }) do
-        push(widget, "chunk", 0x29, refusal(env.player.id, message))
-      end
-      env.now = env.now + 1
+      local sent = 'input /pet "Eclipse Bite" <t>'
+      assert.are.same({ sent }, env.commands)
+      -- The SPELL refusal is not an answer to this press.
+      push(widget, "chunk", 0x29, refusal(env.player.id, 17))
+      env.now = 1
       push(widget)
-      assert.are.same({ 'input /pet "Eclipse Bite" <t>' }, env.commands)
+      assert.are.same({ sent }, env.commands, "only an ability's refusal answers it")
+      push(widget, "chunk", 0x29, refusal(env.player.id, 71))
+      env.now = 2
+      -- Tabbed to something else between the press and the re-send: the pin is
+      -- taken at the PRESS, so the pact still goes at what it was aimed at.
+      env.target = { id = 4242 }
+      push(widget)
+      assert.are.same({ sent, 'input /pet "Eclipse Bite" 99' }, env.commands)
     end)
 
     it("re-sends a pet-targeted action as it was written", function()

@@ -90,6 +90,17 @@ local MOVE, LEFT_DOWN, LEFT_UP, WHEEL = 0, 1, 2, 10
      changed its label (Kevin, 2026-08-31), so every dead end has a way out
      that is not "click somewhere empty and hope". ]]
 local STEP_LAYER, STEP_CATALOG, STEP_TARGET = "layer", "catalog", "target"
+--[[ The fourth step, between the catalog and the target: the children of a
+     MENU entry (Stratagems over the sixteen stratagems, Blood Pact: Rage over
+     the ninety-one pacts). The catalog hands those down as an entry's
+     `children` rather than a `record`, and a menu is not a bindable action -
+     clicking one used to fall straight through to "pick a target".
+
+     It reuses the CATALOG view rather than owning one of its own: the rows,
+     the pager and the category column are the catalog's, at the same rects.
+     Two lists that look identical must not be laid out by two code paths -
+     the rule `paged` already keeps for the catalog and target steps. ]]
+local STEP_SUBMENU = "submenu"
 
 local FONT_SIZE = 18
 local ROW_HEIGHT = 26
@@ -260,6 +271,16 @@ local function new(deps)
   local step = nil
   local cursor = nil
   local pending = nil
+  -- The catalog entry whose children are on screen, nil at every other step.
+  -- It outlives the target step so back can return to it, and carries the
+  -- catalog page it was opened from: the listing does not move while you are
+  -- nested, so coming back out to page 1 would only lose your place.
+  local submenu = nil
+  local submenu_page = 1
+  -- The page the target step was reached from, restored when backing out of
+  -- it: the list behind it has not moved, and on a 91-row blood pact submenu
+  -- landing back at page 1 is six pages of finding your place again.
+  local target_page = 1
   local catalog_groups = nil
   local category_index, page = 1, 1
   local press = nil
@@ -317,6 +338,24 @@ local function new(deps)
     return remembered or nil
   end
 
+  --[[ A MENU row's art. It has no record for `icon_for` to key on, so the
+       catalog hands it a pack-relative name instead and it goes through the
+       same resolver as an `icon=` override on a bound record - custom art
+       first, then the shipped pack - by way of a record-shaped table carrying
+       nothing but the name. Memoized on the NAME, since that table is built
+       fresh per call and the panel redraws on every hover change. ]]
+  local function menu_icon(name)
+    if type(name) ~= "string" or deps.icon == nil then
+      return nil
+    end
+    local remembered = icon_memo[name]
+    if remembered == nil then
+      remembered = deps.icon({ icon = name }) or false
+      icon_memo[name] = remembered
+    end
+    return remembered or nil
+  end
+
   -- A getter, like the model: the widget rebuilds its render instance over
   -- the user's own config on every attach.
   local function renderer()
@@ -333,16 +372,45 @@ local function new(deps)
 
   --[[ Prims ---------------------------------------------------------------- ]]
 
-  -- The job the catalog listing was built for: a job change under an open
-  -- binder leaves the old job's spells in the picker otherwise.
-  local catalog_job = nil
+  --[[ The job PAIR the catalog listing was built for: a job change under an
+       open binder leaves the old job's spells in the picker otherwise. Both
+       halves, because the catalog is scoped to the pair - `catalog.job_pair`
+       lists what the SUBJOB brings as well - so comparing the main job alone
+       went on offering a departed subjob's actions until the main one moved
+       (Kevin, 2026-09-07). ]]
+  local catalog_job, catalog_sub = nil, nil
 
   local function rebuild_catalog()
     local bindings = model()
-    catalog_job = bindings ~= nil and bindings.job() or nil
+    catalog_job, catalog_sub = nil, nil
+    if bindings ~= nil then
+      catalog_job, catalog_sub = bindings.job()
+    end
     catalog_groups = deps.catalog ~= nil and deps.catalog.build() or {}
     category_index, page = 1, 1
-    -- The memo is keyed by record identity, and those records are new.
+    --[[ The submenu is the one piece of picker state that outlives a rebuild:
+         the catalog step self-heals, because its rows come from the groups
+         just replaced, but a nested view holds the entry it was opened from
+         and would go on offering the OLD job's children - and binding them
+         into the new job's file. Dropped here rather than in the caller, so
+         every rebuild covers it. NOT the whole hole: a `pending` action picked
+         before the change still commits after it, which a flat entry has
+         always done too and which is not this change's to close. ]]
+    if step == STEP_SUBMENU then
+      step = STEP_CATALOG
+    end
+    submenu = nil
+    --[[ Only an ENTRY's details go: they describe an action from the listing
+         just replaced, and `hovered` would rebuild those same stale lines
+         every cadence tick until the cursor moved. A SLOT is resolved from the
+         bindings rather than the listing, so it is still describable - and
+         clearing it there would blank the column with no way back, since
+         `refresh_details` needs `hovered` to rebuild anything. ]]
+    if hovered ~= nil and hovered.kind == "entry" then
+      details, hovered = nil, nil
+    end
+    -- Keyed by record identity, and those records are new. It also holds the
+    -- menu rows keyed by art NAME, which merely re-resolve.
     icon_memo = {}
   end
 
@@ -669,6 +737,9 @@ local function new(deps)
       category_index = 1
     end
     local group = catalog_groups[category_index]
+    -- Nested, the rows are the menu's children; everything else about the
+    -- view - the categories, the pager, the rects - is the catalog's own.
+    local rows_source = submenu ~= nil and submenu.children or group.entries
     local column = {
       x = frame.list.x + CATEGORY_WIDTH + GAP,
       y = frame.list.y,
@@ -676,9 +747,10 @@ local function new(deps)
     }
     -- The last row of the column belongs to the pager, so the list itself
     -- stops one short of the body.
-    local rows, pages = paged(group.entries or {}, column, ENTRY_ROWS)
+    local rows, pages = paged(rows_source or {}, column, ENTRY_ROWS)
     local built = {
       category = group.name,
+      submenu = submenu ~= nil and submenu.label or nil,
       page = page,
       pages = pages,
       categories = {},
@@ -706,6 +778,8 @@ local function new(deps)
       built.entries[index] = {
         label = row.item.label,
         record = row.item.record,
+        children = row.item.children,
+        icon = row.item.icon,
         x = row.x,
         y = row.y,
         width = row.width,
@@ -912,6 +986,14 @@ local function new(deps)
     if frame.step == STEP_CATALOG then
       return "pick an action", where .. "   layer: " .. layer .. viewing
     end
+    if frame.step == STEP_SUBMENU then
+      -- "pick from Stratagems" rather than "pick a stratagems": the menu names
+      -- are plural, possessive and colon-bearing (`Blood Pact: Rage`,
+      -- `Flourishes I`), so no article fits all sixteen. Taken off the VIEW,
+      -- which is the one thing that knows what is actually on screen.
+      local menu = (catalog_view or {}).submenu or "?"
+      return "pick from " .. menu, where .. "   layer: " .. layer .. viewing
+    end
     local action = pending ~= nil and name_of(pending) or "?"
     return "pick a target", where .. "   layer: " .. layer .. "   action: " .. action
   end
@@ -922,7 +1004,7 @@ local function new(deps)
     if window ~= nil then
       if window.step == STEP_LAYER then
         layer_view = build_layer_view(window)
-      elseif window.step == STEP_CATALOG then
+      elseif window.step == STEP_CATALOG or window.step == STEP_SUBMENU then
         catalog_view = build_catalog_view(window)
       else
         target_view = build_target_view(window)
@@ -1017,7 +1099,7 @@ local function new(deps)
     draw_rows(prims.entries, rows)
     for index, prim in ipairs(prims.entry_icons) do
       local entry = icons[index]
-      local path = entry ~= nil and icon_for(entry.record) or nil
+      local path = entry ~= nil and (icon_for(entry.record) or menu_icon(entry.icon)) or nil
       if path == nil then
         prim.hide()
       else
@@ -1227,11 +1309,11 @@ local function new(deps)
       apply_preview()
     end
     slot = { set = target.set, side = target.side, slot = target.slot, rect = target.rect }
-    step, page = STEP_LAYER, 1
+    step, page, submenu = STEP_LAYER, 1, nil
   end
 
   local function close_panel()
-    slot, cursor, pending, step = nil, nil, nil, nil
+    slot, cursor, pending, step, submenu = nil, nil, nil, nil, nil
     -- The details column describes what the cursor is over, and there is no
     -- longer anything to be over. Cleared HERE rather than in each caller,
     -- so the X, an empty-space click and back's first step cannot drift.
@@ -1243,7 +1325,7 @@ local function new(deps)
   --- slot carries on from where this one started.
   local function commit(record)
     write_bind(record, window ~= nil and window.address or slot)
-    step, page, pending = STEP_LAYER, 1, nil
+    step, page, pending, submenu = STEP_LAYER, 1, nil, nil
     details, hovered = nil, nil
   end
 
@@ -1253,7 +1335,11 @@ local function new(deps)
        which on a full screen is also the gesture that clears a slot. ]]
   local function go_back()
     if step == STEP_TARGET then
-      step, page, pending = STEP_CATALOG, 1, nil
+      -- Back to whichever list the action was picked from: the children where
+      -- one was nested, the catalog where it was not.
+      step, page, pending = submenu ~= nil and STEP_SUBMENU or STEP_CATALOG, target_page, nil
+    elseif step == STEP_SUBMENU then
+      step, page, submenu = STEP_CATALOG, submenu_page, nil
     elseif step == STEP_CATALOG then
       cursor, step, page = nil, STEP_LAYER, 1
       apply_preview()
@@ -1281,20 +1367,36 @@ local function new(deps)
         cursor = { source = row.source, label = row.label }
         step = STEP_CATALOG
         -- The category the user last picked survives; the page does not,
-        -- since the listing itself may have changed under it.
-        page = 1
+        -- since the listing itself may have changed under it. Nor does the
+        -- submenu: every route INTO the catalog step clears it, so
+        -- "`submenu` is set only while nested" holds by construction rather
+        -- than by each exit remembering to tidy up - which is how a subjob
+        -- change came to strand a stale one behind the catalog's own rows.
+        page, submenu = 1, nil
         apply_preview()
       end
     elseif target.kind == "entry" then
       --[[ A type that takes a target gets the third step; the rest bind
            where they stand. Skipping the step for a `draw` or an `open`
            would otherwise ask which mob to aim a menu at. ]]
-      if TARGETED_TYPES[target.entry.record.type] then
-        pending = copy_record(target.entry.record)
-        step, page = STEP_TARGET, 1
+      local record = target.entry.record
+      if target.entry.children ~= nil then
+        -- A menu, not an action: its children are the step, and binding the
+        -- parent would write a command the game refuses.
+        submenu, submenu_page, step, page = target.entry, page, STEP_SUBMENU, 1
+        details, hovered = nil, nil
+      elseif type(record) ~= "table" then
+        -- Neither a menu nor an action. Nothing here builds one, but this is a
+        -- MOUSE handler: an unguarded index is a crash `lib/guard` answers by
+        -- disabling input outright, which is a bad way to meet a malformed
+        -- entry. Inert rather than fatal.
+        return
+      elseif TARGETED_TYPES[record.type] then
+        pending = copy_record(record)
+        step, target_page, page = STEP_TARGET, page, 1
         details, hovered = nil, nil
       else
-        commit(target.entry.record)
+        commit(record)
       end
     elseif target.kind == "target" then
       if pending ~= nil then
@@ -1303,7 +1405,13 @@ local function new(deps)
         commit(record)
       end
     elseif target.kind == "category" then
-      category_index, page = target.index, 1
+      -- The column stays live while nested (Kevin, 2026-09-07), so switching
+      -- category is also the way out of a submenu: a visible column that
+      -- ignored clicks is what every other step here avoids.
+      category_index, page, submenu = target.index, 1, nil
+      if step == STEP_SUBMENU then
+        step = STEP_CATALOG
+      end
     elseif target.kind == "pager" then
       --[[ The pager CLICK still wraps, deliberately, where the wheel now
            clamps: its own label says "wheel to scroll", so it reads as a
@@ -1348,7 +1456,7 @@ local function new(deps)
       return
     end
     active = true
-    slot, step, cursor, pending, press, details, hovered = nil, nil, nil, nil, nil, nil, nil
+    slot, step, cursor, pending, press, details, hovered, submenu = nil, nil, nil, nil, nil, nil, nil, nil
     -- Rebuilt every time edit mode opens: the inventory, the known spells
     -- and the job pair all move in play.
     --[[ Read once per open rather than per frame: the config is the
@@ -1371,7 +1479,7 @@ local function new(deps)
       return
     end
     active = false
-    slot, step, cursor, pending, press, details, hovered = nil, nil, nil, nil, nil, nil, nil
+    slot, step, cursor, pending, press, details, hovered, submenu = nil, nil, nil, nil, nil, nil, nil, nil
     window, layer_view, catalog_view, target_view, catalog_groups = nil, nil, nil, nil, nil
     icon_memo = {}
     apply_preview()
@@ -1423,15 +1531,22 @@ local function new(deps)
       return
     end
     local bindings = model()
-    if bindings ~= nil and bindings.job() ~= catalog_job then
-      rebuild_catalog()
+    if bindings ~= nil then
+      local job, sub = bindings.job()
+      if job ~= catalog_job or sub ~= catalog_sub then
+        rebuild_catalog()
+      end
     end
     --[[ A stranded cursor is worse than a closed one: the bar goes on
          showing a context's world under a header naming it, the wizard
          walks to the end, and only the write says the layer is out of
          reach. Back to the layer step, with the preview taken down. ]]
     if not cursor_offered() then
-      cursor, pending = nil, nil
+      -- `submenu` is redundant here and kept deliberately: the only way
+      -- forward from the layer step is a row click, which clears it too. It
+      -- belongs to the "every route out of a nested view clears it" rule, so
+      -- no assertion can isolate it.
+      cursor, pending, submenu = nil, nil, nil
       step, page = STEP_LAYER, 1
       details, hovered = nil, nil
       apply_preview()
@@ -1542,11 +1657,19 @@ local function new(deps)
         return press.drag
       end
       local target = hit(x, y)
-      -- Keyed on the TARGET, not on the text: edit mode draws every side,
-      -- so two slots holding the same action are ordinary, and a text-only
-      -- gate would leave the column describing the slot the cursor has
-      -- left.
-      if target_key(target) == (details and details.key) then
+      --[[ Keyed on the TARGET, not on the text: edit mode draws every side,
+           so two slots holding the same action are ordinary, and a text-only
+           gate would leave the column describing the slot the cursor has
+           left.
+
+           Against what is HOVERED rather than against the details built from
+           it: a row with nothing to describe leaves `details` nil, so a gate
+           reading `details.key` never matched itself and repainted the whole
+           window on every mouse-move it rested there. That is an empty slot
+           as much as it is a menu row - `build_details` answers nil for
+           both. `hovered` is set from the same target and cleared wherever
+           `details` is, so the two can only agree. ]]
+      if target_key(target) == target_key(hovered) then
         return false
       end
       hovered = target

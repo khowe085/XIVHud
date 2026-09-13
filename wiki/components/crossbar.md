@@ -599,7 +599,7 @@ In edit mode:
 window: drag a slot onto another slot to swap them entirely, or drag a slot
 onto **genuinely empty screen** to clear it — which removes it from the layer
 you are editing, and leaves every other layer alone. Dragging an action out
-of the list does nothing; the three steps are the way to bind. A drop that
+of the list does nothing; the steps are the way to bind. A drop that
 lands on any part of the binder — the window, the bar itself — cancels
 quietly and changes nothing.
 
@@ -613,9 +613,27 @@ Then a single window opens dead centre and walks you through:
 3. **Pick a target** — the common target tokens, with `(no target)` first (`stal`, `lastst`, `scan` and `r` are `bind`-command only). Actions
    that cannot take a target skip this step and bind straight away.
 
+**Menus get a fourth step.** Some entries in the action list are the game's own
+menus rather than actions — **Stratagems** on SCH, **Phantom Roll** and **Quick
+Draw** on COR, **Waltzes**, **Sambas**, **Jigs**, **Steps** and **Flourishes
+I/II/III** on DNC, **Rune Enchantment**, **Ward** and **Effusion** on RUN,
+**Blood Pact: Rage** and **Blood Pact: Ward** on SMN, **Ready** on BST. Clicking
+one opens what is behind it, and you pick the real action there: Stratagems
+then Accession, Blood Pact: Rage then Volt Strike. `[ < back ]` steps back out
+of the list, and the categories down the left stay live — clicking one leaves
+the menu.
+
+Before this the picker offered the menu itself, and binding that does nothing
+at all in game, so these were reachable only from `//hud crossbar bind`. How
+many entries a menu holds depends on what the game reports: it may list
+everything the job can ever learn rather than only what you can use yet, in
+which case binding one you have not learned gives a slot the game refuses.
+
 A **details column** on the right shows whatever the cursor is over: name,
 cost, recast, skillchain property, and for a slot the layer its binding comes
-from. **`[ < back ]`**, in the top left, steps back one screen; it is absent
+from. A menu row is not an action and has nothing to describe, so the column
+is blank over one. It still carries an icon: Stratagems shows the grimoire,
+and every other menu shows its job's glyph. **`[ < back ]`**, in the top left, steps back one screen; it is absent
 on the first step. **`[ X ]`**, in the top right, closes the window from any
 step.
 
@@ -879,9 +897,15 @@ MP has gone, or you have been silenced — and it will not re-send into an open
 chat line, the binder, or `//hud layout`. **A spell on cooldown is never
 held**; that press fails as it always did.
 
+**Pet abilities are retried** — blood pacts, ready moves, maneuvers and the
+rest — as of 2026-09-07. They were not before, because nobody had confirmed
+which refusal message a `/pet` carries and the retry would not guess. It now
+treats one as a job ability. If a pet ability never seems to re-send, that
+guess is wrong and nothing else is affected; amnesia is also assumed to stop
+one, so a retry is skipped under it.
+
 **What it will not retry.** Items, chat lines, console commands and the
-built-ins — nothing refuses those in words the crossbar reads. Pet abilities
-are not retried either. Anything bound to a subtarget (`<stpc>` and the rest), which
+built-ins — nothing refuses those in words the crossbar reads. Anything bound to a subtarget (`<stpc>` and the rest), which
 would re-open the selection cursor after you had already answered it. Anything
 aimed at a **party or alliance slot** (`<p3>`, `<a13>`) — a position is
 whoever is standing in it, and someone leaving or zoning would send the retry

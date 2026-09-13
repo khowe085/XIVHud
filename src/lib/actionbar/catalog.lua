@@ -46,6 +46,87 @@ local enchanted = require("lib/actionbar/enchanted")
 local LEVEL_CAP = 99
 local INVENTORY_BAG = 0
 
+--[[ The parent-menu families. `res.job_abilities` carries a MENU entry whose
+     children are separate records of their own `type` - 223 "Stratagems" over
+     the sixteen `Scholar` records, 91 "Blood Pact: Rage" over the ninety-one
+     `BloodPactRage` ones. The parent is not an action: `/ja "Stratagems"` is a
+     command the game refuses, and until this the children could not be reached
+     from the picker at all (Kevin, live client, 2026-09-07).
+
+     Each row is `id -- name (the parent's OWN type) -> child type`, every
+     field read off Windower/Resources 2026-09-07 rather than recalled. The
+     parent's own type is written down because it is load-bearing: no parent's
+     type is any family's CHILD type, which is what keeps a parent from being
+     swept into its own submenu - and, since a client-listed child beats the
+     whole-family fallback, from being the only row in it. `Sic` (72,
+     PetCommand) has that same shape and is likewise never collected: it is
+     directly USABLE, `/pet "Sic" <t>` being a real command, even though the
+     moves it fires are the same `Monster` pool `Ready` (251) opens.
+
+     A wrong id here WOULD BE a silent removal rather than a no-op: `parents`
+     keeps an id out of the flat list even where no submenu is built, so an id
+     naming a real usable ability would make it unbindable from the picker with
+     no message anywhere. Which is why `parent_type` is checked at runtime: an
+     id landing on a record of the wrong type is left FLAT, the direction
+     everything else here degrades in.
+
+     That is NOT a proof the table is right. Thirteen of the seventeen parents
+     are `JobAbility`, which is what nearly every ordinary ability is, so an id
+     that slipped onto another `JobAbility` still passes the check and still
+     disappears. What it catches is the LIKELIEST slip - an off-by-one into the
+     family's own children - and it costs one comparison. ]]
+local FAMILIES = {
+  --[[ `icon` is pack-relative, the CONTEXT roster's own shape: a menu row has
+       no record for art to be resolved from, so without one it draws a blank
+       gutter beside its own icon-bearing children.
+
+       Stratagems has real art. Every other family falls back to its JOB's
+       glyph (Kevin, 2026-09-13) for the reason the context roster does: the
+       shipped ability sheet is keyed by RECAST id, which nothing here can look
+       up. Eight of the sixteen are COR's or DNC's and so repeat a glyph -
+       accepted, a menu row being told apart by its label. A family that gains
+       art of its own names it here instead. ]]
+  { parent = 223, children = "Scholar", parent_type = "JobAbility", icon = "abilities/book_white" }, -- Stratagems
+  { parent = 97, children = "CorsairRoll", parent_type = "JobAbility", icon = "jobs/cor" }, -- Phantom Roll
+  { parent = 124, children = "CorsairShot", parent_type = "JobAbility", icon = "jobs/cor" }, -- Quick Draw
+  { parent = 357, children = "Rune", parent_type = "JobAbility", icon = "jobs/run" }, -- Rune Enchantment
+  { parent = 379, children = "Ward", parent_type = "JobAbility", icon = "jobs/run" }, -- Ward
+  { parent = 380, children = "Effusion", parent_type = "JobAbility", icon = "jobs/run" }, -- Effusion
+  { parent = 91, children = "BloodPactRage", parent_type = "PetCommand", icon = "jobs/smn" }, -- Blood Pact: Rage
+  { parent = 172, children = "BloodPactWard", parent_type = "PetCommand", icon = "jobs/smn" }, -- Blood Pact: Ward
+  { parent = 251, children = "Monster", parent_type = "PetCommand", icon = "jobs/bst" }, -- Ready
+  --[[ The DNC menus, all `JobAbility`. Missed on the first pass and added
+       2026-09-07: the resource names them in the PLURAL, so a search for
+       `Waltz` finds the eight children and no parent, and the family read as
+       one the client lists directly. `/ja "Waltzes"` is the same dead bind
+       `/ja "Stratagems"` is - several even share the family recast id the way
+       Stratagems (223) shares 233: `Jigs` carries Spectral Jig's 218, `Steps`
+       Quickstep's 220. ]]
+  { parent = 183, children = "Waltz", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Waltzes
+  { parent = 182, children = "Samba", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Sambas
+  { parent = 198, children = "Jig", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Jigs
+  { parent = 199, children = "Step", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Steps
+  { parent = 200, children = "Flourish1", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Flourishes I
+  { parent = 213, children = "Flourish2", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Flourishes II
+  { parent = 263, children = "Flourish3", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Flourishes III
+}
+
+--[[ Menus with NO submenu of their own. `Pet commands` (55) opens the same
+     `PetCommand` abilities - Fight, Heel, Sic, Deploy, the maneuvers - that
+     the client already lists and binds one by one, so there is nothing to
+     gather behind it. It is still not an action (`/ja "Pet commands"` is the
+     dead bind this whole change removes), so it is dropped from the flat list
+     and given no step. Kept apart from FAMILIES rather than folded in with
+     `children = "PetCommand"`, which would sweep the three /pet PARENTS and
+     Sic into a submenu of their own and break the invariant above. ]]
+local MENUS = { [55] = "JobAbility" }
+
+--[[ The command word an ability is fired with, taken from the resource's own
+     `prefix` rather than written down per family, so a family cannot be given
+     the wrong one. `ja` is the fallback: it is what every ability bound before
+     this used, and an entry whose prefix the resource omits must keep it. ]]
+local PREFIX_TYPES = { ["/jobability"] = "ja", ["/pet"] = "pet" }
+
 -- Category ranks: the magic schools first (alphabetically among themselves),
 -- then the client's own lists, then what needs no client at all.
 local RANK = {
@@ -178,14 +259,152 @@ local function new(deps)
     end
   end
 
+  --[[ `fallback` is the family's own parent prefix where there is one: a
+       `BloodPactRage` record whose resource entry omitted `prefix` would
+       otherwise bind as `/ja "Volt Strike"`, a guaranteed dead bind and the
+       exact failure this file exists to remove. The flat list has no family to
+       borrow from and keeps `ja`, which is what every ability bound before
+       this used. ]]
+  local function ability_record(ability, fallback)
+    return { type = PREFIX_TYPES[ability.prefix] or fallback or "ja", action = ability.en }
+  end
+
+  --[[ A family's submenu, and which child types are spoken for.
+
+       WHERE CHILDREN COME FROM, one rule for all sixteen families: a child the
+       client's own list names is offered, and if the client names NONE of a
+       family's children while naming its parent, the whole family is offered
+       unfiltered. That is self-configuring - upstream reads phantom rolls and
+       quick draw shots off the client but supplies stratagems from a static
+       table, so the answer demonstrably differs by family, and this needs to
+       know which is which.
+
+       The cost, accepted: on a family the client does not enumerate, a
+       level-10 SCH is offered all sixteen stratagems rather than the two they
+       have, and binding one gives a slot the game refuses. It is the rule the
+       weaponskill branch below already takes - ignorance rather than
+       knowledge, and an empty picker is a worse answer than a long one - and
+       it corrects itself as the character levels.
+
+       NOTHING GATES A CHILD ON LEVEL, deliberately: `res.job_abilities`
+       carries no `levels` table at all (verified against the resource data,
+       2026-09-07), which is why upstream hardcodes them. The client's own
+       list IS the level filter, wherever it answers. ]]
+  local function families(listed_ids, job_abilities)
+    local submenus, spoken_for, parents, icons = {}, {}, {}, {}
+    for id, parent_type in pairs(MENUS) do
+      -- Type-checked exactly as a family's parent is, and for the same
+      -- reason: a wrong id must cost nobody an ability.
+      local menu = job_abilities[id]
+      if type(menu) == "table" and menu.type == parent_type then
+        parents[id] = true
+      end
+    end
+    --[[ One pass over the resource, not one per family: `res.job_abilities`
+         runs past a thousand entries with the pacts and Ready moves in it, and
+         sixteen traversals of it is the same work done sixteen times. Built
+         here rather than at load, because `deps.resources` is injected. ]]
+    --[[ Nothing to bucket for a job whose client lists no menu at all, which
+         is most of them: the pass below is a whole traversal of
+         `res.job_abilities` and every entry in it allocates. ]]
+    local wanted = false
+    for _, family in ipairs(FAMILIES) do
+      if listed_ids[family.parent] then
+        wanted = true
+        break
+      end
+    end
+    local by_type = {}
+    for id, ability in pairs(wanted and job_abilities or {}) do
+      if type(ability) == "table" and type(ability.en) == "string" and ability.type ~= nil then
+        local bucket = by_type[ability.type]
+        if bucket == nil then
+          bucket = {}
+          by_type[ability.type] = bucket
+        end
+        bucket[#bucket + 1] = { id = id, ability = ability }
+      end
+    end
+    for _, family in ipairs(FAMILIES) do
+      --[[ The parent RECORD, not just the id on the client's list: without one
+           there is nothing to open the submenu from, and marking the family
+           spoken for anyway would suppress every child as well - taking the
+           whole family off the picker with no message, which is the silent
+           removal this file warns about above and the opposite of degrading
+           toward offering more. ]]
+      local parent = job_abilities[family.parent]
+      if
+        listed_ids[family.parent]
+        and type(parent) == "table"
+        and type(parent.en) == "string"
+        and parent.type == family.parent_type
+      then
+        spoken_for[family.children] = true
+        parents[family.parent] = true
+        local all, named = {}, {}
+        for _, row in ipairs(by_type[family.children] or {}) do
+          --[[ `id ~= family.parent` is belt to the braces of `parent_type`
+               above: a parent that typed itself as its own child would land in
+               its own submenu and, where the client lists only the parent, be
+               the ONLY row in it - the exact dead bind this removes. ]]
+          if row.id ~= family.parent then
+            local entry = {
+              label = row.ability.en,
+              record = ability_record(row.ability, PREFIX_TYPES[parent.prefix]),
+            }
+            all[#all + 1] = entry
+            if listed_ids[row.id] then
+              named[#named + 1] = entry
+            end
+          end
+        end
+        local children = #named > 0 and named or all
+        -- `pairs` over the resource has no order, so the submenu sorts its
+        -- own rows: the group sort below only ever reaches the parent.
+        table.sort(children, function(a, b)
+          return a.label < b.label
+        end)
+        -- A parent whose children the resources cannot supply draws NO
+        -- submenu - an empty one is a dead end. It stays in `parents` even so:
+        -- it is still not an action, and letting it fall through to the flat
+        -- list is exactly the dead bind this whole change exists to remove.
+        if #children > 0 then
+          submenus[family.parent] = children
+          icons[family.parent] = family.icon
+        end
+      end
+    end
+    return submenus, spoken_for, parents, icons
+  end
+
   local function abilities(groups, jobs)
     local listed = table_or_empty(call(deps.get_abilities))
     local resources = table_or_empty(deps.resources)
     local job_abilities = table_or_empty(resources.job_abilities)
+    local listed_ids = {}
+    for _, id in ipairs(table_or_empty(listed.job_abilities)) do
+      listed_ids[id] = true
+    end
+    local submenus, spoken_for, parents, icons = families(listed_ids, job_abilities)
     for _, id in ipairs(table_or_empty(listed.job_abilities)) do
       local ability = job_abilities[id]
-      if type(ability) == "table" and type(ability.en) == "string" and available(ability, jobs) then
-        add(groups, "Job Abilities", { label = ability.en, record = { type = "ja", action = ability.en } })
+      if type(ability) == "table" and type(ability.en) == "string" then
+        --[[ A family is governed by the client's list ALONE - `available` is
+             not consulted for a parent or a child. The two must not disagree:
+             `families` above marks a family spoken for on the parent being
+             listed, so a parent `available` turned down would take its whole
+             family off the picker with no submenu left behind it. Nothing can
+             reach that today (the resource carries no ability levels at all),
+             which is exactly why the order is pinned here rather than left to
+             hold by accident. ]]
+        if submenus[id] ~= nil then
+          add(groups, "Job Abilities", { label = ability.en, children = submenus[id], icon = icons[id] })
+        elseif not parents[id] and not spoken_for[ability.type] and available(ability, jobs) then
+          -- A child the client named as well as its parent: it is already in
+          -- the submenu, and a second copy out here would bind the same thing
+          -- from two places.
+          add(groups, "Job Abilities", { label = ability.en, record = ability_record(ability) })
+        end
       end
     end
     --[[ Weaponskills carry no per-job levels, so the client's list is the

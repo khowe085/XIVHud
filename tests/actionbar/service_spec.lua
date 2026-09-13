@@ -197,6 +197,23 @@ describe("the action service", function()
       assert.are.equal(probe, service.retry.held().probe, "the bar's probe rides with the press")
     end)
 
+    --[[ A `pet` record is a job ability by another command word - a blood
+         pact, a ready move, a maneuver - and the game refuses one as too soon
+         exactly as it refuses a `ja`. Without an entry in RETRY_KINDS it was
+         never watched at all, so the picker's move to prefix-derived types
+         would have quietly dropped the thirty flat pet abilities out of retry
+         coverage (Kevin, 2026-09-07). ]]
+    it("watches a pet command the way it watches an ability", function()
+      local service, env = world()
+      service.fire({ type = "pet", action = "Fire Maneuver", target = "me" }, {
+        retry_facts = function()
+          return { bound = true }
+        end,
+      })
+      assert.are.same({ 'input /pet "Fire Maneuver" <me>' }, env.commands)
+      assert.are.equal("ability", service.retry.held().kind, "refused in an ability's words")
+    end)
+
     it("refuses a weaponskill the gate turns down, with no flash and no command", function()
       local service, env = world()
       local flashed = 0

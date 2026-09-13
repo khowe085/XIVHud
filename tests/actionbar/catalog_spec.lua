@@ -548,4 +548,258 @@ describe("crossbar catalog", function()
       assert.is_nil(category(catalog.build(), "Enchanted"))
     end)
   end)
+
+  --[[ The parent-menu families: `res.job_abilities` carries a menu entry
+       (223 Stratagems, 97 Phantom Roll, 91 Blood Pact: Rage ...) whose
+       children are separate records of their own type. Binding the parent
+       writes a command the game refuses, and the children were unreachable
+       from the picker until this. Ids and type names are the resource's
+       own, read off Windower/Resources 2026-09-07. ]]
+  describe("parent-menu families", function()
+    local function family_resources()
+      return {
+        spells = {},
+        job_abilities = {
+          -- The Stratagems menu and two of its sixteen children.
+          [223] = { id = 223, en = "Stratagems", prefix = "/jobability", type = "JobAbility" },
+          [218] = { id = 218, en = "Accession", prefix = "/jobability", type = "Scholar" },
+          [234] = { id = 234, en = "Addendum: White", prefix = "/jobability", type = "Scholar" },
+          -- A /pet family, whose children bind as `pet` rather than `ja`.
+          [91] = { id = 91, en = "Blood Pact: Rage", prefix = "/pet", type = "PetCommand" },
+          [634] = { id = 634, en = "Volt Strike", prefix = "/pet", type = "BloodPactRage" },
+          -- Directly usable despite its /pet prefix: not a menu.
+          [72] = { id = 72, en = "Sic", prefix = "/pet", type = "PetCommand" },
+          -- A menu whose children are the /pet abilities beside it, each of
+          -- which the client lists and binds on its own.
+          [55] = { id = 55, en = "Pet commands", prefix = "/jobability", type = "JobAbility" },
+          -- The DNC menu, whose name is PLURAL in the resource, and one child.
+          [183] = { id = 183, en = "Waltzes", prefix = "/jobability", type = "JobAbility" },
+          [190] = { id = 190, en = "Curing Waltz", prefix = "/jobability", type = "Waltz" },
+          -- An ordinary ability, to prove the flat list still fills.
+          [605] = { id = 605, en = "Provoke", prefix = "/jobability", type = "JobAbility" },
+        },
+        weapon_skills = {},
+        skills = {},
+        items = {},
+        mounts = {},
+      }
+    end
+
+    local function family_build(listed)
+      return build({
+        resources = family_resources(),
+        spells = {},
+        items = { [0] = {} },
+        mounts = {},
+        abilities = { job_abilities = listed, weapon_skills = {} },
+      })
+    end
+
+    local function child_labels(list, parent)
+      local found = entry_named(list, "Job Abilities", parent)
+      local out = {}
+      for _, child in ipairs(found and found.children or {}) do
+        out[#out + 1] = child.label
+      end
+      return out
+    end
+
+    --[[ A menu row carries no record, so nothing could resolve art for it and
+         Stratagems drew a blank gutter beside sixteen icon-bearing rows. The
+         field is the CONTEXT roster's own shape - a pack-relative name under
+         `assets/icons/` - so `icon_candidates` resolves it through the same
+         custom-override-then-pack chain a bound record's `icon=` override
+         takes, and a user can override it the same way. ]]
+    it("carries the grimoire art on the Stratagems menu", function()
+      local catalog = family_build({ 223 })
+      assert.equal("abilities/book_white", entry_named(catalog.build(), "Job Abilities", "Stratagems").icon)
+    end)
+
+    --[[ Every other family falls back to its JOB's glyph (Kevin, 2026-09-13):
+         a menu row has no record for art to be resolved from, and the shipped
+         ability sheet is keyed by RECAST id, which nothing here can look up -
+         the same bind that makes the context roster use a job icon. Eight of
+         the sixteen are COR's or DNC's and so repeat a glyph; a family with
+         art of its own says so instead, as Stratagems does. ]]
+    it("falls back to the job's glyph on a family with no art of its own", function()
+      assert.equal("jobs/smn", entry_named(family_build({ 91 }).build(), "Job Abilities", "Blood Pact: Rage").icon)
+      assert.equal("jobs/dnc", entry_named(family_build({ 183 }).build(), "Job Abilities", "Waltzes").icon)
+    end)
+
+    --[[ A typo in one of these fails SILENTLY - a missing texture just draws
+         nothing (CLAUDE.md) - and the fixtures above can only pin a string
+         against itself, so every name the table carries is opened on disk.
+         `crossbar_render_spec`'s own move, over the source rather than the
+         table, which is file-local. ]]
+    it("names art that actually ships, on every family", function()
+      local source = assert(io.open("src/lib/actionbar/catalog.lua", "r"))
+      local body = source:read("*a")
+      source:close()
+      local seen = 0
+      for name in body:gmatch('icon = "([^"]+)"') do
+        seen = seen + 1
+        local path = "src/assets/icons/" .. name .. ".png"
+        local art = io.open(path, "rb")
+        assert.is_not_nil(art, path .. " does not ship")
+        art:close()
+      end
+      assert.is_true(seen >= 16, "expected an icon per family, found " .. seen)
+    end)
+
+    it("offers the parent as a submenu rather than a bindable record", function()
+      local catalog = family_build({ 223 })
+      local parent = entry_named(catalog.build(), "Job Abilities", "Stratagems")
+      assert.is_not_nil(parent)
+      assert.is_nil(parent.record, "binding the menu writes a command the game refuses")
+      assert.is_table(parent.children)
+    end)
+
+    it("takes the children the client lists, when it lists any", function()
+      local catalog = family_build({ 223, 218 })
+      assert.same({ "Accession" }, child_labels(catalog.build(), "Stratagems"))
+    end)
+
+    it("offers the whole family when the client lists none of its children", function()
+      local catalog = family_build({ 223 })
+      assert.same({ "Accession", "Addendum: White" }, child_labels(catalog.build(), "Stratagems"))
+    end)
+
+    it("omits a family whose parent the client does not list", function()
+      local catalog = family_build({ 605 })
+      local list = catalog.build()
+      assert.is_nil(entry_named(list, "Job Abilities", "Stratagems"))
+      assert.is_false(has(list, "Job Abilities", "Accession"))
+      assert.is_true(has(list, "Job Abilities", "Provoke"))
+    end)
+
+    it("keeps a listed child out of the flat list, so it is offered once", function()
+      local list = family_build({ 223, 218 }).build()
+      assert.is_false(has(list, "Job Abilities", "Accession"))
+    end)
+
+    it("binds a /pet family's children as pet, off the resource's own prefix", function()
+      local list = family_build({ 91 }).build()
+      local children = entry_named(list, "Job Abilities", "Blood Pact: Rage").children
+      assert.same({ type = "pet", action = "Volt Strike" }, children[1].record)
+    end)
+
+    it("leaves Sic a plain bindable ability - it is usable, not a menu", function()
+      local list = family_build({ 72 }).build()
+      local sic = entry_named(list, "Job Abilities", "Sic")
+      assert.same({ type = "pet", action = "Sic" }, sic.record)
+      assert.is_nil(sic.children)
+    end)
+
+    it("leaves a child flat when the client lists it but not its parent", function()
+      -- The no-regression case: nothing is spoken for by a family that is not
+      -- on offer, so the child stays an ordinary bindable ability.
+      local list = family_build({ 218 }).build()
+      assert.is_nil(entry_named(list, "Job Abilities", "Stratagems"))
+      assert.same({ type = "ja", action = "Accession" }, entry_named(list, "Job Abilities", "Accession").record)
+    end)
+
+    it("offers a family on the client's list alone, never on a level rule", function()
+      -- `res.job_abilities` carries no levels, so nothing can gate a family -
+      -- but a parent turned down while its children stayed spoken for would
+      -- take the whole family off the picker with no submenu behind it.
+      local levelled = family_resources()
+      levelled.job_abilities[223].levels = { [20] = 1200 }
+      local catalog = build({
+        resources = levelled,
+        spells = {},
+        items = { [0] = {} },
+        mounts = {},
+        player = { main_job = "WAR", main_job_id = 1, main_job_level = 99 },
+        abilities = { job_abilities = { 223 }, weapon_skills = {} },
+      })
+      local list = catalog.build()
+      assert.is_not_nil(entry_named(list, "Job Abilities", "Stratagems"), "the client listed it, so it is on offer")
+      assert.same({ "Accession", "Addendum: White" }, child_labels(list, "Stratagems"))
+    end)
+
+    it("leaves the children flat when the resources cannot supply the parent", function()
+      --[[ The mirror of the case below. A family is only spoken for once the
+           PARENT RECORD is there to open it: without one no submenu can be
+           built, and suppressing the children too would take them off the
+           picker with no message - the silent removal this file warns about,
+           and the opposite of degrading toward offering more. ]]
+      local degraded = family_resources()
+      degraded.job_abilities[223] = nil
+      local catalog = build({
+        resources = degraded,
+        spells = {},
+        items = { [0] = {} },
+        mounts = {},
+        abilities = { job_abilities = { 223, 218 }, weapon_skills = {} },
+      })
+      local list = catalog.build()
+      assert.is_nil(entry_named(list, "Job Abilities", "Stratagems"))
+      assert.same({ type = "ja", action = "Accession" }, entry_named(list, "Job Abilities", "Accession").record)
+    end)
+
+    --[[ The seventeen ids are hand-transcribed and cannot be checked here, and
+         the file's own warning is that a wrong one REMOVES a usable ability
+         from the picker with no message. Checking the parent's own type turns
+         that into a no-op: an id naming something that is not the menu it was
+         meant to be is left flat, which is the direction everything else here
+         degrades in. ]]
+    it("leaves an id flat when it is not the menu it was taken for", function()
+      local wrong = family_resources()
+      -- 223 is Stratagems, a JobAbility. Something else entirely lives here.
+      wrong.job_abilities[223] = { id = 223, en = "Berserk", prefix = "/jobability", type = "Scholar" }
+      local catalog = build({
+        resources = wrong,
+        spells = {},
+        items = { [0] = {} },
+        mounts = {},
+        abilities = { job_abilities = { 223, 218 }, weapon_skills = {} },
+      })
+      local list = catalog.build()
+      assert.same({ type = "ja", action = "Berserk" }, entry_named(list, "Job Abilities", "Berserk").record)
+      assert.is_not_nil(entry_named(list, "Job Abilities", "Accession"), "and its family is not swallowed")
+    end)
+
+    it("drops a parent whose children the resources cannot supply", function()
+      local degraded = family_resources()
+      degraded.job_abilities[218] = nil
+      degraded.job_abilities[234] = nil
+      local catalog = build({
+        resources = degraded,
+        spells = {},
+        items = { [0] = {} },
+        mounts = {},
+        abilities = { job_abilities = { 223 }, weapon_skills = {} },
+      })
+      -- An empty submenu is a dead end, and the parent itself cannot be bound.
+      assert.is_nil(entry_named(catalog.build(), "Job Abilities", "Stratagems"))
+    end)
+
+    --[[ The DNC menus are parents too, and were missed on the first pass: the
+         resource names them in the PLURAL (`Waltzes`, `Sambas`, `Jigs`,
+         `Steps`, `Flourishes I..III`), so a search for `Waltz` found only the
+         children and the family read as parentless. `/ja "Waltzes"` is the
+         same dead bind as `/ja "Stratagems"`. ]]
+    it("treats the plural DNC menus as parents like any other", function()
+      local list = family_build({ 183 }).build()
+      local parent = entry_named(list, "Job Abilities", "Waltzes")
+      assert.is_nil(parent.record, "a mode menu is not an action")
+      assert.same({ "Curing Waltz" }, child_labels(list, "Waltzes"))
+    end)
+
+    --[[ `Pet commands` (55) is a menu like the rest, but it needs no submenu:
+         its children are the `PetCommand` abilities - Fight, Heel, Sic, the
+         maneuvers - which the client lists and binds individually already. So
+         it is dropped rather than opened, or it would be one more dead bind
+         (`/ja "Pet commands"`) in the flat list. ]]
+    it("drops a menu whose children are already bindable on their own", function()
+      local list = family_build({ 55, 72 }).build()
+      assert.is_nil(entry_named(list, "Job Abilities", "Pet commands"))
+      assert.is_not_nil(entry_named(list, "Job Abilities", "Sic"), "its children are untouched")
+    end)
+
+    it("leaves a family's child flat while its own parent is unlisted", function()
+      local list = family_build({ 190 }).build()
+      assert.is_true(has(list, "Job Abilities", "Curing Waltz"))
+    end)
+  end)
 end)
