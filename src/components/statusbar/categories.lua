@@ -225,6 +225,16 @@ M.OTHER = set({
   232,
 })
 
+--[[ Other, placed by hand: ids the shipped order does not rank at all,
+     being newer than XIVParty's list (Kevin, 2026-09-13). Kept apart so the
+     spec can hold every other OTHER id to the order's own sections. ]]
+M.UNRANKED_OTHER = set({
+  635, -- resolved
+})
+for id in pairs(M.UNRANKED_OTHER) do
+  M.OTHER[id] = true
+end
+
 function M.category_of(id)
   if M.DEBUFFS[id] then
     return "debuffs"

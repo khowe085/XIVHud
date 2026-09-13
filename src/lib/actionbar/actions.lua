@@ -144,24 +144,15 @@ local function chord_command(chord)
   return table.concat(parts, ";")
 end
 
---[[ Whether this zone forbids mounting, from the roulette's read of the
-     zones resource. A blocked press is refused HERE, at resolve, so it is a
-     true no-op: the travel countdown, the command and the recast stamp all
-     sit downstream and none of them ever start (Kevin, 2026-08-29).
-
-     Guarded rather than called outright: without the resources library the
-     widget hands actions a stub roulette that can ride and nothing else,
-     and an absent answer means "not blocked" - refusing a press because we
-     could not check would be worse than a press the game turns down. ]]
-local function mount_blocked(deps)
-  local roulette = deps.roulette
-  return roulette ~= nil and type(roulette.blocked) == "function" and roulette.blocked() == true
-end
-
 --[[ Seconds left on the mount recast. The recast used to only DRAW - a
      press during it still counted five seconds down and sent a summon the
      game was always going to refuse (Kevin, live client, 2026-08-29). A
-     cooling slot is a no-op on the same terms as a zone-blocked one. ]]
+     cooling press is refused HERE, at resolve, so it is a true no-op: the
+     travel countdown, the command and the recast stamp all sit downstream
+     and none of them ever start.
+
+     Guarded rather than called outright: without the resources library the
+     widget hands actions a stub roulette that can ride and nothing else. ]]
 local function mount_cooling(deps)
   local roulette = deps.roulette
   if roulette == nil or type(roulette.cooldown) ~= "function" then
@@ -173,9 +164,6 @@ end
 
 --- The reason a summon cannot go out now, or nil when one can.
 local function summon_refusal(deps)
-  if mount_blocked(deps) then
-    return "you cannot use a mount here"
-  end
   local left = mount_cooling(deps)
   if left > 0 then
     return ("mount is not ready - %ds"):format(math.ceil(left))
@@ -270,7 +258,7 @@ local function new(deps)
       end
       -- The mount recast starts on a SUMMON. The dismount case returned
       -- above, so anything reaching here with `mount` is one: it is refused
-      -- outright where the zone forbids one, and otherwise carries the flag
+      -- outright while the recast runs, and otherwise carries the flag
       -- that tells the widget to start the clock - the same way `dismount`
       -- already travels, rather than the command string being read back.
       if kind == "mount" then
@@ -307,8 +295,8 @@ local function new(deps)
       return draw_plan(state)
     end
     if kind == "mr" then
-      -- Mounted, the press dismounts, and getting out is never blocked -
-      -- you can be riding in a zone you could not have mounted in.
+      -- Mounted, the press dismounts, and getting out is never held up by
+      -- the recast that says when you could mount again.
       local mounted = deps.roulette.mounted ~= nil and deps.roulette.mounted() == true
       if not mounted then
         local refusal = summon_refusal(deps)

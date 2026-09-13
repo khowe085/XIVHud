@@ -221,13 +221,9 @@ local function new(deps)
         local player = get_player()
         return player and player.buffs or {}
       end,
-      zones = resources.zones,
       -- The recast's clock, read by the module itself: both the drawing and
       -- the press refusal must agree about how far along it is.
       now = frame_now,
-      get_zone = function()
-        return deps.zone ~= nil and deps.zone() or nil
-      end,
       random = deps.random or math.random,
     })
   end
@@ -541,15 +537,20 @@ local function new(deps)
        `warp all`'s IPC send, and it fires where the LOCAL warp commits and
        nowhere else: with the command for a spell or a charged item, with
        the deferred use for a ring being warmed up, at once when the ladder
-       found nothing at all. ]]
-  local function run_item_plan(plan, broadcast, noun)
+       found nothing at all. `hold`, when given, is the fewest seconds after
+       the press a warm-up may fire - see below. ]]
+  local function run_item_plan(plan, broadcast, noun, hold)
     noun = noun or "warp"
     if pending_item ~= nil then
       say(pending_item.noun .. " already in progress - " .. tostring(pending_item.name))
       return
     end
-    for _, note in ipairs(plan.notes or {}) do
-      say(note)
+    -- The notes explain the rungs walked past: the whole answer when nothing
+    -- goes, and noise when a lower rung does (Kevin, 2026-09-13).
+    if plan.type == "none" then
+      for _, note in ipairs(plan.notes or {}) do
+        say(note)
+      end
     end
     if plan.type == "spell" or plan.type == "use" then
       send_command(plan.command)
@@ -592,6 +593,14 @@ local function new(deps)
       -- long is not knowable yet; tick_pending speaks it once it has a number.
       local doing = plan.equipped and " - waiting for it to charge." or " - equipping it first."
       say(noun .. " with " .. tostring(plan.name) .. doing)
+      --[[ A warp skips the travel countdown because its warm-up is the
+           window - but a short warm-up made that window three seconds
+           (Kevin, live client, 2026-09-13), so a PRESSED warp passes the
+           travel delay as its floor, counted from the press on the
+           countdown's own clock. An enchanted item is not a trip, and an alt
+           sent home by `warp all` has nobody to call it off. ]]
+      hold = hold or 0
+      local give_up = plan.give_up or DEFAULT_GIVE_UP_SECONDS
       pending_item = {
         broadcast = broadcast,
         noun = noun,
@@ -604,7 +613,8 @@ local function new(deps)
         equip_slot = plan.equip_slot,
         gs_slots = gs_slots,
         give_up = plan.give_up,
-        deadline = time_now() + (plan.give_up or DEFAULT_GIVE_UP_SECONDS) + PENDING_DEADLINE_MARGIN,
+        not_before = frame_now() + hold,
+        deadline = time_now() + math.max(give_up, hold) + PENDING_DEADLINE_MARGIN,
       }
       return
     end
@@ -671,11 +681,17 @@ local function new(deps)
       abandon("cannot be read")
       return
     end
-    if step == "wait" then
-      local remaining = math.ceil(enchanted.warmup_remaining(ext, time_now()))
-      -- A POSITIVE reading only: on the equip path the first polls read zero
-      -- while the ring is genuinely warming, and "ready in 0 seconds" then
-      -- latched the counter so no later reading ever spoke.
+    local hold = math.max(pending_item.not_before - now, 0)
+    local warm = step == "wait" and enchanted.warmup_remaining(ext, time_now()) or 0
+    --[[ Spoken only once the warm-up is KNOWN - read positive, or over. On
+         the equip path the first polls read zero while the ring is
+         genuinely warming, and "ready in 0 seconds" then latched the counter
+         so no later reading ever spoke; counting the hold alone there would
+         promise a few seconds and then fall silent for a thirty-second
+         warm-up. ]]
+    local known = warm > 0 or step == "use"
+    if known then
+      local remaining = math.ceil(math.max(warm, hold))
       if remaining > 0 then
         -- A warm-up that RESTARTED (the re-equip loop above wins a slot
         -- back) pushes `remaining` up; re-seed and count the new one down.
@@ -702,7 +718,7 @@ local function new(deps)
         end
       end
     end
-    if step == "use" then
+    if step == "use" and hold <= 0 then
       local broadcast = pending_item.broadcast
       send_command(pending_item.command)
       abort_pending(nil)
@@ -736,7 +752,7 @@ local function new(deps)
     elseif plan.kind == "message" then
       say(plan.message)
     elseif plan.kind == "warp" then
-      run_item_plan(plan.plan)
+      run_item_plan(plan.plan, nil, nil, travel.delay())
     elseif plan.kind == "enchanted" then
       -- Outside the travel gate: the warmup already is the wait, and an
       -- enchanted item is not a trip you press by mistake and want back.
@@ -863,7 +879,7 @@ local function new(deps)
     end
     local ladder = warp.plan()
     local function go()
-      run_item_plan(ladder, broadcast)
+      run_item_plan(ladder, broadcast, nil, travel.delay())
     end
     if not delay_travel({ type = "warp" }, { kind = "warp", plan = ladder }, go) then
       go()

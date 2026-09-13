@@ -296,12 +296,12 @@ describe("one slot", function()
       assert.are.equal(255, prims.images[3].last.alpha)
     end)
 
-    it("dims a mount the zone refuses and sweeps its own recast", function()
+    it("dims a mount while its own recast runs, and sweeps it", function()
       local slot, prims = world()
       paint(slot, { type = "mr" }, nil)
       slot.tick(facts({
         mount = function()
-          return { blocked = true, cooldown = 30 }
+          return { cooldown = 30 }
         end,
       }))
       assert.are.equal(60, prims.images[3].last.alpha)

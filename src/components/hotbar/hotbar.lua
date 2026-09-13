@@ -429,7 +429,7 @@ local function new(ctx)
     if roulette == nil then
       return nil
     end
-    return { blocked = not roulette.mounted() and roulette.blocked(), cooldown = roulette.cooldown() }
+    return { cooldown = roulette.cooldown() }
   end
 
   --[[ A row built for layout mode's force-show and switched back off is
