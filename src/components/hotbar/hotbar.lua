@@ -313,7 +313,7 @@ local function new(ctx)
         local set = set_of(anchor)
         -- Gated like the slots' own writes: core runs a refresh per mouse
         -- move of a layout-mode drag.
-        local label = (shown and set ~= nil) and tostring(set) or nil
+        local label = (shown and set ~= nil and config.numbers ~= false) and tostring(set) or nil
         if label ~= row.label_text then
           row.label_text = label
           if label ~= nil then
@@ -519,14 +519,15 @@ local function new(ctx)
   end
 
   --[[ Commands ------------------------------------------------------------
-       `//hud hotbar [<bar>] rows <1|2|5|10>` and `[<bar>] hideempty on|off`
-       are the widget's; the bare form
-       lists every row; a bar word alone lists that row. The common roster
+       `//hud hotbar [<bar>] rows <1|2|5|10>`, `[<bar>] hideempty on|off`
+       and `numbers [on|off]` are the widget's; the bare form lists every
+       row; a bar word alone lists that row. The common roster
        (bind, set, cycle, list, edit ...) is the bar's and takes NO bar word:
        a set is a set whatever row draws it, so one in front is refused
        rather than dropped. ]]
   local COLUMNS_FORM = "rows <1|2|5|10> - 10x1, 5x2, 2x5 or 1x10"
   local HIDE_EMPTY_FORM = "hideempty on|off - leave the row's empty slots undrawn"
+  local NUMBERS_FORM = "numbers [on|off] - the set number beside every row"
 
   local function row_line(anchor)
     local entry = placed[anchor]
@@ -589,6 +590,29 @@ local function new(ctx)
     return ("hotbar: %s %s empty slots"):format(anchor, word == "on" and "hides" or "draws")
   end
 
+  local function numbers_state()
+    return "hotbar: set numbers " .. (config.numbers == false and "off" or "on")
+  end
+
+  local function set_numbers(word)
+    word = type(word) == "string" and word:lower() or nil
+    if word == nil then
+      return numbers_state()
+    end
+    if word ~= "on" and word ~= "off" then
+      return "hotbar: " .. NUMBERS_FORM
+    end
+    config.numbers = word == "on"
+    if save ~= nil then
+      save()
+    end
+    -- The grid moves into or out of the space the number reserves, so every
+    -- row re-lays; core reads the new footprint the next time it asks.
+    layout()
+    repaint()
+    return numbers_state()
+  end
+
   local function dispatch_command(args)
     args = args or {}
     local first = type(args[1]) == "string" and args[1]:lower() or nil
@@ -617,6 +641,15 @@ local function new(ctx)
       end
       return set_hide_empty(row_word or "bar1", words[2])
     end
+    if verb == "numbers" then
+      if row_word ~= nil then
+        return "hotbar: numbers takes no row word - one switch for every row"
+      end
+      if #words > 2 then
+        return "hotbar: " .. NUMBERS_FORM
+      end
+      return set_numbers(words[2])
+    end
     if row_word ~= nil then
       return "hotbar: " .. verb .. " takes no row word - a set is a set whatever row draws it"
     end
@@ -631,6 +664,7 @@ local function new(ctx)
     help_extra = {
       "[<bar>] rows <1|2|5|10> - 10x1, 5x2, 2x5 or 1x10 (bar1 when no row is named)",
       "[<bar>] " .. HIDE_EMPTY_FORM .. " (bar1 when no row is named)",
+      NUMBERS_FORM,
     },
     ctx = ctx,
     config = function()
