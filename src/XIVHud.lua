@@ -1311,6 +1311,14 @@ local function check_assets()
     "icons/abilities/book_black.png",
     "icons/jobs/blu.png",
     "icons/jobs/rdm.png",
+    -- catalog.lua: the parent-menu families' art. Stratagems has the grimoire
+    -- above; every other family falls back to its job's glyph, and the five
+    -- distinct ones are named here for the same reason the roster's are.
+    "icons/jobs/cor.png",
+    "icons/jobs/run.png",
+    "icons/jobs/smn.png",
+    "icons/jobs/bst.png",
+    "icons/jobs/dnc.png",
     -- actions.lua built-ins: mr, warp, and draw's three states.
     "icons/mounts/mount-roulette.png",
     "icons/spells/00261.png",

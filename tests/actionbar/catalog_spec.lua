@@ -612,16 +612,38 @@ describe("crossbar catalog", function()
          takes, and a user can override it the same way. ]]
     it("carries the grimoire art on the Stratagems menu", function()
       local catalog = family_build({ 223 })
-      local named = entry_named(catalog.build(), "Job Abilities", "Stratagems").icon
-      assert.equal("abilities/book_white", named)
-      -- A typo here fails SILENTLY - a missing texture just draws nothing - so
-      -- the name is checked against the disk, `crossbar_render_spec`'s own
-      -- move. The entry point load-checks the same file because `contexts.lua`
-      -- names it too; this ties the CATALOG's copy of the string to it.
-      local path = "src/assets/icons/" .. named .. ".png"
-      local art = io.open(path, "rb")
-      assert.is_not_nil(art, path .. " does not ship")
-      art:close()
+      assert.equal("abilities/book_white", entry_named(catalog.build(), "Job Abilities", "Stratagems").icon)
+    end)
+
+    --[[ Every other family falls back to its JOB's glyph (Kevin, 2026-09-13):
+         a menu row has no record for art to be resolved from, and the shipped
+         ability sheet is keyed by RECAST id, which nothing here can look up -
+         the same bind that makes the context roster use a job icon. Eight of
+         the sixteen are COR's or DNC's and so repeat a glyph; a family with
+         art of its own says so instead, as Stratagems does. ]]
+    it("falls back to the job's glyph on a family with no art of its own", function()
+      assert.equal("jobs/smn", entry_named(family_build({ 91 }).build(), "Job Abilities", "Blood Pact: Rage").icon)
+      assert.equal("jobs/dnc", entry_named(family_build({ 183 }).build(), "Job Abilities", "Waltzes").icon)
+    end)
+
+    --[[ A typo in one of these fails SILENTLY - a missing texture just draws
+         nothing (CLAUDE.md) - and the fixtures above can only pin a string
+         against itself, so every name the table carries is opened on disk.
+         `crossbar_render_spec`'s own move, over the source rather than the
+         table, which is file-local. ]]
+    it("names art that actually ships, on every family", function()
+      local source = assert(io.open("src/lib/actionbar/catalog.lua", "r"))
+      local body = source:read("*a")
+      source:close()
+      local seen = 0
+      for name in body:gmatch('icon = "([^"]+)"') do
+        seen = seen + 1
+        local path = "src/assets/icons/" .. name .. ".png"
+        local art = io.open(path, "rb")
+        assert.is_not_nil(art, path .. " does not ship")
+        art:close()
+      end
+      assert.is_true(seen >= 16, "expected an icon per family, found " .. seen)
     end)
 
     it("offers the parent as a submenu rather than a bindable record", function()

@@ -76,18 +76,25 @@ local INVENTORY_BAG = 0
      disappears. What it catches is the LIKELIEST slip - an off-by-one into the
      family's own children - and it costs one comparison. ]]
 local FAMILIES = {
-  -- `icon` is optional and pack-relative, the CONTEXT roster's own shape: a
-  -- menu row has no record for art to be resolved from, so without one it
-  -- draws a blank gutter beside sixteen icon-bearing children.
+  --[[ `icon` is pack-relative, the CONTEXT roster's own shape: a menu row has
+       no record for art to be resolved from, so without one it draws a blank
+       gutter beside its own icon-bearing children.
+
+       Stratagems has real art. Every other family falls back to its JOB's
+       glyph (Kevin, 2026-09-13) for the reason the context roster does: the
+       shipped ability sheet is keyed by RECAST id, which nothing here can look
+       up. Eight of the sixteen are COR's or DNC's and so repeat a glyph -
+       accepted, a menu row being told apart by its label. A family that gains
+       art of its own names it here instead. ]]
   { parent = 223, children = "Scholar", parent_type = "JobAbility", icon = "abilities/book_white" }, -- Stratagems
-  { parent = 97, children = "CorsairRoll", parent_type = "JobAbility" }, -- Phantom Roll
-  { parent = 124, children = "CorsairShot", parent_type = "JobAbility" }, -- Quick Draw
-  { parent = 357, children = "Rune", parent_type = "JobAbility" }, -- Rune Enchantment
-  { parent = 379, children = "Ward", parent_type = "JobAbility" }, -- Ward
-  { parent = 380, children = "Effusion", parent_type = "JobAbility" }, -- Effusion
-  { parent = 91, children = "BloodPactRage", parent_type = "PetCommand" }, -- Blood Pact: Rage
-  { parent = 172, children = "BloodPactWard", parent_type = "PetCommand" }, -- Blood Pact: Ward
-  { parent = 251, children = "Monster", parent_type = "PetCommand" }, -- Ready
+  { parent = 97, children = "CorsairRoll", parent_type = "JobAbility", icon = "jobs/cor" }, -- Phantom Roll
+  { parent = 124, children = "CorsairShot", parent_type = "JobAbility", icon = "jobs/cor" }, -- Quick Draw
+  { parent = 357, children = "Rune", parent_type = "JobAbility", icon = "jobs/run" }, -- Rune Enchantment
+  { parent = 379, children = "Ward", parent_type = "JobAbility", icon = "jobs/run" }, -- Ward
+  { parent = 380, children = "Effusion", parent_type = "JobAbility", icon = "jobs/run" }, -- Effusion
+  { parent = 91, children = "BloodPactRage", parent_type = "PetCommand", icon = "jobs/smn" }, -- Blood Pact: Rage
+  { parent = 172, children = "BloodPactWard", parent_type = "PetCommand", icon = "jobs/smn" }, -- Blood Pact: Ward
+  { parent = 251, children = "Monster", parent_type = "PetCommand", icon = "jobs/bst" }, -- Ready
   --[[ The DNC menus, all `JobAbility`. Missed on the first pass and added
        2026-09-07: the resource names them in the PLURAL, so a search for
        `Waltz` finds the eight children and no parent, and the family read as
@@ -95,13 +102,13 @@ local FAMILIES = {
        `/ja "Stratagems"` is - several even share the family recast id the way
        Stratagems (223) shares 233: `Jigs` carries Spectral Jig's 218, `Steps`
        Quickstep's 220. ]]
-  { parent = 183, children = "Waltz", parent_type = "JobAbility" }, -- Waltzes
-  { parent = 182, children = "Samba", parent_type = "JobAbility" }, -- Sambas
-  { parent = 198, children = "Jig", parent_type = "JobAbility" }, -- Jigs
-  { parent = 199, children = "Step", parent_type = "JobAbility" }, -- Steps
-  { parent = 200, children = "Flourish1", parent_type = "JobAbility" }, -- Flourishes I
-  { parent = 213, children = "Flourish2", parent_type = "JobAbility" }, -- Flourishes II
-  { parent = 263, children = "Flourish3", parent_type = "JobAbility" }, -- Flourishes III
+  { parent = 183, children = "Waltz", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Waltzes
+  { parent = 182, children = "Samba", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Sambas
+  { parent = 198, children = "Jig", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Jigs
+  { parent = 199, children = "Step", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Steps
+  { parent = 200, children = "Flourish1", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Flourishes I
+  { parent = 213, children = "Flourish2", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Flourishes II
+  { parent = 263, children = "Flourish3", parent_type = "JobAbility", icon = "jobs/dnc" }, -- Flourishes III
 }
 
 --[[ Menus with NO submenu of their own. `Pet commands` (55) opens the same

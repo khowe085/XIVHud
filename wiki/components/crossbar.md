@@ -632,8 +632,8 @@ which case binding one you have not learned gives a slot the game refuses.
 A **details column** on the right shows whatever the cursor is over: name,
 cost, recast, skillchain property, and for a slot the layer its binding comes
 from. A menu row is not an action and has nothing to describe, so the column
-is blank over one, though it may still carry its own
-icon - Stratagems shows the grimoire. **`[ < back ]`**, in the top left, steps back one screen; it is absent
+is blank over one. It still carries an icon: Stratagems shows the grimoire,
+and every other menu shows its job's glyph. **`[ < back ]`**, in the top left, steps back one screen; it is absent
 on the first step. **`[ X ]`**, in the top right, closes the window from any
 step.
 
