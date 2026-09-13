@@ -612,7 +612,16 @@ describe("crossbar catalog", function()
          takes, and a user can override it the same way. ]]
     it("carries the grimoire art on the Stratagems menu", function()
       local catalog = family_build({ 223 })
-      assert.equal("abilities/book_white", entry_named(catalog.build(), "Job Abilities", "Stratagems").icon)
+      local named = entry_named(catalog.build(), "Job Abilities", "Stratagems").icon
+      assert.equal("abilities/book_white", named)
+      -- A typo here fails SILENTLY - a missing texture just draws nothing - so
+      -- the name is checked against the disk, `crossbar_render_spec`'s own
+      -- move. The entry point load-checks the same file because `contexts.lua`
+      -- names it too; this ties the CATALOG's copy of the string to it.
+      local path = "src/assets/icons/" .. named .. ".png"
+      local art = io.open(path, "rb")
+      assert.is_not_nil(art, path .. " does not ship")
+      art:close()
     end)
 
     it("offers the parent as a submenu rather than a bindable record", function()

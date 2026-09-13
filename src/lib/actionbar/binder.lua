@@ -409,7 +409,8 @@ local function new(deps)
     if hovered ~= nil and hovered.kind == "entry" then
       details, hovered = nil, nil
     end
-    -- The memo is keyed by record identity, and those records are new.
+    -- Keyed by record identity, and those records are new. It also holds the
+    -- menu rows keyed by art NAME, which merely re-resolve.
     icon_memo = {}
   end
 
