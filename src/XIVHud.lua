@@ -725,16 +725,6 @@ end
      one closure handed to both, so the entry point spec can pin that the two
      read the client the same way. ]]
 
---[[ The zone id, for mount roulette's zone rule (res.zones carries
-     `can_mount`). Read while drawing, so it goes through the player service:
-     this was the heaviest get_info caller in the addon, once a frame. A zone
-     id is safe to hold for an interval, and `zone change` invalidates anyway.
-     Nil-tolerant like chat_open. ]]
-local function read_zone()
-  local ok, info = pcall(read_info)
-  return ok and info ~= nil and info.zone or nil
-end
-
 local function send_command(command)
   windower.send_command(command)
 end
@@ -826,7 +816,6 @@ local action_service = step("building the action service", function()
     -- nil when the resource library failed to load: mount roulette then sits
     -- out and the ladders degrade rung by rung.
     resources = libraries_error == nil and res or nil,
-    zone = read_zone,
     suppressed = function()
       return core.suppressed()
     end,

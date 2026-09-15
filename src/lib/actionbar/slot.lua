@@ -60,8 +60,8 @@ local SC_DIM_FRAME_ALPHA = 150
 -- The counter's colour when the counter names none of its own.
 local PLAIN_COUNT_COLOR = { 255, 255, 255 }
 
--- `mr` and a named mount share the recast and the zone rule: both are
--- the same one command to the game.
+-- `mr` and a named mount share the recast: both are the same one command to
+-- the game.
 local function is_mount_record(record)
   return record ~= nil and (record.type == "mount" or record.type == "mr")
 end
@@ -508,16 +508,10 @@ local function new(deps)
       charged = counter.charged == true
     end
     --[[ A mount slot answers to neither a spell nor an ability recast, so
-         its own two conditions land here - and they part company the moment
-         you are actually mounted: the zone stops applying (the press is a
-         dismount) while the recast keeps counting and keeps the slot dim.
-         The bar's `mount` fact has already folded that in. ]]
+         its own recast lands here, and keeps counting while you ride. ]]
     if is_mount_record(record) and facts.mount ~= nil then
       local mount = facts.mount(record)
       if mount ~= nil then
-        if mount.blocked then
-          usable = false
-        end
         if mount.cooldown ~= nil and mount.cooldown > remaining then
           remaining = mount.cooldown
         end

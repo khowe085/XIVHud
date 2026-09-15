@@ -17,7 +17,6 @@ local function resources()
     },
     mounts = {},
     key_items = {},
-    zones = {},
     statuses = { [0] = { en = "Idle" }, [1] = { en = "Engaged" } },
     bags = {
       [0] = { id = 0, en = "Inventory", equippable = true },

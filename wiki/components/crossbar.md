@@ -811,25 +811,23 @@ These are the same actions as the `//hud` commands under
 `mr` and `warp` count down before they go, and so does the `mount` type
 above — see **Travel counts down** under Extras.
 
-**A mount slot greys out when you cannot ride.** Two things put it down: a
-zone that forbids mounting — a city, a dungeon — and the minute after you
-summon one, which sweeps round as a recast like anything else.
+**A mount slot greys out for the minute after you summon one**, which sweeps
+round as a recast like anything else. Where you are is not checked: the
+game's data does not reliably say which zones allow riding, so in one that
+forbids it the game turns the summon down itself.
 
 **A press the addon knows will fail does nothing at all**: no
-countdown, no command, no recast. That covers both cases — a zone that
-forbids mounting, and a recast still running from your last summon. It says
-which in the log once. The greyed icon and the dead press follow the same
-rule, so what you see is what the button will do.
+countdown, no command, no recast — a press while the recast from your last
+summon is still running. It says so in the log once. The greyed icon and the
+dead press follow the same rule, so what you see is what the button will do.
 
-The two part company once you are actually mounted. The zone stops mattering
-— you can be riding somewhere you could not have mounted, and the press is
-now a dismount, which is never held up. The recast keeps running and keeps
-the slot greyed until you could mount again.
+The recast keeps running once you are actually mounted, and keeps the slot
+greyed until you could mount again — though the press is now a dismount,
+which is never held up.
 
 The minute starts when the summon is sent, which means a summon the
 game turns down for a reason the addon cannot see — being in combat, say —
-will still grey the slot for the minute. A zone it cannot identify never
-greys anything.
+will still grey the slot for the minute.
 
 #### What `open` can open
 
@@ -981,16 +979,25 @@ first job.
 The countdown tells you **which** way you are going home — `Warp Ring in 5
 seconds`, not a bare `Warp` — and only the last five seconds are counted out
 loud. A warp that has to put a ring on and wait for it to charge is announced
-the same way: the item at the press, how long once the game will say, then the
-last five seconds. `/heal` calls any of it off, warm-up included.
+the same way: the item at the press, and how long it will take — at the
+press too wherever the game's data names the item's warm-up (it does for the
+warp items), otherwise as soon as the game will say — then the last five
+seconds. If it comes up later than it said, it says so again. `/heal` calls
+any of it off, warm-up included.
 
 The ladder is walked **once**, when you press. Whatever it names is what
 fires, even if something better turns up during the countdown.
 
 `warp` skips the countdown when the warp it picks is one it has to **equip and
 warm up** — a Warp Ring or Warp Cudgel you are not already wearing; the
-warm-up is the wait. Everything else fires the moment it is asked, so the
-countdown is its only window.
+warm-up is the wait. It is never a shorter wait than the countdown, though: a
+warm-up that finishes early is held until `delay` seconds have passed since
+the press. Everything else fires the moment it is asked, so the countdown is
+its only window.
+
+When a warp goes, the chat is about the one that goes: the rungs it passed
+over on the way (a Warp Ring on recast, an Instant Warp you do not have) are
+only listed when **nothing** could go, as the reason why.
 
 **The plan is worked out once, when you press** — and the countdown names it,
 so what you were told is what fires. Lose the MP for Warp during those five

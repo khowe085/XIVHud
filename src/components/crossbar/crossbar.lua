@@ -726,19 +726,16 @@ local function new(ctx)
     return nil
   end
 
-  --[[ A mount slot's two conditions, which part company the moment you are
-       actually mounted: the ZONE stops applying (you can be riding
-       somewhere you could not have mounted, and the press is a dismount,
-       never held up) while the RECAST does not - it is the one thing still
-       true while you ride, so it keeps counting and keeps the slot dim
-       (Kevin's call, 2026-08-29), even though the press would dismount.
-       Skipping it along with the zone made the sweep vanish the instant
-       the mount landed. ]]
+  --[[ A mount slot's recast, which does not stop when you are actually
+       mounted - it is the one thing still true while you ride, so it keeps
+       counting and keeps the slot dim (Kevin's call, 2026-08-29), even
+       though the press would dismount. Skipping it while mounted made the
+       sweep vanish the instant the mount landed. ]]
   local function mount_facts()
     if roulette == nil then
       return nil
     end
-    return { blocked = not roulette.mounted() and roulette.blocked(), cooldown = roulette.cooldown() }
+    return { cooldown = roulette.cooldown() }
   end
 
   local function tick()

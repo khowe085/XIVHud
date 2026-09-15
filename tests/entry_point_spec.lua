@@ -358,12 +358,12 @@ describe("entry point", function()
          eighteen-member walk for a fact neither of them holds. ]]
     it("keeps the party and the zone for a buff gain", function()
       boot.ctxs.targetbar.get_party()
-      boot.service_deps.zone()
+      boot.ctxs.partylist.get_info()
       local party, info = boot.client_calls.party, boot.client_calls.info
 
       boot.handlers["gain buff"](43)
       boot.ctxs.targetbar.get_party()
-      boot.service_deps.zone()
+      boot.ctxs.partylist.get_info()
       assert.are.equal(party, boot.client_calls.party, "a buff dropped the party read")
       assert.are.equal(info, boot.client_calls.info, "a buff dropped the zone read")
     end)
@@ -372,14 +372,6 @@ describe("entry point", function()
       local before = boot.ctxs.partylist.generation()
       boot.handlers["gain buff"](43)
       assert.are.equal(before, boot.ctxs.partylist.generation())
-    end)
-
-    it("reads the zone once per interval, however often the crossbar draws", function()
-      local before = boot.client_calls.info
-      boot.service_deps.zone()
-      boot.service_deps.zone()
-      boot.ctxs.partylist.get_info()
-      assert.are.equal(before + 1, boot.client_calls.info)
     end)
 
     --[[ The one read that must NOT be cached: it is asked on every key event to
@@ -520,12 +512,11 @@ describe("entry point", function()
         "decode_extdata",
         "random",
         "get_key_items",
-        "zone",
         "chat_open",
       }) do
         assert.is_function(boot.service_deps[name], name .. " missing from the service")
       end
-      for _, name in ipairs({ "send_ipc", "set_equip", "random", "get_key_items", "zone" }) do
+      for _, name in ipairs({ "send_ipc", "set_equip", "random", "get_key_items" }) do
         assert.is_nil(boot.ctxs.crossbar[name], name .. " still on the crossbar's ctx")
       end
     end)

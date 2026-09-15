@@ -26,7 +26,6 @@ local function resources()
     },
     mounts = { [1] = { name = "Chocobo" } },
     key_items = { [3000] = { category = "Mounts", name = "\226\153\170Chocobo" } },
-    zones = { [100] = { id = 100, en = "Outdoors", can_mount = true } },
     statuses = { [0] = { en = "Idle" }, [1] = { en = "Engaged" }, [2] = { en = "Dead" }, [7] = { en = "Resting" } },
     bags = {
       [0] = { id = 0, en = "Inventory", equippable = true },
@@ -37,6 +36,12 @@ end
 
 local function world(opts)
   opts = opts or {}
+  local res = (not opts.no_resources) and resources() or nil
+  -- The equip delay the items resource names (`cast_delay`), when a test
+  -- gives the ring one.
+  if res ~= nil and opts.cast_delay ~= nil then
+    res.items[26123].cast_delay = opts.cast_delay
+  end
   local env = {
     chat = {},
     commands = {},
@@ -103,25 +108,27 @@ local function world(opts)
     get_key_items = function()
       return {}
     end,
-    -- The client puts the piece on: the poll reads that status back.
+    -- The client puts the piece on: the poll reads that status back. A test
+    -- holds it off (a GearSwap swap in flight) with `equip_lands = false`.
     set_equip = function(bag_slot, equip_slot, bag)
       env.equips[#env.equips + 1] = { bag_slot, equip_slot, bag }
+      if env.equip_lands == false then
+        return
+      end
       for _, item in ipairs(env.items[bag] or {}) do
         if item.slot == bag_slot then
           item.status = enchanted.EQUIPPED
         end
       end
     end,
-    decode_extdata = function()
-      return env.ext
+    -- One ext for every item unless a test gives an item its own.
+    decode_extdata = function(item)
+      return env.ext_by_id ~= nil and env.ext_by_id[item.id] or env.ext
     end,
     random = function()
       return 1
     end,
-    resources = (not opts.no_resources) and resources() or nil,
-    zone = function()
-      return 100
-    end,
+    resources = res,
     suppressed = function()
       return env.suppressed
     end,
@@ -280,10 +287,267 @@ describe("the action service", function()
       service.tick()
       assert.are.equal(1, #env.commands, "still warming")
       env.ext.usable = true
-      env.now = 2
+      -- Warm, and held to the five-second travel delay from the press.
+      env.now = 5
       service.tick()
       assert.are.equal('input /item "Tavnazian Ring" <me>', env.commands[2])
       assert.are.equal("gs enable ring1", env.commands[3])
+    end)
+
+    --[[ The ladder notes every rung it walks past, and those notes are the
+         whole answer when nothing fires. When a lower rung DOES go they are
+         noise - a Warp Ring's recast read out while the Tavnazian Ring
+         warms up (Kevin, live client, 2026-09-13). ]]
+    it("says nothing about the rungs it walked past when a lower one goes", function()
+      local service, env = world()
+      ring_in_bag(env)
+      table.insert(env.items[0], 1, { id = 28540, slot = 2, status = 0, count = 1 })
+      env.ext_by_id = {
+        [28540] = {
+          type = "Enchanted Equipment",
+          charges_remaining = 1,
+          next_use_time = env.time - 18000 + 42,
+          activation_time = env.time - 18000,
+          usable = false,
+        },
+      }
+      service.warp(false)
+      assert.are.same({ { 4, 13, 0 } }, env.equips, "the Tavnazian Ring goes")
+      assert.is_nil(said(env):find("recast", 1, true), "said: " .. said(env))
+      assert.is_nil(said(env):find("You don't have", 1, true), "said: " .. said(env))
+    end)
+
+    it("still says why when no rung goes", function()
+      local service, env = world()
+      env.known_spells = {}
+      env.player.vitals.mp = 0
+      env.items[0] = { enabled = true, { id = 28540, slot = 2, status = 0, count = 1 } }
+      env.ext = {
+        type = "Enchanted Equipment",
+        charges_remaining = 1,
+        next_use_time = env.time - 18000 + 42,
+        activation_time = env.time - 18000,
+        usable = false,
+      }
+      service.warp(false)
+      assert.is_not_nil(said(env):find("Warp Ring: 42 sec recast.", 1, true), "said: " .. said(env))
+    end)
+
+    --[[ A rung that must be equipped skips the travel countdown, its own
+         warm-up being the window - but a short warm-up made that window
+         three seconds (Kevin, live client, 2026-09-13). The warm-up still
+         sets the pace, and the travel delay is its floor. ]]
+    describe("a warm-up rung's window", function()
+      local function quick_ring(env)
+        ring_in_bag(env)
+        env.ext.activation_time = env.time - 18000 + 2
+      end
+
+      it("never fires sooner than the travel delay after the press", function()
+        local service, env = world()
+        quick_ring(env)
+        service.warp(false)
+        env.now = 1
+        service.tick()
+        env.time = env.time + 2
+        env.ext.usable = true
+        env.now = 2
+        service.tick()
+        env.now = 4
+        service.tick()
+        assert.are.same({ "gs disable ring1" }, env.commands, "warmed, and still held")
+        env.now = 5
+        service.tick()
+        assert.are.same({ "gs disable ring1", 'input /item "Tavnazian Ring" <me>', "gs enable ring1" }, env.commands)
+      end)
+
+      it("counts the longer of the two down", function()
+        local service, env = world()
+        quick_ring(env)
+        service.warp(false)
+        env.now = 1
+        service.tick()
+        assert.is_not_nil(
+          said(env):find("Tavnazian Ring ready in 4 seconds. /heal to cancel.", 1, true),
+          "the hold outlasts a two-second warm-up: " .. said(env)
+        )
+      end)
+
+      it("leaves a warm-up longer than the delay to set the pace", function()
+        local service, env = world()
+        ring_in_bag(env)
+        service.warp(false)
+        env.now = 1
+        service.tick()
+        assert.is_not_nil(said(env):find("Tavnazian Ring ready in 31 seconds", 1, true), said(env))
+      end)
+
+      it("fires the moment it is warm when the delay is off", function()
+        local service, env = world()
+        env.config.delay = 0
+        quick_ring(env)
+        service.warp(false)
+        env.ext.usable = true
+        env.now = 1
+        service.tick()
+        assert.are.equal('input /item "Tavnazian Ring" <me>', env.commands[2])
+      end)
+
+      it("does not give up on a delay longer than the item's own bound", function()
+        local service, env = world()
+        env.config.delay = 60
+        quick_ring(env)
+        service.warp(false)
+        env.ext.usable = true
+        for second = 1, 59 do
+          env.time = env.time + 1
+          env.now = second
+          service.tick()
+        end
+        assert.is_nil(said(env):find("abandoned", 1, true), "said: " .. said(env))
+        assert.are.same({ "gs disable ring1" }, env.commands, "held for the whole minute")
+        env.now = 60
+        service.tick()
+        assert.are.equal('input /item "Tavnazian Ring" <me>', env.commands[2])
+      end)
+
+      --[[ The count started a second late - "ready in 4 seconds" for a
+           five-second window - because nothing could be said until the
+           ring was on and its extdata read (Kevin, live client,
+           2026-09-13). The items resource names the equip delay itself,
+           so the wait is known the moment the item is picked. ]]
+      it("announces the wait at the press when the item names its equip delay", function()
+        local service, env = world({ cast_delay = 3 })
+        quick_ring(env)
+        service.warp(false)
+        assert.are.equal("Tavnazian Ring ready in 5 seconds. /heal to cancel.", env.chat[#env.chat])
+        env.now = 1
+        service.tick()
+        env.now = 2
+        service.tick()
+        local _, announced = said(env):gsub("ready in", "")
+        assert.are.equal(1, announced, "announced once, at the press")
+        assert.are.equal("3...", env.chat[#env.chat])
+      end)
+
+      it("announces the item's own delay at the press when it outlasts the floor", function()
+        local service, env = world({ cast_delay = 30 })
+        ring_in_bag(env)
+        service.warp(false)
+        assert.are.equal("Tavnazian Ring ready in 30 seconds. /heal to cancel.", env.chat[#env.chat])
+      end)
+
+      it("says the wait again when the ring goes on late", function()
+        local service, env = world({ cast_delay = 30 })
+        ring_in_bag(env)
+        env.equip_lands = false
+        service.warp(false)
+        local pressed = env.time
+        for second = 1, 3 do
+          env.time = pressed + second
+          env.now = second
+          service.tick()
+        end
+        -- It lands on the fourth second's re-equip, and warms from there.
+        env.equip_lands = true
+        env.time = pressed + 4
+        env.now = 4
+        service.tick()
+        env.ext.activation_time = pressed + 4 + 30 - 18000
+        env.time = pressed + 5
+        env.now = 5
+        service.tick()
+        local _, announced = said(env):gsub("ready in", "")
+        assert.are.equal(2, announced, "the press, then the correction: " .. said(env))
+        assert.are.equal("Tavnazian Ring ready in 29 seconds. /heal to cancel.", env.chat[#env.chat])
+      end)
+
+      it("lets the wall clock lag a poll behind without saying the wait twice", function()
+        -- The warm-up is read off the game's whole-second clock and the
+        -- polls off the frame clock, so one poll can land before the wall
+        -- second ticks over and read a second high.
+        local service, env = world()
+        ring_in_bag(env)
+        service.warp(false)
+        env.now = 0
+        service.tick()
+        env.now = 1
+        service.tick()
+        env.time = env.time + 2
+        env.now = 2
+        service.tick()
+        local _, announced = said(env):gsub("ready in", "")
+        assert.are.equal(1, announced, said(env))
+      end)
+
+      it("lets the first reading after the press run a second over in silence", function()
+        local service, env = world({ cast_delay = 30 })
+        ring_in_bag(env)
+        env.ext.activation_time = env.time - 18000 + 30
+        service.warp(false)
+        env.now = 1
+        service.tick()
+        local _, announced = said(env):gsub("ready in", "")
+        assert.are.equal(1, announced, said(env))
+      end)
+
+      it("does not repeat the wait for a ring that goes on in the ordinary time", function()
+        --[[ The press-time figure starts counting before the ring is on,
+             and the game stamps its warm-up in whole seconds: pressed late
+             in one wall-clock second, landed early in the next, and read
+             off a clock that has not ticked over, an ordinary equip reads
+             a second over the promise before any rounding. ]]
+        local service, env = world({ cast_delay = 30 })
+        ring_in_bag(env)
+        env.equip_lands = false
+        local pressed = env.time
+        service.warp(false)
+        env.equip_lands = true
+        env.now = 0.05
+        service.tick()
+        env.ext.activation_time = pressed + 1 + 30 - 18000
+        env.time = pressed + 1
+        env.now = 1.05
+        service.tick()
+        local _, announced = said(env):gsub("ready in", "")
+        assert.are.equal(1, announced, said(env))
+      end)
+
+      it("leaves a ring already on to its own clock, whatever the resource says", function()
+        -- Worn, the warm-up is already under way: the equip delay is the
+        -- whole of it, not what is left of it.
+        local service, env = world({ cast_delay = 30 })
+        quick_ring(env)
+        env.items[0][1].status = enchanted.EQUIPPED
+        env.ext.activation_time = env.time - 18000 + 3
+        service.warp(false)
+        assert.is_nil(said(env):find("ready in", 1, true), "nothing promised at the press: " .. said(env))
+        service.tick()
+        assert.are.equal("Tavnazian Ring ready in 5 seconds. /heal to cancel.", env.chat[#env.chat])
+      end)
+
+      it("holds nothing on an alt sent home by `warp all`", function()
+        -- The floor is the presser's window to call a trip off, and nobody
+        -- pressed anything here - exactly why the alt's spell rung fires
+        -- with no countdown either.
+        local service, env = world()
+        quick_ring(env)
+        service.on_ipc(service.ipc_warp_message)
+        env.ext.usable = true
+        env.now = 1
+        service.tick()
+        assert.are.equal('input /item "Tavnazian Ring" <me>', env.commands[2])
+      end)
+
+      it("holds only a warp - an enchanted item is not a trip", function()
+        local service, env = world()
+        quick_ring(env)
+        service.fire({ type = "enchanteditem", action = "Tavnazian Ring", target = "me" })
+        env.ext.usable = true
+        env.now = 1
+        service.tick()
+        assert.are.equal('input /item "Tavnazian Ring" <me>', env.commands[2])
+      end)
     end)
 
     it("abandons a wait under suppression and releases the hold", function()

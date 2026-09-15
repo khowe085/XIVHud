@@ -19,6 +19,10 @@ describe("statusbar categories", function()
     end
   end)
 
+  it("puts resolved (635) under other", function()
+    assert.are.equal("other", categories.category_of(635))
+  end)
+
   it("calls everything else a buff, ranked or not", function()
     -- haste, protect, and an id nothing ranks
     for _, id in ipairs({ 33, 40, 9998 }) do
@@ -48,15 +52,21 @@ describe("statusbar categories", function()
     assert.are.equal(section_end, count)
   end)
 
-  it("curates only ids the shipped order ranks", function()
+  it("curates only ids the shipped order ranks, bar the ones placed by hand", function()
     local ranked = {}
     for _, id in ipairs(buff_order) do
       ranked[id] = true
     end
     for _, set in ipairs({ categories.DEBUFFS, categories.OTHER }) do
       for id in pairs(set) do
-        assert.is_true(ranked[id] == true, "buff " .. id .. " is curated but unranked")
+        if not categories.UNRANKED_OTHER[id] then
+          assert.is_true(ranked[id] == true, "buff " .. id .. " is curated but unranked")
+        end
       end
+    end
+    -- An id the order comes to rank belongs in its section, not here.
+    for id in pairs(categories.UNRANKED_OTHER) do
+      assert.is_nil(ranked[id], "buff " .. id .. " is ranked now")
     end
   end)
 
