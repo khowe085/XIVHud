@@ -37,12 +37,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        inside the packet handler, so a first login with nothing cached meant
        sixteen DAT opens, decodes and file writes in a single frame.
      - An item that fails is abandoned for the session rather than retried
-       every frame; `reset` (a detach) clears that, because the likeliest
-       cause - a wrong game path - is a setting the player can fix.
+       every frame; `reset` (a detach) clears that, so a relog is a retry -
+       the client may not have named its folder yet the first time.
      - `cached_icon` remembers every icon it has found on disk, so a redraw
        costs no file lookups.
 
-     The cache lives at `<addon>/icons/<item_id>.bmp` - deliberately NOT under
+     The cache lives at `<addon>/cache/items/<item_id>.bmp` (lib/icons'
+     `cache_file`, the one place that path is composed) - deliberately NOT under
      data/: `//hud copy` enumerates every directory there as a character, so a
      cache alongside them would be offered as one, and `//hud copy icons
      <name>` would wipe that character's configuration. It is not
@@ -51,12 +52,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local icons = require("lib/icons")
 
-local ICON_CACHE_DIR = "icons/"
-
 -- deps: `asset` (addon-relative -> absolute path), `file_exists` (absolute),
--- `read_dat`, `write_binary` (addon-relative), and `game_path` - already
--- resolved by the caller, so a component's config override wins there, not
--- here. game_path is consulted per attempt: a corrected setting must count.
+-- `read_dat`, `write_binary` (addon-relative), `game_path` - consulted per
+-- attempt rather than once, since the client may not name its folder yet at
+-- the first - and the optional `on_mismatch(asked, found)`, told when a record
+-- names another item (the layout tripwire in `drain_queue`).
 local function new(deps)
   local self = {}
 
@@ -70,9 +70,7 @@ local function new(deps)
   local abandoned_count = 0
   local resolved = {}
 
-  local function icon_file(item_id)
-    return ICON_CACHE_DIR .. item_id .. ".bmp"
-  end
+  local icon_file = icons.cache_file
 
   -- The icon on disk for an item, or nil if it has not been extracted yet.
   -- An item already given up on is not looked for again: this runs on the
@@ -122,6 +120,22 @@ local function new(deps)
       return false
     end
 
+    --[[ The tripwire (Kevin, 2026-09-27). Every item record opens with its
+         own id, so a record naming ANOTHER item - or none, an empty one -
+         means the game's item data no longer lies where the fixed mapping
+         says: exactly what the September 2026 update did, silently, for
+         weeks. Nothing is cached from it, and `on_mismatch` lets the player
+         hear about it the moment it happens, since the cache cannot be busted
+         to find out. A head that cannot be read at all is no evidence of
+         that, and the icon read below decides as it always did. ]]
+    local found = icons.record_id(deps.read_dat(path, located.record_offset, 2))
+    if found ~= nil and found ~= item_id then
+      if deps.on_mismatch then
+        deps.on_mismatch(item_id, found)
+      end
+      return false
+    end
+
     local bmp = icons.to_bmp(deps.read_dat(path, located.offset, located.length))
     if not bmp or not deps.write_binary(icon_file(item_id), bmp) then
       return false
@@ -133,10 +147,46 @@ local function new(deps)
     return true
   end
 
+  --[[ How much of the record to sample for a probe. The icon sits 0x2BD in,
+       so this is the head of the record BEFORE it - whatever the DAT keeps
+       there is the only evidence of which item the offset actually landed on,
+       which is the question a wrong icon asks. ]]
+  local SAMPLE_LENGTH = 32
+
+  --[[ Every number the extraction would use for an item, for a diagnostic to
+       print. It reads the DAT but writes nothing and remembers nothing: a
+       probe must not mark an item resolved or abandoned, or asking about a
+       broken icon would change whether it is retried.
+
+       `sample_raw` is the head of the RECORD rather than of the icon, and is
+       handed back as the bytes that came off disk - turning them into
+       something printable belongs to whoever is printing. ]]
+  function self.probe(item_id)
+    local located = icons.locate(item_id)
+    local path = located and icons.dat_path(deps.game_path(), located.dat)
+    local report = {
+      id = item_id,
+      dat = located and located.dat,
+      record = located and located.record,
+      offset = located and located.offset,
+      path = path,
+      read = 0,
+      cached = deps.file_exists(deps.asset(icon_file(item_id))) == true,
+    }
+    if not path then
+      return report
+    end
+
+    local block = deps.read_dat(path, located.offset, located.length)
+    report.read = block and #block or 0
+    report.sample_raw = deps.read_dat(path, located.record_offset, SAMPLE_LENGTH)
+    return report
+  end
+
   --[[ The per-character reset, for a detach: the queue goes with the
-       character, and so does everything abandoned - correcting the game_path
-       setting has to be worth something. `resolved` stays: a file already on
-       disk is still there whoever logs in next. ]]
+       character, and so does everything abandoned, so a relog is a retry.
+       `resolved` stays: a file already on disk is still there whoever logs in
+       next. ]]
   function self.reset()
     pending = {}
     queued = {}

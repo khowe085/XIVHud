@@ -382,6 +382,8 @@ function M.boot(options)
   setmetatable(env, { __index = _G })
 
   local chunk = assert(loadfile(ENTRY_POINT))
+  -- The fake client, so a spec can change what it answers after the boot.
+  boot.windower = env.windower
   setfenv(chunk, env)
   chunk()
 

@@ -507,53 +507,72 @@ describe("partylist logic", function()
   end)
 
   describe("the player's own vitals", function()
-    -- Your own HP arrives as a change event, the same stream parambar reads.
-    -- Without it your row is the only one in the list updating at 5Hz while
-    -- the parameter bar beside it moves instantly.
-    it("shows a change event before the next poll", function()
-      logic.set_main_player({ name = "Ayame" })
+    --[[ Your own row's numbers come from `get_party()`, which moves at the poll
+         rate. The client's own player table is read every frame and re-read the
+         moment a vital event arrives, so your row is laid over from THAT rather
+         than from the event's value - the same policy lib/player holds, and for
+         the same reason: the absolute stream can report a value nothing
+         corrects, and laying it on top made the bogus value and the true one
+         take turns (Kevin, 2026-09-18, an HP bar jumping high and falling back
+         after a raise). ]]
+    it("lays the client's own vitals over the polled row", function()
+      logic.set_main_player({ name = "Ayame", vitals = { hp = 250, hpp = 24 } })
       logic.set_roster({ p0 = member({ name = "Ayame", id = 1, hp = 1000, hpp = 100 }) })
-      settle()
-      logic.set_own_vital("hp", 250)
-      logic.set_own_vital("hpp", 24)
       local row = settle().rows[1]
       assert.are.equal("250", row.bars.hp.text)
       assert.are.equal("red", row.bars.hp.band)
     end)
 
-    it("takes TP from the change event, which is unambiguously 0..3000", function()
-      logic.set_main_player({ name = "Ayame" })
+    -- TP is taken here, unlike from a packet: the client's own figure is
+    -- unambiguously the 0..3000 scale.
+    it("takes TP from the client, which is unambiguously 0..3000", function()
+      logic.set_main_player({ name = "Ayame", vitals = { tp = 2000 } })
       logic.set_roster({ p0 = member({ name = "Ayame", id = 1 }) })
-      logic.set_own_vital("tp", 2000)
       local row = settle().rows[1]
       assert.are.equal("2000", row.bars.tp.text)
       assert.are.equal("full_tp", row.bars.tp.band)
     end)
 
-    it("lets the next poll overrule it, exactly as a packet push is overruled", function()
-      logic.set_main_player({ name = "Ayame" })
+    -- The defect: the two sources must not take turns. A poll that disagrees
+    -- with the client loses, rather than winning every other interval.
+    it("does not alternate with the polled value", function()
+      logic.set_main_player({ name = "Ayame", vitals = { hp = 250, hpp = 24 } })
+      for _ = 1, 4 do
+        logic.set_roster({ p0 = member({ name = "Ayame", id = 1, hp = 1000, hpp = 100 }) })
+        assert.are.equal("250", settle().rows[1].bars.hp.text)
+      end
+    end)
+
+    it("follows the client when it moves", function()
+      logic.set_main_player({ name = "Ayame", vitals = { hp = 250, hpp = 24 } })
       logic.set_roster({ p0 = member({ name = "Ayame", id = 1, hp = 1000, hpp = 100 }) })
-      logic.set_own_vital("hp", 250)
       settle()
-      logic.set_roster({ p0 = member({ name = "Ayame", id = 1, hp = 900, hpp = 90 }) })
+      logic.set_main_player({ name = "Ayame", vitals = { hp = 900, hpp = 90 } })
       assert.are.equal("900", settle().rows[1].bars.hp.text)
     end)
 
     it("never puts the player's vitals on somebody else's row", function()
-      logic.set_main_player({ name = "Ayame" })
+      logic.set_main_player({ name = "Ayame", vitals = { hp = 250, hpp = 24 } })
       logic.set_roster({
         p0 = member({ name = "Ayame", id = 1, hp = 1000, hpp = 100 }),
         p1 = member({ name = "Volker", id = 2, hp = 800, hpp = 100 }),
       })
-      logic.set_own_vital("hp", 250)
-      logic.set_own_vital("hpp", 24)
       assert.are.equal("800", settle().rows[2].bars.hp.text)
     end)
 
-    it("ignores a vital it does not know", function()
-      assert.has_no.errors(function()
-        logic.set_own_vital("wisdom", 5)
-      end)
+    --[[ The client fills the player in field by field, so `vitals` is missing
+         for a frame or two after a login. The polled row stands on its own
+         until it arrives rather than being driven to zero. ]]
+    it("leaves the polled row alone while the client has no vitals yet", function()
+      logic.set_main_player({ name = "Ayame" })
+      logic.set_roster({ p0 = member({ name = "Ayame", id = 1, hp = 1000, hpp = 100 }) })
+      assert.are.equal("1000", settle().rows[1].bars.hp.text)
+    end)
+
+    it("ignores a vital the client reports that is not a number", function()
+      logic.set_main_player({ name = "Ayame", vitals = { hp = "plenty", hpp = 24 } })
+      logic.set_roster({ p0 = member({ name = "Ayame", id = 1, hp = 1000, hpp = 100 }) })
+      assert.are.equal("1000", settle().rows[1].bars.hp.text)
     end)
   end)
 

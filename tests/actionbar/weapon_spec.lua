@@ -73,8 +73,8 @@ describe("crossbar weapon", function()
   end)
 
   --[[ A table with no slot key in it at all is a client that has not filled
-       one in yet, not a character wearing nothing anywhere: the read is
-       whole-inventory and the client answers it whole. Reading it as unarmed
+       one in yet, not a character wearing nothing anywhere: the client
+       answers the equipment bag with every slot in it. Reading it as unarmed
        would LATCH Hand-to-Hand at login and clear the dirty flag with it,
        and nothing would ask again until the player next changed gear. ]]
   it("answers nothing at all for an equipment table with no slots in it", function()

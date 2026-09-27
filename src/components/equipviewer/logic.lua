@@ -233,6 +233,15 @@ local function new(initial_config)
     state.count = count
   end
 
+  -- Where the client last said a slot's item sits: nil, nil once it emptied.
+  function self.location(slot)
+    local state = slots[slot]
+    if not state then
+      return nil, nil
+    end
+    return state.bag, state.index
+  end
+
   function self.item(slot)
     local state = slots[slot]
     return state and state.item_id or 0
@@ -382,6 +391,58 @@ local function new(initial_config)
       config.show_encumbrance and "on" or "off",
       config.show_ammo_count and "on" or "off"
     )
+  end
+
+  --[[ The icon diagnostic's own formatting, here rather than in the widget so
+       it can be tested without a client. An icon that comes out wrong was read
+       at the wrong record: these are the numbers that chose the record, and
+       nothing else in the addon prints them. ]]
+  local function hex(bytes)
+    local out = {}
+    for index = 1, #bytes do
+      out[index] = string.format("%02x", bytes:byte(index))
+    end
+    return table.concat(out, " ")
+  end
+
+  -- One line per slot, for chat. ASCII only - chat is not UTF-8.
+  function self.probe_lines(reports)
+    local lines = {}
+    for _, report in ipairs(reports or {}) do
+      if not report.dat then
+        lines[#lines + 1] = string.format("%s: %d - no DAT covers this id", report.slot, report.id)
+      else
+        lines[#lines + 1] = string.format(
+          "%s: %d %s rec=%d off=%d read=%d cached=%s",
+          report.slot,
+          report.id,
+          report.dat,
+          report.record,
+          report.offset,
+          report.read,
+          report.cached and "y" or "n"
+        )
+      end
+    end
+    return lines
+  end
+
+  --[[ The fuller report, for a file beside load.log. It carries what chat
+       cannot: the full DAT path, and the first bytes of the RECORD as hex -
+       which is the only evidence of which item the offset actually landed on,
+       and so the only way to tell a drifted mapping from a missing record. ]]
+  function self.probe_report(reports)
+    local out = { "XIVHud icon probe", "" }
+    for _, report in ipairs(reports or {}) do
+      out[#out + 1] = self.probe_lines({ report })[1]
+      if report.dat then
+        out[#out + 1] = "  path: " .. tostring(report.path)
+        out[#out + 1] = "  record head: " .. (report.sample_raw and hex(report.sample_raw) or "no sample")
+      end
+      out[#out + 1] = ""
+    end
+    -- CRLF: this is a Windows-facing log and goes out through a binary write.
+    return table.concat(out, "\r\n")
   end
 
   -- `//hud equipviewer ...`. Returns the line to print and whether anything

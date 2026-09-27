@@ -250,9 +250,9 @@ local function new(ctx)
   end
 
   --[[ Read every frame. `ctx.get_player` is lib/player's, so this costs a real
-       client read only once per interval and the vitals come back with the
-       change events already reconciled into them - the widget hears no event of
-       its own.
+       client read only once per interval - and the change events re-open that
+       read rather than carrying a value of their own, so what comes back is
+       the client's own numbers and the widget hears no event itself.
 
        get_player() can return nil around zone-in, and the client fills the
        player in field by field, so a missing vitals table leaves the bars where

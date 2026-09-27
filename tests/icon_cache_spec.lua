@@ -1,4 +1,5 @@
 local new_icon_cache = require("lib/icon_cache")
+local fakes = require("tests/support/fakes")
 
 -- An icon block of the right length; what it decodes to is icons_spec's
 -- business, this spec only cares that the pipeline moves it.
@@ -24,6 +25,10 @@ describe("icon cache", function()
         return files[path] == true
       end,
       read_dat = function(path, offset, length)
+        -- The head read the tripwire takes: the record's own id, as stored.
+        if length == 2 then
+          return fakes.dat_head(path, offset)
+        end
         dat_reads[#dat_reads + 1] = { path = path, offset = offset, length = length }
         return RECORD
       end,
@@ -39,11 +44,23 @@ describe("icon cache", function()
     cache = new_icon_cache(deps)
   end)
 
-  it("extracts a requested icon into icons/<item_id>.bmp and reports it done", function()
+  --[[ The folder moved on 2026-09-27 because everything left at the old path
+       was extracted at the old record size and is garbage. A fallback to it
+       would put those icons straight back on screen. ]]
+  it("never reads an icon from the folder it used before", function()
+    files["addons/XIVHud/icons/" .. USABLE .. ".bmp"] = true
+    assert.is_nil(cache.cached_icon(USABLE))
+
+    cache.request_icon(USABLE)
+    cache.drain_queue()
+    assert.are.equal("cache/items/" .. USABLE .. ".bmp", writes[1].path)
+  end)
+
+  it("extracts a requested icon into cache/items/<item_id>.bmp and reports it done", function()
     cache.request_icon(USABLE)
     assert.is_true(cache.drain_queue())
-    assert.are.equal("icons/" .. USABLE .. ".bmp", writes[1].path)
-    assert.are.equal("addons/XIVHud/icons/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
+    assert.are.equal("cache/items/" .. USABLE .. ".bmp", writes[1].path)
+    assert.are.equal("addons/XIVHud/cache/items/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
   end)
 
   it("reads the DAT the game path names, at the item's own record", function()
@@ -73,8 +90,8 @@ describe("icon cache", function()
   end)
 
   it("finds an icon already on disk and remembers the answer", function()
-    files["addons/XIVHud/icons/777.bmp"] = true
-    assert.are.equal("addons/XIVHud/icons/777.bmp", cache.cached_icon(777))
+    files["addons/XIVHud/cache/items/777.bmp"] = true
+    assert.are.equal("addons/XIVHud/cache/items/777.bmp", cache.cached_icon(777))
     cache.cached_icon(777)
     assert.are.equal(1, exist_checks, "the second answer must come from memory")
   end)
@@ -109,7 +126,7 @@ describe("icon cache", function()
     assert.is_true(cache.is_abandoned(USABLE))
     assert.is_false(cache.is_abandoned(12345))
     cache.reset()
-    assert.is_false(cache.is_abandoned(USABLE), "a reset forgives - the game path may have been fixed")
+    assert.is_false(cache.is_abandoned(USABLE), "a reset forgives - a relog is a retry")
   end)
 
   it("gives up once per item on a write failure too", function()
@@ -127,8 +144,8 @@ describe("icon cache", function()
     assert.are.equal(1, cache.abandoned_count())
   end)
 
-  -- The likeliest reason an icon could not be read is a wrong game path;
-  -- correcting the setting has to be worth something on the next login.
+  -- A relog is a retry: the client may not have named its folder the first
+  -- time, and nothing else would ever ask again.
   it("forgets the queue and the failures on reset, but keeps what is on disk", function()
     cache.request_icon(USABLE)
     cache.drain_queue()
@@ -145,7 +162,7 @@ describe("icon cache", function()
     assert.is_false(cache.drain_queue(), "the pending queue is dropped")
 
     local checks = exist_checks
-    assert.are.equal("addons/XIVHud/icons/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
+    assert.are.equal("addons/XIVHud/cache/items/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
     assert.are.equal(checks, exist_checks, "resolved icons survive the reset")
 
     cache.request_icon(USABLE + 1)
@@ -153,7 +170,7 @@ describe("icon cache", function()
     assert.are.equal(1, cache.abandoned_count())
   end)
 
-  it("asks the game path per attempt, so a corrected setting takes effect", function()
+  it("asks the game path per attempt, so one the client names late is used", function()
     local path = "C:/FFXI"
     deps.game_path = function()
       return path
@@ -164,5 +181,147 @@ describe("icon cache", function()
     cache.request_icon(USABLE + 1)
     cache.drain_queue()
     assert.are.equal("D:/Games/FFXI/ROM/118/107.DAT", dat_reads[2].path)
+  end)
+
+  --[[ A cached icon was permanent: `cached_icon` hands back whatever .bmp is on
+       disk and never looks at it again, and a failed extraction is abandoned
+       for the session. So a wrong icon - Almace drawn as a scythe (Kevin,
+       2026-09-18) - survived every login with no way to clear it from in game.
+       Forgetting one removes the file and lets the next request extract it
+       afresh. ]]
+  --[[ There is no way to re-extract an icon already on disk, deliberately.
+       `refresh` did that and was withdrawn the day it shipped: it left the
+       file in place and made `cached_icon` answer nil until the icon had been
+       read again, so the grid blanked - and the re-extraction could not put it
+       back, because `write_binary` opens the .bmp "wb" while the renderer
+       still holds that exact file open (Kevin, 2026-09-27). Deleting instead
+       is no better: three cache instances share one `cache/items/` directory and
+       each remembers separately what it resolved, so two would be left on a
+       texture that is gone, which Windower draws as silently nothing. Until
+       something safer is worked out, nothing writes over a texture in use. ]]
+  --[[ The diagnostic. An icon that comes out wrong was read at the wrong
+       record, and none of the numbers that decide the record - the DAT, the
+       index, the byte offset, how much came back - is visible from in game. ]]
+  describe("probing an item", function()
+    it("reports the numbers the read would use", function()
+      local report = cache.probe(USABLE)
+      assert.are.equal(USABLE, report.id)
+      assert.are.equal("118/107", report.dat)
+      assert.are.equal(0, report.record)
+      assert.are.equal(0x2BD, report.offset)
+      assert.are.equal("C:/FFXI/ROM/118/107.DAT", report.path)
+      assert.are.equal(0x800, report.read)
+      assert.is_false(report.cached)
+    end)
+
+    it("says when the icon is already on disk", function()
+      cache.request_icon(USABLE)
+      cache.drain_queue()
+      assert.is_true(cache.probe(USABLE).cached)
+    end)
+
+    -- What the record's own first bytes hold is the whole point: it is the
+    -- only evidence of WHICH item the offset actually landed on.
+    it("samples the head of the record itself, not the icon", function()
+      deps.read_dat = function(_, offset, length)
+        return ("o%d:%d"):format(offset, length)
+      end
+      local report = cache.probe(USABLE)
+      assert.are.equal("o0:32", report.sample_raw, "the sample starts at the record, not the icon")
+    end)
+
+    it("reports a read that came back short", function()
+      deps.read_dat = function()
+        return "tiny"
+      end
+      local report = cache.probe(USABLE)
+      assert.are.equal(4, report.read)
+    end)
+
+    it("reports a read that answered nothing", function()
+      deps.read_dat = function()
+        return nil
+      end
+      local report = cache.probe(USABLE)
+      assert.are.equal(0, report.read)
+    end)
+
+    it("survives an id no DAT covers", function()
+      local report = cache.probe(0x8000)
+      assert.are.equal(0x8000, report.id)
+      assert.is_nil(report.dat)
+      assert.are.equal(0, report.read)
+    end)
+  end)
+
+  --[[ The tripwire (Kevin, 2026-09-27): the cache cannot be busted to find out
+       that a game update has moved the item data, so every extraction first
+       checks the record's own id. A record naming another item - or none -
+       means the layout moved; nothing is cached from it, and the reporter is
+       told so the player hears about it the moment it happens. ]]
+  describe("the layout tripwire", function()
+    local mismatches
+
+    before_each(function()
+      mismatches = {}
+      deps.on_mismatch = function(asked, found)
+        mismatches[#mismatches + 1] = { asked, found }
+      end
+    end)
+
+    local function heads(id)
+      deps.read_dat = function(path, offset, length)
+        if length == 2 then
+          return id and fakes.record_head(id) or nil
+        end
+        dat_reads[#dat_reads + 1] = { path = path, offset = offset, length = length }
+        return RECORD
+      end
+    end
+
+    it("caches nothing from a record that names another item", function()
+      heads(9999)
+      cache.request_icon(USABLE)
+      assert.is_false(cache.drain_queue())
+      assert.are.equal(0, #writes)
+      assert.is_true(cache.is_abandoned(USABLE))
+      assert.are.same({ { USABLE, 9999 } }, mismatches)
+    end)
+
+    -- Where the September 2026 update left most reads: in empty padding.
+    it("caches nothing from an empty record", function()
+      heads(0)
+      cache.request_icon(USABLE)
+      cache.drain_queue()
+      assert.are.equal(0, #writes)
+      assert.are.same({ { USABLE, 0 } }, mismatches)
+    end)
+
+    it("extracts from a record that names the item asked for", function()
+      heads(USABLE)
+      cache.request_icon(USABLE)
+      assert.is_true(cache.drain_queue())
+      assert.are.equal(1, #writes)
+      assert.are.same({}, mismatches)
+    end)
+
+    -- A head that cannot be read is no evidence the layout moved: the read of
+    -- the icon itself decides, as it always did.
+    it("goes on to the icon when the head cannot be read", function()
+      heads(nil)
+      cache.request_icon(USABLE)
+      assert.is_true(cache.drain_queue())
+      assert.are.same({}, mismatches)
+    end)
+
+    it("carries on without a reporter", function()
+      deps.on_mismatch = nil
+      heads(9999)
+      cache.request_icon(USABLE)
+      assert.has_no.errors(function()
+        cache.drain_queue()
+      end)
+      assert.are.equal(0, #writes)
+    end)
   end)
 end)

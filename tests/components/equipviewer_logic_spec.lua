@@ -544,4 +544,103 @@ describe("equipviewer logic", function()
       assert.is_false(changed)
     end)
   end)
+
+  --[[ Where the client last put a slot's item. The widget drops a deferred
+       read whose slot has since moved, so this is what an equip, an unequip
+       and a refresh each have to leave behind. ]]
+  describe("a slot's location", function()
+    it("is the bag and index the equipment map named", function()
+      logic.set_equipment({ main = 5, main_bag = 8 })
+      assert.are.same({ 8, 5 }, { logic.location(MAIN) })
+    end)
+
+    it("follows an equip packet", function()
+      logic.on_chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 10 })
+      assert.are.same({ 10, 9 }, { logic.location(MAIN) })
+    end)
+
+    it("is nothing once an unequip empties the slot", function()
+      logic.on_chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      logic.on_chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 0, ["Inventory Bag"] = 0 })
+      assert.are.same({}, { logic.location(MAIN) })
+    end)
+
+    it("is nothing for a slot that does not exist", function()
+      assert.are.same({}, { logic.location(99) })
+    end)
+  end)
+
+  --[[ The icon diagnostic. An icon that comes out wrong was read at the wrong
+       record, and none of the numbers deciding the record is visible from in
+       game - Almace drew as a scythe and Mirage Stole +2 drew as nothing at
+       all, across logins, with nothing to say why (Kevin, 2026-09-18). ]]
+  describe("the icon probe report", function()
+    local function report(over, drop)
+      local base = {
+        slot = "main",
+        id = 20689,
+        dat = "118/108",
+        record = 4305,
+        offset = 13225661,
+        path = "C:/FFXI/ROM/118/108.DAT",
+        read = 2048,
+        cached = true,
+        sample_raw = string.rep("\1", 32),
+      }
+      for key, value in pairs(over or {}) do
+        base[key] = value
+      end
+      -- `{ dat = nil }` is an empty table in Lua, so a key to REMOVE is named.
+      for _, key in ipairs(drop or {}) do
+        base[key] = nil
+      end
+      return base
+    end
+
+    it("says one line per slot, naming the record it read", function()
+      local lines = logic.probe_lines({ report() })
+      assert.are.equal(1, #lines)
+      assert.is_not_nil(lines[1]:find("main", 1, true))
+      assert.is_not_nil(lines[1]:find("20689", 1, true))
+      assert.is_not_nil(lines[1]:find("118/108", 1, true))
+      assert.is_not_nil(lines[1]:find("4305", 1, true))
+      assert.is_not_nil(lines[1]:find("2048", 1, true))
+    end)
+
+    -- Chat is not UTF-8 and this goes straight to it.
+    it("says nothing chat cannot print", function()
+      for _, line in ipairs(logic.probe_lines({ report(), report({ read = 0 }, { "dat" }) })) do
+        assert.is_nil(line:find("[\128-\255]"), "a byte outside ASCII reached chat")
+      end
+    end)
+
+    it("names an item no DAT covers rather than printing nils", function()
+      local line = logic.probe_lines({ report({ read = 0 }, { "dat", "record", "offset" }) })[1]
+      assert.is_not_nil(line:find("no DAT", 1, true))
+    end)
+
+    -- A short read is the missing-icon symptom: the record is past the end.
+    it("marks a read that came back short", function()
+      local line = logic.probe_lines({ report({ read = 0 }) })[1]
+      assert.is_not_nil(line:find("read=0", 1, true))
+    end)
+
+    --[[ The file carries the record's own first bytes as hex - the only
+         evidence of WHICH item the offset landed on, and the whole reason the
+         probe writes a file rather than only speaking. ]]
+    it("writes the record sample as hex in the file report", function()
+      local text = logic.probe_report({ report({ sample_raw = "\0\1\254\255" }) })
+      assert.is_not_nil(text:find("00 01 fe ff", 1, true))
+    end)
+
+    it("says so in the file when there was no sample to take", function()
+      local text = logic.probe_report({ report({}, { "sample_raw" }) })
+      assert.is_not_nil(text:find("no sample", 1, true))
+    end)
+
+    it("heads the file report with the game path it read from", function()
+      local text = logic.probe_report({ report() })
+      assert.is_not_nil(text:find("C:/FFXI/ROM/118/108.DAT", 1, true))
+    end)
+  end)
 end)

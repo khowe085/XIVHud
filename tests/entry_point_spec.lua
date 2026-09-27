@@ -210,6 +210,47 @@ describe("entry point", function()
       assert.are.equal(boot.ctxs.equipviewer.get_equipment, boot.ctxs.crossbar.get_equipment)
     end)
 
+    --[[ The icon-layout tripwire's voice: three caches can trip it (the equip
+         viewer's and one per action bar) and the player hears it ONCE per load,
+         naming the item that tripped it and what its record held instead. ]]
+    it("says a moved item layout once, whichever cache trips it", function()
+      boot.ctxs.equipviewer.report_icon_layout(20689, 18967)
+      boot.ctxs.crossbar.report_icon_layout(4096, 0)
+      boot.ctxs.hotbar.report_icon_layout(4096, 0)
+      local said = boot.said()
+      local _, count = said:gsub("item data has changed", "")
+      assert.are.equal(1, count, said)
+      assert.is_not_nil(said:find("20689", 1, true))
+      assert.is_not_nil(said:find("18967", 1, true))
+    end)
+
+    --[[ The game folder is `windower.ffxi_path` and nothing else - the
+         reference equipviewer's default (`game_path_default =
+         windower.ffxi_path`), without the `//ev gamepath` override it layers
+         over it. There was a `game_path` config key over it and a `pol_path`
+         fallback under it until 2026-09-27; Kevin's call - a player should
+         never have to configure where the game is, and the PlayOnline folder
+         has no ROM directory to fall back to anyway. ]]
+    it("names the game folder by the reference addon's default alone", function()
+      assert.are.equal("FFXI/", boot.ctxs.equipviewer.game_path())
+      boot.windower.ffxi_path = nil
+      assert.is_nil(boot.ctxs.equipviewer.game_path(), "fell back to the PlayOnline folder")
+    end)
+
+    --[[ The reference equipviewer's own call, verbatim: `get_items('equipment')`,
+         the equipment bag asked for by NAME. This read took the whole inventory
+         and its `.equipment` field until 2026-09-27 - the wiki says the two are
+         the same table, and nobody ever confirmed that in a client, while the
+         reference's call is the one it is known to work with. The icon trouble
+         of that time turned out to be the record size (see lib/icons), not
+         this read. ]]
+    it("reads the equipment the way the reference addon does", function()
+      boot.item_reads = {}
+      boot.ctxs.equipviewer.get_equipment()
+      assert.are.equal(1, #boot.item_reads)
+      assert.are.same({ "equipment" }, boot.item_reads[1])
+    end)
+
     --[[ The crossbar reads the Equip packet itself, to tell a main-hand
          change from the fifteen other slots GearSwap moves on every cast.
          Same decode equipviewer uses on the same packet - an offset of its
@@ -310,12 +351,20 @@ describe("entry point", function()
       assert.are.equal(7, boot.ctxs.targetbar.get_mob_by_target("t").id)
     end)
 
-    -- The events still dispatch to the components; they now also reconcile
-    -- against the cached player, so every consumer sees one answer.
-    it("applies a vitals change event to the player it hands out", function()
+    --[[ The events still dispatch to the components; they also re-open the
+         player read, so every consumer sees the CLIENT's numbers rather than
+         the event's. The event's own value is deliberately dropped here: the
+         absolute stream can carry one nothing corrects, and laying it over the
+         client made the two take turns. ]]
+    it("re-reads the player on a vitals change event", function()
       boot.ctxs.parambar.get_player()
+      local before = boot.client_calls.player
+      boot.player.vitals.hp = 640
+
       boot.handlers["hp change"](640, 1000)
+
       assert.are.equal(640, boot.ctxs.targetbar.get_player().vitals.hp)
+      assert.are.equal(before + 1, boot.client_calls.player, "the event did not re-open the read")
     end)
 
     it("still dispatches a vitals change event to the components", function()

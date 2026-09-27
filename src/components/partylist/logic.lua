@@ -116,7 +116,6 @@ local function new(deps)
       named_jobs = {},
       buffs = {},
       ids_by_name = {},
-      own_vitals = {},
       player = nil,
       zone = nil,
       target = nil,
@@ -262,8 +261,10 @@ local function new(deps)
     live.jobs[id] = job
   end
 
-  -- windower.ffxi.get_player(). The player's own job and buffs are not in any
-  -- party packet, so they come from here.
+  --[[ windower.ffxi.get_player(), through lib/player. The player's own job,
+       buffs and VITALS are not in any party packet, so they come from here -
+       and the service re-reads the client the moment a vital event arrives, so
+       this is as live as the event was without carrying the event's value. ]]
   function self.set_main_player(player)
     live.player = player
   end
@@ -276,18 +277,6 @@ local function new(deps)
       return
     end
     live.buffs[id] = buffs
-  end
-
-  --[[ Your own vitals, from the `hp change` / `hpp change` / ... events -- the
-       same stream parambar reads. Without them your row would be the only one
-       in the list moving at the poll rate while the parameter bar beside it
-       moved instantly. TP is taken here, unlike from a packet: the change
-       event is unambiguously the 0..3000 scale. Overruled by the next poll,
-       exactly as a packet push is. ]]
-  function self.set_own_vital(kind, value)
-    if OWN_VITALS[kind] and type(tonumber(value)) == "number" then
-      live.own_vitals[kind] = tonumber(value)
-    end
   end
 
   -- HP and MP from 0x0DD / 0x0DF, applied until the next poll overrules them.
@@ -334,7 +323,6 @@ local function new(deps)
       live.roster[slot] = (type(member) == "table" and member.name) and member or nil
     end
     live.pushed = {}
-    live.own_vitals = {}
 
     -- Packets are keyed by player id and nothing ever says a member left, so
     -- without this the job and buff tables grow for the length of a session --
@@ -383,9 +371,23 @@ local function new(deps)
         vitals[key] = value
       end
     end
+    --[[ Your own row is the one no party packet covers, and `get_party()`
+         moves at the poll rate. The client's own figures are laid over it
+         instead - never the change event's value, which is the stream that can
+         report a number nothing corrects; laying THAT on top made the bogus
+         value and the true one take turns every interval. A vital the client
+         has not filled in yet leaves the polled number standing. ]]
     if is_main_player(member) then
-      for key, value in pairs(bag().own_vitals) do
-        vitals[key] = value
+      --[[ Per key rather than all or nothing, because the client fills the
+           player in field by field: a `vitals` carrying hp but not yet tp is
+           the ordinary state for a frame or two after a login, and refusing
+           the whole overlay for it would leave your row on the poll. ]]
+      local own = (bag().player or {}).vitals
+      for key in pairs(OWN_VITALS) do
+        local value = own and tonumber(own[key])
+        if value ~= nil then
+          vitals[key] = value
+        end
       end
     end
     return vitals

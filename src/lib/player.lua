@@ -27,19 +27,26 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
 --[[ The player service: one read of the client per interval, shared by every
-     component, and the single place the two vitals streams are reconciled.
+     component, and the single place the vitals question is answered.
 
      It exists because the components were each answering "what is the player's
      HP right now" for themselves, and answering it differently. parambar took
      the absolute stream from the `hp change` events alone and never re-read the
      client, so an HP number stuck at max HP after a Max HP Down wore off had no
      path back for the rest of the session; partylist polled and overlaid the
-     events on top, dropping them each poll, which is correct; targetbar polled
-     and ignored the events, so the player's own row lagged what parambar drew.
-     One of the three was wrong for months. Now there is one policy:
+     events on top, dropping them each poll, which merely made the same wrong
+     value flicker rather than stick; targetbar polled and ignored the events,
+     so the player's own row lagged what parambar drew. All three were wrong,
+     in three different ways. Now there is one policy:
 
-       the client is the authority, and a change event carries the bars until
-       the next read of the client overrules it.
+       the client is the authority, and a change event says only THAT a vital
+       moved -- never what it moved to.
+
+     An event used to carry its value, laid over the cached player until the
+     next read dropped it. That reconciled the two streams the wrong way round:
+     the absolute stream can report a value nothing corrects, so the bogus value
+     and the true one took turns, 200ms apart, for as long as the events kept
+     coming. Nothing is merged now, so nothing can disagree.
 
      The second job is deduplication. Five callers wanted the player and four
      wanted the party inside every 200ms; six distinct `get_mob_by_target`
@@ -74,11 +81,9 @@ local function new(deps)
   local deadline = nil
   local generation = 0
 
-  -- Change-event values since the last real read of the player, and the merged
-  -- player table handed to callers. `merged` is nil when it needs rebuilding,
-  -- which is on a read and on an event -- never per call, because five
-  -- consumers an interval must not each pay for a copy.
-  local overlay = nil
+  -- The player table handed to callers. Nil when it needs rebuilding, which is
+  -- on a read and never per call, because five consumers an interval must not
+  -- each pay for a copy.
   local merged = nil
 
   -- Cleared every frame rather than on the interval: the target can change
@@ -96,25 +101,24 @@ local function new(deps)
     stale.player, stale.party, stale.info = true, true, true
   end
 
-  --[[ A shallow copy, plus a copy of `vitals` with the overlay written over it.
-       Only `vitals` is copied deeply, because only `vitals` is merged: the other
-       nested fields (`buffs`, `job_points`) are handed on as the client's own
-       tables, which is safe for as long as nothing writes to them, and nothing
-       does.
+  --[[ A shallow copy of the client's player table.
 
        The copy is per READ, not per caller: every consumer shares one table for
        the whole interval. So a consumer that wrote to it would corrupt the
        others' view rather than only its own - a wider blast radius than before
        this service existed, and the reason nothing here hands out the client's
-       own table either.
+       own table either. `vitals` is copied with it - not because anything is
+       merged into it any more, but because it is the field consumers actually
+       reach into, and the one worth keeping out of a writer's way. The other
+       nested fields (`buffs`, `job_points`) are handed on as the client's own
+       tables, which is safe for as long as nothing writes to them, and nothing
+       does.
 
-       A missing `vitals` stays missing, overlay or not. The client fills the
-       player in field by field and callers guard on `player and player.vitals`;
-       inventing a table would defeat that guard, and a consumer that treats
-       what it is handed as a REPLACEMENT - parambar does - would drive every
-       vital the overlay does not mention to zero, blanking the numbers and
-       hiding the fills. The event is not lost, only deferred: the next read is
-       at most an interval away and brings the whole table with it. ]]
+       A missing `vitals` stays missing. The client fills the player in field by
+       field and callers guard on `player and player.vitals`; inventing a table
+       would defeat that guard, and a consumer that treats what it is handed as
+       a REPLACEMENT - parambar does - would drive every vital to zero, blanking
+       the numbers and hiding the fills. ]]
   local function rebuild()
     local player = raw.player
     if player == nil then
@@ -130,9 +134,6 @@ local function new(deps)
     if player.vitals ~= nil then
       local vitals = {}
       for key, value in pairs(player.vitals) do
-        vitals[key] = value
-      end
-      for key, value in pairs(overlay or {}) do
         vitals[key] = value
       end
       copy.vitals = vitals
@@ -203,9 +204,6 @@ local function new(deps)
       -- pre-throw value with nothing to say the client had failed.
       raw.player = deps.get_player()
       stale.player = false
-      -- The read is newer than any event that preceded it, by construction:
-      -- the events are reported out of the state this just read.
-      overlay = nil
       merged = nil
     end
     if merged == nil then
@@ -215,13 +213,13 @@ local function new(deps)
   end
 
   --[[ Handed over as the client gave it. Eighteen member tables copied five
-       times a second would cost more than the reads this saves, and nothing is
-       merged into the party the way the overlay is merged into the player.
+       times a second would cost more than the reads this saves, and the party
+       is never rewritten the way the player's own table is copied.
 
        So the three lists and the target bar now share one table where each used
        to get its own, and a consumer that wrote to a member would corrupt the
        others rather than only itself. None does - they keep what they add in
-       side tables (`live.pushed`, `live.own_vitals`, `party_ids`) - and this is
+       side tables (`live.pushed`, `party_ids`) - and this is
        the reason to keep it that way. ]]
   function self.get_party()
     opening_read()
@@ -280,19 +278,29 @@ local function new(deps)
     return remembered[1]
   end
 
-  -- One value from an `hp change` / `hpp change` / … event. Good until the next
-  -- read of the client, which drops it.
-  function self.set_vital(kind, value)
+  --[[ An `hp change` / `hpp change` / … event has arrived. The VALUE it carried
+       is deliberately not taken: it marks the player stale and the next read
+       answers out of the client, which is the only thing that knows all five
+       vitals agree with each other.
+
+       Keyed, exactly as a buff gain is, and for the same reason: a vital moves
+       neither the party nor the zone nor any mob, and TP alone moves several
+       times a second. Moving the read counter would put the party list through
+       a roster rebuild and the target bar through an eighteen-member walk for a
+       fact neither of them holds.
+
+       An unrecognised kind is a no-op here, where `invalidate` drops
+       everything. The postures differ because the arguments do: `invalidate`
+       is called with a key someone typed, so a typo must not become silence,
+       while this is called from a fixed loop over the five event names and its
+       argument is the EVENT's own, so an unrecognised one is a game event that
+       is not a vital rather than a mistake to shout about. ]]
+  function self.vital_changed(kind)
     if not VITALS[kind] then
       return
     end
-    value = tonumber(value)
-    if value == nil then
-      return
-    end
-    overlay = overlay or {}
-    overlay[kind] = value
-    merged = nil
+    -- Through `invalidate` rather than beside it, so the two cannot drift.
+    self.invalidate("player")
   end
 
   return self

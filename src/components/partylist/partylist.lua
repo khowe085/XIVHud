@@ -572,12 +572,13 @@ local function new_list(ctx, variant, defaults)
     --[[ Read every frame; lib/player owns the interval, so this costs a real
          client read only once per interval however many lists ask.
 
-         NOT for the row's vitals: those come from get_party() with the change
-         events laid over them by `set_own_vital`, and between reads this hands
-         back the identical cached table. What per-frame buys is the KEYED
-         invalidation - a `gain buff` refreshes the player without moving the
-         counter, so the player's own buff icons land on the next frame rather
-         than at the next rebuild. ]]
+         This is also where YOUR row's vitals come from: get_party() moves at
+         the poll rate, so the client's own figures are laid over your row (the
+         change EVENT's value never is - it is the stream that can report a
+         number nothing corrects). What per-frame buys is the KEYED
+         invalidation - a `gain buff` or a vital event refreshes the player
+         without moving the counter, so the player's own buff icons and numbers
+         land on the next frame rather than at the next rebuild. ]]
     logic.set_main_player(ctx.get_player and ctx.get_player() or nil)
 
     --[[ The roster is only rebuilt when the service actually read, because
@@ -828,16 +829,13 @@ local function new_list(ctx, variant, defaults)
   end
 
   -- No arguments is the per-frame tick; `chunk` is a packet the entry point
-  -- forwarded; anything else is a game event, of which only the vital changes
-  -- mean something here.
+  -- forwarded. Every other game event is ignored here - your own vitals used to
+  -- be read off the change events and now come off the client (see read_player).
   function self.update(event, ...)
     if event == nil then
       render()
     elseif event == "chunk" then
       handle_chunk(...)
-    else
-      -- The vital change events. Yours is the one row no party packet covers.
-      logic.set_own_vital(event, ...)
     end
   end
 

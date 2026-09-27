@@ -64,7 +64,8 @@ jobs:
           mkdir -p dist
           cp -r src "dist/${name}"
           rm -rf "dist/${name}/data"                     # runtime user settings, never shipped
-          rm -rf "dist/${name}/icons"                    # extracted item icons, rebuilt on demand
+          rm -rf "dist/${name}/cache"                    # extracted item icons, rebuilt on demand
+          rm -rf "dist/${name}/icons"                    # the old icon cache and any player art
           find "dist/${name}" -name '.DS_Store' -delete
           ( cd dist && zip -r "../${{ steps.meta.outputs.zip }}" "${name}" )
 
