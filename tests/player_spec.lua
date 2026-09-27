@@ -369,59 +369,92 @@ describe("player service", function()
     end)
   end)
 
-  describe("reconciling the vitals", function()
-    -- One policy for the whole addon: the client is the authority, and a change
-    -- event carries the bars until the next read overrules it.
-    it("applies a change event on top of the last read", function()
-      service.get_player()
-      service.set_vital("hp", 640)
-      assert.are.equal(640, service.get_player().vitals.hp)
-      assert.are.equal(100, service.get_player().vitals.hpp, "the untouched vitals must survive")
-    end)
+  --[[ ONE source for a vital, and it is the client.
 
-    it("lands an event without waiting for the next read", function()
-      service.get_player()
-      service.set_vital("hp", 640)
-      assert.are.equal(640, service.get_player().vitals.hp)
-      assert.are.equal(1, calls.player, "read the client to answer an event")
-    end)
+       An event used to carry its VALUE: it was laid over the cached player and
+       held until the next read of the client dropped it. That reconciled the
+       two streams the wrong way round. The absolute stream can report a value
+       nothing corrects -- an HP number stuck at max HP after a Max HP Down wore
+       off is the defect this service was built for -- and laying it on top
+       meant the bogus value and the true one took turns: the event put it up,
+       the read 200ms later took it down, the next event put it back. Kevin saw
+       that as an HP bar jumping high and falling back, over and over, after
+       dying and being raised (2026-09-18).
 
-    --[[ The defect this whole service exists for: parambar took the absolute
-         vitals stream from the events alone, and a value the stream got wrong -
-         an HP number stuck at max HP after a Max HP Down wore off - had no path
-         back for the rest of the session. ]]
-    it("drops the event overlay on the next read of the client", function()
+       So an event now says only THAT a vital moved, never what to. It marks the
+       player stale and the next read answers with the client's own numbers.
+       Nothing is merged, so nothing can disagree. ]]
+  describe("the vitals stream", function()
+    --[[ The defect itself. A remembered value would take turns with the
+         client's: the event putting it up, the next read taking it down. So the
+         answer is checked on both sides of an interval boundary. ]]
+    it("answers out of the client on both sides of an interval boundary", function()
       service.get_player()
-      service.set_vital("hp", 2238)
-      assert.are.equal(2238, service.get_player().vitals.hp)
+      client.player.vitals.hp = 640
+      service.vital_changed("hp")
 
+      assert.are.equal(640, service.get_player().vitals.hp, "the event held a value back")
       clock = 0.2
-      assert.are.equal(1000, service.get_player().vitals.hp)
+      assert.are.equal(640, service.get_player().vitals.hp)
+    end)
+
+    -- The responsiveness the overlay was there for, kept: the event does not
+    -- wait out the interval, it re-opens it.
+    it("re-reads the client at once rather than waiting out the interval", function()
+      service.get_player()
+      assert.are.equal(1, calls.player)
+
+      client.player.vitals.hp = 640
+      client.player.vitals.hpp = 64
+      service.vital_changed("hp")
+
+      assert.are.equal(640, service.get_player().vitals.hp)
+      assert.are.equal(64, service.get_player().vitals.hpp, "the whole table, not one key")
+      assert.are.equal(2, calls.player)
+    end)
+
+    --[[ Keyed, like a buff gain and for the same reason: a vital moves neither
+         the party nor the zone, and TP alone moves several times a second. The
+         counter is what puts the party list through a roster rebuild and the
+         target bar through an eighteen-member walk. ]]
+    it("does not move the read counter", function()
+      local before = service.generation()
+      service.vital_changed("hp")
+      assert.are.equal(before, service.generation())
+      assert.are.equal(before, service.generation(), "and the interval is not re-opened")
+    end)
+
+    it("leaves the party and the zone alone", function()
+      service.get_party()
+      service.get_info()
+      service.vital_changed("hp")
+      service.get_party()
+      service.get_info()
+      assert.are.equal(1, calls.party)
+      assert.are.equal(1, calls.info)
+    end)
+
+    -- The mob memo is the frame's, and a vital moves nobody.
+    it("leaves the mob memo alone", function()
+      service.get_mob_by_target("t")
+      service.vital_changed("hp")
+      client.mobs.t = { id = 9 }
+      assert.are.equal(7, service.get_mob_by_target("t").id)
     end)
 
     it("ignores a key that is not a vital", function()
       service.get_player()
       assert.has_no.errors(function()
-        service.set_vital("wisdom", 5)
+        service.vital_changed("wisdom")
       end)
-      assert.is_nil(service.get_player().wisdom)
-    end)
-
-    it("ignores a value that is not a number", function()
       service.get_player()
-      service.set_vital("hp", "plenty")
-      assert.are.equal(1000, service.get_player().vitals.hp)
-    end)
-
-    it("drops an event that arrived before the first read", function()
-      service.set_vital("hp", 640)
-      assert.are.equal(1000, service.get_player().vitals.hp, "the read is newer than the event")
+      assert.are.equal(1, calls.player, "and does not buy a read for one")
     end)
 
     it("survives an event while the client answers nothing", function()
       client.player = nil
       assert.has_no.errors(function()
-        service.set_vital("hp", 640)
+        service.vital_changed("hp")
       end)
       assert.is_nil(service.get_player())
     end)
@@ -457,16 +490,15 @@ describe("player service", function()
       assert.is_nil(service.get_player().vitals)
     end)
 
-    --[[ An overlay must NOT conjure a vitals table the client has not sent.
+    --[[ A change event must NOT conjure a vitals table the client has not sent.
          parambar treats what it is handed as a replacement, so a table carrying
          nothing but `hp` would drive hpp, mp, mpp and tp to zero - blanking the
-         numbers and hiding the fills - where before it would have left them
-         alone. The event is not lost, only deferred: the next read of the
-         client is at most an interval away and brings the whole table. ]]
+         numbers and hiding the fills. The event is not lost: it re-opens the
+         read, and the client brings the whole table whenever it has one. ]]
     it("does not conjure a vitals table the client has not sent", function()
       client.player = { name = "Kevin" }
       service.get_player()
-      service.set_vital("hp", 640)
+      service.vital_changed("hp")
       assert.is_nil(service.get_player().vitals)
     end)
 

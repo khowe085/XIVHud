@@ -60,10 +60,6 @@ function M.cosmetics()
     text_stroke = { width = 2, a = 200, r = 20, g = 20, b = 20 },
     mp_cost_color = { r = 230, g = 91, b = 151 },
     tp_cost_color = { r = 254, g = 222, b = 0 },
-    -- Where the game is installed, for item-icon extraction. Empty means
-    -- "use the client's own answer" (equipviewer's idiom); set it only when
-    -- the registry answer is wrong.
-    game_path = "",
   }
 end
 

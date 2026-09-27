@@ -1067,13 +1067,14 @@ describe("partylist widget", function()
       assert.is_not_nil(table.concat(said, "|"):find("WHM 99", 1, true))
     end)
 
-    -- The player's own vitals never arrive in a party packet; they come as the
-    -- same change events parambar reads.
-    it("takes the player's own vitals from the change events", function()
+    --[[ The player's own vitals never arrive in a party packet. They come off
+         the client through `ctx.get_player()`, which lib/player re-reads the
+         moment a change event arrives - never from the event's own value,
+         which is the stream that can report a number nothing corrects. ]]
+    it("takes the player's own vitals from the client", function()
       env.party = { p0 = member("Ayame", 1) }
+      env.player.vitals = { hp = 123, hpp = 12, mp = 0, mpp = 0, tp = 0 }
       settle(3)
-      widget.update("hp", 123)
-      widget.update("hpp", 12)
       frames()
       local said = {}
       for _, prim in ipairs(prims.texts) do

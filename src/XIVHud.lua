@@ -633,9 +633,16 @@ end
 -- Which bag and index each equipment slot is wearing - not the items
 -- themselves, which take a read apiece. Read once per refresh; the reference
 -- addon called this once per slot.
+--[[ The reference equipviewer's own call, verbatim: the equipment bag asked
+     for by NAME, answering `<slot>` and `<slot>_bag` per slot. This took the
+     whole inventory and its `.equipment` field until 2026-09-27; the wiki calls
+     the two the same table, and nobody ever confirmed that in a client, while
+     this is the call the reference is known to work with. get_gil below keeps
+     the documented integer form for a string one; this does the opposite for
+     a reason that does not apply there - the equipment is a pseudo-bag with no
+     integer id to fall back to, and the string form is the reference's own. ]]
 local function get_equipment()
-  local items = windower.ffxi.get_items()
-  return items and items.equipment
+  return windower.ffxi.get_items("equipment")
 end
 
 local function get_item(bag, index)
@@ -651,14 +658,35 @@ local function get_all_items()
   return windower.ffxi.get_items()
 end
 
---[[ Where the client is installed, for the DAT reads above. Undocumented, and
-     the reason the setting exists to override it: the wiki documents
-     `pol_path` ("path to playonline and ffxi install directory") but not
-     `ffxi_path`, which is what the reference addon uses and what its DAT
-     offsets were derived against. Prefer it, fall back to the documented one,
-     and let the player name a third. ]]
+--[[ The icon-layout tripwire's voice (lib/icon_cache's `on_mismatch`): said at
+     most ONCE per load, whichever of the three caches trips it first - the
+     equip viewer's or one of the bars'. A record naming some other item means
+     the game's item data has moved under the fixed mapping, as the September
+     2026 update did silently for weeks; Kevin asked to hear the moment it
+     happens (2026-09-27), and the cache cannot be busted to find out. ]]
+local icon_layout_reported = false
+local function report_icon_layout(asked, found)
+  if icon_layout_reported then
+    return
+  end
+  icon_layout_reported = true
+  chat(
+    ("item icons are not being read: the game's item data has changed (item %d found %d)"):format(asked, found)
+      .. " - XIVHud needs an update"
+  )
+end
+
+--[[ Where the client is installed, for the DAT reads above: `ffxi_path` and
+     nothing else - the reference equipviewer's default (`game_path_default =
+     windower.ffxi_path`), without the `//ev gamepath` override it layers over
+     it. Undocumented - the wiki names `pol_path` - but it is what the
+     reference uses.
+     A `game_path` config key sat over it and a `pol_path` fallback under it
+     until 2026-09-27, when both went on Kevin's call: a player should never
+     have to say where the game is, and the PlayOnline folder has no ROM
+     directory to fall back to. ]]
 local function game_path()
-  return windower.ffxi_path or windower.pol_path
+  return windower.ffxi_path
 end
 
 -- Behind a pcall because this runs on inbound packets: a throw here would
@@ -940,6 +968,7 @@ step("building the equipviewer component", function()
     read_dat = read_dat,
     write_binary = write_binary,
     game_path = game_path,
+    report_icon_layout = report_icon_layout,
   }))
 end)
 
@@ -1090,6 +1119,7 @@ step("building the crossbar component", function()
     read_dat = read_dat,
     write_binary = write_binary,
     game_path = game_path,
+    report_icon_layout = report_icon_layout,
     -- nil when the resource library failed to load: the catalog and the
     -- weapon layer then sit out, the bar itself carries on.
     resources = libraries_error == nil and res or nil,
@@ -1141,6 +1171,7 @@ step("building the hotbar component", function()
     read_dat = read_dat,
     write_binary = write_binary,
     game_path = game_path,
+    report_icon_layout = report_icon_layout,
     resources = libraries_error == nil and res or nil,
   }))
 end)
@@ -1550,17 +1581,20 @@ if not safe_mode and not libraries_error then
   end
 end
 
---[[ FFXI reports vitals as two independent streams, absolute and percent. Each
-     value goes to the player service first, which lays it over the cached
-     player until the next read of the client overrules it -- so every component
-     asking `get_player()` sees one answer rather than three reconciliations.
-     They are still dispatched as well: a component that wants the event itself,
-     rather than the reconciled value, is not cut off from it. ]]
+--[[ FFXI reports vitals as two independent streams, absolute and percent. The
+     player service is told only THAT one moved: it marks the player stale and
+     the next read answers out of the client, which is the only thing that knows
+     all five agree with each other. The event's own value is deliberately
+     dropped -- laid over the cached player, as it used to be, a value the
+     stream got wrong took turns with the true one every 200ms.
+
+     They are still dispatched as well: a component that wants the event itself
+     is not cut off from it. ]]
 for _, vital in ipairs({ "hp", "hpp", "mp", "mpp", "tp" }) do
   windower.register_event(
     vital .. " change",
     guard.wrap(vital .. " change", function(new_value, old_value)
-      player_service.set_vital(vital, new_value)
+      player_service.vital_changed(vital)
       core.dispatch(vital, new_value, old_value)
     end)
   )

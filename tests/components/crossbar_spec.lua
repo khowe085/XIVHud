@@ -954,6 +954,7 @@ describe("crossbar live widget", function()
       writes = {},
       stats = {},
       dat_paths = {},
+      icon_reports = {},
       user_visible = true,
       now = 0,
       time = 1000000,
@@ -1113,7 +1114,17 @@ describe("crossbar live widget", function()
         env.stats[#env.stats + 1] = path
         return env.files[path] == true
       end,
-      read_dat = function(dat_path, _, length)
+      report_icon_layout = function(asked, found)
+        env.icon_reports[#env.icon_reports + 1] = { asked, found }
+      end,
+      read_dat = function(dat_path, offset, length)
+        -- The head read the icon cache's tripwire takes: the record's own id.
+        if length == 2 then
+          if env.dat_fails then
+            return nil
+          end
+          return env.wrong_head and fakes.record_head(env.wrong_head) or fakes.dat_head(dat_path, offset)
+        end
         env.dat_paths[#env.dat_paths + 1] = dat_path
         if env.dat_fails then
           return nil
@@ -2253,7 +2264,7 @@ describe("crossbar live widget", function()
       assert.are.equal('input /ws "Savage Blade" <t>', press_slot(3), "the great axe has no layer")
     end)
 
-    --[[ The re-read is packet-driven: `get_equipment` is a whole-inventory
+    --[[ The re-read is packet-driven: `get_equipment` is an equipment-bag
          call, so nothing asks per frame - and equally, the class in hand
          must not go stale for the rest of the session once it has. ]]
     it("re-reads the main hand on the equip packet, and not before it", function()
@@ -2281,7 +2292,7 @@ describe("crossbar live widget", function()
       assert.are.equal('input /ws "Ukko" <t>', press_slot(3), "the equip packet moved the layer")
     end)
 
-    --[[ `get_equipment` is a whole-inventory read, and GearSwap fires a
+    --[[ `get_equipment` is a read of the client, and GearSwap fires a
          0x050 per slot it swaps on every cast. Only the MAIN hand can move
          this layer, and the packet says which slot it moved. ]]
     it("ignores an equip packet for a slot that is not the main hand", function()
@@ -2422,7 +2433,7 @@ describe("crossbar live widget", function()
       assert.are.equal("Ukko", text_of("xhb_left", 3, "name").last.text, "the slot was repainted")
     end)
 
-    -- The read is a whole-inventory call behind the service: it happens
+    -- The read is a client call behind the service: it happens
     -- when a packet says the gear may have moved, never every frame.
     it("reads the equipment only when something says it may have moved", function()
       build_world()
@@ -3304,8 +3315,8 @@ describe("crossbar live widget", function()
       local icon = image_of("xhb_left", 6, "icon")
       assert.are.equal("addon/assets/icons/usable-item.png", icon.last.path, "fallback first")
       push(widget)
-      assert.are.equal("icons/4165.bmp", env.writes[1], "one extraction, queued off the packet path")
-      assert.are.equal("addon/icons/4165.bmp", icon.last.path, "the cache landing repaints the slot")
+      assert.are.equal("cache/items/4165.bmp", env.writes[1], "one extraction, queued off the packet path")
+      assert.are.equal("addon/cache/items/4165.bmp", icon.last.path, "the cache landing repaints the slot")
     end)
 
     it("re-stats nothing on a settled repaint", function()
@@ -3323,21 +3334,30 @@ describe("crossbar live widget", function()
       end
     end)
 
-    it("ignores an empty game_path override", function()
-      -- equipviewer ships game_path = "" as its override idiom; copied into
-      -- this component's config it must fall through to the client's
-      -- answer, not silently abandon every item icon for the session.
+    -- A game_path an older config still carries must not steer the read: the
+    -- game folder is Windower's answer alone since 2026-09-27.
+    it("ignores a game_path left in the config", function()
       local files = war_bindings()
       files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
       build_world({
         store_files = files,
         tune_config = function(tuned)
-          tuned.game_path = ""
+          tuned.game_path = "D:/Elsewhere"
         end,
       })
       push(widget)
       assert.are.equal(1, #env.dat_paths)
       assert.is_not_nil(env.dat_paths[1]:find("C:/FFXI/", 1, true), "read: " .. env.dat_paths[1])
+    end)
+
+    -- The bars' cache (lib/actionbar/bar) reaches the same reporter.
+    it("reports an item record that names another item", function()
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
+      build_world({ store_files = files })
+      env.wrong_head = 9999
+      push(widget)
+      assert.are.same({ { 4165, 9999 } }, env.icon_reports)
     end)
 
     it("stops re-stat'ing an item the cache has given up on", function()
@@ -3370,7 +3390,7 @@ describe("crossbar live widget", function()
       widget.show()
       env.stats = {}
       push(widget)
-      assert.are.equal("addon/icons/4165.bmp", image_of("xhb_left", 6, "icon").last.path)
+      assert.are.equal("addon/cache/items/4165.bmp", image_of("xhb_left", 6, "icon").last.path)
       for _, path in ipairs(env.stats) do
         assert.is_nil(path:find("savage%-blade"), "a settled slot must not be re-stat'd: " .. path)
       end

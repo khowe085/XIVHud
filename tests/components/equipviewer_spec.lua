@@ -17,7 +17,7 @@ local RECORD = string.rep("\0", 0x800)
 describe("equipviewer widget", function()
   local prims, widget, config
   local equipment, items, dats, files, writes, saves, packet, parsed, game
-  local equipment_reads, lookups
+  local equipment_reads, lookups, item_reads, wrong_head, icon_reports
 
   -- Prims are built in one order and never rebuilt: the panel, then an icon
   -- per slot, then an encumbrance marker per slot, then the ammo count.
@@ -69,6 +69,9 @@ describe("equipviewer widget", function()
     items = {}
     dats = {}
     files = {}
+    item_reads = {}
+    wrong_head = nil
+    icon_reports = {}
     writes = {}
     saves = 0
     packet = nil
@@ -91,6 +94,7 @@ describe("equipviewer widget", function()
         return equipment
       end,
       get_item = function(bag, index)
+        item_reads[#item_reads + 1] = bag .. ":" .. index
         return items[bag .. ":" .. index]
       end,
       parse_packet = function(data)
@@ -103,7 +107,15 @@ describe("equipviewer widget", function()
       end,
       read_dat = function(path, offset, length)
         local dat = dats[path]
-        return dat and dat(offset, length) or nil
+        if not dat then
+          return nil
+        end
+        -- The head read the icon cache's tripwire takes: the record's own id,
+        -- or the one a test plants to trip it.
+        if length == 2 then
+          return wrong_head and fakes.record_head(wrong_head) or fakes.dat_head(path, offset)
+        end
+        return dat(offset, length)
       end,
       write_binary = function(path, contents)
         writes[#writes + 1] = { path = path, contents = contents }
@@ -112,6 +124,9 @@ describe("equipviewer widget", function()
       end,
       game_path = function()
         return game
+      end,
+      report_icon_layout = function(asked, found)
+        icon_reports[#icon_reports + 1] = { asked, found }
       end,
     })
   end)
@@ -161,8 +176,8 @@ describe("equipviewer widget", function()
       equip("head", 2, 8)
       put_item(0, 5, 4096, 1)
       put_item(8, 2, 12345, 1)
-      files["addons/XIVHud/icons/4096.bmp"] = true
-      files["addons/XIVHud/icons/12345.bmp"] = true
+      files["addons/XIVHud/cache/items/4096.bmp"] = true
+      files["addons/XIVHud/cache/items/12345.bmp"] = true
     end)
 
     it("shows the icon of every occupied slot", function()
@@ -170,9 +185,9 @@ describe("equipviewer widget", function()
       widget.set_pos(100, 200)
       widget.show()
 
-      assert.equal("addons/XIVHud/icons/4096.bmp", icon(MAIN).last.path)
+      assert.equal("addons/XIVHud/cache/items/4096.bmp", icon(MAIN).last.path)
       assert.is_true(icon(MAIN).visible)
-      assert.equal("addons/XIVHud/icons/12345.bmp", icon(HEAD).last.path)
+      assert.equal("addons/XIVHud/cache/items/12345.bmp", icon(HEAD).last.path)
       assert.is_true(icon(HEAD).visible)
     end)
 
@@ -182,14 +197,17 @@ describe("equipviewer widget", function()
       assert.is_false(icon(BODY).visible)
     end)
 
+    -- On the next tick, the way the reference addon schedules its own read.
     it("reads the item behind a slot the player just equipped", function()
       attach()
       widget.show()
       put_item(0, 9, 777, 1)
-      files["addons/XIVHud/icons/777.bmp"] = true
+      files["addons/XIVHud/cache/items/777.bmp"] = true
 
       chunk(EQUIP, { ["Equipment Slot"] = BODY, ["Inventory Bag"] = 0, ["Inventory Index"] = 9 })
-      assert.equal("addons/XIVHud/icons/777.bmp", icon(BODY).last.path)
+      widget.update()
+
+      assert.equal("addons/XIVHud/cache/items/777.bmp", icon(BODY).last.path)
       assert.is_true(icon(BODY).visible)
     end)
 
@@ -210,14 +228,14 @@ describe("equipviewer widget", function()
       equipment = {}
       equip("back", 4)
       put_item(0, 4, 555, 1)
-      files["addons/XIVHud/icons/555.bmp"] = true
+      files["addons/XIVHud/cache/items/555.bmp"] = true
 
       chunk(JOB_INFO, { ["Encumbrance Flags"] = 0 })
       assert.is_true(icon(MAIN).visible)
 
       tick()
       assert.is_false(icon(MAIN).visible)
-      assert.equal("addons/XIVHud/icons/555.bmp", icon(BACK).last.path)
+      assert.equal("addons/XIVHud/cache/items/555.bmp", icon(BACK).last.path)
     end)
 
     --[[ The equipment table is all zeros until the bags have settled, and
@@ -229,11 +247,11 @@ describe("equipviewer widget", function()
       equipment = {}
       equip("back", 4)
       put_item(0, 4, 555, 1)
-      files["addons/XIVHud/icons/555.bmp"] = true
+      files["addons/XIVHud/cache/items/555.bmp"] = true
 
       chunk(FINISH_INVENTORY, { Flag = 0 })
       tick()
-      assert.equal("addons/XIVHud/icons/555.bmp", icon(BACK).last.path)
+      assert.equal("addons/XIVHud/cache/items/555.bmp", icon(BACK).last.path)
     end)
 
     -- One arrives per bag, and there are a dozen of them.
@@ -304,7 +322,7 @@ describe("equipviewer widget", function()
     end)
 
     it("does not read a DAT for an icon already on disk", function()
-      files["addons/XIVHud/icons/4096.bmp"] = true
+      files["addons/XIVHud/cache/items/4096.bmp"] = true
       dats["C:/FFXI/ROM/118/107.DAT"] = function()
         error("should not have been read")
       end
@@ -322,7 +340,7 @@ describe("equipviewer widget", function()
 
       tick()
       assert.equal(1, #writes)
-      assert.equal("icons/4096.bmp", writes[1].path)
+      assert.equal("cache/items/4096.bmp", writes[1].path)
       assert.equal("BM", writes[1].contents:sub(1, 2))
     end)
 
@@ -332,7 +350,7 @@ describe("equipviewer widget", function()
       assert.is_false(icon(MAIN).visible)
 
       tick()
-      assert.equal("addons/XIVHud/icons/4096.bmp", icon(MAIN).last.path)
+      assert.equal("addons/XIVHud/cache/items/4096.bmp", icon(MAIN).last.path)
       assert.is_true(icon(MAIN).visible)
     end)
 
@@ -364,13 +382,16 @@ describe("equipviewer widget", function()
       assert.same({ offset = 0x2BD, length = 0x800 }, asked)
     end)
 
-    it("prefers the game path the player configured", function()
+    --[[ An existing config.lua can still carry a `game_path` - the settings
+         merge keeps keys the defaults no longer mention - and it must not
+         steer the read: the game folder is Windower's answer alone now. ]]
+    it("reads the game from Windower even with a game_path left in the config", function()
       attach()
       config.game_path = "D:/Games/FFXI"
-      dats["D:/Games/FFXI/ROM/118/107.DAT"] = function()
+      dats["D:/Games/FFXI/ROM/118/107.DAT"] = nil
+      dats["C:/FFXI/ROM/118/107.DAT"] = function()
         return RECORD
       end
-      dats["C:/FFXI/ROM/118/107.DAT"] = nil
 
       tick()
       assert.equal(1, #writes)
@@ -403,6 +424,9 @@ describe("equipviewer widget", function()
 
       lookups = 0
       chunk(EQUIP, { ["Equipment Slot"] = MAIN, ["Inventory Bag"] = 0, ["Inventory Index"] = 5 })
+      -- The read and the redraw it buys land a tick later, so the tick is what
+      -- would go looking on disk; without it this could never fail.
+      tick()
       assert.equal(0, lookups)
     end)
 
@@ -451,7 +475,7 @@ describe("equipviewer widget", function()
     before_each(function()
       equip("ammo", 3)
       put_item(0, 3, 18000, 90)
-      files["addons/XIVHud/icons/18000.bmp"] = true
+      files["addons/XIVHud/cache/items/18000.bmp"] = true
     end)
 
     it("counts the stack over the ammo icon", function()
@@ -548,7 +572,7 @@ describe("equipviewer widget", function()
     before_each(function()
       equip("main", 5)
       put_item(0, 5, 4096, 1)
-      files["addons/XIVHud/icons/4096.bmp"] = true
+      files["addons/XIVHud/cache/items/4096.bmp"] = true
     end)
 
     it("hides everything when the framework says to", function()
@@ -587,10 +611,9 @@ describe("equipviewer widget", function()
   end)
 
   describe("logging out", function()
-    --[[ The likeliest reason an icon cannot be read is a game path pointing at
-         the wrong install, and the only way to correct that is to edit the
-         setting and log back in. An id abandoned for the last character must
-         not still be abandoned for this one. ]]
+    --[[ A relog is a retry: an icon that could not be read - the client not
+         naming its folder yet, say - is given another chance by the next
+         character rather than abandoned for good. ]]
     it("tries again for an icon the last character could not read", function()
       equip("main", 5)
       put_item(0, 5, 4096, 1)
@@ -611,7 +634,7 @@ describe("equipviewer widget", function()
     it("empties the grid, so the next character sees none of it", function()
       equip("main", 5)
       put_item(0, 5, 4096, 1)
-      files["addons/XIVHud/icons/4096.bmp"] = true
+      files["addons/XIVHud/cache/items/4096.bmp"] = true
       attach()
       widget.show()
 
@@ -658,7 +681,7 @@ describe("equipviewer widget", function()
       local message = widget.handle_command({})
       assert.same({
         "equipviewer: encumbrance on, ammo count on",
-        "  1 icon could not be read from the game's DAT files - check the game_path setting",
+        "  1 icon could not be read from the game's DAT files - //hud equipviewer icons probe shows where it looked",
       }, message)
     end)
 
@@ -675,6 +698,209 @@ describe("equipviewer widget", function()
       for _, prim in ipairs(prims.all) do
         assert.equal(1, prim.destroyed, prim.kind .. " was not disposed exactly once")
       end
+    end)
+  end)
+
+  --[[ Two verbs for the icon cache, which had no way in from the game at all.
+       A cached icon is handed back without ever being looked at and a failed
+       extraction is not retried, so a wrong or missing one survived every
+       login - Almace drawn as a scythe, Mirage Stole +2 drawn as nothing
+       (Kevin, 2026-09-18). ]]
+  describe("the icons verbs", function()
+    before_each(function()
+      equip("main", 5)
+      equip("head", 2, 8)
+      put_item(0, 5, 4096, 1)
+      put_item(8, 2, 12345, 1)
+      attach()
+      widget.update()
+    end)
+
+    it("probes every equipped slot", function()
+      local message = widget.handle_command({ "icons", "probe" })
+      local said = type(message) == "table" and table.concat(message, "|") or tostring(message)
+      assert.is_not_nil(said:find("4096", 1, true))
+      assert.is_not_nil(said:find("12345", 1, true))
+    end)
+
+    -- The hex sample is the whole reason a file is written; chat cannot carry it.
+    it("writes the fuller report beside load.log", function()
+      widget.handle_command({ "icons", "probe" })
+      local written
+      for _, write in ipairs(writes) do
+        if write.path == "icons.log" then
+          written = write.contents
+        end
+      end
+      assert.is_not_nil(written, "no icons.log was written")
+      assert.is_not_nil(written:find("XIVHud icon probe", 1, true))
+    end)
+
+    it("names an empty slot rather than probing item 0", function()
+      equip("main", 0)
+      widget.update()
+      widget.update()
+      local message = widget.handle_command({ "icons", "probe" })
+      local said = type(message) == "table" and table.concat(message, "|") or tostring(message)
+      assert.is_nil(said:find(" 0 ", 1, true), "item 0 is an empty slot, not an id to read")
+    end)
+
+    it("hints rather than guessing at an unknown icons verb", function()
+      local message = widget.handle_command({ "icons", "wat" })
+      local said = type(message) == "table" and table.concat(message, "|") or tostring(message)
+      assert.is_not_nil(said:find("probe", 1, true))
+      assert.is_nil(said:find("clear", 1, true), "clear was withdrawn 2026-09-27")
+    end)
+  end)
+
+  --[[ The equip packet is handled exactly as the reference addon handles it:
+       the packet's own bag and index are read for THAT slot, one tick after the
+       packet arrived (`update_equipment_slot:schedule(0, ...)` there). A full
+       re-read of the equipment map replaced this for a day (2026-09-27), on the
+       claim that the item at that bag and index changes when it is equipped -
+       which equipping in FFXI does not do - and it made nothing better. ]]
+  describe("the equip packet", function()
+    before_each(function()
+      equip("main", 5)
+      put_item(0, 5, 4096, 1)
+      put_item(0, 9, 777, 1)
+      files["addons/XIVHud/cache/items/777.bmp"] = true
+      attach()
+      widget.show()
+      widget.update()
+    end)
+
+    it("reads no item inside the chunk handler", function()
+      item_reads = {}
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      assert.are.equal(0, #item_reads, "the reference reads a tick later, never in the handler")
+    end)
+
+    it("reads the packet's own bag and index on the next tick", function()
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      item_reads = {}
+      local before = equipment_reads
+
+      widget.update()
+
+      assert.are.same({ "0:9" }, item_reads)
+      assert.are.equal(before, equipment_reads, "the whole equipment map was re-read")
+      assert.are.equal("addons/XIVHud/cache/items/777.bmp", icon(MAIN).last.path)
+    end)
+
+    --[[ An unequip empties its slot at once, while an equip's read waits a
+         tick - so a read a LATER packet has overtaken must be dropped, or an
+         equip then an unequip of one slot in one frame (a precast shield a
+         midcast two-hander takes off) would put the removed item back. ]]
+    it("drops a read an unequip of the same slot overtook", function()
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 0, ["Inventory Bag"] = 0 })
+
+      widget.update()
+
+      assert.is_false(icon(MAIN).visible, "the removed item came back")
+    end)
+
+    it("keeps only the last of two equips to one slot", function()
+      put_item(0, 11, 12345, 1)
+      files["addons/XIVHud/cache/items/12345.bmp"] = true
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 11, ["Inventory Bag"] = 0 })
+      item_reads = {}
+
+      widget.update()
+
+      assert.are.same({ "0:11" }, item_reads)
+      assert.are.equal("addons/XIVHud/cache/items/12345.bmp", icon(MAIN).last.path)
+    end)
+
+    --[[ These three put the equipment map where the client would have it a
+         tick after the packet - AGREEING with the packet - so the location
+         guard in `apply_reads` cannot be what passes them. A map that still
+         disagreed would be dropped by the guard whatever else went wrong. ]]
+    it("reads a slot once when a refresh answers its pending read", function()
+      equip("main", 9)
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      chunk(0x01B, {})
+      item_reads = {}
+
+      widget.update()
+      widget.update()
+
+      assert.are.same({ "0:9" }, item_reads, "the refresh and the pending read both took the slot")
+    end)
+
+    it("takes no read queued before a detach", function()
+      equip("main", 9)
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      widget.detach()
+      attach()
+      item_reads = {}
+
+      widget.update()
+      widget.update()
+
+      assert.are.same({}, item_reads, "a read queued before the detach was taken")
+    end)
+
+    --[[ Core re-attaches over a character switch without a detach, and early
+         in a login the client has not filled the equipment in yet. Whose a
+         read still pending then is was read both ways in review; a re-attach
+         starts with nothing pending either way (see the widget). ]]
+    it("takes no read queued before a re-attach the client could not answer", function()
+      equip("main", 9)
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      equipment = nil
+      attach()
+      item_reads = {}
+
+      widget.update()
+      widget.update()
+
+      assert.are.same({}, item_reads, "the outgoing character's read was taken")
+    end)
+
+    -- A refresh the client could not answer read nothing, so it answered none.
+    it("keeps a pending read through a refresh the client could not answer", function()
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      chunk(0x01D, { Flag = 0 })
+      equipment = nil
+
+      widget.update()
+      widget.update()
+
+      assert.are.equal("addons/XIVHud/cache/items/777.bmp", icon(MAIN).last.path)
+    end)
+
+    -- A GearSwap burst reads each slot it names, once, a tick later.
+    it("reads every slot of a burst on the next tick", function()
+      put_item(0, 11, 12345, 1)
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      chunk(0x050, { ["Equipment Slot"] = HEAD, ["Inventory Index"] = 11, ["Inventory Bag"] = 0 })
+      item_reads = {}
+
+      widget.update()
+      widget.update()
+
+      assert.are.same({ "0:9", "0:11" }, item_reads)
+    end)
+  end)
+
+  -- The cache's tripwire reaches the entry point's reporter through the ctx.
+  describe("a moved item layout", function()
+    it("is reported, and nothing is cached from it", function()
+      equip("main", 5)
+      put_item(0, 5, 4096, 1)
+      dats["C:/FFXI/ROM/118/107.DAT"] = function()
+        return RECORD
+      end
+      wrong_head = 9999
+      attach()
+      widget.update()
+      widget.update()
+
+      assert.are.same({ { 4096, 9999 } }, icon_reports)
+      assert.are.equal(0, #writes)
     end)
   end)
 end)

@@ -122,7 +122,7 @@ local INVENTORY_CHUNK = 0x01E
 
      The Equip packet is READ rather than merely counted, and by its field
      name rather than by an offset, the way equipviewer reads the same one.
-     Answering it costs a whole-inventory `get_equipment`, and GearSwap
+     Answering it costs a `get_equipment` read and a lookup, and GearSwap
      fires one of these per slot it swaps on every cast - sixteen of them a
      spell, none of which can move a layer keyed to the MAIN hand. A packet
      that will not decode arms the read anyway: a decode that fails must not

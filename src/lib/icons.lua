@@ -58,8 +58,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local icons = {}
 
--- Every item record is 0xC00 bytes; the icon sits 0x2BD in and runs 0x800.
-local RECORD_STRIDE = 0xC00
+--[[ Every item record is 0x1400 bytes; the icon sits 0x2BD in and runs 0x800.
+
+     It was 0xC00 until the FFXI update of September 2026, which added 0x800
+     bytes to every item record. Windower moved the same day (2026-09-10): its
+     resource extractor (ResourceExtractor 51bef17, "Updated to new item
+     structures") and the reference equipviewer on Windower/Lua's `dev` branch
+     (7b718dc, EquipViewer 1.1.3, `icon_stride = 0x1400`), which is what the
+     launcher installed (Kevin's copy reads 0x1400, 2026-09-27). GitHub's
+     `live` branch still says 0xC00 and was the copy this port was compared
+     against - which is what made this so long to find. The icon still starts
+     0x2BD in: 1.1.3 keeps
+     `icon_data_offset = 0x2BD`, and the defect Kevin first reported pins it -
+     read at the old stride, Almace's record lands exactly on Magnus Scythe's
+     icon at the new one (see icons_spec, "the record stride"). ]]
+local RECORD_STRIDE = 0x1400
 local ICON_OFFSET = 0x2BD
 local ICON_LENGTH = 0x800
 
@@ -167,6 +180,34 @@ for stored = 0, 255 do
   STORED_FOR[decoded] = string.char(stored)
 end
 
+--[[ The item id a record opens with: its first two bytes, little-endian, under
+     the same byte rotation as the rest of the record - which is how Windower's
+     own resource extractor reads it (the record's first UInt16). nil for a head
+     that could not be read. The icon cache checks it before trusting anything
+     else in the record. ]]
+function icons.record_id(head)
+  if type(head) ~= "string" or #head < 2 then
+    return nil
+  end
+  return DECODED[head:sub(1, 1)]:byte() + DECODED[head:sub(2, 2)]:byte() * 256
+end
+
+--[[ Where an item's extracted icon is cached, relative to the addon folder.
+
+     `cache/items/` since 2026-09-27 - a folder that says it is a cache,
+     rather than one beside `icons/custom/` (the player's own art) that read
+     like an asset folder. Every icon extracted at the old record size is
+     garbage and the cache never re-reads a file that already exists, so the
+     NEW folder is also what gives an upgraded install clean icons with
+     nothing to delete by hand, and without writing over any of the old
+     files, which the game may still have open (the hazard that withdrew
+     `icons clear`). The loose files left in `icons/` are never read again.
+     The one place the path is composed: the cache and the action bars' icon
+     candidates both ask here. ]]
+function icons.cache_file(item_id)
+  return "cache/items/" .. item_id .. ".bmp"
+end
+
 -- Where an item's icon lives: the DAT path (relative to the game's ROM dir),
 -- the byte offset of the icon within it, and how much to read. nil for an id
 -- no DAT covers - which includes 0, the empty equipment slot.
@@ -178,9 +219,15 @@ function icons.locate(item_id)
 
   for _, range in ipairs(DATS) do
     if id >= range.min and id <= range.max then
+      local record = id - range.first
       return {
         dat = range.dat,
-        offset = (id - range.first) * RECORD_STRIDE + ICON_OFFSET,
+        -- The record's own index and start, beside the icon's offset inside
+        -- it: an icon that comes out wrong was read at the wrong record, and
+        -- these are the only numbers that can say which one it read.
+        record = record,
+        record_offset = record * RECORD_STRIDE,
+        offset = record * RECORD_STRIDE + ICON_OFFSET,
         length = ICON_LENGTH,
       }
     end
@@ -190,8 +237,7 @@ function icons.locate(item_id)
 end
 
 -- The file a DAT reference names, under the game's install directory. Windower
--- reports that path with a trailing separator; a player who typed one in may
--- have gone either way.
+-- reports that path with a trailing separator; either form is accepted.
 function icons.dat_path(game_path, dat)
   if type(game_path) ~= "string" or game_path == "" or not dat then
     return nil

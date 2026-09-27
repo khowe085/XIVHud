@@ -11,7 +11,8 @@ describe("the shared bar defaults", function()
     assert.is_false(cosmetics.hide.empty_slots)
     assert.is_true(cosmetics.hide.element)
     assert.are.same({ r = 230, g = 91, b = 151 }, cosmetics.mp_cost_color)
-    assert.are.equal("", cosmetics.game_path)
+    -- The game folder is Windower's answer alone since 2026-09-27.
+    assert.is_nil(cosmetics.game_path)
   end)
 
   it("hands out a fresh table each time", function()

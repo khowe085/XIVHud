@@ -3,7 +3,12 @@ local icons = require("lib/icons")
 -- Byte offset of the icon inside an item record, and its length, from the
 -- reference addon's extractor.
 local ICON_OFFSET = 0x2BD
-local RECORD_STRIDE = 0xC00
+--[[ 0x1400 since the FFXI update of September 2026, which added 0x800 bytes to
+     every item record; it was 0xC00 before. Windower moved on 2026-09-10 -
+     its resource extractor (51bef17) and the reference equipviewer (7b718dc,
+     1.1.3), which the launcher installed; only GitHub's stale `live` branch
+     still says 0xC00 (Kevin, live client, 2026-09-27). ]]
+local RECORD_STRIDE = 0x1400
 
 local HEADER_LENGTH = 122
 local PIXEL_COUNT = 32 * 32
@@ -217,7 +222,94 @@ describe("lib icons", function()
   -- answers straight from lib/, with no component in the picture.
   it("locates an item's icon straight from lib/", function()
     local located = icons.locate(4096)
-    assert.are.same({ dat = "118/107", offset = 0x2BD, length = 0x800 }, located)
+    assert.are.same({ dat = "118/107", record = 0, record_offset = 0, offset = 0x2BD, length = 0x800 }, located)
     assert.are.equal("C:/FFXI/ROM/118/107.DAT", icons.dat_path("C:/FFXI/", located.dat))
+  end)
+end)
+
+describe("the record a locate points at", function()
+  --[[ `record` is the index of the item's record inside its DAT and
+       `record_offset` where that record starts - the icon offset is 0x2BD
+       into it. Both are derived rather than stored so a diagnostic can report
+       the same numbers the read actually used: an icon that comes out wrong is
+       an icon read at the wrong record, and the record index is the only
+       number that can say so. ]]
+  it("numbers the first record of a range zero", function()
+    local located = icons.locate(0x1000)
+    assert.are.equal(0, located.record)
+    assert.are.equal(0, located.record_offset)
+    assert.are.equal(0x2BD, located.offset)
+  end)
+
+  it("counts records forward from the range's own first id", function()
+    local located = icons.locate(0x1002)
+    assert.are.equal(2, located.record)
+    assert.are.equal(2 * RECORD_STRIDE, located.record_offset)
+    assert.are.equal(2 * RECORD_STRIDE + 0x2BD, located.offset)
+  end)
+
+  --[[ The general-items DAT starts one in - id 1 is record 1, not record 0 -
+       which is the one range whose `first` is not its own minimum. ]]
+  it("keeps the general-items DAT's one-in start", function()
+    assert.are.equal(1, icons.locate(0x0001).record)
+  end)
+
+  -- Almace, the sword that came out of the DAT as a scythe (Kevin, 2026-09-18).
+  it("places a weapon against the weapons DAT", function()
+    local located = icons.locate(20689)
+    assert.are.equal("118/108", located.dat)
+    assert.are.equal(20689 - 0x4000, located.record)
+  end)
+end)
+
+--[[ What was OBSERVED, pinned against the new stride rather than restated from
+     it. Kevin's first report (2026-09-18) was Almace drawn as a scythe: read at
+     the old stride, Almace (20689, weapons record 4305) is read from exactly
+     where Magnus Scythe (18967, record 2583) now keeps its icon - 4305 * 0xC00
+     is 2583 * 0x1400 - which pins the stride AND the icon's 0x2BD offset at
+     once. His `icons probe` of 2026-09-27 read the old record starts of
+     Leth. Earring +1 (286/73 record 2405) and Sucellos's Cape (3210): both
+     landed on a new record start, and each decoded to the item that record
+     now holds - 0x5A00 + 1443 and 0x5A00 + 1926. ]]
+describe("the record stride", function()
+  it("puts Magnus Scythe's icon where the old stride read Almace's", function()
+    assert.are.equal((20689 - 0x4000) * 0xC00 + 0x2BD, icons.locate(18967).offset)
+  end)
+
+  it("starts the records the probe decoded where the probe read them", function()
+    assert.are.equal(2405 * 0xC00, icons.locate(0x5A00 + 1443).record_offset)
+    assert.are.equal(3210 * 0xC00, icons.locate(0x5A00 + 1926).record_offset)
+  end)
+end)
+
+--[[ Where an extracted icon is cached: a folder of its own since 2026-09-27.
+     Every icon extracted at the old record size is garbage and the cache never
+     re-reads a file that exists, so a NEW folder is what gives an upgraded
+     install clean icons with nothing to delete by hand, and without writing
+     over any of the old files. It is named `cache/` so it reads as one, apart
+     from `icons/custom/` (the player's own art), which it never touches. ]]
+describe("the cache file", function()
+  it("is the item id in cache/items/", function()
+    assert.are.equal("cache/items/20689.bmp", icons.cache_file(20689))
+  end)
+end)
+
+--[[ Every item record opens with its own item id - two bytes, little-endian,
+     under the same byte rotation as the rest of the record (Windower's
+     resource extractor reads it as the record's first UInt16). The fixtures
+     are the real heads Kevin's probe read out of 286/73 on 2026-09-27. ]]
+describe("the record id", function()
+  it("decodes the id a record opens with", function()
+    assert.are.equal(24483, icons.record_id("\116\235"))
+    assert.are.equal(24966, icons.record_id("\208\044"))
+  end)
+
+  it("reads only the first two bytes", function()
+    assert.are.equal(24483, icons.record_id("\116\235\000\000\008\031"))
+  end)
+
+  it("answers nothing for a head it could not read", function()
+    assert.is_nil(icons.record_id(nil))
+    assert.is_nil(icons.record_id("\116"))
   end)
 end)

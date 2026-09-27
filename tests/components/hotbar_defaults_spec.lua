@@ -26,7 +26,7 @@ describe("hotbar defaults", function()
     assert.is_false(defaults.hide.skillchain_icon)
     assert.are.equal(8, #defaults.set_flags)
     assert.is_false(defaults.set_flags[3].shared)
-    assert.are.equal("", defaults.game_path)
+    assert.is_nil(defaults.game_path, "the game folder is Windower's answer alone")
   end)
 
   it("has no crossbar furniture: no input keys, no views, no indicator block", function()
