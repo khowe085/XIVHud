@@ -18,13 +18,13 @@ the number beside each, sitting at the bottom centre of the screen.
 - A **compact** mode with narrower bars and tighter spacing.
 - Width, spacing and offset can be changed from the console.
 - A **melee accuracy** row above the TP bar - how many of your swings landed
-  over the last fifteen seconds; `//hud parambar accuracy reset` starts a
-  fresh count.
+  over the last fifteen seconds, with your measured attack delay on the
+  end; `//hud parambar accuracy reset` starts a fresh count.
 
 ## The accuracy row
 
-`Acc: 7 / 9 (78%)` above the TP bar: the hits, the swings and the
-percentage, over a rolling window. It reads the same action packets the game
+`Acc: 7 / 9 (78%) / 2.4s` above the TP bar: the hits, the swings, the
+percentage and your attack delay, over a rolling window. It reads the same action packets the game
 prints your attacks from, counting the two hit messages (a hit and a critical
 hit) and the two miss messages, for your own swings only - your pet's do not
 count, and neither do your ranged attacks, which are a different stat.
@@ -33,6 +33,24 @@ A parry, a block, a counter, a guard or a Third Eye evasion counts as
 **neither** a hit nor a miss, so none of them reaches the total. None of them
 is your accuracy failing. The figure is "of the swings that landed or missed",
 and that is the same rule the `scoreboard` addon uses.
+
+**The delay is measured, not calculated.** It is the median time between
+your melee rounds over the same window - what your swings are actually
+landing at, after gear, haste, songs, dual wield and everything else. It has
+to be measured, because nothing in the game tells an addon your haste: gear
+haste only exists as item description text, and a march's strength depends on
+the bard's own skill and instrument, which your client cannot see. It reads
+`--s` until two rounds have landed.
+
+The figure is the **median** gap rather than the average, so that a
+weaponskill, a cast or a step out of range does not drag it - but fifteen
+seconds only holds two or three gaps, and over so few the median is barely
+better than an average. Widen the window to about thirty seconds if you want
+a number that holds still.
+
+Both rounds have to fall inside the window for a gap to be measured, so a
+very slow weapon can sit at `--s` at the shipped fifteen seconds. Widen the
+window if it does.
 
 **The sample is small, and the counts are there so you can see how small.**
 Fifteen seconds is four or five swings with one weapon - more with dual wield

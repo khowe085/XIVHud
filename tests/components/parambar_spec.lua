@@ -254,7 +254,7 @@ describe("parambar widget", function()
 
     it("says so plainly before anything has swung", function()
       place()
-      assert.are.equal("Acc: 0 / 0 (--%)", readout().last.text)
+      assert.are.equal("Acc: 0 / 0 (--%) / --s", readout().last.text)
     end)
 
     --[[ The row is text and nothing else (Kevin, 2026-09-27, dropping the
@@ -269,7 +269,19 @@ describe("parambar widget", function()
       place()
       swing({ 1, 1, 15 })
       widget.update()
-      assert.are.equal("Acc: 2 / 3 (67%)", readout().last.text)
+      assert.are.equal("Acc: 2 / 3 (67%) / --s", readout().last.text)
+    end)
+
+    --[[ End to end: the widget stamps each round with `ctx.now()`, so the
+         measured interval is the one the packets actually arrived at. ]]
+    it("measures the interval between rounds off the frame clock", function()
+      place()
+      swing({ 1 })
+      widget.update()
+      clock = 2.4
+      swing({ 15 })
+      widget.update()
+      assert.are.equal("Acc: 1 / 2 (50%) / 2.4s", readout().last.text)
     end)
 
     it("ages swings out of the window as the clock moves", function()
@@ -278,7 +290,7 @@ describe("parambar widget", function()
       widget.update()
       clock = 20
       widget.update()
-      assert.are.equal("Acc: 0 / 0 (--%)", readout().last.text)
+      assert.are.equal("Acc: 0 / 0 (--%) / --s", readout().last.text)
     end)
 
     it("ignores a chunk that is not the action packet", function()
@@ -288,14 +300,14 @@ describe("parambar widget", function()
         targets = { { id = 99, actions = { { message = 1 } } } },
       })
       widget.update()
-      assert.are.equal("Acc: 0 / 0 (--%)", readout().last.text)
+      assert.are.equal("Acc: 0 / 0 (--%) / --s", readout().last.text)
     end)
 
     it("ignores an action packet the entry point could not parse", function()
       place()
       widget.update("chunk", 0x028, "raw bytes", nil)
       widget.update()
-      assert.are.equal("Acc: 0 / 0 (--%)", readout().last.text)
+      assert.are.equal("Acc: 0 / 0 (--%) / --s", readout().last.text)
     end)
 
     it("pushes the line only when it changes", function()
@@ -329,7 +341,7 @@ describe("parambar widget", function()
       widget.update()
       widget.handle_command({ "accuracy", "reset" })
       widget.update()
-      assert.are.equal("Acc: 0 / 0 (--%)", readout().last.text)
+      assert.are.equal("Acc: 0 / 0 (--%) / --s", readout().last.text)
     end)
 
     --[[ speedcheck's rule: a detach forgets, so a logout cannot carry one
@@ -340,7 +352,7 @@ describe("parambar widget", function()
       widget.update()
       widget.detach()
       place()
-      assert.are.equal("Acc: 0 / 0 (--%)", readout().last.text)
+      assert.are.equal("Acc: 0 / 0 (--%) / --s", readout().last.text)
     end)
 
     it("raises the row when the command switches it on", function()
@@ -374,9 +386,9 @@ describe("parambar widget", function()
 
     it("reports bounds covering the frame and the accuracy row above it", function()
       widget.set_pos(100, 200)
-      assert.are.same({ 100, 200, 472, 41 }, { widget.get_bounds() })
+      assert.are.same({ 100, 200, 510, 41 }, { widget.get_bounds() })
       widget.set_scale(0.5)
-      assert.are.same({ 100, 200, 236, 21 }, { widget.get_bounds() })
+      assert.are.same({ 100, 200, 255.5, 21 }, { widget.get_bounds() })
     end)
 
     it("reports no bounds before it has a position", function()

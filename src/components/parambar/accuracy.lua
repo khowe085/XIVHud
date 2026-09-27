@@ -60,6 +60,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      hit and swing counts ride alongside it for exactly that reason - a
      reader can see how much the number is worth - and the window is config.
 
+     THE DELAY IS MEASURED BESIDE IT, never computed. Nothing in the client
+     reports your haste: gear haste is only in item description text, and a
+     march's potency depends on the singer's skill, instrument and gear,
+     which your client cannot see at all - so an effective delay worked out
+     from the pieces would have its largest term guessed. The interval the
+     rounds actually arrive at needs none of that. ONE PACKET IS ONE ROUND,
+     however many swings it carries, and the MEDIAN gap is what is reported,
+     since a weaponskill, a cast or a step out of range inserts a long gap.
+     THAT ONLY BUYS SO MUCH AT THE SHIPPED WINDOW: fifteen seconds of a
+     four-second delay is two or three gaps, and the median of an even pair
+     is their mean, so one interruption still moves it. The median starts
+     protecting properly at five gaps or so, which is a 30-60 second window -
+     widening it is the answer, and it is one command. A round in which every swing was parried
+     is invisible here (no countable swing, so no round), which lengthens one
+     gap - the median absorbs it.
+
      No Windower here: `now` is passed in, so the whole thing is a pure
      function of what it has been told. ]]
 
@@ -84,6 +100,17 @@ local function new(config)
   local tail = 0
   local hits = 0
   local total = 0
+  -- When each ROUND landed, oldest first: one entry per packet that carried
+  -- a countable swing, pruned against the same window.
+  local rounds = {}
+  local rounds_head = 1
+  local rounds_tail = 0
+  -- The last median, and the state it was computed from. `sample` is called
+  -- every frame and a 600-second window on a dual-wielding job holds a few
+  -- hundred gaps: sorting those sixty times a second for a number that
+  -- moves when a round lands is exactly what the tallies above avoid.
+  local delay_cached = nil
+  local delay_state = nil
 
   function self.set_config(new_config)
     config = new_config
@@ -112,6 +139,9 @@ local function new(config)
     swings = {}
     head, tail = 1, 0
     hits, total = 0, 0
+    rounds = {}
+    rounds_head, rounds_tail = 1, 0
+    delay_cached, delay_state = nil, nil
   end
 
   local function record(hit, at)
@@ -139,17 +169,24 @@ local function new(config)
     if type(action.targets) ~= "table" then
       return
     end
+    local counted = 0
     for _, target in ipairs(action.targets) do
       if type(target) == "table" and type(target.actions) == "table" then
         for _, swing in ipairs(target.actions) do
           local message = type(swing) == "table" and swing.message or nil
           if HIT[message] then
             record(true, now)
+            counted = counted + 1
           elseif MISS[message] then
             record(false, now)
+            counted = counted + 1
           end
         end
       end
+    end
+    if counted > 0 then
+      rounds_tail = rounds_tail + 1
+      rounds[rounds_tail] = now
     end
   end
 
@@ -165,11 +202,53 @@ local function new(config)
       swings[head] = nil
       head = head + 1
     end
-    if head > tail then
+    while rounds_head <= rounds_tail and now - rounds[rounds_head] > window do
+      rounds[rounds_head] = nil
+      rounds_head = rounds_head + 1
+    end
+    if head > tail and rounds_head > rounds_tail then
       -- Emptied: start the arithmetic over rather than let the indices climb
       -- for the length of a session.
       self.reset()
     end
+  end
+
+  --[[ The median interval between the rounds still in the window. Two rounds
+       are the minimum - one gap - and there is deliberately no smoothing
+       beyond the median: a number that lags the fight it is measuring would
+       be worse than one that moves. ]]
+  local function measured_delay()
+    if rounds_tail - rounds_head < 1 then
+      return nil
+    end
+    -- Which rounds are in the window is the whole of the input, so the two
+    -- ends of the deque say whether the answer can have changed.
+    local state = rounds_head .. ":" .. rounds_tail
+    if state == delay_state then
+      return delay_cached
+    end
+    local gaps = {}
+    for index = rounds_head + 1, rounds_tail do
+      local gap = rounds[index] - rounds[index - 1]
+      -- Two packets at the same instant are not a round apart, and a zero
+      -- in the median would be a claim rather than an admission.
+      if gap > 0 then
+        gaps[#gaps + 1] = gap
+      end
+    end
+    delay_state = state
+    if #gaps == 0 then
+      delay_cached = nil
+      return nil
+    end
+    table.sort(gaps)
+    local middle = #gaps / 2
+    if #gaps % 2 == 1 then
+      delay_cached = gaps[math.ceil(middle)]
+    else
+      delay_cached = (gaps[middle] + gaps[middle + 1]) / 2
+    end
+    return delay_cached
   end
 
   --[[ What the window holds right now. `percent` is nil rather than zero
@@ -181,7 +260,7 @@ local function new(config)
     if total > 0 then
       percent = math.floor((hits / total) * 100 + 0.5)
     end
-    return { hits = hits, swings = total, percent = percent }
+    return { hits = hits, swings = total, percent = percent, delay = measured_delay() }
   end
 
   return self

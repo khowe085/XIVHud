@@ -73,7 +73,7 @@ local VITALS = { hp = "hp", hpp = "hp", mp = "mp", mpp = "mp", tp = "tp" }
 local BANDS = { { 25, "red" }, { 50, "orange" }, { 75, "yellow" } }
 
 local SAMPLE_VITALS = { hp = 1500, hpp = 75, mp = 800, mpp = 50, tp = 1500 }
-local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78 }
+local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78, delay = 2.4 }
 
 --[[ The accuracy row is TEXT AND NOTHING ELSE (Kevin, 2026-09-27): it
      carried an `[R]` reset button for a few hours and does not any more, so
@@ -84,9 +84,10 @@ local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78 }
      rather than the one on screen, which is what keeps the box `bounds`
      reports still while the digits move. FOUR digits, since the window runs
      to ten minutes and that is well past a thousand swings on a
-     dual-wielding multi-attack job. ]]
-local WIDEST_ACCURACY = "Acc: 0000 / 0000 (000%)"
-local EMPTY_ACCURACY = "Acc: 0 / 0 (--%)"
+     dual-wielding multi-attack job - and a delay as wide as the window
+     itself, since the gap between two rounds can be the whole of it. ]]
+local WIDEST_ACCURACY = "Acc: 0000 / 0000 (000%) / 000.0s"
+local UNKNOWN_DELAY = "--s"
 
 local function zeroed()
   return { hp = 0, hpp = 0, mp = 0, mpp = 0, tp = 0 }
@@ -409,12 +410,20 @@ local function new(config)
     return self.tpp()
   end
 
+  --[[ `Acc: 7 / 9 (78%) / 2.4s`. The delay is the MEASURED interval between
+       rounds (see accuracy.lua) and reads `--s` until two have landed, the
+       way the percentage reads `--%` until one swing has: neither is zero,
+       and a zero would be a claim. ]]
   local function accuracy_line(sample)
+    local delay = UNKNOWN_DELAY
+    if sample.delay then
+      delay = string.format("%.1fs", sample.delay)
+    end
     if sample.swings <= 0 or not sample.percent then
       -- Nothing swung is not nought per cent, and the row says so.
-      return EMPTY_ACCURACY
+      return "Acc: 0 / 0 (--%) / " .. delay
     end
-    return string.format("Acc: %d / %d (%d%%)", sample.hits, sample.swings, sample.percent)
+    return string.format("Acc: %d / %d (%d%%) / %s", sample.hits, sample.swings, sample.percent, delay)
   end
 
   --[[ The render plan for this frame. `dirty` says whether the bar needs
