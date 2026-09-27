@@ -64,6 +64,30 @@ describe("hotbar render", function()
       end
     end)
 
+    it("reserves nothing for the set number while numbers are off, in every shape", function()
+      local render = make({ numbers = false })
+      for _, rows in ipairs({ 1, 2, 5, 10 }) do
+        local metrics = render.metrics(rows)
+        assert.are.same({ 0, 0 }, { metrics.grid_x, metrics.grid_y }, rows .. " rows")
+        assert.are.same({ 0, 0 }, { render.slot_pos(rows, 1) })
+      end
+      local width, height = render.bounds(1)
+      assert.are.equal(9 * PITCH + 40, width)
+      assert.are.equal(40 + NAME_BAND, height)
+      width, height = render.bounds(10)
+      assert.are.equal(40, width)
+      assert.are.equal(9 * ROW_PITCH + 40 + NAME_BAND, height)
+    end)
+
+    it("reads the switch live, so flipping it re-lays the same instance", function()
+      local render, config = make()
+      assert.is_true(render.metrics(1).grid_x > 0)
+      config.numbers = false
+      assert.are.equal(0, render.metrics(1).grid_x)
+      config.numbers = true
+      assert.is_true(render.metrics(1).grid_x > 0)
+    end)
+
     it("bounds label, every slot and the name band under the last row, in every shape", function()
       local render = make()
       local metrics = render.metrics(1)

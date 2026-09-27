@@ -249,6 +249,15 @@ local function shown_text(env, label)
   return nil
 end
 
+--- Every method call made on every prim: what a repaint actually costs.
+local function prim_calls(env)
+  local total = 0
+  for _, prim in ipairs(env.prims.all) do
+    total = total + #prim.calls
+  end
+  return total
+end
+
 local function open_stack(binder, env, side, slot)
   binder.open()
   local x, y = slot_point(env, side, slot)
@@ -729,6 +738,41 @@ describe("crossbar binder", function()
       assert.is_not_nil(entry_named(env, "MNK thing"))
       binder.refresh()
       assert.are.equal(2, built, "and only when the job really moved")
+    end)
+
+    --[[ The catalog is scoped to the JOB PAIR, not the main job: `job_pair`
+         lists the subjob's spells and abilities too. Comparing only the main
+         job left the picker offering the departed subjob's actions until the
+         MAIN job happened to change. ]]
+    it("rebuilds the catalog when only the subjob changes", function()
+      local built = 0
+      local subs = { "SCH" }
+      local binder, env = build({
+        catalog_factory = function()
+          return {
+            build = function()
+              built = built + 1
+              return {
+                {
+                  name = "Job Abilities",
+                  entries = { { label = "/" .. subs[1] .. " thing", record = { type = "ja", action = subs[1] } } },
+                },
+              }
+            end,
+          }
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      assert.are.equal(1, built)
+      assert.is_not_nil(entry_named(env, "/SCH thing"))
+      subs[1] = "NIN"
+      env.bindings.set_job("WAR", "NIN")
+      binder.refresh()
+      assert.are.equal(2, built, "the subjob moved, so the listing is stale")
+      assert.is_not_nil(entry_named(env, "/NIN thing"))
+      binder.refresh()
+      assert.are.equal(2, built, "and only when it really moved")
     end)
 
     it("clamps the wheel at both ends of the catalog rather than wrapping", function()
@@ -1251,6 +1295,94 @@ describe("crossbar binder", function()
       local x, y = slot_point(env, "left", 8)
       binder.mouse(MOVE, x, y, 0)
       assert.is_nil(binder.details(), "there is nothing known about an unbound slot")
+    end)
+
+    --[[ The resting-cursor gate compared the DETAILS it had built rather than
+         what the cursor was over. A row with nothing to describe leaves those
+         nil, so the comparison never matched itself and every mouse-move
+         repainted the whole window while the cursor simply sat there. Two
+         targets describe nothing: an EMPTY SLOT, which has always been so, and
+         a MENU ROW, which is not an action at all. ]]
+    --[[ A job change blanks the details of a CATALOG row, whose listing has
+         just been replaced - but a slot's details are resolved from the
+         bindings and are still describable, and `refresh_details` cannot
+         rebuild what it is no longer told is hovered. ]]
+    --[[ The positive half of the same decision as the slot test below: a
+         CATALOG row describes an action from the listing that has just been
+         replaced, and `refresh_details` would rebuild those stale lines every
+         cadence tick until the cursor moved. ]]
+    it("drops a hovered catalog row's details across a job change", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      binder.mouse(MOVE, centre(entry_named(env, "Berserk")))
+      assert.is_not_nil(binder.details(), "over a catalog row")
+      env.bindings.set_job("MNK", "NIN")
+      binder.refresh()
+      binder.refresh_details()
+      assert.is_nil(binder.details(), "the listing it described is gone")
+    end)
+
+    it("keeps describing a hovered slot across a job change", function()
+      local binder, env = build({
+        files = {
+          WAR = { sets = { [1] = { left = { [3] = { type = "ja", action = "Provoke" } } } } },
+          MNK = { sets = { [1] = { left = { [3] = { type = "ja", action = "Boost" } } } } },
+        },
+      })
+      binder.open()
+      binder.mouse(MOVE, slot_point(env, "left", 3))
+      assert.is_not_nil(binder.details(), "slot 3 carries Provoke")
+      env.bindings.set_job("MNK", "NIN")
+      binder.refresh()
+      binder.refresh_details()
+      local lines = table.concat(binder.details().lines, "\n")
+      assert.is_not_nil(
+        lines:find("Boost", 1, true),
+        "still over the slot, now describing the new job's bind: " .. lines
+      )
+    end)
+
+    it("pushes nothing while the cursor rests on an empty slot", function()
+      local binder, env = build()
+      binder.open()
+      local x, y = slot_point(env, "left", 5)
+      binder.mouse(MOVE, x, y, 0)
+      assert.is_nil(binder.details(), "slot 5 is empty, so there is nothing to describe")
+      local settled = prim_calls(env)
+      for _ = 1, 5 do
+        binder.mouse(MOVE, x, y, 0)
+      end
+      assert.are.equal(settled, prim_calls(env), "a still cursor rebuilds nothing")
+    end)
+
+    it("pushes nothing while the cursor rests on a menu row", function()
+      local binder, env = build({
+        catalog = {
+          {
+            name = "Job Abilities",
+            entries = {
+              { label = "Berserk", record = { type = "ja", action = "Berserk" } },
+              {
+                label = "Stratagems",
+                children = { { label = "Accession", record = { type = "ja", action = "Accession" } } },
+              },
+            },
+          },
+        },
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local x, y = centre(entry_named(env, "Stratagems"))
+      binder.mouse(MOVE, x, y, 0)
+      assert.is_nil(binder.details(), "a menu describes no action")
+      local settled = prim_calls(env)
+      for _ = 1, 5 do
+        binder.mouse(MOVE, x, y, 0)
+      end
+      assert.are.equal(settled, prim_calls(env), "a still cursor rebuilds nothing")
+      binder.mouse(MOVE, centre(entry_named(env, "Berserk")))
+      assert.is_true(prim_calls(env) > settled, "and moving off it still repaints")
     end)
   end)
 
@@ -1843,6 +1975,354 @@ describe("crossbar binder", function()
         "said: " .. tostring(env.said[1])
       )
       assert.are.same({ type = "ja", action = "Berserk" }, env.files.WAR.sets[1].row[7])
+    end)
+  end)
+
+  --[[ The submenu step. `res.job_abilities` carries menu entries - Stratagems,
+       Blood Pact: Rage - whose children are records of their own; the catalog
+       hands those down as an entry's `children` instead of a `record`, and the
+       wizard grows a fourth step between the catalog and the target.
+
+       The submenu reuses the CATALOG view rather than owning one of its own,
+       so its rows, its pager and its category column are the catalog's at the
+       same rects - the rule the catalog and target steps already keep. ]]
+  describe("the submenu step", function()
+    local function stratagems(count)
+      local children = {}
+      for index = 1, count or 2 do
+        children[index] = {
+          label = ("Stratagem %02d"):format(index),
+          record = { type = "ja", action = ("Stratagem %02d"):format(index) },
+        }
+      end
+      return {
+        {
+          name = "Job Abilities",
+          entries = {
+            { label = "Berserk", record = { type = "ja", action = "Berserk" } },
+            { label = "Stratagems", children = children },
+          },
+        },
+        {
+          name = "General",
+          entries = { { label = "Attack", record = { type = "draw" } } },
+        },
+      }
+    end
+
+    local function open_submenu(count)
+      local binder, env = build({ catalog = stratagems(count) })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Stratagems")))
+      return binder, env
+    end
+
+    it("opens the children rather than asking what to aim a menu at", function()
+      local binder, env = open_submenu()
+      assert.is_nil(binder.target_view(), "a menu is not a bindable action")
+      assert.are.equal("Stratagems", binder.catalog_view().submenu)
+      assert.is_not_nil(entry_named(env, "Stratagem 01"))
+      assert.is_nil(entry_named(env, "Berserk"), "the parent's own list is replaced")
+    end)
+
+    it("binds a child, then drops to the layer step like any other bind", function()
+      local binder, env = open_submenu()
+      pick(binder, env, "Stratagem 02")
+      assert.are.same(
+        { type = "ja", action = "Stratagem 02" },
+        env.bindings.entry_at("1", "left", 3),
+        "the child's record, not the parent's"
+      )
+      assert.is_nil(binder.catalog_view(), "the catalog closes behind the bind")
+    end)
+
+    it("walks back out one step at a time: target, submenu, catalog", function()
+      local binder, env = open_submenu()
+      click(binder, centre(entry_named(env, "Stratagem 01")))
+      assert.is_not_nil(binder.target_view(), "a child still takes a target")
+      back(binder, env)
+      assert.are.equal("Stratagems", binder.catalog_view().submenu, "back to the children")
+      back(binder, env)
+      assert.is_nil(binder.catalog_view().submenu, "and back out to the catalog")
+      assert.is_not_nil(entry_named(env, "Berserk"))
+    end)
+
+    it("still returns to the catalog from a target reached without a submenu", function()
+      local binder, env = build({ catalog = stratagems() })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Berserk")))
+      back(binder, env)
+      assert.is_nil(binder.catalog_view().submenu)
+      assert.is_not_nil(entry_named(env, "Stratagems"))
+    end)
+
+    it("keeps the category column live, and leaves the submenu on a click", function()
+      local binder, env = open_submenu()
+      local categories = binder.catalog_view().categories
+      click(binder, centre(categories[2]))
+      assert.are.equal("General", binder.catalog_view().category)
+      assert.is_nil(binder.catalog_view().submenu, "the submenu does not survive the switch")
+      assert.is_not_nil(entry_named(env, "Attack"))
+      -- The STEP comes back with it: left on STEP_SUBMENU the header reads
+      -- "pick from ?", the submenu it names having just been dropped.
+      assert.is_not_nil(shown_text(env, "pick an action"))
+    end)
+
+    it("pages a submenu longer than one page", function()
+      local binder = open_submenu(40)
+      local view = binder.catalog_view()
+      assert.is_true(view.pages > 1, "40 children do not fit one page")
+      click(binder, centre(view.pager))
+      assert.are.equal(2, binder.catalog_view().page)
+      assert.are.equal("Stratagems", binder.catalog_view().submenu, "still nested")
+    end)
+
+    --[[ A menu row carries no record, and both of these reach for one. Pinned
+         rather than left to Lua's nil-tolerance: an unguarded index here is a
+         crash in the DRAW path, sixty times a second, which `lib/guard` would
+         disable the whole handler over. A menu row CAN draw art - see the
+         `icon` test below - but only where the catalog names some, which this
+         fixture does not. ]]
+    it("draws no icon for a menu row with no art, and no details when hovered", function()
+      local binder, env = build({
+        catalog = stratagems(),
+        icon = function()
+          return "assets/icons/abilities/00231.png"
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local parent = entry_named(env, "Stratagems")
+      binder.mouse(MOVE, centre(parent))
+      assert.is_nil(binder.details(), "a menu describes no action")
+      for _, prim in ipairs(env.prims.images) do
+        if prim.visible and prim.destroyed == 0 then
+          assert.are_not.equal(parent.y, prim.y, "no icon sits on the menu row")
+        end
+      end
+    end)
+
+    --[[ The submenu is the first picker state that outlives a catalog rebuild:
+         `STEP_CATALOG` self-heals because its rows come from the rebuilt
+         groups, but a nested view held the OLD job's children and went on
+         binding them. ]]
+    it("drops the submenu when the job changes under it", function()
+      local jobs = { "SCH" }
+      local binder, env = build({
+        catalog_factory = function()
+          return {
+            build = function()
+              return {
+                {
+                  name = "Job Abilities",
+                  entries = {
+                    {
+                      label = "Stratagems",
+                      children = { { label = jobs[1] .. " child", record = { type = "ja", action = jobs[1] } } },
+                    },
+                  },
+                },
+              }
+            end,
+          }
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Stratagems")))
+      assert.is_not_nil(entry_named(env, "SCH child"))
+      jobs[1] = "MNK"
+      env.bindings.set_job("MNK", "NIN")
+      binder.refresh()
+      assert.is_nil(binder.catalog_view().submenu, "back out to the rebuilt catalog")
+      assert.is_not_nil(shown_text(env, "pick an action"), "and the step came back with it")
+      assert.is_nil(entry_named(env, "SCH child"), "the old job's children are gone")
+      assert.is_not_nil(entry_named(env, "Stratagems"))
+    end)
+
+    --[[ Stranding the wizard WITHOUT a catalog rebuild: unequipping takes the
+         `wpn` row away and the job pair has not moved, so `rebuild_catalog`
+         does not fire. Driven by the weapon rather than a subjob for exactly
+         that reason - a job-pair change rebuilds first and would prove nothing
+         about this path.
+
+         What this pins is that a nested wizard comes back to the LAYER STEP.
+         It cannot isolate `refresh`'s own `submenu = nil`: the only way
+         forward from the layer step is clicking a row, and that clears the
+         submenu too, so the clear there is deliberate redundancy in the
+         "every route out is covered" rule rather than a reachable behaviour -
+         removing it passes this test and every other (checked). ]]
+    it("returns a nested wizard to the layer step when its layer goes out of reach", function()
+      local binder, env = build({ catalog = stratagems(), weapon = "Great Axe" })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "wpn")))
+      click(binder, centre(entry_named(env, "Stratagems")))
+      assert.are.equal("Stratagems", binder.catalog_view().submenu)
+      env.bindings.set_weapon_type(nil)
+      binder.refresh()
+      assert.is_nil(binder.layer(), "the cursor went with the row")
+      assert.is_nil(binder.catalog_view(), "stranded, so back at the layer step")
+      click(binder, centre(row_named(env, "base")))
+      assert.is_nil(binder.catalog_view().submenu, "the catalog reopens at the top")
+      assert.is_not_nil(entry_named(env, "Berserk"))
+    end)
+
+    --[[ "pick from Stratagems", not "pick a stratagems": the menu names are
+         plural, possessive and colon-bearing (`Blood Pact: Rage`, `Flourishes
+         I`), so no article fits all sixteen. ]]
+    it("titles the step with the menu it is showing", function()
+      local binder, env = open_submenu()
+      assert.is_not_nil(shown_text(env, "pick from Stratagems"))
+      back(binder, env)
+      assert.is_not_nil(shown_text(env, "pick an action"), "and back to the catalog's own title")
+    end)
+
+    --[[ Backing out of a menu returns to the catalog page you opened it from.
+         The listing has not moved while you were nested - unlike a layer
+         change, which is why THAT drops the page - so landing back on page 1
+         of a long Job Abilities list just loses your place. ]]
+    it("returns to the catalog page the menu was opened from", function()
+      local long = {}
+      for index = 1, 40 do
+        long[index] = { label = ("Spell %02d"):format(index), record = { type = "ma", action = "Spell" } }
+      end
+      -- On page 2, so the menu is reached from a page that is not the top.
+      table.insert(long, 25, {
+        label = "Stratagems",
+        children = { { label = "Accession", record = { type = "ja", action = "Accession" } } },
+      })
+      local binder, env = build({ catalog = { { name = "Job Abilities", entries = long } } })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(binder.catalog_view().pager))
+      assert.are.equal(2, binder.catalog_view().page)
+      click(binder, centre(entry_named(env, "Stratagems")))
+      assert.are.equal(1, binder.catalog_view().page, "the menu starts at its own top")
+      back(binder, env)
+      assert.are.equal(2, binder.catalog_view().page, "and the catalog is where it was left")
+    end)
+
+    --[[ The base-layer half of the subjob gap: `cursor_offered` is true for
+         `base`, so nothing stranded the wizard, and only the main job was
+         compared - an open submenu went on offering the departed subjob's
+         children. The rebuild now fires, and dropping the submenu is its job. ]]
+    it("drops the submenu when only the subjob changes", function()
+      local binder, env = build({ catalog = stratagems() })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Stratagems")))
+      assert.are.equal("Stratagems", binder.catalog_view().submenu)
+      env.bindings.set_job("WAR", "NIN")
+      binder.refresh()
+      assert.is_nil(binder.catalog_view().submenu, "back out to the rebuilt catalog")
+      assert.is_not_nil(entry_named(env, "Berserk"))
+    end)
+
+    it("returns to the submenu page a child was picked from", function()
+      -- The same argument as backing out of the menu itself: the children do
+      -- not move while you are choosing a target, and 91 blood pacts is six
+      -- pages to find your way back through.
+      local children = {}
+      for index = 1, 40 do
+        children[index] = { label = ("Pact %02d"):format(index), record = { type = "pet", action = "Pact" } }
+      end
+      local binder, env = build({
+        catalog = { { name = "Job Abilities", entries = { { label = "Blood Pact: Rage", children = children } } } },
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Blood Pact: Rage")))
+      click(binder, centre(binder.catalog_view().pager))
+      assert.are.equal(2, binder.catalog_view().page)
+      click(binder, centre(entry_named(env, "Pact 25")))
+      assert.is_not_nil(binder.target_view(), "a pact takes a target")
+      back(binder, env)
+      assert.are.equal("Blood Pact: Rage", binder.catalog_view().submenu)
+      assert.are.equal(2, binder.catalog_view().page, "back where the pact was picked from")
+    end)
+
+    it("scrolls a submenu with the wheel, as its own pager says", function()
+      local binder, env = build({ catalog = stratagems(40) })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Stratagems")))
+      local x, y = centre(binder.catalog_view().entries[1])
+      binder.mouse(WHEEL, x, y, -1)
+      assert.are.equal(2, binder.catalog_view().page)
+      assert.are.equal("Stratagems", binder.catalog_view().submenu, "still nested")
+    end)
+
+    --[[ Before the submenu step every catalog entry carried a `record`, so
+         the click path indexed one unguarded. `children` is now the only thing
+         standing between it and a nil index in a MOUSE handler, which
+         `lib/guard` disables outright after five failures - an expensive way
+         to discover a malformed entry. ]]
+    it("ignores a catalog entry that carries neither a record nor children", function()
+      local binder, env = build({
+        catalog = { { name = "Job Abilities", entries = { { label = "Malformed" } } } },
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      click(binder, centre(entry_named(env, "Malformed")))
+      assert.is_not_nil(binder.catalog_view(), "still on the catalog step, nothing bound")
+      assert.is_nil(binder.target_view())
+      assert.are.same({}, env.said, "and it said nothing it could not do")
+    end)
+
+    it("draws a menu row's own art, resolved like any other icon", function()
+      local binder, env = build({
+        catalog = {
+          {
+            name = "Job Abilities",
+            entries = {
+              {
+                label = "Stratagems",
+                icon = "abilities/book_white",
+                children = { { label = "Accession", record = { type = "ja", action = "Accession" } } },
+              },
+            },
+          },
+        },
+        icon = function(record)
+          return record.icon == "abilities/book_white" and "addon/assets/icons/abilities/book_white.png" or nil
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local parent = entry_named(env, "Stratagems")
+      local drawn = nil
+      for _, prim in ipairs(env.prims.images) do
+        if prim.visible and prim.last.path == "addon/assets/icons/abilities/book_white.png" then
+          drawn = prim
+        end
+      end
+      assert.is_not_nil(drawn, "the menu row drew its art")
+      assert.are.same({ parent.x, parent.y }, { drawn.x, drawn.y }, "beside its own row")
+      -- Memoized on the NAME: a menu row has no record to key the memo by, and
+      -- the panel redraws on every hover change.
+      local asked = env.icon_calls
+      for _ = 1, 5 do
+        binder.mouse(MOVE, parent.x + 1, parent.y + 1, 0)
+      end
+      assert.are.equal(asked, env.icon_calls, "asked once, not once per redraw")
+    end)
+
+    it("closes outright from the submenu step", function()
+      local binder, env = open_submenu()
+      close_button(binder, env)
+      assert.is_nil(binder.window())
+      assert.is_nil(binder.catalog_view())
+    end)
+
+    it("drops the submenu when the layer step is returned to", function()
+      local binder, env = open_submenu()
+      back(binder, env)
+      back(binder, env)
+      assert.is_nil(binder.catalog_view(), "back at the layer step")
+      click(binder, centre(row_named(env, "base")))
+      assert.is_nil(binder.catalog_view().submenu, "the catalog reopens at the top")
     end)
   end)
 end)

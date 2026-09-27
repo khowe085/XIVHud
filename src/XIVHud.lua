@@ -753,16 +753,6 @@ end
      one closure handed to both, so the entry point spec can pin that the two
      read the client the same way. ]]
 
---[[ The zone id, for mount roulette's zone rule (res.zones carries
-     `can_mount`). Read while drawing, so it goes through the player service:
-     this was the heaviest get_info caller in the addon, once a frame. A zone
-     id is safe to hold for an interval, and `zone change` invalidates anyway.
-     Nil-tolerant like chat_open. ]]
-local function read_zone()
-  local ok, info = pcall(read_info)
-  return ok and info ~= nil and info.zone or nil
-end
-
 local function send_command(command)
   windower.send_command(command)
 end
@@ -854,7 +844,6 @@ local action_service = step("building the action service", function()
     -- nil when the resource library failed to load: mount roulette then sits
     -- out and the ladders degrade rung by rung.
     resources = libraries_error == nil and res or nil,
-    zone = read_zone,
     suppressed = function()
       return core.suppressed()
     end,
@@ -1332,14 +1321,24 @@ local function check_assets()
     "icons/map.png",
     "icons/party-member.png",
     -- contexts.lua: the icons the roster entries name - the arts/addendum
-    -- books, and BLU's job icon for unbridled (the shipped ability sheet is
-    -- keyed by recast id, which nothing here can look up). Load-checked with
+    -- books, and the job icons for unbridled and composure (the shipped
+    -- ability sheet is keyed by recast id, which nothing here can look up,
+    -- so an entry with no book art borrows its job's). Load-checked with
     -- the rest though no surface draws a roster icon yet: the field is what
     -- the roster carries, and art that is missing should say so at load
     -- rather than the day something starts drawing it.
     "icons/abilities/book_white.png",
     "icons/abilities/book_black.png",
     "icons/jobs/blu.png",
+    "icons/jobs/rdm.png",
+    -- catalog.lua: the parent-menu families' art. Stratagems has the grimoire
+    -- above; every other family falls back to its job's glyph, and the five
+    -- distinct ones are named here for the same reason the roster's are.
+    "icons/jobs/cor.png",
+    "icons/jobs/run.png",
+    "icons/jobs/smn.png",
+    "icons/jobs/bst.png",
+    "icons/jobs/dnc.png",
     -- actions.lua built-ins: mr, warp, and draw's three states.
     "icons/mounts/mount-roulette.png",
     "icons/spells/00261.png",

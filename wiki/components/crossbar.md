@@ -598,7 +598,7 @@ In edit mode:
 window: drag a slot onto another slot to swap them entirely, or drag a slot
 onto **genuinely empty screen** to clear it — which removes it from the layer
 you are editing, and leaves every other layer alone. Dragging an action out
-of the list does nothing; the three steps are the way to bind. A drop that
+of the list does nothing; the steps are the way to bind. A drop that
 lands on any part of the binder — the window, the bar itself — cancels
 quietly and changes nothing.
 
@@ -612,9 +612,27 @@ Then a single window opens dead centre and walks you through:
 3. **Pick a target** — the common target tokens, with `(no target)` first (`stal`, `lastst`, `scan` and `r` are `bind`-command only). Actions
    that cannot take a target skip this step and bind straight away.
 
+**Menus get a fourth step.** Some entries in the action list are the game's own
+menus rather than actions — **Stratagems** on SCH, **Phantom Roll** and **Quick
+Draw** on COR, **Waltzes**, **Sambas**, **Jigs**, **Steps** and **Flourishes
+I/II/III** on DNC, **Rune Enchantment**, **Ward** and **Effusion** on RUN,
+**Blood Pact: Rage** and **Blood Pact: Ward** on SMN, **Ready** on BST. Clicking
+one opens what is behind it, and you pick the real action there: Stratagems
+then Accession, Blood Pact: Rage then Volt Strike. `[ < back ]` steps back out
+of the list, and the categories down the left stay live — clicking one leaves
+the menu.
+
+Before this the picker offered the menu itself, and binding that does nothing
+at all in game, so these were reachable only from `//hud crossbar bind`. How
+many entries a menu holds depends on what the game reports: it may list
+everything the job can ever learn rather than only what you can use yet, in
+which case binding one you have not learned gives a slot the game refuses.
+
 A **details column** on the right shows whatever the cursor is over: name,
 cost, recast, skillchain property, and for a slot the layer its binding comes
-from. **`[ < back ]`**, in the top left, steps back one screen; it is absent
+from. A menu row is not an action and has nothing to describe, so the column
+is blank over one. It still carries an icon: Stratagems shows the grimoire,
+and every other menu shows its job's glyph. **`[ < back ]`**, in the top left, steps back one screen; it is absent
 on the first step. **`[ X ]`**, in the top right, closes the window from any
 step.
 
@@ -792,25 +810,23 @@ These are the same actions as the `//hud` commands under
 `mr` and `warp` count down before they go, and so does the `mount` type
 above — see **Travel counts down** under Extras.
 
-**A mount slot greys out when you cannot ride.** Two things put it down: a
-zone that forbids mounting — a city, a dungeon — and the minute after you
-summon one, which sweeps round as a recast like anything else.
+**A mount slot greys out for the minute after you summon one**, which sweeps
+round as a recast like anything else. Where you are is not checked: the
+game's data does not reliably say which zones allow riding, so in one that
+forbids it the game turns the summon down itself.
 
 **A press the addon knows will fail does nothing at all**: no
-countdown, no command, no recast. That covers both cases — a zone that
-forbids mounting, and a recast still running from your last summon. It says
-which in the log once. The greyed icon and the dead press follow the same
-rule, so what you see is what the button will do.
+countdown, no command, no recast — a press while the recast from your last
+summon is still running. It says so in the log once. The greyed icon and the
+dead press follow the same rule, so what you see is what the button will do.
 
-The two part company once you are actually mounted. The zone stops mattering
-— you can be riding somewhere you could not have mounted, and the press is
-now a dismount, which is never held up. The recast keeps running and keeps
-the slot greyed until you could mount again.
+The recast keeps running once you are actually mounted, and keeps the slot
+greyed until you could mount again — though the press is now a dismount,
+which is never held up.
 
 The minute starts when the summon is sent, which means a summon the
 game turns down for a reason the addon cannot see — being in combat, say —
-will still grey the slot for the minute. A zone it cannot identify never
-greys anything.
+will still grey the slot for the minute.
 
 #### What `open` can open
 
@@ -848,7 +864,9 @@ weaponskill, job ability and pet ability swaps its icon for the skillchain
 property it *would* make right now. A weaponskill you cannot yet pay for shows
 the property dimmed, with its TP cost still up.
 
-**Stratagem counts** show on the Scholar abilities that spend them.
+**Stratagem counts** show on the Scholar abilities that spend them. The
+countdown on those slots is the time until your **next** charge comes back, not
+until all of them are, and the slot stays lit while you have a charge left.
 
 **Ninja tool counts** show on ninjutsu slots — how many of that tool you are
 carrying, and the slot crossed out when you have none. The colour tells you
@@ -878,9 +896,15 @@ MP has gone, or you have been silenced — and it will not re-send into an open
 chat line, the binder, or `//hud layout`. **A spell on cooldown is never
 held**; that press fails as it always did.
 
+**Pet abilities are retried** — blood pacts, ready moves, maneuvers and the
+rest — as of 2026-09-07. They were not before, because nobody had confirmed
+which refusal message a `/pet` carries and the retry would not guess. It now
+treats one as a job ability. If a pet ability never seems to re-send, that
+guess is wrong and nothing else is affected; amnesia is also assumed to stop
+one, so a retry is skipped under it.
+
 **What it will not retry.** Items, chat lines, console commands and the
-built-ins — nothing refuses those in words the crossbar reads. Pet abilities
-are not retried either. Anything bound to a subtarget (`<stpc>` and the rest), which
+built-ins — nothing refuses those in words the crossbar reads. Anything bound to a subtarget (`<stpc>` and the rest), which
 would re-open the selection cursor after you had already answered it. Anything
 aimed at a **party or alliance slot** (`<p3>`, `<a13>`) — a position is
 whoever is standing in it, and someone leaving or zoning would send the retry
@@ -954,16 +978,25 @@ first job.
 The countdown tells you **which** way you are going home — `Warp Ring in 5
 seconds`, not a bare `Warp` — and only the last five seconds are counted out
 loud. A warp that has to put a ring on and wait for it to charge is announced
-the same way: the item at the press, how long once the game will say, then the
-last five seconds. `/heal` calls any of it off, warm-up included.
+the same way: the item at the press, and how long it will take — at the
+press too wherever the game's data names the item's warm-up (it does for the
+warp items), otherwise as soon as the game will say — then the last five
+seconds. If it comes up later than it said, it says so again. `/heal` calls
+any of it off, warm-up included.
 
 The ladder is walked **once**, when you press. Whatever it names is what
 fires, even if something better turns up during the countdown.
 
 `warp` skips the countdown when the warp it picks is one it has to **equip and
 warm up** — a Warp Ring or Warp Cudgel you are not already wearing; the
-warm-up is the wait. Everything else fires the moment it is asked, so the
-countdown is its only window.
+warm-up is the wait. It is never a shorter wait than the countdown, though: a
+warm-up that finishes early is held until `delay` seconds have passed since
+the press. Everything else fires the moment it is asked, so the countdown is
+its only window.
+
+When a warp goes, the chat is about the one that goes: the rungs it passed
+over on the way (a Warp Ring on recast, an Instant Warp you do not have) are
+only listed when **nothing** could go, as the reason why.
 
 **The plan is worked out once, when you press** — and the countdown names it,
 so what you were told is what fires. Lose the MP for Warp during those five

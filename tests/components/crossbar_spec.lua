@@ -840,9 +840,9 @@ describe("crossbar live widget", function()
       -- test puts the key item in env.key_items and lets the KI chunk in.
       mounts = { [1] = { name = "Chocobo" } },
       key_items = { [3000] = { category = "Mounts", name = "\226\153\170Chocobo" } },
-      -- `can_mount` is present-or-absent in the real resource, never false,
-      -- so the outdoor zone carries it and the city simply does not.
-      zones = { [100] = { id = 100, en = "Outdoors", can_mount = true }, [200] = { id = 200, en = "A City" } },
+      -- A zone with no `can_mount`, as Adoulin's, Escha and Reisenjima all
+      -- are: a regression guard, since nothing should read it any more.
+      zones = { [200] = { id = 200, en = "Ceizak Battlegrounds" } },
       -- Resting, and deliberately NOT the number the module falls back to:
       -- a fixture that agreed with the constant would pass whether or not
       -- the resource table was ever read.
@@ -979,6 +979,8 @@ describe("crossbar live widget", function()
         env.chat_reads = (env.chat_reads or 0) + 1
         return env.chat_open
       end,
+      -- Read by nothing since the zone rule went; kept so the guard below
+      -- would catch one coming back.
       zone = function()
         return env.zone
       end,
@@ -2718,38 +2720,42 @@ describe("crossbar live widget", function()
     end)
 
     describe("a mount slot's own availability", function()
-      --[[ Neither of a mount's two conditions is a recast the client will
-         answer for: there is no mount ability in the job_abilities resource
-         at all, so no recast id names the timer, and the zone rule lives in
-         the zones resource's `can_mount` (Kevin, 2026-08-29). ]]
-      local function mount_world(kind, zone)
+      --[[ A mount's recast is not one the client will answer for: there is
+         no mount ability in the job_abilities resource at all, so no recast
+         id names the timer (Kevin, 2026-08-29). ]]
+      local function mount_world(kind)
         local files = war_bindings()
         files.WAR.sets[1].left[2] = { type = kind }
         build_world({ store_files = files })
-        env.zone = zone
         env.key_items = { 3000 }
         push(widget, "chunk", 0x055)
         push(widget)
         return image_of("xhb_left", 2, "icon")
       end
 
-      it("dims a mount slot in a zone that forbids mounting", function()
-        local icon = mount_world("mount", 200)
-        assert.are.equal(config.disabled_alpha, icon.last.alpha)
+      --[[ Wherever you are: there is no zone rule. The zones resource's
+         `can_mount` is set on about fifty older outdoor zones and on none of
+         Adoulin's, Escha or Reisenjima, and refusing on its absence turned
+         mount roulette down in a zone `/mount chocobo` rode in at once
+         (Kevin, live client, 2026-09-13). ]]
+      it("leaves a mount slot lit while no recast runs", function()
+        assert.are.equal(255, mount_world("mount").last.alpha)
+        assert.are.equal(255, mount_world("mr").last.alpha)
       end)
 
-      it("leaves it lit where mounting is allowed", function()
-        local icon = mount_world("mount", 100)
+      it("lights and mounts in a zone the resource does not flag", function()
+        local icon = mount_world("mr")
+        env.zone = 200
+        push(widget)
         assert.are.equal(255, icon.last.alpha)
-      end)
-
-      it("dims mount roulette by the same rule", function()
-        assert.are.equal(config.disabled_alpha, mount_world("mr", 200).last.alpha)
-        assert.are.equal(255, mount_world("mr", 100).last.alpha)
+        service_under_test.builtin("mr")
+        env.now = 5
+        push(widget)
+        assert.are.same({ 'input /mount "chocobo"' }, env.commands)
       end)
 
       it("counts the minute down after a summon, and dims for it", function()
-        local icon = mount_world("mr", 100)
+        local icon = mount_world("mr")
         -- The command frontend, which reaches the same resolve -> travel wait
         -- -> execute path a slot press does.
         service_under_test.builtin("mr")
@@ -2766,26 +2772,6 @@ describe("crossbar live widget", function()
         assert.are.equal(255, icon.last.alpha, "a minute after the summon it is back")
       end)
 
-      it("does nothing at all when the zone forbids mounting", function()
-        --[[ A blocked press is a NO-OP (Kevin, 2026-08-29): no travel
-           countdown, no command, no recast animation. It is refused at
-           resolve, before the travel gate ever sees it, so there is nothing
-           downstream to cancel. The slot stays grey because of the ZONE -
-           and lights the moment you leave town, not a minute later. ]]
-        local icon = mount_world("mr", 200)
-        service_under_test.builtin("mr")
-        env.now = 5
-        push(widget)
-        assert.are.same({}, env.commands, "nothing was sent")
-        assert.is_false(text_of("xhb_left", 2, "recast").visible, "and nothing is counting down")
-        assert.are.equal(config.disabled_alpha, icon.last.alpha, "still grey - the zone, not a recast")
-
-        -- Leaving town clears it: the zone was the only thing holding it.
-        env.zone = 100
-        push(widget)
-        assert.are.equal(255, icon.last.alpha)
-      end)
-
       it("keeps counting the recast down while you ride, and dims for it", function()
         --[[ The sweep vanished the moment the mount landed (Kevin, live
            client, 2026-08-29): the mounted check was skipping the recast
@@ -2793,7 +2779,7 @@ describe("crossbar live widget", function()
            true while riding - it is what says when you could mount again -
            so it runs, and dims the slot with it (Kevin's call), even though
            the press itself would dismount you. ]]
-        local icon = mount_world("mr", 100)
+        local icon = mount_world("mr")
         service_under_test.builtin("mr")
         env.now = 5
         push(widget)
@@ -2821,9 +2807,8 @@ describe("crossbar live widget", function()
         --[[ The recast only DREW; nothing refused the press (Kevin, live
            client, 2026-08-29). Pressing again mid-sweep counted five
            seconds down and sent a second summon the game was always going
-           to refuse. A cooling slot is a no-op on exactly the same terms as
-           a zone-blocked one. ]]
-        mount_world("mr", 100)
+           to refuse. A cooling slot is a no-op. ]]
+        mount_world("mr")
         service_under_test.builtin("mr")
         env.now = 5
         push(widget)
@@ -2862,7 +2847,7 @@ describe("crossbar live widget", function()
       it("still dismounts while the recast runs", function()
         -- Getting off is never held up by the timer that says when you could
         -- get back on.
-        mount_world("mr", 100)
+        mount_world("mr")
         service_under_test.builtin("mr")
         env.now = 5
         push(widget)
@@ -2874,20 +2859,23 @@ describe("crossbar live widget", function()
         assert.are.same({ 'input /mount "chocobo"', "input /dismount" }, env.commands)
       end)
 
-      it("counts no travel delay down for a blocked press", function()
+      it("counts no travel delay down for a refused press", function()
         -- The five-second wait is downstream of resolve, so a refused press
         -- never arms it - no "Chocobo in 5 seconds" for a trip that is not
         -- going to happen.
-        mount_world("mr", 200)
+        mount_world("mr")
+        service_under_test.builtin("mr")
+        env.now = 5
+        push(widget)
+        env.chat = {}
         service_under_test.builtin("mr")
         local announced = table.concat(env.chat, "\n")
         assert.is_nil(announced:find("seconds"), "no countdown was announced: " .. announced)
       end)
 
-      it("still dismounts you in a zone that forbids mounting", function()
-        -- You can be mounted in a zone you could not have mounted in - you
-        -- rode in. Getting out is never blocked.
-        mount_world("mr", 200)
+      it("dismounts rather than summoning while you ride", function()
+        -- Getting out is never held up.
+        mount_world("mr")
         env.player.buffs = { 252 }
         push(widget)
         service_under_test.builtin("mr")
@@ -2896,21 +2884,13 @@ describe("crossbar live widget", function()
         assert.are.same({ "input /dismount" }, env.commands)
       end)
 
-      it("ignores the zone rule while mounted, because the press dismounts", function()
-        -- You can be riding in a zone you could not have mounted in, and
-        -- getting out is never held up. The RECAST is a different matter -
-        -- it keeps running while you ride; see below.
-        local icon = mount_world("mr", 200)
+      it("stays lit while you ride with no recast running", function()
+        -- The press is a dismount, which is never held up. The RECAST is a
+        -- different matter - it keeps running while you ride; see above.
+        local icon = mount_world("mr")
         env.player.buffs = { 252 }
         push(widget)
         assert.are.equal(255, icon.last.alpha)
-      end)
-
-      it("does not dim on a zone it cannot resolve", function()
-        -- Dimming on ignorance would read as unusable at every login, which
-        -- is the rule the cost corner already follows.
-        assert.are.equal(255, mount_world("mount", nil).last.alpha, "no zone yet")
-        assert.are.equal(255, mount_world("mount", 999).last.alpha, "a zone not in the table")
       end)
     end)
 
@@ -2966,6 +2946,27 @@ describe("crossbar live widget", function()
       env.ability_recasts = { [231] = 100 }
       push(widget)
       assert.are.equal("1", text_of("xhb_left", 1, "cost").last.text, "ceil(100/80) = 2 of 3 spent")
+    end)
+
+    it("times a stratagem slot to its next charge and keeps it bright while one is in hand", function()
+      local files = war_bindings()
+      files.RDM = { sets = { [1] = { left = { [1] = { type = "ja", action = "Penury", target = "me" } } } } }
+      local player = war_player()
+      player.main_job = "RDM"
+      player.main_job_id = 5
+      player.sub_job = "SCH"
+      player.sub_job_level = 52
+      build_world({ store_files = files, player = player })
+      -- 3 charges at 80s each, all spent: the client's recast reads 240.
+      env.ability_recasts = { [231] = 240 }
+      push(widget)
+      assert.are.equal("1m", text_of("xhb_left", 1, "recast").last.text, "80s to the first charge, not 4m")
+      assert.are.equal(config.disabled_alpha, image_of("xhb_left", 1, "icon").last.alpha)
+      env.now = 0.3
+      env.ability_recasts = { [231] = 150 }
+      push(widget)
+      assert.are.equal("1m", text_of("xhb_left", 1, "recast").last.text, "70s to the second")
+      assert.are.equal(255, image_of("xhb_left", 1, "icon").last.alpha, "one charge in hand")
     end)
 
     it("counts ninja tools with the master colours", function()
@@ -4130,10 +4131,11 @@ describe("crossbar live widget", function()
       push(widget)
       assert.are.equal(1, #env.commands, "still warming: 10s is inside the 30s bound")
       env.ext.usable = true
-      env.now = 1.5
+      -- Warm, and held to the five-second travel delay from the press.
+      env.now = 5
       push(widget)
       assert.are.same({ "gs disable ring1", 'input /item "Warp Ring" <me>', "gs enable ring1" }, env.commands)
-      env.now = 3
+      env.now = 6.5
       push(widget)
       assert.are.equal(3, #env.commands, "the machine is done")
     end)
@@ -4345,7 +4347,7 @@ describe("crossbar live widget", function()
       assert.are.same({ "gs disable ring1" }, env.commands)
       assert.are.same({}, env.ipc, "nobody is sent while the ring is still warming")
       env.ext.usable = true
-      env.now = 1.5
+      env.now = 5
       push(widget)
       assert.are.same({ "gs disable ring1", 'input /item "Warp Ring" <me>', "gs enable ring1" }, env.commands)
       assert.are.same({ "xivhud warp" }, env.ipc, "and they go when it does")
@@ -5279,20 +5281,42 @@ describe("crossbar live widget", function()
       assert.are.same({ 'input /item "Prism Powder" <me>' }, env.commands)
     end)
 
-    it("does not watch a pet ability, whatever it is refused with", function()
-      -- Deliberate: a blood pact is an ability by every other measure in
-      -- this component, but it goes out as its own command word and nobody
-      -- has seen which message refuses one. Guessing it is the job
-      -- ability's is the one thing this feature must not do.
+    --[[ REVERSED 2026-09-07 (Kevin). This asserted that a `pet` record was
+         watched by nothing, deliberately: a blood pact is an ability by every
+         other measure in this component, but it goes out as its own command
+         word and nobody has seen which message refuses one, so guessing it is
+         the job ability's was the one thing the feature must not do.
+
+         What changed is the COST of leaving it out, not the evidence. `pet`
+         was reachable only from the CLI then, so nothing regressed by sitting
+         the retry out. The edit binder now derives a record's type from the
+         resource's own `prefix`, which moves the thirty flat pet abilities -
+         Fight, Heel, Deploy, the eight maneuvers - off `ja`, and they DID have
+         retry coverage. Watching them on a guessed message id is the lesser
+         risk of the two: a wrong id simply means the retry never fires, which
+         is the behaviour this test used to pin.
+
+         Still unverified, and carried in `service.lua` beside the entry: the
+         message a refused `/pet` actually carries, and whether AMNESIA blocks
+         one the way it blocks a `ja`. Live-client row 8.6b. ]]
+    it("watches a pet ability on an ability's refusal, and no other", function()
       live()
       widget.handle_command({ "bind", "1L6", "pet", "Eclipse Bite", "t" })
       cast(DIK_SLOT[6])
-      for _, message in ipairs({ 17, 18, 71, 72 }) do
-        push(widget, "chunk", 0x29, refusal(env.player.id, message))
-      end
-      env.now = env.now + 1
+      local sent = 'input /pet "Eclipse Bite" <t>'
+      assert.are.same({ sent }, env.commands)
+      -- The SPELL refusal is not an answer to this press.
+      push(widget, "chunk", 0x29, refusal(env.player.id, 17))
+      env.now = 1
       push(widget)
-      assert.are.same({ 'input /pet "Eclipse Bite" <t>' }, env.commands)
+      assert.are.same({ sent }, env.commands, "only an ability's refusal answers it")
+      push(widget, "chunk", 0x29, refusal(env.player.id, 71))
+      env.now = 2
+      -- Tabbed to something else between the press and the re-send: the pin is
+      -- taken at the PRESS, so the pact still goes at what it was aimed at.
+      env.target = { id = 4242 }
+      push(widget)
+      assert.are.same({ sent, 'input /pet "Eclipse Bite" 99' }, env.commands)
     end)
 
     it("re-sends a pet-targeted action as it was written", function()

@@ -170,27 +170,12 @@ local function new(deps)
     return false
   end
 
-  --[[ Whether this zone forbids mounting. The resources carry `can_mount`
-       per zone and it is PRESENT-OR-ABSENT rather than true/false, so the
-       test is presence.
-
-       Anything unresolved answers "not blocked": an unknown zone, a zones
-       table we were never handed, a zone the client has not named yet. The
-       cost corner's rule applies here too - dimming on ignorance would read
-       as unusable at every login, and a slot wrongly dimmed is worse than a
-       press the game refuses with its own message. ]]
-  function self.blocked()
-    local zones = type(deps.zones) == "table" and deps.zones or nil
-    if zones == nil then
-      return false
-    end
-    local zone = type(deps.get_zone) == "function" and deps.get_zone() or nil
-    local entry = zone ~= nil and zones[zone] or nil
-    if type(entry) ~= "table" then
-      return false
-    end
-    return entry.can_mount ~= true
-  end
+  --[[ There is no zone rule, and there must not be one. The zones resource's
+       `can_mount` is set on about fifty older outdoor zones and on none of
+       Adoulin's, Escha or Reisenjima, so its absence says nothing - and
+       refusing on it turned mount roulette down in a zone `/mount chocobo`
+       rode in at once (Kevin, live client, 2026-09-13). Where mounting
+       really is forbidden, the game says so itself. ]]
 
   --[[ The frame clock, which this module reads for itself rather than
        taking as an argument at each call site. It was passed in, and the

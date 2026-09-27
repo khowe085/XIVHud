@@ -21,7 +21,6 @@ local function resources()
     items = {},
     mounts = {},
     key_items = {},
-    zones = {},
     statuses = { [0] = { en = "Idle" }, [1] = { en = "Engaged" } },
     bags = { [0] = { id = 0, en = "Inventory", equippable = true } },
   }
@@ -392,6 +391,59 @@ describe("hotbar", function()
       )
     end)
 
+    it("switches the set number off on every row with numbers off, collapsing its space", function()
+      build_world()
+      push()
+      widget.show("bar2")
+      push()
+      local reply = widget.handle_command({ "numbers", "off" })
+      assert.are.equal("hotbar: set numbers off", reply)
+      assert.is_false(config.numbers)
+      assert.are.equal(1, env.config_saves)
+      assert.is_false(prims.texts[31].visible, "row 1's number")
+      assert.is_false(prims.texts[62].visible, "and row 2's")
+      local render = new_render({ config = config })
+      assert.are.equal(0, render.metrics(1).grid_x)
+      assert.are.same({ 100, 100 }, { prims.images[1].x, prims.images[1].y }, "slot 1 moved to the origin")
+      assert.are.equal(100, prims.images[61].x, "and row 2's slot 1 with it")
+      local _, _, w, h = widget.get_bounds("bar1")
+      assert.are.same({ render.bounds(1) }, { w, h })
+      reply = widget.handle_command({ "numbers", "on" })
+      assert.are.equal("hotbar: set numbers on", reply)
+      assert.is_true(config.numbers)
+      assert.is_true(prims.texts[31].visible)
+      assert.are.equal("1", prims.texts[31].last.text)
+      assert.are.equal(100 + render.metrics(1).grid_x, prims.images[1].x, "and back beside it")
+    end)
+
+    it("leaves the number off a row first built while numbers are off", function()
+      build_world({
+        tune = function(tuned)
+          tuned.numbers = false
+        end,
+      })
+      push()
+      widget.show("bar2")
+      push()
+      assert.are.equal(62, #prims.texts)
+      assert.is_false(prims.texts[31].visible)
+      assert.is_false(prims.texts[62].visible)
+    end)
+
+    it("reports numbers bare, and refuses a bad word or a row word", function()
+      build_world()
+      push()
+      assert.are.equal("hotbar: set numbers on", widget.handle_command({ "numbers" }))
+      local reply = widget.handle_command({ "numbers", "maybe" })
+      assert.is_not_nil(reply:find("numbers [on|off]", 1, true), reply)
+      reply = widget.handle_command({ "bar2", "numbers", "off" })
+      assert.is_not_nil(reply:find("every row", 1, true), reply)
+      assert.is_nil(reply:find("a set is a set", 1, true), reply)
+      assert.are.equal(true, config.numbers, "nothing was stored")
+      assert.is_nil(widget.handle_command({ "label", "off" }):find("^hotbar: set numbers"), "label is not a verb")
+      assert.are.equal(0, env.config_saves)
+    end)
+
     it("passes the common roster to the bar, and refuses a row word in front of it", function()
       build_world()
       push()
@@ -476,6 +528,130 @@ describe("hotbar", function()
     end)
   end)
 
+  describe("hide empty slots", function()
+    -- A slot's background: six images a slot, ten slots a row, rows built
+    -- in the order they are first shown.
+    local function background(row_index, slot)
+      return prims.images[(row_index - 1) * 60 + (slot - 1) * 6 + 1]
+    end
+
+    it("leaves a row's empty slots undrawn with hideempty on, and draws them again with off", function()
+      build_world()
+      push()
+      assert.is_true(background(1, 1).visible, "drawn out of the box")
+      local reply = widget.handle_command({ "hideempty", "on" })
+      assert.are.equal("hotbar: bar1 hides empty slots", reply, "bar1 when no row is named")
+      assert.is_true(config.bars.bar1.hide_empty)
+      assert.are.equal(1, env.config_saves)
+      assert.is_false(background(1, 1).visible, "an empty slot draws nothing")
+      assert.is_true(background(1, 3).visible, "a bound one still draws")
+      reply = widget.handle_command({ "bar1", "hideempty", "off" })
+      assert.are.equal("hotbar: bar1 draws empty slots", reply)
+      assert.is_false(config.bars.bar1.hide_empty)
+      assert.is_true(background(1, 1).visible)
+    end)
+
+    it("is set per row", function()
+      build_world()
+      push()
+      widget.show("bar2")
+      push()
+      widget.handle_command({ "bar2", "hideempty", "on" })
+      assert.is_false(background(2, 1).visible, "bar2's empty slot")
+      assert.is_true(background(2, 10).visible, "bar2's bound slot")
+      assert.is_true(background(1, 1).visible, "bar1 untouched")
+      assert.is_nil(config.bars.bar1.hide_empty)
+    end)
+
+    it("follows what the row resolves to now: the active set and the layers over it", function()
+      local files = war_bindings()
+      files.WAR.sub = { NIN = { [1] = { row = { [5] = { type = "ja", action = "Provoke", target = "me" } } } } }
+      build_world({ store_files = files })
+      push()
+      widget.handle_command({ "hideempty", "on" })
+      assert.is_true(background(1, 5).visible, "bound on the subjob layer alone")
+      assert.is_false(background(1, 10).visible)
+      widget.handle_command({ "set", "2" })
+      assert.is_true(background(1, 10).visible, "set 2 binds slot 10")
+      assert.is_false(background(1, 5).visible, "and nothing at slot 5")
+    end)
+
+    it("draws every slot while the binder is open", function()
+      build_world()
+      push()
+      widget.handle_command({ "hideempty", "on" })
+      widget.handle_command({ "edit" })
+      assert.is_true(background(1, 1).visible, "an empty slot is a drop target")
+      widget.handle_command({ "edit" })
+      assert.is_false(background(1, 1).visible)
+    end)
+
+    it("draws every slot in layout mode", function()
+      build_world()
+      push()
+      widget.handle_command({ "hideempty", "on" })
+      widget.set_preview(true)
+      widget.show()
+      push()
+      assert.is_true(background(1, 1).visible, "the whole footprint while placing it")
+      widget.set_preview(false)
+      push()
+      assert.is_false(background(1, 1).visible)
+    end)
+
+    it("leaves a click on an undrawn slot to the game", function()
+      build_world()
+      push()
+      widget.handle_command({ "hideempty", "on" })
+      local render = new_render({ config = config })
+      local x, y = render.slot_pos(1, 1)
+      assert.is_false(widget.on_mouse(LEFT_DOWN, 100 + x + 5, 100 + y + 5, 0))
+    end)
+
+    it("falls back to hide.empty_slots where a row says nothing, and a row's own word wins", function()
+      build_world({
+        tune = function(tuned)
+          tuned.hide.empty_slots = true
+        end,
+      })
+      push()
+      assert.is_false(background(1, 1).visible, "the bar-wide key still hides")
+      widget.handle_command({ "hideempty", "off" })
+      assert.is_true(background(1, 1).visible, "an explicit off outranks it")
+    end)
+
+    it("says so on the row's status line", function()
+      build_world()
+      push()
+      widget.handle_command({ "hideempty", "on" })
+      local lines = widget.handle_command({ "bar1" })
+      assert.are.equal("  bar1: on, 10x1, set 1 (active), hides empty slots", lines[2])
+    end)
+
+    it("refuses anything but on or off", function()
+      build_world()
+      push()
+      for _, args in ipairs({ { "hideempty" }, { "hideempty", "maybe" }, { "hideempty", "on", "now" } }) do
+        local reply = widget.handle_command(args)
+        assert.is_not_nil(reply:find("hideempty on|off", 1, true), reply)
+      end
+      assert.are.equal(0, env.config_saves)
+    end)
+  end)
+
+  it("lists its own hideempty verb in help", function()
+    build_world()
+    push()
+    local help = widget.handle_command({ "help" })
+    local found = false
+    for _, line in ipairs(help) do
+      if line:find("//hud hotbar [<bar>] hideempty on|off", 1, true) then
+        found = true
+      end
+    end
+    assert.is_true(found, table.concat(help, "\n"))
+  end)
+
   it("lists its own rows verb in help", function()
     build_world()
     push()
@@ -483,6 +659,19 @@ describe("hotbar", function()
     local found = false
     for _, line in ipairs(help) do
       if line:find("//hud hotbar [<bar>] rows <1|2|5|10>", 1, true) then
+        found = true
+      end
+    end
+    assert.is_true(found, table.concat(help, "\n"))
+  end)
+
+  it("lists its numbers verb in help", function()
+    build_world()
+    push()
+    local help = widget.handle_command({ "help" })
+    local found = false
+    for _, line in ipairs(help) do
+      if line:find("//hud hotbar numbers [on|off]", 1, true) then
         found = true
       end
     end

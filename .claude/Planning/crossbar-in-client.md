@@ -134,6 +134,27 @@ unverified is the **wired component** behaving the same way.
 | 7.13 | CTRL+Up, CTRL+Down with the hotbar on | Row 1 moves to the next / previous set of the rotation; the game's macro set changes too (expected); a bare arrow still turns the camera; `//hud hotbar cycle back` does the same from the console | The chord cannot be kept from the game; the number row's own caveat |
 | 7.14 | `//hud hotbar bar1 rows 10` and `rows 5` | The set number sits clear above slot 1 (a 14pt digit is reserved 20px, an estimate); if it still touches, `LABEL_HEIGHT` in components/hotbar/render.lua is the knob | Reported over slot 1 at 18px on 2026-09-06 |
 
+## 8. The edit binder's parent-menu families (2026-09-07)
+
+The picker offered a MENU entry (`Stratagems`, `Waltzes`, `Blood Pact: Rage`)
+and could not reach what is behind it. Sixteen families now open a submenu.
+Row 8.2 is the one that matters most: the whole design turns on whether the
+client enumerates a family's children or only its parent, and nothing here can
+answer it.
+
+| # | Do this | Expect | Notes |
+| --- | --- | --- | --- |
+| 8.1 | On SCH, `//hud crossbar edit`, click a slot, a layer, then `Job Abilities` | `Stratagems` opens the STRATAGEMS, it does not go to the target step; `Accession` is in the list and binds | The defect this section exists for (Kevin, 2026-09-07): the menu used to bind `/ja "Stratagems"`, which the game refuses |
+| 8.2 | Count what that submenu holds on a level-99 SCH, then on a low-level one | SIXTEEN either way if the client reports only the parent 223; exactly what the character has learned if it reports the children | **The one unverified premise of the change.** The rule is correct on both answers, but the observable behaviour differs sharply. Whichever it is, record it - it also settles the SMN and BST cases below |
+| 8.3 | Same on COR (`Phantom Roll`, `Quick Draw`) and RUN (`Rune Enchantment`, `Ward`, `Effusion`) | Each opens its own children | Upstream reads rolls and shots off the client but stratagems off a static table, so these two families may well answer differently from 8.2 |
+| 8.4 | Same on DNC (`Waltzes`, `Sambas`, `Jigs`, `Steps`, `Flourishes I/II/III`) | Seven menus, each opening its own children; none of the seven binds | Missed on the first pass - the resource names them in the PLURAL. Confirm the client actually lists these parent ids |
+| 8.5 | Same on SMN and BST (`Blood Pact: Rage`/`Ward`, `Ready`) | Each opens its children, bound as `/pet` and firing | The long-list case: 91 pacts and 120 ready moves if the client reports only the parents. Kevin accepted that 2026-09-07 - this is where to say whether it is actually usable |
+| 8.6 | On a job with a pet, look for `Pet commands` in `Job Abilities` | It is NOT listed; Fight, Heel, Sic, Deploy and the maneuvers are | 55 is a menu with no submenu of its own |
+| 8.6a | Bind a maneuver on PUP (or Fight on BST) from the picker and press it | It fires | **A behaviour change outside this feature's purpose.** These thirty `PetCommand` abilities bound as `/ja` before and bind as `/pet` now - the resource's `prefix` and upstream both say `/pet`, but whether `/ja` was broken is unverified and the game may accept both. If `/pet` fails here, restrict the prefix derivation to family CHILDREN and leave the flat list on `ja` |
+| 8.6b | Press a bound maneuver or blood pact the moment it is still on recast, with the cast retry ON | It re-sends once the recast clears, exactly as a job ability does | **A reversal (Kevin, 2026-09-07).** `pet` was deliberately unwatched - nobody had seen which message refuses one, and guessing the ability's 71 was the one thing the retry must not do. The picker's move to prefix-derived types moved thirty abilities that DID have coverage off `ja`, which changed the cost of leaving it out. Both halves are still guesses: message 71, and whether AMNESIA blocks a `/pet`. If it never re-sends, 71 is wrong |
+| 8.6c | On SMN, bind a blood pact and watch the slot's recast arc, then press one while the 1-hour is down | The arc follows the PACT's recast, and a refused pact still re-sends | `render.lua` records that pacts share recast id **0** with the level-1 SP abilities. If that holds, a pact slot dims on the SP timer and `guards_pass` drops every retry while the 1-hour is down - so the retry 8.6b buys would be inert for pacts and real only for the flat pet commands. Raised in review, ~50%: nobody has read `ability_recasts[0]` for a pact in a client |
+| 8.7 | Open a submenu, then change job or SUBJOB without closing the binder | The window drops back out of the submenu, and the listing behind it is the new pair's | Three review rounds found strands here. The catalog is scoped to the job PAIR, so the rebuild compares both halves now (2026-09-07); comparing the main job alone left a departed subjob's spells and abilities in the picker - a pre-existing bug the submenu inherited |
+
 ---
 
 ## Open questions — answers, not checks

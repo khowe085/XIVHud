@@ -116,6 +116,9 @@ local function new(deps)
       return nil
     end
     local pitch = SLOT + config.slot_spacing
+    -- Read here rather than at construction: `numbers off` flips it on the
+    -- instance already drawing.
+    local numbered = config.numbers ~= false
     return {
       slot = SLOT,
       -- Columns sit on the slot pitch; rows leave the name band between them.
@@ -124,8 +127,8 @@ local function new(deps)
       name_band = NAME_BAND,
       rows = rows,
       columns = columns,
-      grid_x = wide(rows) and (LABEL_WIDTH + LABEL_GAP) or 0,
-      grid_y = wide(rows) and 0 or (LABEL_HEIGHT + LABEL_GAP),
+      grid_x = (numbered and wide(rows)) and (LABEL_WIDTH + LABEL_GAP) or 0,
+      grid_y = (numbered and not wide(rows)) and (LABEL_HEIGHT + LABEL_GAP) or 0,
     }
   end
 

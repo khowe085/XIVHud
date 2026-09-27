@@ -14,7 +14,7 @@ describe("crossbar contexts", function()
     for _, context in ipairs(contexts) do
       names[#names + 1] = context.name
     end
-    assert.same({ "light-arts", "dark-arts", "addendum-white", "addendum-black", "unbridled" }, names)
+    assert.same({ "composure", "light-arts", "dark-arts", "addendum-white", "addendum-black", "unbridled" }, names)
   end)
 
   it("keeps light-arts active on the Addendum: White buff alone", function()
@@ -46,11 +46,34 @@ describe("crossbar contexts", function()
     assert.equal(#contexts, index)
   end)
 
+  --[[ Composure (Kevin, 2026-09-13). It sits FIRST, under the arts family:
+       `jobs` counts the sub job for arts, so a RDM/SCH can hold Composure and
+       Light Arts at once, and Kevin's call is that the arts layer wins there.
+       Unbridled is BLU-main and Composure RDM-main, so those two can never
+       co-occur and their relative order says nothing. ]]
+  it("activates composure on its own buff", function()
+    assert.same({ 419 }, find("composure").any_of)
+  end)
+
+  it("puts composure first, under the arts family", function()
+    local _, index = find("composure")
+    assert.equal(1, index)
+  end)
+
+  --[[ BG wiki, read 2026-09-13: obtained at RDM 50, and "this ability is not
+       accessible if Red Mage is set as a sub job" - stated outright rather
+       than inferred from the level cap. ]]
+  it("scopes composure to a RDM main job alone", function()
+    assert.same({ "RDM" }, find("composure").jobs)
+    assert.is_true(find("composure").main_only)
+  end)
+
   it("labels every entry with its in-game name", function()
     assert.equal("Light Arts", find("light-arts").label)
     assert.equal("Dark Arts", find("dark-arts").label)
     assert.equal("Addendum: White", find("addendum-white").label)
     assert.equal("Addendum: Black", find("addendum-black").label)
+    assert.equal("Composure", find("composure").label)
   end)
 
   --[[ The job gate (Kevin, 2026-09-04): a context belongs to the job whose

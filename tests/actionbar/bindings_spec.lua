@@ -777,6 +777,34 @@ describe("crossbar bindings", function()
       assert.same({}, bindings.active_contexts())
     end)
 
+    it("lights composure on a RDM main job", function()
+      local bindings = build()
+      bindings.set_job("RDM", "WHM")
+      bindings.update_buffs({ 419 })
+      assert.same({ "composure" }, bindings.active_contexts())
+    end)
+
+    -- RDM 50, and the wiki says outright it is unreachable on a subjob.
+    it("keeps composure inert on a RDM subjob", function()
+      local bindings = build()
+      bindings.set_job("WAR", "RDM")
+      bindings.update_buffs({ 419 })
+      assert.same({}, bindings.active_contexts())
+    end)
+
+    --[[ The pairing composure's stack position exists for: `jobs` counts the
+         sub job for arts, so RDM/SCH can hold both at once and the LATER
+         entry wins. Composure is first, so the arts layer takes the slot. ]]
+    it("lets the arts layer beat composure on the same slot", function()
+      local bindings = build()
+      bindings.set_job("RDM", "SCH")
+      bindings.bind("ctx:composure:1", "left", 3, { type = "ma", action = "Refresh" })
+      bindings.bind("ctx:light-arts:1", "left", 3, { type = "ma", action = "Cure" })
+      bindings.update_buffs({ 419, 358 })
+      assert.same({ "composure", "light-arts" }, bindings.active_contexts())
+      assert.same({ type = "ma", action = "Cure" }, bindings.resolve(1, "left", 3))
+    end)
+
     it("lists the contexts this job can reach, in roster order", function()
       local bindings = build()
       bindings.set_job("SCH", "WHM")
