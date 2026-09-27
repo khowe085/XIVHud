@@ -658,6 +658,24 @@ local function get_all_items()
   return windower.ffxi.get_items()
 end
 
+--[[ The icon-layout tripwire's voice (lib/icon_cache's `on_mismatch`): said at
+     most ONCE per load, whichever of the three caches trips it first - the
+     equip viewer's or one of the bars'. A record naming some other item means
+     the game's item data has moved under the fixed mapping, as the September
+     2026 update did silently for weeks; Kevin asked to hear the moment it
+     happens (2026-09-27), and the cache cannot be busted to find out. ]]
+local icon_layout_reported = false
+local function report_icon_layout(asked, found)
+  if icon_layout_reported then
+    return
+  end
+  icon_layout_reported = true
+  chat(
+    ("item icons are not being read: the game's item data has changed (item %d found %d)"):format(asked, found)
+      .. " - XIVHud needs an update"
+  )
+end
+
 --[[ Where the client is installed, for the DAT reads above: `ffxi_path` and
      nothing else - the reference equipviewer's default (`game_path_default =
      windower.ffxi_path`), without the `//ev gamepath` override it layers over
@@ -961,6 +979,7 @@ step("building the equipviewer component", function()
     read_dat = read_dat,
     write_binary = write_binary,
     game_path = game_path,
+    report_icon_layout = report_icon_layout,
   }))
 end)
 
@@ -1111,6 +1130,7 @@ step("building the crossbar component", function()
     read_dat = read_dat,
     write_binary = write_binary,
     game_path = game_path,
+    report_icon_layout = report_icon_layout,
     -- nil when the resource library failed to load: the catalog and the
     -- weapon layer then sit out, the bar itself carries on.
     resources = libraries_error == nil and res or nil,
@@ -1162,6 +1182,7 @@ step("building the hotbar component", function()
     read_dat = read_dat,
     write_binary = write_binary,
     game_path = game_path,
+    report_icon_layout = report_icon_layout,
     resources = libraries_error == nil and res or nil,
   }))
 end)

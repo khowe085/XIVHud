@@ -1,4 +1,5 @@
 local new_icon_cache = require("lib/icon_cache")
+local fakes = require("tests/support/fakes")
 
 -- An icon block of the right length; what it decodes to is icons_spec's
 -- business, this spec only cares that the pipeline moves it.
@@ -24,6 +25,10 @@ describe("icon cache", function()
         return files[path] == true
       end,
       read_dat = function(path, offset, length)
+        -- The head read the tripwire takes: the record's own id, as stored.
+        if length == 2 then
+          return fakes.dat_head(path, offset)
+        end
         dat_reads[#dat_reads + 1] = { path = path, offset = offset, length = length }
         return RECORD
       end,
@@ -246,6 +251,77 @@ describe("icon cache", function()
       assert.are.equal(0x8000, report.id)
       assert.is_nil(report.dat)
       assert.are.equal(0, report.read)
+    end)
+  end)
+
+  --[[ The tripwire (Kevin, 2026-09-27): the cache cannot be busted to find out
+       that a game update has moved the item data, so every extraction first
+       checks the record's own id. A record naming another item - or none -
+       means the layout moved; nothing is cached from it, and the reporter is
+       told so the player hears about it the moment it happens. ]]
+  describe("the layout tripwire", function()
+    local mismatches
+
+    before_each(function()
+      mismatches = {}
+      deps.on_mismatch = function(asked, found)
+        mismatches[#mismatches + 1] = { asked, found }
+      end
+    end)
+
+    local function heads(id)
+      deps.read_dat = function(path, offset, length)
+        if length == 2 then
+          return id and fakes.record_head(id) or nil
+        end
+        dat_reads[#dat_reads + 1] = { path = path, offset = offset, length = length }
+        return RECORD
+      end
+    end
+
+    it("caches nothing from a record that names another item", function()
+      heads(9999)
+      cache.request_icon(USABLE)
+      assert.is_false(cache.drain_queue())
+      assert.are.equal(0, #writes)
+      assert.is_true(cache.is_abandoned(USABLE))
+      assert.are.same({ { USABLE, 9999 } }, mismatches)
+    end)
+
+    -- Where the September 2026 update left most reads: in empty padding.
+    it("caches nothing from an empty record", function()
+      heads(0)
+      cache.request_icon(USABLE)
+      cache.drain_queue()
+      assert.are.equal(0, #writes)
+      assert.are.same({ { USABLE, 0 } }, mismatches)
+    end)
+
+    it("extracts from a record that names the item asked for", function()
+      heads(USABLE)
+      cache.request_icon(USABLE)
+      assert.is_true(cache.drain_queue())
+      assert.are.equal(1, #writes)
+      assert.are.same({}, mismatches)
+    end)
+
+    -- A head that cannot be read is no evidence the layout moved: the read of
+    -- the icon itself decides, as it always did.
+    it("goes on to the icon when the head cannot be read", function()
+      heads(nil)
+      cache.request_icon(USABLE)
+      assert.is_true(cache.drain_queue())
+      assert.are.same({}, mismatches)
+    end)
+
+    it("carries on without a reporter", function()
+      deps.on_mismatch = nil
+      heads(9999)
+      cache.request_icon(USABLE)
+      assert.has_no.errors(function()
+        cache.drain_queue()
+      end)
+      assert.are.equal(0, #writes)
     end)
   end)
 end)

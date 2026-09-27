@@ -173,6 +173,7 @@ local function new(deps)
       game_path = function()
         return ctx.game_path ~= nil and ctx.game_path() or nil
       end,
+      on_mismatch = ctx.report_icon_layout,
     })
   end
 

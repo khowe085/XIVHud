@@ -75,14 +75,15 @@ local function new(ctx)
 
   local save = nil
 
-  -- The extraction pipeline: request on the packet path, one DAT read per
-  -- frame off it, results cached at <addon>/cache/items/ for every component.
+  -- The extraction pipeline: request on the packet path, one icon per frame
+  -- off it, results cached at <addon>/cache/items/ for every component.
   local cache = new_icon_cache({
     asset = ctx.asset,
     file_exists = ctx.file_exists,
     read_dat = ctx.read_dat,
     write_binary = ctx.write_binary,
     game_path = ctx.game_path,
+    on_mismatch = ctx.report_icon_layout,
   })
 
   -- The whole equipment table is worth re-reading, on the next frame rather

@@ -5,10 +5,9 @@ local icons = require("lib/icons")
 local ICON_OFFSET = 0x2BD
 --[[ 0x1400 since the FFXI update of September 2026, which added 0x800 bytes to
      every item record; it was 0xC00 before. Windower moved on 2026-09-10 -
-     its resource extractor (51bef17) and the reference equipviewer on the
-     `dev` branch (7b718dc, 1.1.3) - but the launcher's `live` branch still
-     ships the reference at 0xC00, which only looks right from a cache filled
-     before the update (Kevin, live client, 2026-09-27). ]]
+     its resource extractor (51bef17) and the reference equipviewer (7b718dc,
+     1.1.3), which the launcher installed; only GitHub's stale `live` branch
+     still says 0xC00 (Kevin, live client, 2026-09-27). ]]
 local RECORD_STRIDE = 0x1400
 
 local HEADER_LENGTH = 122
@@ -292,5 +291,25 @@ end)
 describe("the cache file", function()
   it("is the item id in cache/items/", function()
     assert.are.equal("cache/items/20689.bmp", icons.cache_file(20689))
+  end)
+end)
+
+--[[ Every item record opens with its own item id - two bytes, little-endian,
+     under the same byte rotation as the rest of the record (Windower's
+     resource extractor reads it as the record's first UInt16). The fixtures
+     are the real heads Kevin's probe read out of 286/73 on 2026-09-27. ]]
+describe("the record id", function()
+  it("decodes the id a record opens with", function()
+    assert.are.equal(24483, icons.record_id("\116\235"))
+    assert.are.equal(24966, icons.record_id("\208\044"))
+  end)
+
+  it("reads only the first two bytes", function()
+    assert.are.equal(24483, icons.record_id("\116\235\000\000\008\031"))
+  end)
+
+  it("answers nothing for a head it could not read", function()
+    assert.is_nil(icons.record_id(nil))
+    assert.is_nil(icons.record_id("\116"))
   end)
 end)

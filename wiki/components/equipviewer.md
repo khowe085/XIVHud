@@ -49,6 +49,10 @@ cache folder, `cache/items`, and never looks at the old ones again. The loose
 `.bmp` files left directly in `icons` can be deleted to save space - but leave
 `icons/custom` alone, since that is your own crossbar and hotbar art.
 
+If chat says **"item icons are not being read: the game's item data has
+changed"**, a game update has moved the icons again and XIVHud needs an update;
+nothing is cached until it has one.
+
 If an item still draws the wrong icon, `//hud equipviewer icons probe` prints
 the item id the addon believes each slot holds - compare those with what you
 are actually wearing - along with where it read each icon from, and writes the

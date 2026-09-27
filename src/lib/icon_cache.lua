@@ -53,9 +53,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local icons = require("lib/icons")
 
 -- deps: `asset` (addon-relative -> absolute path), `file_exists` (absolute),
--- `read_dat`, `write_binary` (addon-relative), and `game_path` - consulted per
+-- `read_dat`, `write_binary` (addon-relative), `game_path` - consulted per
 -- attempt rather than once, since the client may not name its folder yet at
--- the first.
+-- the first - and the optional `on_mismatch(asked, found)`, told when a record
+-- names another item (the layout tripwire in `drain_queue`).
 local function new(deps)
   local self = {}
 
@@ -116,6 +117,22 @@ local function new(deps)
     local located = icons.locate(item_id)
     local path = located and icons.dat_path(deps.game_path(), located.dat)
     if not path then
+      return false
+    end
+
+    --[[ The tripwire (Kevin, 2026-09-27). Every item record opens with its
+         own id, so a record naming ANOTHER item - or none, an empty one -
+         means the game's item data no longer lies where the fixed mapping
+         says: exactly what the September 2026 update did, silently, for
+         weeks. Nothing is cached from it, and `on_mismatch` lets the player
+         hear about it the moment it happens, since the cache cannot be busted
+         to find out. A head that cannot be read at all is no evidence of
+         that, and the icon read below decides as it always did. ]]
+    local found = icons.record_id(deps.read_dat(path, located.record_offset, 2))
+    if found ~= nil and found ~= item_id then
+      if deps.on_mismatch then
+        deps.on_mismatch(item_id, found)
+      end
       return false
     end
 

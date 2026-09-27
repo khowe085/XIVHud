@@ -202,6 +202,20 @@ describe("entry point", function()
       assert.are.equal(boot.ctxs.equipviewer.get_equipment, boot.ctxs.crossbar.get_equipment)
     end)
 
+    --[[ The icon-layout tripwire's voice: three caches can trip it (the equip
+         viewer's and one per action bar) and the player hears it ONCE per load,
+         naming the item that tripped it and what its record held instead. ]]
+    it("says a moved item layout once, whichever cache trips it", function()
+      boot.ctxs.equipviewer.report_icon_layout(20689, 18967)
+      boot.ctxs.crossbar.report_icon_layout(4096, 0)
+      boot.ctxs.hotbar.report_icon_layout(4096, 0)
+      local said = boot.said()
+      local _, count = said:gsub("item data has changed", "")
+      assert.are.equal(1, count, said)
+      assert.is_not_nil(said:find("20689", 1, true))
+      assert.is_not_nil(said:find("18967", 1, true))
+    end)
+
     --[[ The game folder is `windower.ffxi_path` and nothing else - the
          reference equipviewer's default (`game_path_default =
          windower.ffxi_path`), without the `//ev gamepath` override it layers

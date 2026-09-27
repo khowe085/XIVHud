@@ -64,11 +64,11 @@ local icons = {}
      bytes to every item record. Windower moved the same day (2026-09-10): its
      resource extractor (ResourceExtractor 51bef17, "Updated to new item
      structures") and the reference equipviewer on Windower/Lua's `dev` branch
-     (7b718dc, EquipViewer 1.1.3, `icon_stride = 0x1400`). The launcher's
-     `live` branch still ships 1.1.2 at 0xC00, so the reference as installed
-     draws garbage for anything it extracts on a current client and only looks
-     right from a cache filled before the update - which is what made this so
-     long to find. The icon still starts 0x2BD in: 1.1.3 keeps
+     (7b718dc, EquipViewer 1.1.3, `icon_stride = 0x1400`), which is what the
+     launcher installed (Kevin's copy reads 0x1400, 2026-09-27). GitHub's
+     `live` branch still says 0xC00 and was the copy this port was compared
+     against - which is what made this so long to find. The icon still starts
+     0x2BD in: 1.1.3 keeps
      `icon_data_offset = 0x2BD`, and the defect Kevin first reported pins it -
      read at the old stride, Almace's record lands exactly on Magnus Scythe's
      icon at the new one (see icons_spec, "the record stride"). ]]
@@ -178,6 +178,18 @@ for stored = 0, 255 do
   DECODED[string.char(stored)] = string.char(decoded)
   DECODED_ALPHA[string.char(stored)] = string.char(math.min(decoded * 2, 255))
   STORED_FOR[decoded] = string.char(stored)
+end
+
+--[[ The item id a record opens with: its first two bytes, little-endian, under
+     the same byte rotation as the rest of the record - which is how Windower's
+     own resource extractor reads it (the record's first UInt16). nil for a head
+     that could not be read. The icon cache checks it before trusting anything
+     else in the record. ]]
+function icons.record_id(head)
+  if type(head) ~= "string" or #head < 2 then
+    return nil
+  end
+  return DECODED[head:sub(1, 1)]:byte() + DECODED[head:sub(2, 2)]:byte() * 256
 end
 
 --[[ Where an item's extracted icon is cached, relative to the addon folder.

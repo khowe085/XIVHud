@@ -17,7 +17,7 @@ local RECORD = string.rep("\0", 0x800)
 describe("equipviewer widget", function()
   local prims, widget, config
   local equipment, items, dats, files, writes, saves, packet, parsed, game
-  local equipment_reads, lookups, item_reads
+  local equipment_reads, lookups, item_reads, wrong_head, icon_reports
 
   -- Prims are built in one order and never rebuilt: the panel, then an icon
   -- per slot, then an encumbrance marker per slot, then the ammo count.
@@ -70,6 +70,8 @@ describe("equipviewer widget", function()
     dats = {}
     files = {}
     item_reads = {}
+    wrong_head = nil
+    icon_reports = {}
     writes = {}
     saves = 0
     packet = nil
@@ -105,7 +107,15 @@ describe("equipviewer widget", function()
       end,
       read_dat = function(path, offset, length)
         local dat = dats[path]
-        return dat and dat(offset, length) or nil
+        if not dat then
+          return nil
+        end
+        -- The head read the icon cache's tripwire takes: the record's own id,
+        -- or the one a test plants to trip it.
+        if length == 2 then
+          return wrong_head and fakes.record_head(wrong_head) or fakes.dat_head(path, offset)
+        end
+        return dat(offset, length)
       end,
       write_binary = function(path, contents)
         writes[#writes + 1] = { path = path, contents = contents }
@@ -114,6 +124,9 @@ describe("equipviewer widget", function()
       end,
       game_path = function()
         return game
+      end,
+      report_icon_layout = function(asked, found)
+        icon_reports[#icon_reports + 1] = { asked, found }
       end,
     })
   end)
@@ -870,6 +883,24 @@ describe("equipviewer widget", function()
       widget.update()
 
       assert.are.same({ "0:9", "0:11" }, item_reads)
+    end)
+  end)
+
+  -- The cache's tripwire reaches the entry point's reporter through the ctx.
+  describe("a moved item layout", function()
+    it("is reported, and nothing is cached from it", function()
+      equip("main", 5)
+      put_item(0, 5, 4096, 1)
+      dats["C:/FFXI/ROM/118/107.DAT"] = function()
+        return RECORD
+      end
+      wrong_head = 9999
+      attach()
+      widget.update()
+      widget.update()
+
+      assert.are.same({ { 4096, 9999 } }, icon_reports)
+      assert.are.equal(0, #writes)
     end)
   end)
 end)

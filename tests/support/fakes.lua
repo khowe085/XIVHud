@@ -436,4 +436,44 @@ function M.action_service(ctx, config)
   return require("lib/actionbar/service")(deps)
 end
 
+--[[ A fake DAT's answer to the icon cache's head read: the first two bytes of
+     the item record at `offset`, as the client stores them - the record's own
+     item id, little-endian, each byte rotated the way lib/icons.record_id
+     undoes. nil for a DAT this table does not know. The bases are the real
+     client's (lib/icons' range table), and a record is 0x1400 bytes. ]]
+local DAT_FIRST = {
+  ["118/106"] = 0x0000,
+  ["118/107"] = 0x1000,
+  ["118/110"] = 0x2000,
+  ["301/115"] = 0x2200,
+  ["118/109"] = 0x2800,
+  ["118/108"] = 0x4000,
+  ["286/73"] = 0x5A00,
+  ["217/21"] = 0x7000,
+  ["288/80"] = 0x7400,
+  ["288/67"] = 0xF000,
+  ["174/48"] = 0xFFFF,
+}
+
+function M.record_head(id)
+  local function stored(value)
+    return (value % 8) * 32 + math.floor(value / 8)
+  end
+  return string.char(stored(id % 256), stored(math.floor(id / 256)))
+end
+
+function M.dat_head(path, offset)
+  local dat = type(path) == "string" and path:match("ROM/(%d+/%d+)%.DAT$")
+  local first = dat and DAT_FIRST[dat]
+  if first == nil then
+    return nil
+  end
+  -- Only a record's START holds its id: a read anywhere else lands mid-record
+  -- and names no item, exactly as a misplaced read did in a live client.
+  if offset % 0x1400 ~= 0 then
+    return M.record_head(0)
+  end
+  return M.record_head(first + offset / 0x1400)
+end
+
 return M

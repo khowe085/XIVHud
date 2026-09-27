@@ -954,6 +954,7 @@ describe("crossbar live widget", function()
       writes = {},
       stats = {},
       dat_paths = {},
+      icon_reports = {},
       user_visible = true,
       now = 0,
       time = 1000000,
@@ -1111,7 +1112,17 @@ describe("crossbar live widget", function()
         env.stats[#env.stats + 1] = path
         return env.files[path] == true
       end,
-      read_dat = function(dat_path, _, length)
+      report_icon_layout = function(asked, found)
+        env.icon_reports[#env.icon_reports + 1] = { asked, found }
+      end,
+      read_dat = function(dat_path, offset, length)
+        -- The head read the icon cache's tripwire takes: the record's own id.
+        if length == 2 then
+          if env.dat_fails then
+            return nil
+          end
+          return env.wrong_head and fakes.record_head(env.wrong_head) or fakes.dat_head(dat_path, offset)
+        end
         env.dat_paths[#env.dat_paths + 1] = dat_path
         if env.dat_fails then
           return nil
@@ -3336,6 +3347,16 @@ describe("crossbar live widget", function()
       push(widget)
       assert.are.equal(1, #env.dat_paths)
       assert.is_not_nil(env.dat_paths[1]:find("C:/FFXI/", 1, true), "read: " .. env.dat_paths[1])
+    end)
+
+    -- The bars' cache (lib/actionbar/bar) reaches the same reporter.
+    it("reports an item record that names another item", function()
+      local files = war_bindings()
+      files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
+      build_world({ store_files = files })
+      env.wrong_head = 9999
+      push(widget)
+      assert.are.same({ { 4165, 9999 } }, env.icon_reports)
     end)
 
     it("stops re-stat'ing an item the cache has given up on", function()
