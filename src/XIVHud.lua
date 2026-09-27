@@ -1551,17 +1551,20 @@ if not safe_mode and not libraries_error then
   end
 end
 
---[[ FFXI reports vitals as two independent streams, absolute and percent. Each
-     value goes to the player service first, which lays it over the cached
-     player until the next read of the client overrules it -- so every component
-     asking `get_player()` sees one answer rather than three reconciliations.
-     They are still dispatched as well: a component that wants the event itself,
-     rather than the reconciled value, is not cut off from it. ]]
+--[[ FFXI reports vitals as two independent streams, absolute and percent. The
+     player service is told only THAT one moved: it marks the player stale and
+     the next read answers out of the client, which is the only thing that knows
+     all five agree with each other. The event's own value is deliberately
+     dropped -- laid over the cached player, as it used to be, a value the
+     stream got wrong took turns with the true one every 200ms.
+
+     They are still dispatched as well: a component that wants the event itself
+     is not cut off from it. ]]
 for _, vital in ipairs({ "hp", "hpp", "mp", "mpp", "tp" }) do
   windower.register_event(
     vital .. " change",
     guard.wrap(vital .. " change", function(new_value, old_value)
-      player_service.set_vital(vital, new_value)
+      player_service.vital_changed(vital)
       core.dispatch(vital, new_value, old_value)
     end)
   )

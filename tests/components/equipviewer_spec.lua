@@ -677,4 +677,82 @@ describe("equipviewer widget", function()
       end
     end)
   end)
+
+  --[[ Two verbs for the icon cache, which had no way in from the game at all.
+       A cached icon is handed back without ever being looked at and a failed
+       extraction is not retried, so a wrong or missing one survived every
+       login - Almace drawn as a scythe, Mirage Stole +2 drawn as nothing
+       (Kevin, 2026-09-18). ]]
+  describe("the icons verbs", function()
+    before_each(function()
+      equip("main", 5)
+      equip("head", 2, 8)
+      put_item(0, 5, 4096, 1)
+      put_item(8, 2, 12345, 1)
+      attach()
+      widget.update()
+    end)
+
+    it("clears every equipped icon so the next tick extracts it again", function()
+      files["addons/XIVHud/icons/4096.bmp"] = true
+      files["addons/XIVHud/icons/12345.bmp"] = true
+      widget.update()
+
+      local message = widget.handle_command({ "icons", "clear" })
+
+      assert.is_not_nil(tostring(message):find("2", 1, true), "it says how many it will re-read")
+      -- The icons directory is shared with the action bars, so nothing is
+      -- deleted: the re-extraction overwrites in place.
+      assert.is_true(files["addons/XIVHud/icons/4096.bmp"])
+      assert.is_true(files["addons/XIVHud/icons/12345.bmp"])
+
+      -- One icon is drained per frame, so both want a few.
+      dats["C:/FFXI/ROM/118/107.DAT"] = function()
+        return RECORD
+      end
+      dats["C:/FFXI/ROM/118/109.DAT"] = function()
+        return RECORD
+      end
+      for _ = 1, 6 do
+        widget.update()
+      end
+      assert.is_true(#writes > 0, "nothing was extracted again")
+    end)
+
+    it("probes every equipped slot", function()
+      local message = widget.handle_command({ "icons", "probe" })
+      local said = type(message) == "table" and table.concat(message, "|") or tostring(message)
+      assert.is_not_nil(said:find("4096", 1, true))
+      assert.is_not_nil(said:find("12345", 1, true))
+    end)
+
+    -- The hex sample is the whole reason a file is written; chat cannot carry it.
+    it("writes the fuller report beside load.log", function()
+      widget.handle_command({ "icons", "probe" })
+      local written
+      for _, write in ipairs(writes) do
+        if write.path == "icons.log" then
+          written = write.contents
+        end
+      end
+      assert.is_not_nil(written, "no icons.log was written")
+      assert.is_not_nil(written:find("XIVHud icon probe", 1, true))
+    end)
+
+    it("names an empty slot rather than probing item 0", function()
+      equip("main", 0)
+      widget.update()
+      widget.update()
+      local message = widget.handle_command({ "icons", "probe" })
+      local said = type(message) == "table" and table.concat(message, "|") or tostring(message)
+      assert.is_nil(said:find(" 0 ", 1, true), "item 0 is an empty slot, not an id to read")
+    end)
+
+    it("hints rather than guessing at an unknown icons verb", function()
+      local message = widget.handle_command({ "icons", "wat" })
+      local said = type(message) == "table" and table.concat(message, "|") or tostring(message)
+      assert.is_not_nil(said:find("clear", 1, true))
+      assert.is_not_nil(said:find("probe", 1, true))
+    end)
+  end)
 end)

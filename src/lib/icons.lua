@@ -178,9 +178,15 @@ function icons.locate(item_id)
 
   for _, range in ipairs(DATS) do
     if id >= range.min and id <= range.max then
+      local record = id - range.first
       return {
         dat = range.dat,
-        offset = (id - range.first) * RECORD_STRIDE + ICON_OFFSET,
+        -- The record's own index and start, beside the icon's offset inside
+        -- it: an icon that comes out wrong was read at the wrong record, and
+        -- these are the only numbers that can say which one it read.
+        record = record,
+        record_offset = record * RECORD_STRIDE,
+        offset = record * RECORD_STRIDE + ICON_OFFSET,
         length = ICON_LENGTH,
       }
     end

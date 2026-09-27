@@ -217,7 +217,42 @@ describe("lib icons", function()
   -- answers straight from lib/, with no component in the picture.
   it("locates an item's icon straight from lib/", function()
     local located = icons.locate(4096)
-    assert.are.same({ dat = "118/107", offset = 0x2BD, length = 0x800 }, located)
+    assert.are.same({ dat = "118/107", record = 0, record_offset = 0, offset = 0x2BD, length = 0x800 }, located)
     assert.are.equal("C:/FFXI/ROM/118/107.DAT", icons.dat_path("C:/FFXI/", located.dat))
+  end)
+end)
+
+describe("the record a locate points at", function()
+  --[[ `record` is the index of the item's record inside its DAT and
+       `record_offset` where that record starts - the icon offset is 0x2BD
+       into it. Both are derived rather than stored so a diagnostic can report
+       the same numbers the read actually used: an icon that comes out wrong is
+       an icon read at the wrong record, and the record index is the only
+       number that can say so. ]]
+  it("numbers the first record of a range zero", function()
+    local located = icons.locate(0x1000)
+    assert.are.equal(0, located.record)
+    assert.are.equal(0, located.record_offset)
+    assert.are.equal(0x2BD, located.offset)
+  end)
+
+  it("counts records forward from the range's own first id", function()
+    local located = icons.locate(0x1002)
+    assert.are.equal(2, located.record)
+    assert.are.equal(2 * 0xC00, located.record_offset)
+    assert.are.equal(2 * 0xC00 + 0x2BD, located.offset)
+  end)
+
+  --[[ The general-items DAT starts one in - id 1 is record 1, not record 0 -
+       which is the one range whose `first` is not its own minimum. ]]
+  it("keeps the general-items DAT's one-in start", function()
+    assert.are.equal(1, icons.locate(0x0001).record)
+  end)
+
+  -- Almace, the sword that came out of the DAT as a scythe (Kevin, 2026-09-18).
+  it("places a weapon against the weapons DAT", function()
+    local located = icons.locate(20689)
+    assert.are.equal("118/108", located.dat)
+    assert.are.equal(20689 - 0x4000, located.record)
   end)
 end)

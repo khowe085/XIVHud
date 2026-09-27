@@ -349,11 +349,78 @@ local function new(ctx)
     end
   end
 
-  --[[ An icon that could not be extracted leaves a cell empty and says nothing
-       about it, and the likeliest cause - Windower pointing at the wrong
-       install - empties the whole grid. A component has no channel of its own
-       to complain on, so the command answers for it. ]]
+  --[[ The ids currently worn, in slot order and without the empty ones: 0 is
+       an empty slot rather than an item to read. ]]
+  local function worn()
+    local found = {}
+    for _, slot in ipairs(logic.slots()) do
+      local item_id = logic.item(slot)
+      if item_id ~= 0 then
+        found[#found + 1] = { slot = slot, id = item_id }
+      end
+    end
+    return found
+  end
+
+  --[[ `icons clear` and `icons probe`. Neither existed, and between them they
+       are the only way to recover from - or explain - an icon that came out
+       wrong: the cache hands back whatever .bmp is on disk without ever
+       looking at it, and abandons a failed extraction for the session, so
+       Almace drawing as a scythe and Mirage Stole +2 drawing as nothing
+       survived every login (Kevin, 2026-09-18).
+
+       They reach the cache and the client, so they are answered here rather
+       than in logic.lua, which stays pure; the formatting is logic's. ]]
+  local function icons_command(word)
+    word = tostring(word or ""):lower()
+
+    if word == "clear" then
+      -- Counted by ID rather than by slot: twin rings are one icon.
+      local seen, dropped = {}, 0
+      for _, item in ipairs(worn()) do
+        cache.refresh(item.id)
+        if not seen[item.id] then
+          seen[item.id] = true
+          dropped = dropped + 1
+        end
+      end
+      -- The next ticks re-request them, one icon per frame.
+      drawn = {}
+      render()
+      return string.format("equipviewer: %d icon(s) will be read from the DATs again", dropped)
+    end
+
+    if word == "probe" then
+      local reports = {}
+      for _, item in ipairs(worn()) do
+        local report = cache.probe(item.id)
+        report.slot = item.slot
+        reports[#reports + 1] = report
+      end
+      if #reports == 0 then
+        return "equipviewer: nothing is equipped to probe"
+      end
+
+      local lines = logic.probe_lines(reports)
+      -- The file carries what chat cannot: the paths and the record samples.
+      if ctx.write_binary and ctx.write_binary("icons.log", logic.probe_report(reports)) then
+        lines[#lines + 1] = "written to icons.log beside load.log"
+      end
+      return lines
+    end
+
+    return string.format("equipviewer: no icons verb '%s' (clear, probe)", word)
+  end
+
+  --[[ `//hud equipviewer ...`. An icon that could not be extracted leaves a
+       cell empty and says nothing about it, and the likeliest cause - Windower
+       pointing at the wrong install - empties the whole grid. A component has
+       no channel of its own to complain on, so the command answers for it. ]]
   function self.handle_command(args)
+    if tostring((args or {})[1] or ""):lower() == "icons" then
+      return icons_command(args[2])
+    end
+
     local message, changed = logic.command(args)
     if changed then
       apply_style()

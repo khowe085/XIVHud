@@ -302,12 +302,20 @@ describe("entry point", function()
       assert.are.equal(7, boot.ctxs.targetbar.get_mob_by_target("t").id)
     end)
 
-    -- The events still dispatch to the components; they now also reconcile
-    -- against the cached player, so every consumer sees one answer.
-    it("applies a vitals change event to the player it hands out", function()
+    --[[ The events still dispatch to the components; they also re-open the
+         player read, so every consumer sees the CLIENT's numbers rather than
+         the event's. The event's own value is deliberately dropped here: the
+         absolute stream can carry one nothing corrects, and laying it over the
+         client made the two take turns. ]]
+    it("re-reads the player on a vitals change event", function()
       boot.ctxs.parambar.get_player()
+      local before = boot.client_calls.player
+      boot.player.vitals.hp = 640
+
       boot.handlers["hp change"](640, 1000)
+
       assert.are.equal(640, boot.ctxs.targetbar.get_player().vitals.hp)
+      assert.are.equal(before + 1, boot.client_calls.player, "the event did not re-open the read")
     end)
 
     it("still dispatches a vitals change event to the components", function()

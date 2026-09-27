@@ -69,6 +69,8 @@ local function new(deps)
   local abandoned = {}
   local abandoned_count = 0
   local resolved = {}
+  -- Ids a refresh has asked to be read again, whatever is already on disk.
+  local forced = {}
 
   local function icon_file(item_id)
     return ICON_CACHE_DIR .. item_id .. ".bmp"
@@ -78,6 +80,11 @@ local function new(deps)
   -- An item already given up on is not looked for again: this runs on the
   -- packet path, and the file is not going to appear.
   function self.cached_icon(item_id)
+    -- A forced id answers nothing until it has actually been read again, which
+    -- is what makes the caller request it rather than settle for the file.
+    if forced[item_id] then
+      return nil
+    end
     if resolved[item_id] then
       return resolved[item_id]
     end
@@ -129,8 +136,79 @@ local function new(deps)
 
     abandoned[item_id] = nil
     abandoned_count = abandoned_count - 1
+    forced[item_id] = nil
     resolved[item_id] = deps.asset(icon_file(item_id))
     return true
+  end
+
+  --[[ How much of the record to sample for a probe. The icon sits 0x2BD in,
+       so this is the head of the record BEFORE it - whatever the DAT keeps
+       there is the only evidence of which item the offset actually landed on,
+       which is the question a wrong icon asks. ]]
+  local SAMPLE_LENGTH = 32
+
+  --[[ Read an icon again on the next request, whatever is already on disk.
+       Without this a cached icon is PERMANENT - `cached_icon` hands back the
+       file without ever looking at it, and an abandoned item is not retried
+       for the rest of the session - so a corrupt or half-written icon survives
+       every login with no way in from the game.
+
+       The file is deliberately not deleted. Three cache instances share one
+       `icons/` directory (the equip viewer's, and one per action bar) and each
+       remembers separately what it resolved, so a deletion here would leave
+       the other two pointing at a texture that no longer exists - and Windower
+       draws nothing, silently, for a missing texture path. The re-extraction
+       overwrites the file in place, which every instance already points at.
+
+       Note what this CANNOT do: extraction is deterministic, so an icon that
+       came out wrong comes out wrong again. It recovers a missing or abandoned
+       one - after a `game_path` correction, say - and it is how a file written
+       wrong by an older build gets replaced.
+
+       Answers whether it had anything to forget. ]]
+  function self.refresh(item_id)
+    local knew = resolved[item_id] ~= nil or abandoned[item_id] == true
+    resolved[item_id] = nil
+    forced[item_id] = true
+    if abandoned[item_id] then
+      abandoned[item_id] = nil
+      abandoned_count = abandoned_count - 1
+    end
+    -- `queued` is left alone on purpose: the id may still be sitting in
+    -- `pending`, and clearing it would let a second request queue it twice.
+    return knew
+  end
+
+  --[[ Every number the extraction would use for an item, for a diagnostic to
+       print. It reads the DAT but writes nothing and remembers nothing: a
+       probe must not mark an item resolved or abandoned, or asking about a
+       broken icon would change whether it is retried.
+
+       `sample_raw` is the head of the RECORD rather than of the icon, and is
+       handed back as the bytes that came off disk - turning them into
+       something printable belongs to whoever is printing. ]]
+  function self.probe(item_id)
+    local located = icons.locate(item_id)
+    local path = located and icons.dat_path(deps.game_path(), located.dat)
+    local report = {
+      id = item_id,
+      dat = located and located.dat,
+      record = located and located.record,
+      offset = located and located.offset,
+      path = path,
+      read = 0,
+      -- What `cached_icon` would answer, not merely what is on disk: after a
+      -- refresh the file is still there but the icon is being read again.
+      cached = not forced[item_id] and deps.file_exists(deps.asset(icon_file(item_id))) == true,
+    }
+    if not path then
+      return report
+    end
+
+    local block = deps.read_dat(path, located.offset, located.length)
+    report.read = block and #block or 0
+    report.sample_raw = deps.read_dat(path, located.record_offset, SAMPLE_LENGTH)
+    return report
   end
 
   --[[ The per-character reset, for a detach: the queue goes with the

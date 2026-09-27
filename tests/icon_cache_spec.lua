@@ -165,4 +165,118 @@ describe("icon cache", function()
     cache.drain_queue()
     assert.are.equal("D:/Games/FFXI/ROM/118/107.DAT", dat_reads[2].path)
   end)
+
+  --[[ A cached icon was permanent: `cached_icon` hands back whatever .bmp is on
+       disk and never looks at it again, and a failed extraction is abandoned
+       for the session. So a wrong icon - Almace drawn as a scythe (Kevin,
+       2026-09-18) - survived every login with no way to clear it from in game.
+       Forgetting one removes the file and lets the next request extract it
+       afresh. ]]
+  describe("refreshing an icon", function()
+    --[[ The file is deliberately NOT deleted. Three cache instances share one
+         `icons/` directory (the equip viewer's and a bar's apiece) and each
+         remembers what it resolved, so deleting would leave the other two
+         pointing at a texture that is gone - and a missing texture path fails
+         SILENTLY in Windower, which is the worst shape this could take. The
+         re-extraction overwrites the file in place instead. ]]
+    it("re-extracts on the next request without deleting the file", function()
+      cache.request_icon(USABLE)
+      cache.drain_queue()
+      assert.is_not_nil(cache.cached_icon(USABLE))
+
+      assert.is_true(cache.refresh(USABLE))
+      assert.is_true(files["addons/XIVHud/icons/4096.bmp"], "the shared file was deleted")
+      assert.is_nil(cache.cached_icon(USABLE), "it still answers from the old file")
+
+      cache.request_icon(USABLE)
+      assert.is_true(cache.drain_queue())
+      assert.are.equal(2, #dat_reads, "the DAT was not read a second time")
+      assert.are.equal(2, #writes, "the icon was not written again")
+      assert.is_not_nil(cache.cached_icon(USABLE), "it did not come back after re-extraction")
+    end)
+
+    -- The queue is the other half: an id still waiting must not be queued twice.
+    it("does not queue an id twice when one was already pending", function()
+      cache.request_icon(USABLE)
+      cache.refresh(USABLE)
+      cache.request_icon(USABLE)
+
+      assert.is_true(cache.drain_queue())
+      assert.is_false(cache.drain_queue(), "the id was left in the queue twice")
+    end)
+
+    it("forgives an abandoned icon", function()
+      deps.read_dat = function()
+        return nil
+      end
+      cache.request_icon(USABLE)
+      cache.drain_queue()
+      assert.is_true(cache.is_abandoned(USABLE))
+      assert.are.equal(1, cache.abandoned_count())
+
+      cache.refresh(USABLE)
+      assert.is_false(cache.is_abandoned(USABLE))
+      assert.are.equal(0, cache.abandoned_count())
+    end)
+
+    -- Nothing known about it is nothing to refresh; it extracts as usual.
+    it("answers false for an icon it knew nothing about", function()
+      assert.is_false(cache.refresh(USABLE))
+    end)
+  end)
+
+  --[[ The diagnostic. An icon that comes out wrong was read at the wrong
+       record, and none of the numbers that decide the record - the DAT, the
+       index, the byte offset, how much came back - is visible from in game. ]]
+  describe("probing an item", function()
+    it("reports the numbers the read would use", function()
+      local report = cache.probe(USABLE)
+      assert.are.equal(USABLE, report.id)
+      assert.are.equal("118/107", report.dat)
+      assert.are.equal(0, report.record)
+      assert.are.equal(0x2BD, report.offset)
+      assert.are.equal("C:/FFXI/ROM/118/107.DAT", report.path)
+      assert.are.equal(0x800, report.read)
+      assert.is_false(report.cached)
+    end)
+
+    it("says when the icon is already on disk", function()
+      cache.request_icon(USABLE)
+      cache.drain_queue()
+      assert.is_true(cache.probe(USABLE).cached)
+    end)
+
+    -- What the record's own first bytes hold is the whole point: it is the
+    -- only evidence of WHICH item the offset actually landed on.
+    it("samples the head of the record itself, not the icon", function()
+      deps.read_dat = function(_, offset, length)
+        return ("o%d:%d"):format(offset, length)
+      end
+      local report = cache.probe(USABLE)
+      assert.are.equal("o0:32", report.sample_raw, "the sample starts at the record, not the icon")
+    end)
+
+    it("reports a read that came back short", function()
+      deps.read_dat = function()
+        return "tiny"
+      end
+      local report = cache.probe(USABLE)
+      assert.are.equal(4, report.read)
+    end)
+
+    it("reports a read that answered nothing", function()
+      deps.read_dat = function()
+        return nil
+      end
+      local report = cache.probe(USABLE)
+      assert.are.equal(0, report.read)
+    end)
+
+    it("survives an id no DAT covers", function()
+      local report = cache.probe(0x8000)
+      assert.are.equal(0x8000, report.id)
+      assert.is_nil(report.dat)
+      assert.are.equal(0, report.read)
+    end)
+  end)
 end)
