@@ -202,14 +202,26 @@ describe("entry point", function()
       assert.are.equal(boot.ctxs.equipviewer.get_equipment, boot.ctxs.crossbar.get_equipment)
     end)
 
+    --[[ The game folder is `windower.ffxi_path` and nothing else - the
+         reference equipviewer's default (`game_path_default =
+         windower.ffxi_path`), without the `//ev gamepath` override it layers
+         over it. There was a `game_path` config key over it and a `pol_path`
+         fallback under it until 2026-09-27; Kevin's call - a player should
+         never have to configure where the game is, and the PlayOnline folder
+         has no ROM directory to fall back to anyway. ]]
+    it("names the game folder by the reference addon's default alone", function()
+      assert.are.equal("FFXI/", boot.ctxs.equipviewer.game_path())
+      boot.windower.ffxi_path = nil
+      assert.is_nil(boot.ctxs.equipviewer.game_path(), "fell back to the PlayOnline folder")
+    end)
+
     --[[ The reference equipviewer's own call, verbatim: `get_items('equipment')`,
          the equipment bag asked for by NAME. This read took the whole inventory
          and its `.equipment` field until 2026-09-27 - the wiki says the two are
          the same table, and nobody ever confirmed that in a client, while the
-         reference's call is proven by the addon that draws the same gear
-         correctly. A fresh login's read ran when fifteen garbage icons were
-         extracted (Kevin, live client, 2026-09-27) - whether it caused them is
-         not established. ]]
+         reference's call is the one it is known to work with. The icon trouble
+         of that time turned out to be the record size (see lib/icons), not
+         this read. ]]
     it("reads the equipment the way the reference addon does", function()
       boot.item_reads = {}
       boot.ctxs.equipviewer.get_equipment()

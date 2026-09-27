@@ -16,7 +16,7 @@ opening the equipment menu.
 - Draws an **X** over any slot that encumbrance has locked.
 - Shows your **ammo count** over the ammo slot.
 - Icons are read straight out of the game's data files the first time an
-  item is seen, then cached in `addons/XIVHud/icons/` for every character.
+  item is seen, then cached in `addons/XIVHud/icons/items/` for every character.
   No icon pack to download.
 
 ## Configuration options
@@ -39,22 +39,24 @@ command.
 | `ammo_text.bold` / `italic` | `true` / `true` | ammo count style |
 | `ammo_text` colour | white, `a = 230` | ammo count colour |
 | `ammo_text.stroke` | black, width 1 | outline around the count |
-| `game_path` | `""` | where FFXI is installed, if the addon cannot find it on its own (the folder containing `ROM`) |
 
-If icons stay blank, the addon could not find your FFXI install. Set
-`game_path` to the game's folder, for example
-`"C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI"`, then unload
-and reload the addon so the icons are read again with the new path.
+The icons are read out of the game's own data files, in the folder Windower
+reports for your install; there is nothing to configure.
 
-If an item draws the *wrong* icon, or no icon while everything else is fine,
-that is a known open problem and not a setting. `//hud equipviewer icons probe`
-prints the item id the addon believes each slot holds - compare those with what
-you are actually wearing - along with what it worked out
-for each equipped slot and writes the same, in more detail, to `icons.log`
-beside the addon's `load.log`; that file is what to send along with a report.
+Icons that came out black, white, garbled or wrong after the September 2026
+game update fix themselves: this version reads every icon afresh into a folder
+of its own, `icons/items`, and never looks at the old ones again. The loose
+`.bmp` files left directly in `icons` can be deleted to save space - but leave
+`icons/custom` alone, since that is your own crossbar and hotbar art.
+
+If an item still draws the wrong icon, `//hud equipviewer icons probe` prints
+the item id the addon believes each slot holds - compare those with what you
+are actually wearing - along with where it read each icon from, and writes the
+same in more detail to `icons.log` beside the addon's `load.log`; that file is
+what to send along with a report.
 
 To make the addon read an icon again, unload it (`//lua unload XIVHud`), delete
-the file `icons/<item id>.bmp` in the addon's folder, and load it again. There
+the file `icons/items/<item id>.bmp` in the addon's folder, and load it again. There
 is no command for it: the addon cannot overwrite an image file it is currently
 drawing.
 

@@ -58,10 +58,10 @@ describe("crossbar defaults", function()
     }, defaults.hide)
   end)
 
-  it("ships an empty game_path override, equipviewer's idiom", function()
-    -- Discoverable in the file players read; the widget's guard treats
-    -- empty as "use the client's own answer".
-    assert.equal("", defaults.game_path)
+  -- The game folder is Windower's answer alone since 2026-09-27: a player
+  -- never configures where the game is, so no key ships for it.
+  it("ships no game_path", function()
+    assert.is_nil(defaults.game_path)
   end)
 
   it("carries the press-flash, text and cost colour settings", function()

@@ -214,7 +214,7 @@ Windower4/addons/XIVHud/data/<Character>/core.lua                      general s
 Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/config.lua  the component's settings
 Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/layout.lua  its position, scale and on/off state
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/<JOB>.lua     the crossbar's bindings for that job (the hotbar's sit beside it in hotbar/)
-Windower4/addons/XIVHud/icons/                                          item icons read from the game, plus your own in icons/custom/
+Windower4/addons/XIVHud/icons/                                          item icons read from the game in icons/items/, your own in icons/custom/
 ```
 
 The files are plain Lua tables and can be edited in a text editor while the

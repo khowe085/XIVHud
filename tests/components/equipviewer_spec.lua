@@ -163,8 +163,8 @@ describe("equipviewer widget", function()
       equip("head", 2, 8)
       put_item(0, 5, 4096, 1)
       put_item(8, 2, 12345, 1)
-      files["addons/XIVHud/icons/4096.bmp"] = true
-      files["addons/XIVHud/icons/12345.bmp"] = true
+      files["addons/XIVHud/icons/items/4096.bmp"] = true
+      files["addons/XIVHud/icons/items/12345.bmp"] = true
     end)
 
     it("shows the icon of every occupied slot", function()
@@ -172,9 +172,9 @@ describe("equipviewer widget", function()
       widget.set_pos(100, 200)
       widget.show()
 
-      assert.equal("addons/XIVHud/icons/4096.bmp", icon(MAIN).last.path)
+      assert.equal("addons/XIVHud/icons/items/4096.bmp", icon(MAIN).last.path)
       assert.is_true(icon(MAIN).visible)
-      assert.equal("addons/XIVHud/icons/12345.bmp", icon(HEAD).last.path)
+      assert.equal("addons/XIVHud/icons/items/12345.bmp", icon(HEAD).last.path)
       assert.is_true(icon(HEAD).visible)
     end)
 
@@ -189,12 +189,12 @@ describe("equipviewer widget", function()
       attach()
       widget.show()
       put_item(0, 9, 777, 1)
-      files["addons/XIVHud/icons/777.bmp"] = true
+      files["addons/XIVHud/icons/items/777.bmp"] = true
 
       chunk(EQUIP, { ["Equipment Slot"] = BODY, ["Inventory Bag"] = 0, ["Inventory Index"] = 9 })
       widget.update()
 
-      assert.equal("addons/XIVHud/icons/777.bmp", icon(BODY).last.path)
+      assert.equal("addons/XIVHud/icons/items/777.bmp", icon(BODY).last.path)
       assert.is_true(icon(BODY).visible)
     end)
 
@@ -215,14 +215,14 @@ describe("equipviewer widget", function()
       equipment = {}
       equip("back", 4)
       put_item(0, 4, 555, 1)
-      files["addons/XIVHud/icons/555.bmp"] = true
+      files["addons/XIVHud/icons/items/555.bmp"] = true
 
       chunk(JOB_INFO, { ["Encumbrance Flags"] = 0 })
       assert.is_true(icon(MAIN).visible)
 
       tick()
       assert.is_false(icon(MAIN).visible)
-      assert.equal("addons/XIVHud/icons/555.bmp", icon(BACK).last.path)
+      assert.equal("addons/XIVHud/icons/items/555.bmp", icon(BACK).last.path)
     end)
 
     --[[ The equipment table is all zeros until the bags have settled, and
@@ -234,11 +234,11 @@ describe("equipviewer widget", function()
       equipment = {}
       equip("back", 4)
       put_item(0, 4, 555, 1)
-      files["addons/XIVHud/icons/555.bmp"] = true
+      files["addons/XIVHud/icons/items/555.bmp"] = true
 
       chunk(FINISH_INVENTORY, { Flag = 0 })
       tick()
-      assert.equal("addons/XIVHud/icons/555.bmp", icon(BACK).last.path)
+      assert.equal("addons/XIVHud/icons/items/555.bmp", icon(BACK).last.path)
     end)
 
     -- One arrives per bag, and there are a dozen of them.
@@ -309,7 +309,7 @@ describe("equipviewer widget", function()
     end)
 
     it("does not read a DAT for an icon already on disk", function()
-      files["addons/XIVHud/icons/4096.bmp"] = true
+      files["addons/XIVHud/icons/items/4096.bmp"] = true
       dats["C:/FFXI/ROM/118/107.DAT"] = function()
         error("should not have been read")
       end
@@ -327,7 +327,7 @@ describe("equipviewer widget", function()
 
       tick()
       assert.equal(1, #writes)
-      assert.equal("icons/4096.bmp", writes[1].path)
+      assert.equal("icons/items/4096.bmp", writes[1].path)
       assert.equal("BM", writes[1].contents:sub(1, 2))
     end)
 
@@ -337,7 +337,7 @@ describe("equipviewer widget", function()
       assert.is_false(icon(MAIN).visible)
 
       tick()
-      assert.equal("addons/XIVHud/icons/4096.bmp", icon(MAIN).last.path)
+      assert.equal("addons/XIVHud/icons/items/4096.bmp", icon(MAIN).last.path)
       assert.is_true(icon(MAIN).visible)
     end)
 
@@ -369,13 +369,16 @@ describe("equipviewer widget", function()
       assert.same({ offset = 0x2BD, length = 0x800 }, asked)
     end)
 
-    it("prefers the game path the player configured", function()
+    --[[ An existing config.lua can still carry a `game_path` - the settings
+         merge keeps keys the defaults no longer mention - and it must not
+         steer the read: the game folder is Windower's answer alone now. ]]
+    it("reads the game from Windower even with a game_path left in the config", function()
       attach()
       config.game_path = "D:/Games/FFXI"
-      dats["D:/Games/FFXI/ROM/118/107.DAT"] = function()
+      dats["D:/Games/FFXI/ROM/118/107.DAT"] = nil
+      dats["C:/FFXI/ROM/118/107.DAT"] = function()
         return RECORD
       end
-      dats["C:/FFXI/ROM/118/107.DAT"] = nil
 
       tick()
       assert.equal(1, #writes)
@@ -459,7 +462,7 @@ describe("equipviewer widget", function()
     before_each(function()
       equip("ammo", 3)
       put_item(0, 3, 18000, 90)
-      files["addons/XIVHud/icons/18000.bmp"] = true
+      files["addons/XIVHud/icons/items/18000.bmp"] = true
     end)
 
     it("counts the stack over the ammo icon", function()
@@ -556,7 +559,7 @@ describe("equipviewer widget", function()
     before_each(function()
       equip("main", 5)
       put_item(0, 5, 4096, 1)
-      files["addons/XIVHud/icons/4096.bmp"] = true
+      files["addons/XIVHud/icons/items/4096.bmp"] = true
     end)
 
     it("hides everything when the framework says to", function()
@@ -595,10 +598,9 @@ describe("equipviewer widget", function()
   end)
 
   describe("logging out", function()
-    --[[ The likeliest reason an icon cannot be read is a game path pointing at
-         the wrong install, and the only way to correct that is to edit the
-         setting and log back in. An id abandoned for the last character must
-         not still be abandoned for this one. ]]
+    --[[ A relog is a retry: an icon that could not be read - the client not
+         naming its folder yet, say - is given another chance by the next
+         character rather than abandoned for good. ]]
     it("tries again for an icon the last character could not read", function()
       equip("main", 5)
       put_item(0, 5, 4096, 1)
@@ -619,7 +621,7 @@ describe("equipviewer widget", function()
     it("empties the grid, so the next character sees none of it", function()
       equip("main", 5)
       put_item(0, 5, 4096, 1)
-      files["addons/XIVHud/icons/4096.bmp"] = true
+      files["addons/XIVHud/icons/items/4096.bmp"] = true
       attach()
       widget.show()
 
@@ -666,7 +668,7 @@ describe("equipviewer widget", function()
       local message = widget.handle_command({})
       assert.same({
         "equipviewer: encumbrance on, ammo count on",
-        "  1 icon could not be read from the game's DAT files - check the game_path setting",
+        "  1 icon could not be read from the game's DAT files - //hud equipviewer icons probe shows where it looked",
       }, message)
     end)
 
@@ -749,7 +751,7 @@ describe("equipviewer widget", function()
       equip("main", 5)
       put_item(0, 5, 4096, 1)
       put_item(0, 9, 777, 1)
-      files["addons/XIVHud/icons/777.bmp"] = true
+      files["addons/XIVHud/icons/items/777.bmp"] = true
       attach()
       widget.show()
       widget.update()
@@ -770,7 +772,7 @@ describe("equipviewer widget", function()
 
       assert.are.same({ "0:9" }, item_reads)
       assert.are.equal(before, equipment_reads, "the whole equipment map was re-read")
-      assert.are.equal("addons/XIVHud/icons/777.bmp", icon(MAIN).last.path)
+      assert.are.equal("addons/XIVHud/icons/items/777.bmp", icon(MAIN).last.path)
     end)
 
     --[[ An unequip empties its slot at once, while an equip's read waits a
@@ -788,7 +790,7 @@ describe("equipviewer widget", function()
 
     it("keeps only the last of two equips to one slot", function()
       put_item(0, 11, 12345, 1)
-      files["addons/XIVHud/icons/12345.bmp"] = true
+      files["addons/XIVHud/icons/items/12345.bmp"] = true
       chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
       chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 11, ["Inventory Bag"] = 0 })
       item_reads = {}
@@ -796,7 +798,7 @@ describe("equipviewer widget", function()
       widget.update()
 
       assert.are.same({ "0:11" }, item_reads)
-      assert.are.equal("addons/XIVHud/icons/12345.bmp", icon(MAIN).last.path)
+      assert.are.equal("addons/XIVHud/icons/items/12345.bmp", icon(MAIN).last.path)
     end)
 
     --[[ These three put the equipment map where the client would have it a
@@ -854,7 +856,7 @@ describe("equipviewer widget", function()
       widget.update()
       widget.update()
 
-      assert.are.equal("addons/XIVHud/icons/777.bmp", icon(MAIN).last.path)
+      assert.are.equal("addons/XIVHud/icons/items/777.bmp", icon(MAIN).last.path)
     end)
 
     -- A GearSwap burst reads each slot it names, once, a tick later.

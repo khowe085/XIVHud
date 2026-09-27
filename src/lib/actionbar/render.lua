@@ -72,6 +72,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      above travels with the sweep. ]]
 
 local kebab = require("lib/actionbar/kebab")
+local icons = require("lib/icons")
 
 -- Upstream's fixed 40px slot, every bar's.
 local SLOT = 40
@@ -437,7 +438,7 @@ local function new(deps)
       if type(meta.item_id) == "number" then
         -- The shared extracted-icon cache beside the addon (lib/icons), NOT
         -- under data/ - see equipviewer for why.
-        add(("icons/%d.bmp"):format(meta.item_id), true)
+        add(icons.cache_file(meta.item_id), true)
       end
       --[[ An enchanteditem with no target word still aims at <me> (that is
            enchanteditem.lua's default, since gear is worn by the person

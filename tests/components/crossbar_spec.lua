@@ -3303,8 +3303,8 @@ describe("crossbar live widget", function()
       local icon = image_of("xhb_left", 6, "icon")
       assert.are.equal("addon/assets/icons/usable-item.png", icon.last.path, "fallback first")
       push(widget)
-      assert.are.equal("icons/4165.bmp", env.writes[1], "one extraction, queued off the packet path")
-      assert.are.equal("addon/icons/4165.bmp", icon.last.path, "the cache landing repaints the slot")
+      assert.are.equal("icons/items/4165.bmp", env.writes[1], "one extraction, queued off the packet path")
+      assert.are.equal("addon/icons/items/4165.bmp", icon.last.path, "the cache landing repaints the slot")
     end)
 
     it("re-stats nothing on a settled repaint", function()
@@ -3322,16 +3322,15 @@ describe("crossbar live widget", function()
       end
     end)
 
-    it("ignores an empty game_path override", function()
-      -- equipviewer ships game_path = "" as its override idiom; copied into
-      -- this component's config it must fall through to the client's
-      -- answer, not silently abandon every item icon for the session.
+    -- A game_path an older config still carries must not steer the read: the
+    -- game folder is Windower's answer alone since 2026-09-27.
+    it("ignores a game_path left in the config", function()
       local files = war_bindings()
       files.WAR.sets[1].left[6] = { type = "item", action = "Prism Powder", target = "me" }
       build_world({
         store_files = files,
         tune_config = function(tuned)
-          tuned.game_path = ""
+          tuned.game_path = "D:/Elsewhere"
         end,
       })
       push(widget)
@@ -3369,7 +3368,7 @@ describe("crossbar live widget", function()
       widget.show()
       env.stats = {}
       push(widget)
-      assert.are.equal("addon/icons/4165.bmp", image_of("xhb_left", 6, "icon").last.path)
+      assert.are.equal("addon/icons/items/4165.bmp", image_of("xhb_left", 6, "icon").last.path)
       for _, path in ipairs(env.stats) do
         assert.is_nil(path:find("savage%-blade"), "a settled slot must not be re-stat'd: " .. path)
       end

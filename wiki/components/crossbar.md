@@ -104,7 +104,6 @@ command are also set from the console.
 | `text_offset.x` / `.y` | `0` / `0` | nudge the labels |
 | `text_color` / `text_stroke` | white / dark, width 2 | label colour and outline |
 | `mp_cost_color` / `tp_cost_color` | pink / yellow | the cost text colours |
-| `game_path` | `""` | where FFXI is installed, if item icons stay blank (see the [equipment viewer](equipviewer.md)) |
 | `binder_pos` | none | where you last left the binder window; written by the binder, not by hand |
 | `input.*` | see below | the keys the bar reads, as DirectInput key codes |
 

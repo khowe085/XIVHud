@@ -39,11 +39,23 @@ describe("icon cache", function()
     cache = new_icon_cache(deps)
   end)
 
-  it("extracts a requested icon into icons/<item_id>.bmp and reports it done", function()
+  --[[ The folder moved on 2026-09-27 because everything left at the old path
+       was extracted at the old record size and is garbage. A fallback to it
+       would put those icons straight back on screen. ]]
+  it("never reads an icon from the folder it used before", function()
+    files["addons/XIVHud/icons/" .. USABLE .. ".bmp"] = true
+    assert.is_nil(cache.cached_icon(USABLE))
+
+    cache.request_icon(USABLE)
+    cache.drain_queue()
+    assert.are.equal("icons/items/" .. USABLE .. ".bmp", writes[1].path)
+  end)
+
+  it("extracts a requested icon into icons/items/<item_id>.bmp and reports it done", function()
     cache.request_icon(USABLE)
     assert.is_true(cache.drain_queue())
-    assert.are.equal("icons/" .. USABLE .. ".bmp", writes[1].path)
-    assert.are.equal("addons/XIVHud/icons/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
+    assert.are.equal("icons/items/" .. USABLE .. ".bmp", writes[1].path)
+    assert.are.equal("addons/XIVHud/icons/items/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
   end)
 
   it("reads the DAT the game path names, at the item's own record", function()
@@ -73,8 +85,8 @@ describe("icon cache", function()
   end)
 
   it("finds an icon already on disk and remembers the answer", function()
-    files["addons/XIVHud/icons/777.bmp"] = true
-    assert.are.equal("addons/XIVHud/icons/777.bmp", cache.cached_icon(777))
+    files["addons/XIVHud/icons/items/777.bmp"] = true
+    assert.are.equal("addons/XIVHud/icons/items/777.bmp", cache.cached_icon(777))
     cache.cached_icon(777)
     assert.are.equal(1, exist_checks, "the second answer must come from memory")
   end)
@@ -109,7 +121,7 @@ describe("icon cache", function()
     assert.is_true(cache.is_abandoned(USABLE))
     assert.is_false(cache.is_abandoned(12345))
     cache.reset()
-    assert.is_false(cache.is_abandoned(USABLE), "a reset forgives - the game path may have been fixed")
+    assert.is_false(cache.is_abandoned(USABLE), "a reset forgives - a relog is a retry")
   end)
 
   it("gives up once per item on a write failure too", function()
@@ -127,8 +139,8 @@ describe("icon cache", function()
     assert.are.equal(1, cache.abandoned_count())
   end)
 
-  -- The likeliest reason an icon could not be read is a wrong game path;
-  -- correcting the setting has to be worth something on the next login.
+  -- A relog is a retry: the client may not have named its folder the first
+  -- time, and nothing else would ever ask again.
   it("forgets the queue and the failures on reset, but keeps what is on disk", function()
     cache.request_icon(USABLE)
     cache.drain_queue()
@@ -145,7 +157,7 @@ describe("icon cache", function()
     assert.is_false(cache.drain_queue(), "the pending queue is dropped")
 
     local checks = exist_checks
-    assert.are.equal("addons/XIVHud/icons/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
+    assert.are.equal("addons/XIVHud/icons/items/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
     assert.are.equal(checks, exist_checks, "resolved icons survive the reset")
 
     cache.request_icon(USABLE + 1)
@@ -153,7 +165,7 @@ describe("icon cache", function()
     assert.are.equal(1, cache.abandoned_count())
   end)
 
-  it("asks the game path per attempt, so a corrected setting takes effect", function()
+  it("asks the game path per attempt, so one the client names late is used", function()
     local path = "C:/FFXI"
     deps.game_path = function()
       return path

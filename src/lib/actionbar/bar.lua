@@ -160,10 +160,9 @@ local function new(deps)
   end
 
   --[[ The item-icon extraction pipeline (lib/icon_cache): built only when
-       the ctx carries the file surface; a config-level game_path override
-       wins over the client's own answer, equipviewer's convention. A
-       SEPARATE instance per bar: the on-disk cache under <addon>/icons/ is
-       shared, the queues are not. ]]
+       the ctx carries the file surface, reading the game where Windower says
+       it is. A SEPARATE instance per bar: the on-disk cache under
+       <addon>/icons/items/ is shared, the queues are not. ]]
   local icon_cache = nil
   if ctx.file_exists ~= nil and ctx.read_dat ~= nil and ctx.write_binary ~= nil and ctx.asset ~= nil then
     icon_cache = new_icon_cache({
@@ -172,10 +171,6 @@ local function new(deps)
       read_dat = ctx.read_dat,
       write_binary = ctx.write_binary,
       game_path = function()
-        local live = config()
-        if type(live.game_path) == "string" and live.game_path ~= "" then
-          return live.game_path
-        end
         return ctx.game_path ~= nil and ctx.game_path() or nil
       end,
     })

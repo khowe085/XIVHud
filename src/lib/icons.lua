@@ -58,8 +58,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local icons = {}
 
--- Every item record is 0xC00 bytes; the icon sits 0x2BD in and runs 0x800.
-local RECORD_STRIDE = 0xC00
+--[[ Every item record is 0x1400 bytes; the icon sits 0x2BD in and runs 0x800.
+
+     It was 0xC00 until the FFXI update of September 2026, which added 0x800
+     bytes to every item record. Windower moved the same day (2026-09-10): its
+     resource extractor (ResourceExtractor 51bef17, "Updated to new item
+     structures") and the reference equipviewer on Windower/Lua's `dev` branch
+     (7b718dc, EquipViewer 1.1.3, `icon_stride = 0x1400`). The launcher's
+     `live` branch still ships 1.1.2 at 0xC00, so the reference as installed
+     draws garbage for anything it extracts on a current client and only looks
+     right from a cache filled before the update - which is what made this so
+     long to find. The icon still starts 0x2BD in: 1.1.3 keeps
+     `icon_data_offset = 0x2BD`, and the defect Kevin first reported pins it -
+     read at the old stride, Almace's record lands exactly on Magnus Scythe's
+     icon at the new one (see icons_spec, "the record stride"). ]]
+local RECORD_STRIDE = 0x1400
 local ICON_OFFSET = 0x2BD
 local ICON_LENGTH = 0x800
 
@@ -167,6 +180,21 @@ for stored = 0, 255 do
   STORED_FOR[decoded] = string.char(stored)
 end
 
+--[[ Where an item's extracted icon is cached, relative to the addon folder.
+
+     A folder of its own since 2026-09-27. Every icon extracted at the old
+     record size is garbage, and the cache never re-reads a file that already
+     exists - so moving to a NEW folder is what gives an upgraded install clean
+     icons with nothing to delete by hand, and without writing over any of the
+     old files, which the game may still have open (the hazard that withdrew
+     `icons clear`). The files left in the old place are simply never read
+     again. It sits beside `icons/custom/`, the player's own art, and leaves it
+     alone. The one place the path is composed: the cache and the action bars'
+     icon candidates both ask here. ]]
+function icons.cache_file(item_id)
+  return "icons/items/" .. item_id .. ".bmp"
+end
+
 -- Where an item's icon lives: the DAT path (relative to the game's ROM dir),
 -- the byte offset of the icon within it, and how much to read. nil for an id
 -- no DAT covers - which includes 0, the empty equipment slot.
@@ -196,8 +224,7 @@ function icons.locate(item_id)
 end
 
 -- The file a DAT reference names, under the game's install directory. Windower
--- reports that path with a trailing separator; a player who typed one in may
--- have gone either way.
+-- reports that path with a trailing separator; either form is accepted.
 function icons.dat_path(game_path, dat)
   if type(game_path) ~= "string" or game_path == "" or not dat then
     return nil

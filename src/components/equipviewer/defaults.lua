@@ -65,9 +65,6 @@ return function(screen_width, screen_height)
       b = 255,
       stroke = { width = 1, a = 127, r = 0, g = 0, b = 0 }, -- ammo_text.stroke.*
     },
-    -- Where the client is installed, when the addon cannot work it out itself.
-    -- Left unset, the entry point asks Windower. (game_path)
-    game_path = "",
     layout = {
       pos = {
         x = math.min(ANCHOR_X, math.max(0, (screen_width or 0) - 128)),

@@ -637,11 +637,10 @@ end
      for by NAME, answering `<slot>` and `<slot>_bag` per slot. This took the
      whole inventory and its `.equipment` field until 2026-09-27; the wiki calls
      the two the same table, and nobody ever confirmed that in a client, while
-     this one is proven by the addon that draws the same gear correctly.
-     get_gil below keeps the documented integer form for a string one; this
-     does the opposite for a reason that does not apply there - the equipment
-     is a pseudo-bag with no integer id to fall back to, and the string form
-     is what the one addon known to draw this gear right actually calls. ]]
+     this is the call the reference is known to work with. get_gil below keeps
+     the documented integer form for a string one; this does the opposite for
+     a reason that does not apply there - the equipment is a pseudo-bag with no
+     integer id to fall back to, and the string form is the reference's own. ]]
 local function get_equipment()
   return windower.ffxi.get_items("equipment")
 end
@@ -659,14 +658,17 @@ local function get_all_items()
   return windower.ffxi.get_items()
 end
 
---[[ Where the client is installed, for the DAT reads above. Undocumented, and
-     the reason the setting exists to override it: the wiki documents
-     `pol_path` ("path to playonline and ffxi install directory") but not
-     `ffxi_path`, which is what the reference addon uses and what its DAT
-     offsets were derived against. Prefer it, fall back to the documented one,
-     and let the player name a third. ]]
+--[[ Where the client is installed, for the DAT reads above: `ffxi_path` and
+     nothing else - the reference equipviewer's default (`game_path_default =
+     windower.ffxi_path`), without the `//ev gamepath` override it layers over
+     it. Undocumented - the wiki names `pol_path` - but it is what the
+     reference uses.
+     A `game_path` config key sat over it and a `pol_path` fallback under it
+     until 2026-09-27, when both went on Kevin's call: a player should never
+     have to say where the game is, and the PlayOnline folder has no ROM
+     directory to fall back to. ]]
 local function game_path()
-  return windower.ffxi_path or windower.pol_path
+  return windower.ffxi_path
 end
 
 -- Behind a pcall because this runs on inbound packets: a throw here would

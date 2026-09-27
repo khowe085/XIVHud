@@ -75,25 +75,14 @@ local function new(ctx)
 
   local save = nil
 
-  -- Where the client is installed. The setting wins when the player has one,
-  -- because Windower's own answer is a registry lookup that can be wrong for a
-  -- second install.
-  local function game_path()
-    local configured = config.game_path
-    if type(configured) == "string" and configured ~= "" then
-      return configured
-    end
-    return ctx.game_path()
-  end
-
   -- The extraction pipeline: request on the packet path, one DAT read per
-  -- frame off it, results cached at <addon>/icons/ for every component.
+  -- frame off it, results cached at <addon>/icons/items/ for every component.
   local cache = new_icon_cache({
     asset = ctx.asset,
     file_exists = ctx.file_exists,
     read_dat = ctx.read_dat,
     write_binary = ctx.write_binary,
-    game_path = game_path,
+    game_path = ctx.game_path,
   })
 
   -- The whole equipment table is worth re-reading, on the next frame rather
@@ -470,10 +459,10 @@ local function new(ctx)
 
     return {
       message,
-      ("  %d icon%s could not be read from the game's DAT files - check the game_path setting"):format(
-        abandoned,
-        abandoned == 1 and "" or "s"
-      ),
+      (
+        "  %d icon%s could not be read from the game's DAT files"
+        .. " - //hud equipviewer icons probe shows where it looked"
+      ):format(abandoned, abandoned == 1 and "" or "s"),
     }
   end
 

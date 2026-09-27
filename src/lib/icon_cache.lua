@@ -37,12 +37,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
        inside the packet handler, so a first login with nothing cached meant
        sixteen DAT opens, decodes and file writes in a single frame.
      - An item that fails is abandoned for the session rather than retried
-       every frame; `reset` (a detach) clears that, because the likeliest
-       cause - a wrong game path - is a setting the player can fix.
+       every frame; `reset` (a detach) clears that, so a relog is a retry -
+       the client may not have named its folder yet the first time.
      - `cached_icon` remembers every icon it has found on disk, so a redraw
        costs no file lookups.
 
-     The cache lives at `<addon>/icons/<item_id>.bmp` - deliberately NOT under
+     The cache lives at `<addon>/icons/items/<item_id>.bmp` (lib/icons'
+     `cache_file`, the one place that path is composed) - deliberately NOT under
      data/: `//hud copy` enumerates every directory there as a character, so a
      cache alongside them would be offered as one, and `//hud copy icons
      <name>` would wipe that character's configuration. It is not
@@ -51,12 +52,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local icons = require("lib/icons")
 
-local ICON_CACHE_DIR = "icons/"
-
 -- deps: `asset` (addon-relative -> absolute path), `file_exists` (absolute),
--- `read_dat`, `write_binary` (addon-relative), and `game_path` - already
--- resolved by the caller, so a component's config override wins there, not
--- here. game_path is consulted per attempt: a corrected setting must count.
+-- `read_dat`, `write_binary` (addon-relative), and `game_path` - consulted per
+-- attempt rather than once, since the client may not name its folder yet at
+-- the first.
 local function new(deps)
   local self = {}
 
@@ -70,9 +69,7 @@ local function new(deps)
   local abandoned_count = 0
   local resolved = {}
 
-  local function icon_file(item_id)
-    return ICON_CACHE_DIR .. item_id .. ".bmp"
-  end
+  local icon_file = icons.cache_file
 
   -- The icon on disk for an item, or nil if it has not been extracted yet.
   -- An item already given up on is not looked for again: this runs on the
@@ -170,9 +167,9 @@ local function new(deps)
   end
 
   --[[ The per-character reset, for a detach: the queue goes with the
-       character, and so does everything abandoned - correcting the game_path
-       setting has to be worth something. `resolved` stays: a file already on
-       disk is still there whoever logs in next. ]]
+       character, and so does everything abandoned, so a relog is a retry.
+       `resolved` stays: a file already on disk is still there whoever logs in
+       next. ]]
   function self.reset()
     pending = {}
     queued = {}
