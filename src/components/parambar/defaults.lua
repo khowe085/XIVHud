@@ -75,7 +75,7 @@ return function(screen_width, screen_height)
     accuracy = {
       enabled = true,
       window_seconds = 15,
-      font_size = 12,
+      font_size = 10,
       gap = 2,
       offset = 0,
       text_width_ratio = 0.68,

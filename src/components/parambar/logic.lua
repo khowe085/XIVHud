@@ -169,7 +169,8 @@ local function new(config)
     accuracy.on_action(action, player_id, now)
   end
 
-  -- The reset button, and nothing else: there is no command for this.
+  -- Empties the window: the `[R]` button and the `accuracy reset` verb
+  -- both come through here, so the two cannot become two behaviours.
   function self.reset_accuracy()
     accuracy.reset()
   end
@@ -517,7 +518,9 @@ local function new(config)
        fall back over, and the length it reports comes from the module, so
        neither can name a number that is not in force.
 
-       There is deliberately no `reset` verb: the row carries a button. ]]
+       `reset` empties the window from the console, and is the same call the
+       `[R]` button makes - one behaviour, two ways in (Kevin, 2026-09-27,
+       adding the verb beside the button he asked for first). ]]
   --[[ A hand edit can leave something other than a table here, and the
        defaults merge cannot repair it (the key exists). A command that
        WRITES repairs it on the way; one that only reports or refuses must
@@ -546,6 +549,14 @@ local function new(config)
       return "parambar accuracy row " .. word, true
     end
 
+    if word == "reset" then
+      -- The same call the `[R]` button makes, through the same door. Nothing
+      -- is stored, so there is nothing to save and nothing to repair on the
+      -- way - which also keeps a hand-broken config block untouched.
+      self.reset_accuracy()
+      return "parambar accuracy window reset", false
+    end
+
     if word == "window" then
       local seconds = whole_number(value)
       local longest = accuracy.max_window()
@@ -561,7 +572,7 @@ local function new(config)
 
     -- `word` is the one that was not understood; `value` is whatever came
     -- after it, and naming that instead would point at the wrong thing.
-    return string.format("//hud parambar accuracy takes on, off or window <seconds>, not '%s'", word), false
+    return string.format("//hud parambar accuracy takes on, off, reset or window <seconds>, not '%s'", word), false
   end
 
   local function status()

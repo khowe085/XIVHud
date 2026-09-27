@@ -43,7 +43,8 @@ percentage.
 
 The `[R]` button to the left of the line empties the window on a left-click,
 so you can start a fresh count on a new fight or after a gear change. The
-click does not reach the game.
+click does not reach the game. `//hud parambar accuracy reset` does the same
+thing from the console.
 
 Switching the row on or off changes how tall the widget is, so the bars move
 down or up by the height of the row; drag the parameter bar back where you
@@ -72,7 +73,7 @@ the first four are also set by command.
 | `low_mp_colors` | yellow / orange / red | the same for MP |
 | `accuracy.enabled` | `true` | draw the accuracy row above the TP bar |
 | `accuracy.window_seconds` | `15` | how many seconds of swings the row counts (1 to 600) |
-| `accuracy.font_size` | `12` | font size for the row - smaller than the numbers |
+| `accuracy.font_size` | `10` | font size for the row - smaller than the numbers |
 | `accuracy.gap` | `2` | gap between the row and the bars, and between the button and the line |
 | `accuracy.offset` | `0` | shifts the whole row sideways, in pixels |
 | `accuracy.text_width_ratio` | `0.68` | how wide a character is assumed to draw - sizes the `[R]` button's clickable area |
@@ -89,10 +90,11 @@ the first four are also set by command.
 | `//hud parambar compact on\|off` | switch compact mode |
 | `//hud parambar accuracy` | print the row's state, window and current reading |
 | `//hud parambar accuracy on\|off` | show or hide the accuracy row |
+| `//hud parambar accuracy reset` | empty the window, as the `[R]` button does |
 | `//hud parambar accuracy window <seconds>` | set how much history the row counts (1 to 600) |
 
 `width`, `spacing` and `offset` change the metrics of whichever mode is on:
 with compact mode on they change the compact set.
 
-There is no `reset` command for the accuracy window - the `[R]` button beside
-the row is how it is emptied.
+`//hud parambar accuracy reset` and the `[R]` button beside the row do the
+same thing.
