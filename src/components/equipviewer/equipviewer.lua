@@ -340,11 +340,26 @@ local function new(ctx)
     local result = logic.on_chunk(first, ctx.parse_packet(second))
     refresh_pending = refresh_pending or result.refresh
 
+    --[[ The reads are DEFERRED to the next tick, never taken here. Windower
+         dispatches an incoming chunk to addons before the client has applied
+         it - that is what makes blocking a packet possible - so the inventory
+         this would read is the one from BEFORE the equip, and the bag and
+         index the packet names still hold whatever was there previously. Read
+         here, a sword slot drew a scythe and a GearSwap burst filled the grid
+         with items nobody was wearing (Kevin, live client, 2026-09-27); the
+         reference addon schedules its own read a tick out for this reason.
+
+         A full refresh rather than the packet's own slot, because by the next
+         tick the equipment map itself is the authority and re-reading it costs
+         one call for however many packets the burst carried. ]]
+    if #result.reads > 0 then
+      refresh_pending = true
+    end
+
     -- Most of what reaches here is the zone-in inventory burst, for bags
     -- nothing is wearing: thirty-four prims are left alone unless something
     -- they draw actually moved.
-    if result.changed or #result.reads > 0 then
-      apply_reads(result.reads)
+    if result.changed then
       render()
     end
   end

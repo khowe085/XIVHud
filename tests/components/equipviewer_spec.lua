@@ -17,7 +17,7 @@ local RECORD = string.rep("\0", 0x800)
 describe("equipviewer widget", function()
   local prims, widget, config
   local equipment, items, dats, files, writes, saves, packet, parsed, game
-  local equipment_reads, lookups
+  local equipment_reads, lookups, item_reads
 
   -- Prims are built in one order and never rebuilt: the panel, then an icon
   -- per slot, then an encumbrance marker per slot, then the ammo count.
@@ -69,6 +69,7 @@ describe("equipviewer widget", function()
     items = {}
     dats = {}
     files = {}
+    item_reads = {}
     writes = {}
     saves = 0
     packet = nil
@@ -91,6 +92,7 @@ describe("equipviewer widget", function()
         return equipment
       end,
       get_item = function(bag, index)
+        item_reads[#item_reads + 1] = bag .. ":" .. index
         return items[bag .. ":" .. index]
       end,
       parse_packet = function(data)
@@ -182,13 +184,20 @@ describe("equipviewer widget", function()
       assert.is_false(icon(BODY).visible)
     end)
 
+    --[[ On the NEXT TICK, never inside the chunk handler: Windower dispatches
+         an incoming chunk before the client applies it, so the inventory read
+         there still holds what was at that bag and index BEFORE the equip
+         (Kevin, live client, 2026-09-27). ]]
     it("reads the item behind a slot the player just equipped", function()
       attach()
       widget.show()
+      equip("body", 9)
       put_item(0, 9, 777, 1)
       files["addons/XIVHud/icons/777.bmp"] = true
 
       chunk(EQUIP, { ["Equipment Slot"] = BODY, ["Inventory Bag"] = 0, ["Inventory Index"] = 9 })
+      widget.update()
+
       assert.equal("addons/XIVHud/icons/777.bmp", icon(BODY).last.path)
       assert.is_true(icon(BODY).visible)
     end)
@@ -727,6 +736,50 @@ describe("equipviewer widget", function()
       local said = type(message) == "table" and table.concat(message, "|") or tostring(message)
       assert.is_not_nil(said:find("probe", 1, true))
       assert.is_nil(said:find("clear", 1, true), "clear was withdrawn 2026-09-27")
+    end)
+  end)
+
+  --[[ Windower dispatches an incoming chunk to addons BEFORE the client applies
+       it - that is what makes blocking possible - so the inventory read inside
+       the handler answers with the state from before the equip. Reading there
+       returned whatever had previously been at that bag and index, which is how
+       a sword slot came to draw a scythe and how a GearSwap burst filled the
+       grid with items nobody was wearing (Kevin, live client, 2026-09-27). The
+       reference addon defers its read by a tick for exactly this reason. ]]
+  describe("the equip packet", function()
+    before_each(function()
+      equip("main", 5)
+      put_item(0, 5, 4096, 1)
+      attach()
+      widget.update()
+    end)
+
+    it("reads no item inside the chunk handler", function()
+      item_reads = {}
+      chunk(0x050, { ["Equipment Slot"] = 0, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      assert.are.equal(0, #item_reads, "the inventory was read before the client applied the packet")
+    end)
+
+    it("reads the equipment afresh on the next tick", function()
+      chunk(0x050, { ["Equipment Slot"] = 0, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      local before = equipment_reads
+
+      widget.update()
+
+      assert.are.equal(before + 1, equipment_reads, "the equipment map was not re-read")
+    end)
+
+    --[[ A burst is one read, not one per packet: GearSwap sends a 0x050 per
+         slot it swaps on every cast. ]]
+    it("coalesces a burst onto one refresh", function()
+      for slot = 0, 5 do
+        chunk(0x050, { ["Equipment Slot"] = slot, ["Inventory Index"] = 5, ["Inventory Bag"] = 0 })
+      end
+      local before = equipment_reads
+
+      widget.update()
+
+      assert.are.equal(before + 1, equipment_reads)
     end)
   end)
 end)
