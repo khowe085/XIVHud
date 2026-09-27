@@ -162,7 +162,7 @@ local function new(deps)
   --[[ The item-icon extraction pipeline (lib/icon_cache): built only when
        the ctx carries the file surface, reading the game where Windower says
        it is. A SEPARATE instance per bar: the on-disk cache under
-       <addon>/icons/items/ is shared, the queues are not. ]]
+       <addon>/cache/items/ is shared, the queues are not. ]]
   local icon_cache = nil
   if ctx.file_exists ~= nil and ctx.read_dat ~= nil and ctx.write_binary ~= nil and ctx.asset ~= nil then
     icon_cache = new_icon_cache({

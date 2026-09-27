@@ -286,11 +286,11 @@ end)
 --[[ Where an extracted icon is cached: a folder of its own since 2026-09-27.
      Every icon extracted at the old record size is garbage and the cache never
      re-reads a file that exists, so a NEW folder is what gives an upgraded
-     install clean icons with nothing to delete by hand - and nothing is ever
-     written over a texture the game has open. `icons/custom/` (the player's
-     own art) sits beside it, untouched. ]]
+     install clean icons with nothing to delete by hand, and without writing
+     over any of the old files. It is named `cache/` so it reads as one, apart
+     from `icons/custom/` (the player's own art), which it never touches. ]]
 describe("the cache file", function()
-  it("is the item id in icons/items/", function()
-    assert.are.equal("icons/items/20689.bmp", icons.cache_file(20689))
+  it("is the item id in cache/items/", function()
+    assert.are.equal("cache/items/20689.bmp", icons.cache_file(20689))
   end)
 end)

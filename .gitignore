@@ -7,7 +7,9 @@
 
 # Windower addon user settings — created at runtime, never committed
 */data/
-# Extracted item icons, written by equipviewer at runtime beside the addon.
+# Extracted item icons, written at runtime beside the addon: cache/ since
+# 2026-09-27, icons/ before it (and the player's own icons/custom/ art).
+/src/cache/
 /src/icons/
 
 # Packaging output (see .github/workflows/package.yml)

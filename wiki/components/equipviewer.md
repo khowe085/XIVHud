@@ -16,7 +16,7 @@ opening the equipment menu.
 - Draws an **X** over any slot that encumbrance has locked.
 - Shows your **ammo count** over the ammo slot.
 - Icons are read straight out of the game's data files the first time an
-  item is seen, then cached in `addons/XIVHud/icons/items/` for every character.
+  item is seen, then cached in `addons/XIVHud/cache/items/` for every character.
   No icon pack to download.
 
 ## Configuration options
@@ -44,8 +44,8 @@ The icons are read out of the game's own data files, in the folder Windower
 reports for your install; there is nothing to configure.
 
 Icons that came out black, white, garbled or wrong after the September 2026
-game update fix themselves: this version reads every icon afresh into a folder
-of its own, `icons/items`, and never looks at the old ones again. The loose
+game update fix themselves: this version reads every icon afresh into its own
+cache folder, `cache/items`, and never looks at the old ones again. The loose
 `.bmp` files left directly in `icons` can be deleted to save space - but leave
 `icons/custom` alone, since that is your own crossbar and hotbar art.
 
@@ -56,7 +56,7 @@ same in more detail to `icons.log` beside the addon's `load.log`; that file is
 what to send along with a report.
 
 To make the addon read an icon again, unload it (`//lua unload XIVHud`), delete
-the file `icons/items/<item id>.bmp` in the addon's folder, and load it again. There
+the file `cache/items/<item id>.bmp` in the addon's folder, and load it again. There
 is no command for it: the addon cannot overwrite an image file it is currently
 drawing.
 

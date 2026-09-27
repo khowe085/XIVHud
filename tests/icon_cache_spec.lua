@@ -48,14 +48,14 @@ describe("icon cache", function()
 
     cache.request_icon(USABLE)
     cache.drain_queue()
-    assert.are.equal("icons/items/" .. USABLE .. ".bmp", writes[1].path)
+    assert.are.equal("cache/items/" .. USABLE .. ".bmp", writes[1].path)
   end)
 
-  it("extracts a requested icon into icons/items/<item_id>.bmp and reports it done", function()
+  it("extracts a requested icon into cache/items/<item_id>.bmp and reports it done", function()
     cache.request_icon(USABLE)
     assert.is_true(cache.drain_queue())
-    assert.are.equal("icons/items/" .. USABLE .. ".bmp", writes[1].path)
-    assert.are.equal("addons/XIVHud/icons/items/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
+    assert.are.equal("cache/items/" .. USABLE .. ".bmp", writes[1].path)
+    assert.are.equal("addons/XIVHud/cache/items/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
   end)
 
   it("reads the DAT the game path names, at the item's own record", function()
@@ -85,8 +85,8 @@ describe("icon cache", function()
   end)
 
   it("finds an icon already on disk and remembers the answer", function()
-    files["addons/XIVHud/icons/items/777.bmp"] = true
-    assert.are.equal("addons/XIVHud/icons/items/777.bmp", cache.cached_icon(777))
+    files["addons/XIVHud/cache/items/777.bmp"] = true
+    assert.are.equal("addons/XIVHud/cache/items/777.bmp", cache.cached_icon(777))
     cache.cached_icon(777)
     assert.are.equal(1, exist_checks, "the second answer must come from memory")
   end)
@@ -157,7 +157,7 @@ describe("icon cache", function()
     assert.is_false(cache.drain_queue(), "the pending queue is dropped")
 
     local checks = exist_checks
-    assert.are.equal("addons/XIVHud/icons/items/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
+    assert.are.equal("addons/XIVHud/cache/items/" .. USABLE .. ".bmp", cache.cached_icon(USABLE))
     assert.are.equal(checks, exist_checks, "resolved icons survive the reset")
 
     cache.request_icon(USABLE + 1)
@@ -190,7 +190,7 @@ describe("icon cache", function()
        read again, so the grid blanked - and the re-extraction could not put it
        back, because `write_binary` opens the .bmp "wb" while the renderer
        still holds that exact file open (Kevin, 2026-09-27). Deleting instead
-       is no better: three cache instances share one `icons/` directory and
+       is no better: three cache instances share one `cache/items/` directory and
        each remembers separately what it resolved, so two would be left on a
        texture that is gone, which Windower draws as silently nothing. Until
        something safer is worked out, nothing writes over a texture in use. ]]

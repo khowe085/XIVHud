@@ -40,8 +40,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      alpha.
 
      Icons are not shipped. The first time an item is seen its icon is pulled
-     out of the client's own DAT files and cached under icons/ beside the
-     addon; from then on the file is simply there. That pipeline - the
+     out of the client's own DAT files and cached under cache/items/ beside
+     the addon; from then on the file is simply there. That pipeline - the
      one-icon-per-frame queue, the give-up rule, the shared cache directory -
      lives in lib/icon_cache, promoted from this file so the crossbar can use
      it too. ]]
@@ -76,7 +76,7 @@ local function new(ctx)
   local save = nil
 
   -- The extraction pipeline: request on the packet path, one DAT read per
-  -- frame off it, results cached at <addon>/icons/items/ for every component.
+  -- frame off it, results cached at <addon>/cache/items/ for every component.
   local cache = new_icon_cache({
     asset = ctx.asset,
     file_exists = ctx.file_exists,

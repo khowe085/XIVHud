@@ -182,17 +182,18 @@ end
 
 --[[ Where an item's extracted icon is cached, relative to the addon folder.
 
-     A folder of its own since 2026-09-27. Every icon extracted at the old
-     record size is garbage, and the cache never re-reads a file that already
-     exists - so moving to a NEW folder is what gives an upgraded install clean
-     icons with nothing to delete by hand, and without writing over any of the
-     old files, which the game may still have open (the hazard that withdrew
-     `icons clear`). The files left in the old place are simply never read
-     again. It sits beside `icons/custom/`, the player's own art, and leaves it
-     alone. The one place the path is composed: the cache and the action bars'
-     icon candidates both ask here. ]]
+     `cache/items/` since 2026-09-27 - a folder that says it is a cache,
+     rather than one beside `icons/custom/` (the player's own art) that read
+     like an asset folder. Every icon extracted at the old record size is
+     garbage and the cache never re-reads a file that already exists, so the
+     NEW folder is also what gives an upgraded install clean icons with
+     nothing to delete by hand, and without writing over any of the old
+     files, which the game may still have open (the hazard that withdrew
+     `icons clear`). The loose files left in `icons/` are never read again.
+     The one place the path is composed: the cache and the action bars' icon
+     candidates both ask here. ]]
 function icons.cache_file(item_id)
-  return "icons/items/" .. item_id .. ".bmp"
+  return "cache/items/" .. item_id .. ".bmp"
 end
 
 -- Where an item's icon lives: the DAT path (relative to the game's ROM dir),

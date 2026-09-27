@@ -43,8 +43,9 @@ edit by hand to get started.
 4. To load it every time you start the game, add the line `lua load xivhud`
    to `Windower4/scripts/init.txt`.
 
-To update, unzip the new release over the old folder. Your settings (`data/`)
-and your icons (`icons/`) are not in the zip and survive the update.
+To update, unzip the new release over the old folder. Your settings (`data/`),
+your own art (`icons/custom/`) and the icon cache (`cache/`) are not in the zip
+and survive the update.
 
 The HUD appears once you are logged in on a character. Type `//hud` at any
 time to see the command list.
@@ -214,7 +215,8 @@ Windower4/addons/XIVHud/data/<Character>/core.lua                      general s
 Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/config.lua  the component's settings
 Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/layout.lua  its position, scale and on/off state
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/<JOB>.lua     the crossbar's bindings for that job (the hotbar's sit beside it in hotbar/)
-Windower4/addons/XIVHud/icons/                                          item icons read from the game in icons/items/, your own in icons/custom/
+Windower4/addons/XIVHud/cache/items/                                    item icons read from the game (a cache: delete it only with the addon unloaded)
+Windower4/addons/XIVHud/icons/custom/                                   your own crossbar and hotbar art
 ```
 
 The files are plain Lua tables and can be edited in a text editor while the

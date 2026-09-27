@@ -856,7 +856,7 @@ describe("crossbar render", function()
       assert.are.same({
         "icons/custom/echo-drops.png",
         ASSETS .. "icons/items/echo-drops.png",
-        "icons/items/4157.bmp",
+        "cache/items/4157.bmp",
         ASSETS .. "icons/usable-item.png",
       }, paths(candidates))
     end)
@@ -873,7 +873,7 @@ describe("crossbar render", function()
       assert.are.same({
         "icons/custom/vocation-ring.png",
         ASSETS .. "icons/items/vocation-ring.png",
-        "icons/items/27546.bmp",
+        "cache/items/27546.bmp",
         -- The self-use art: a target-less enchanteditem aims at <me>, which
         -- is what enchanteditem.lua defaults it to.
         ASSETS .. "icons/usable-item.png",
@@ -995,7 +995,7 @@ describe("crossbar render", function()
       -- the pack's own item art is 40px and stays at the origin.
       local candidates = render.icon_candidates({ type = "item", action = "Echo Drops" }, { item_id = 4157 })
       for _, candidate in ipairs(candidates) do
-        if candidate.path == "icons/items/4157.bmp" then
+        if candidate.path == "cache/items/4157.bmp" then
           assert.are.same({ x = 4, y = 4 }, candidate.offset, "extracted bitmap")
         elseif candidate.path == ASSETS .. "icons/items/echo-drops.png" then
           assert.are.same({ x = 0, y = 0 }, candidate.offset, "pack item art")

@@ -42,7 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      - `cached_icon` remembers every icon it has found on disk, so a redraw
        costs no file lookups.
 
-     The cache lives at `<addon>/icons/items/<item_id>.bmp` (lib/icons'
+     The cache lives at `<addon>/cache/items/<item_id>.bmp` (lib/icons'
      `cache_file`, the one place that path is composed) - deliberately NOT under
      data/: `//hud copy` enumerates every directory there as a character, so a
      cache alongside them would be offered as one, and `//hud copy icons

@@ -3303,8 +3303,8 @@ describe("crossbar live widget", function()
       local icon = image_of("xhb_left", 6, "icon")
       assert.are.equal("addon/assets/icons/usable-item.png", icon.last.path, "fallback first")
       push(widget)
-      assert.are.equal("icons/items/4165.bmp", env.writes[1], "one extraction, queued off the packet path")
-      assert.are.equal("addon/icons/items/4165.bmp", icon.last.path, "the cache landing repaints the slot")
+      assert.are.equal("cache/items/4165.bmp", env.writes[1], "one extraction, queued off the packet path")
+      assert.are.equal("addon/cache/items/4165.bmp", icon.last.path, "the cache landing repaints the slot")
     end)
 
     it("re-stats nothing on a settled repaint", function()
@@ -3368,7 +3368,7 @@ describe("crossbar live widget", function()
       widget.show()
       env.stats = {}
       push(widget)
-      assert.are.equal("addon/icons/items/4165.bmp", image_of("xhb_left", 6, "icon").last.path)
+      assert.are.equal("addon/cache/items/4165.bmp", image_of("xhb_left", 6, "icon").last.path)
       for _, path in ipairs(env.stats) do
         assert.is_nil(path:find("savage%-blade"), "a settled slot must not be re-stat'd: " .. path)
       end
