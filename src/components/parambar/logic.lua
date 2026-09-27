@@ -75,16 +75,16 @@ local BANDS = { { 25, "red" }, { 50, "orange" }, { 75, "yellow" } }
 local SAMPLE_VITALS = { hp = 1500, hpp = 75, mp = 800, mpp = 50, tp = 1500 }
 local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78 }
 
---[[ The accuracy row. The button FOLLOWS the readout (Kevin, 2026-09-27),
-     and is placed past the WIDEST line the row can ever draw rather than
-     past the one currently on screen - so the digits changing cannot move
-     the one thing the player has to click. The cost, accepted: a short line
-     leaves a gap before the button, which is the price of a still target.
-     FOUR digits, since the window runs to ten minutes and that is well past
-     a thousand swings on a dual-wielding multi-attack job. Under-reserving
-     is the expensive direction now that the button trails: the line would
-     draw into it. ]]
-local RESET_LABEL = "[R]"
+--[[ The accuracy row is TEXT AND NOTHING ELSE (Kevin, 2026-09-27): it
+     carried an `[R]` reset button for a few hours and does not any more, so
+     the widget owns no mouse handler at all and `//hud parambar accuracy
+     reset` is the only way to empty the window.
+
+     The row is still measured against the WIDEST line it can ever draw
+     rather than the one on screen, which is what keeps the box `bounds`
+     reports still while the digits move. FOUR digits, since the window runs
+     to ten minutes and that is well past a thousand swings on a
+     dual-wielding multi-attack job. ]]
 local WIDEST_ACCURACY = "Acc: 0000 / 0000 (000%)"
 local EMPTY_ACCURACY = "Acc: 0 / 0 (--%)"
 
@@ -172,8 +172,7 @@ local function new(config)
     accuracy.on_action(action, player_id, now)
   end
 
-  -- Empties the window: the `[R]` button and the `accuracy reset` verb
-  -- both come through here, so the two cannot become two behaviours.
+  -- Empties the window, for the `accuracy reset` verb.
   function self.reset_accuracy()
     accuracy.reset()
   end
@@ -258,17 +257,16 @@ local function new(config)
     local font = tonumber(set.font_size) or 0
     local height_ratio = tonumber(set.text_height_ratio) or 0
     local width_ratio = tonumber(set.text_width_ratio) or 0
-    local gap = tonumber(set.gap) or 0
+    local bar_gap = tonumber(set.bar_gap) or 0
     local scaled_font = font * scale
     return {
       font_size = math.floor(scaled_font + 0.5),
-      gap = gap * scale,
       offset = tonumber(set.offset) or 0,
-      row_height = math.floor((font * height_ratio + gap) * scale + 0.5),
-      -- Floored at nothing: a hand-edited negative font would otherwise
-      -- give a negative width and put the button left of the origin, where
-      -- `bounds` does not reach and core cannot clamp it.
-      button_width = math.max(0, math.ceil(#RESET_LABEL * scaled_font * width_ratio)),
+      -- The line's own band plus the clearance under it: `bar_gap` is what
+      -- lifts the row off the bar art.
+      row_height = math.floor((font * height_ratio + bar_gap) * scale + 0.5),
+      -- Floored at nothing, so a hand-edited negative font cannot reach
+      -- back past the origin, where `bounds` does not cover it.
       readout_width = math.max(0, math.ceil(#WIDEST_ACCURACY * scaled_font * width_ratio)),
     }
   end
@@ -282,10 +280,10 @@ local function new(config)
     return math.max(0, (BAR_X[#BARS] + metrics.offset + (#BARS - 1) * step + row.offset) * scale)
   end
 
-  -- How far right the row reaches from the widget's own x: the button, the
-  -- gap, and the widest line the readout can ever draw.
+  -- How far right the row reaches from the widget's own x: the widest line
+  -- it can ever draw.
   local function accuracy_reach(metrics, row, scale)
-    return accuracy_row_x(metrics, row, scale) + row.readout_width + row.gap + row.button_width
+    return accuracy_row_x(metrics, row, scale) + row.readout_width
   end
 
   -- Where every prim goes for a widget anchored at (x, y) and drawn at `scale`.
@@ -326,23 +324,7 @@ local function new(config)
     end
 
     if row then
-      local row_x = x + accuracy_row_x(metrics, row, scale)
-      geometry.accuracy = { x = row_x, y = y, font_size = row.font_size }
-      geometry.reset_button = {
-        x = row_x + row.readout_width + row.gap,
-        y = y,
-        width = row.button_width,
-        -- The row's whole band rather than the glyph estimate alone: the
-        -- same ratio that reads short against the bar art would otherwise
-        -- leave the bottom pixels of the drawn label unclickable. The WIDTH
-        -- is still that class of estimate, deliberately - there is no band
-        -- to widen it to, and `text_width_ratio` also places the button, so
-        -- padding the rect would put it out of step with the glyph.
-        height = row.row_height,
-        -- The label travels with the rect it was measured from, so the two
-        -- cannot drift: what is drawn is what answers a click.
-        label = RESET_LABEL,
-      }
+      geometry.accuracy = { x = x + accuracy_row_x(metrics, row, scale), y = y, font_size = row.font_size }
     end
 
     return geometry
@@ -529,9 +511,8 @@ local function new(config)
        fall back over, and the length it reports comes from the module, so
        neither can name a number that is not in force.
 
-       `reset` empties the window from the console, and is the same call the
-       `[R]` button makes - one behaviour, two ways in (Kevin, 2026-09-27,
-       adding the verb beside the button he asked for first). ]]
+       `reset` empties the window, and is the only way to: the row carried a
+       button for a few hours on 2026-09-27 and is text alone now. ]]
   --[[ A hand edit can leave something other than a table here, and the
        defaults merge cannot repair it (the key exists). A command that
        WRITES repairs it on the way; one that only reports or refuses must
@@ -561,9 +542,9 @@ local function new(config)
     end
 
     if word == "reset" then
-      -- The same call the `[R]` button makes, through the same door. Nothing
-      -- is stored, so there is nothing to save and nothing to repair on the
-      -- way - which also keeps a hand-broken config block untouched.
+      -- Nothing is stored, so there is nothing to save and nothing to
+      -- repair on the way - which keeps a hand-broken config block
+      -- untouched where a refusal would otherwise discard it.
       self.reset_accuracy()
       return "parambar accuracy window reset", false
     end

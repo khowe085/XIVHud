@@ -68,15 +68,16 @@ return function(screen_width, screen_height)
          `window_seconds` is the whole point and is meant to be changed: 15
          is four or five swings single-wield, so the percentage moves in
          coarse steps. `offset` nudges the row sideways, and the two ratios
-         estimate how wide a string will draw - Windower cannot be asked, so
-         they are what the reset button's hit rect is measured with and are
-         config for a live client to settle (expbar's values, and its
-         names). ]]
+         estimate how wide and how tall a string will draw - Windower cannot
+         be asked, so they size the room the row reserves and the band it
+         stands in, and are config for a live client to settle (expbar's
+         values, and its names). ]]
     accuracy = {
       enabled = true,
       window_seconds = 15,
-      font_size = 6,
-      gap = 2,
+      font_size = 8,
+      -- Lifts the row off the bar art: the knob for a line drawing on it.
+      bar_gap = 7,
       offset = 0,
       text_width_ratio = 0.68,
       text_height_ratio = 1.3,

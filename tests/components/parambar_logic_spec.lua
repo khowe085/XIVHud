@@ -301,14 +301,14 @@ describe("parambar logic", function()
   describe("geometry", function()
     it("lays the bars and numbers out against the background frame", function()
       local geometry = logic.geometry(100, 200, 1)
-      assert.are.same({ x = 100, y = 210, width = 472, height = 24 }, geometry.background)
+      assert.are.same({ x = 100, y = 217, width = 472, height = 24 }, geometry.background)
       assert.are.equal(115, geometry.bars[1].x)
-      assert.are.equal(212, geometry.bars[1].y)
+      assert.are.equal(219, geometry.bars[1].y)
       assert.are.equal(8, geometry.bars[1].height)
       assert.are.equal(275, geometry.bars[2].x)
       assert.are.equal(435, geometry.bars[3].x)
       assert.are.equal(165, geometry.texts[1].x)
-      assert.are.equal(212, geometry.texts[1].y)
+      assert.are.equal(219, geometry.texts[1].y)
       assert.are.equal(330, geometry.texts[2].x)
       assert.are.equal(490, geometry.texts[3].x)
       assert.are.equal(14, geometry.font_size)
@@ -324,9 +324,9 @@ describe("parambar logic", function()
 
     it("multiplies every offset, size and font by the scale", function()
       local geometry = logic.geometry(100, 200, 2)
-      assert.are.same({ x = 100, y = 220, width = 944, height = 48 }, geometry.background)
+      assert.are.same({ x = 100, y = 235, width = 944, height = 48 }, geometry.background)
       assert.are.equal(130, geometry.bars[1].x)
-      assert.are.equal(224, geometry.bars[1].y)
+      assert.are.equal(239, geometry.bars[1].y)
       assert.are.equal(16, geometry.bars[1].height)
       assert.are.equal(230, geometry.texts[1].x)
       assert.are.equal(28, geometry.font_size)
@@ -339,8 +339,8 @@ describe("parambar logic", function()
     -- With the accuracy row on, the box covers the row as well as the frame;
     -- the plain frame bounds are pinned under "accuracy geometry" below.
     it("reports bounds covering the frame and the row above it", function()
-      assert.are.same({ 100, 200, 472, 34 }, { logic.bounds(100, 200, 1) })
-      assert.are.same({ 100, 200, 708, 51 }, { logic.bounds(100, 200, 1.5) })
+      assert.are.same({ 100, 200, 472, 41 }, { logic.bounds(100, 200, 1) })
+      assert.are.same({ 100, 200, 708, 62 }, { logic.bounds(100, 200, 1.5) })
     end)
 
     it("scales the eased fill width too", function()
@@ -423,7 +423,7 @@ describe("parambar logic", function()
       assert.is_false(logic.accuracy_enabled())
     end)
 
-    it("empties the window on demand, for the reset button", function()
+    it("empties the window on demand, for the reset verb", function()
       swings({ 1, 15 })
       logic.reset_accuracy()
       assert.are.equal("Acc: 0 / 0 (--%)", logic.tick(0).accuracy.text)
@@ -445,58 +445,31 @@ describe("parambar logic", function()
     it("stands the row above the bars and pushes the frame down by it", function()
       local geometry = logic.geometry(100, 200, 1)
       assert.are.equal(200, geometry.accuracy.y)
-      assert.are.equal(6, geometry.accuracy.font_size)
+      assert.are.equal(8, geometry.accuracy.font_size)
       -- The frame, the fills and the numbers all sit below the row.
-      assert.are.equal(210, geometry.background.y)
-      assert.are.equal(212, geometry.bars[1].y)
-      assert.are.equal(212, geometry.texts[1].y)
+      assert.are.equal(217, geometry.background.y)
+      assert.are.equal(219, geometry.bars[1].y)
+      assert.are.equal(219, geometry.texts[1].y)
     end)
 
-    --[[ The row starts where the TP bar starts, since that is the bar it is
-         about, and the button follows the line (Kevin, 2026-09-27). It is
-         placed past the WIDEST line the row can ever draw rather than past
-         the one on screen, so the digits changing cannot move the one thing
-         the player has to hit. ]]
+    -- The row starts where the TP bar starts, since that is the bar it is
+    -- about.
     it("lines the row up with the TP bar it reports on", function()
       local geometry = logic.geometry(100, 200, 1)
       assert.are.equal(geometry.bars[3].x, geometry.accuracy.x)
-      assert.are.equal(531, geometry.reset_button.x)
     end)
 
-    it("moves the whole row with its own offset, leaving the numbers alone", function()
+    it("moves the row with its own offset, leaving the numbers alone", function()
       config.accuracy.offset = 20
       local geometry = logic.geometry(100, 200, 1)
       assert.are.equal(455, geometry.accuracy.x)
-      assert.are.equal(551, geometry.reset_button.x)
       assert.are.equal(490, geometry.texts[3].x)
     end)
 
-    it("gives the reset button a hit rect and the label that fills it", function()
-      local geometry = logic.geometry(100, 200, 1)
-      assert.are.equal(13, geometry.reset_button.width)
-      -- The row's whole band, not the glyph estimate alone: the same ratio
-      -- that reads short against the bar art would otherwise leave the
-      -- bottom pixels of a 6pt [R] unclickable.
-      assert.are.equal(10, geometry.reset_button.height)
-      assert.are.equal(geometry.accuracy.y, geometry.reset_button.y)
-      -- One label: what is measured is what is drawn.
-      assert.are.equal("[R]", geometry.reset_button.label)
-    end)
-
-    --[[ Four digits, not three: the window goes to 600 seconds, and ten
-         minutes of a dual-wielding multi-attack job is well past a thousand
-         swings. The line would otherwise draw into the button. ]]
-    it("reserves room for a four-digit count", function()
-      local geometry = logic.geometry(100, 200, 1)
-      -- The button is placed past the widest line, so its own x is the proof
-      -- the room was reserved rather than measured off what is on screen.
-      assert.is_true(geometry.reset_button.x >= geometry.accuracy.x + 23 * 6 * 0.68)
-    end)
-
-    it("keeps the button still as the numbers in the line change", function()
-      local before = logic.geometry(100, 200, 1).reset_button.x
-      swings({ 1, 1, 1, 15, 15 })
-      assert.are.equal(before, logic.geometry(100, 200, 1).reset_button.x)
+    --[[ The row is text and nothing else (Kevin, 2026-09-27): no button, so
+         no rect and nothing for the mouse to find. ]]
+    it("draws no button beside the line", function()
+      assert.is_nil(logic.geometry(100, 200, 1).reset_button)
     end)
 
     --[[ The row is kept inside the box `get_bounds` reports, horizontally as
@@ -504,35 +477,63 @@ describe("parambar logic", function()
          rather than outside core's clamp. ]]
     it("never draws the row left of the origin", function()
       config.accuracy.offset = -1000
-      local geometry = logic.geometry(100, 200, 1)
-      assert.are.equal(100, geometry.accuracy.x)
-      assert.is_true(geometry.reset_button.x >= 100)
+      assert.are.equal(100, logic.geometry(100, 200, 1).accuracy.x)
     end)
 
-    --[[ The reservation and the format string are two constants that have
-         to agree, and the button now sits at the reservation - so a line
-         that outgrew it would draw into the button rather than merely past
-         the bounds. This drives the real formatter to its longest and
-         measures what comes out against where the button went. ]]
-    it("fits the longest line the formatter can produce before the button", function()
+    --[[ FOUR digits: the window goes to 600 seconds, and ten minutes of a
+         dual-wielding multi-attack job is well past a thousand swings. The
+         reservation and the format string are two constants that have to
+         agree, so this drives the REAL formatter to its longest line and
+         measures what comes out against the box that has to cover it. ]]
+    it("reserves room for the longest line the formatter can produce", function()
       local many = {}
       for index = 1, 4000 do
-        -- All hits: four digits both sides and a three-digit percentage,
-        -- which is the exact line the reservation is sized for.
+        -- All hits: four digits both sides and a three-digit percentage.
         many[index] = 1
       end
       swings(many)
       local line = logic.tick(0).accuracy.text
       assert.are.equal("Acc: 4000 / 4000 (100%)", line)
+      config.accuracy.offset = 200
       local geometry = logic.geometry(100, 200, 1)
       local drawn = #line * config.accuracy.font_size * config.accuracy.text_width_ratio
-      assert.is_true(geometry.accuracy.x + drawn <= geometry.reset_button.x, "the line reaches the button: " .. line)
+      local right = select(3, logic.bounds(100, 200, 1)) + 100
+      assert.is_true(geometry.accuracy.x + drawn <= right, "the line reaches past the bounds: " .. line)
+    end)
+
+    it("keeps the row's footprint still as the numbers in the line change", function()
+      config.accuracy.offset = 200
+      local before = select(3, logic.bounds(100, 200, 1))
+      swings({ 1, 1, 1, 15, 15 })
+      assert.are.equal(before, select(3, logic.bounds(100, 200, 1)))
+    end)
+
+    --[[ The clearance itself, rather than the pixel the frame happens to
+         land on: `bar_gap` exists because a live client showed the line
+         drawing ON the bar art, so the invariant is that the frame starts
+         below where the line is estimated to END. A literal alone would
+         just get updated if someone retuned the row back into overlap. ]]
+    it("keeps the whole line clear of the bar art", function()
+      local geometry = logic.geometry(100, 200, 1)
+      local line_height = config.accuracy.font_size * config.accuracy.text_height_ratio
+      assert.is_true(geometry.background.y >= geometry.accuracy.y + line_height)
+    end)
+
+    --[[ `bar_gap` is the clearance between the row and the bar art - the
+         knob for a line sitting on it - and it is the only thing that moves
+         the frame down. ]]
+    it("lifts the row off the bar art without moving the line", function()
+      local before = logic.geometry(100, 200, 1)
+      config.accuracy.bar_gap = 12
+      local after = logic.geometry(100, 200, 1)
+      assert.are.equal(before.background.y + 5, after.background.y)
+      assert.are.equal(before.accuracy.x, after.accuracy.x)
     end)
 
     it("scales the row with everything else", function()
       local geometry = logic.geometry(100, 200, 2)
-      assert.are.equal(12, geometry.accuracy.font_size)
-      assert.are.equal(220, geometry.background.y)
+      assert.are.equal(16, geometry.accuracy.font_size)
+      assert.are.equal(235, geometry.background.y)
     end)
 
     it("takes the row out of the geometry entirely when it is off", function()
@@ -547,21 +548,21 @@ describe("parambar logic", function()
     it("reports bounds that cover the row as well as the frame", function()
       local x, y, width, height = logic.bounds(100, 200, 1)
       assert.are.same({ 100, 200 }, { x, y })
-      assert.are.equal(34, height)
-      local button = logic.geometry(100, 200, 1).reset_button
-      assert.is_true(width >= button.x + button.width - 100)
+      assert.are.equal(41, height)
+      assert.are.equal(472, width)
     end)
 
-    --[[ At the shipped 6pt the row fits inside the bar art, so the frame
+    --[[ At the shipped font the row fits inside the bar art, so the frame
          decides the width. A bigger font or a pushed-out offset is what the
          widening is FOR, and without a case off the defaults nothing here
          would notice if it stopped happening. ]]
     it("widens the bounds for a row that outreaches the bar art", function()
-      config.accuracy.font_size = 12
+      config.accuracy.font_size = 14
       local width = select(3, logic.bounds(100, 200, 1))
       assert.is_true(width > 472)
       local geometry = logic.geometry(100, 200, 1)
-      assert.is_true(width >= geometry.reset_button.x + geometry.reset_button.width - 100)
+      local reserved = 23 * config.accuracy.font_size * config.accuracy.text_width_ratio
+      assert.is_true(width >= geometry.accuracy.x + reserved - 100)
     end)
 
     it("widens the bounds for a row pushed out by its own offset", function()
@@ -700,7 +701,7 @@ describe("parambar logic", function()
       assert.is_not_nil(message:find("wobble", 1, true))
     end)
 
-    it("empties the window on the reset verb, as the button does", function()
+    it("empties the window on the reset verb", function()
       swings({ 1, 1, 15 })
       assert.are.equal("Acc: 2 / 3 (67%)", logic.tick(0).accuracy.text)
       local message, changed = logic.command({ "accuracy", "reset" })
