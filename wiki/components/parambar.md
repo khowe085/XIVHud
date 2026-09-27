@@ -23,7 +23,7 @@ the number beside each, sitting at the bottom centre of the screen.
 
 ## The accuracy row
 
-`Accuracy: 7 / 9 (78%)` above the TP bar: the hits, the swings and the
+`Acc: 7 / 9 (78%)` above the TP bar: the hits, the swings and the
 percentage, over a rolling window. It reads the same action packets the game
 prints your attacks from, counting the two hit messages (a hit and a critical
 hit) and the two miss messages, for your own swings only - your pet's do not
@@ -41,9 +41,12 @@ miss swings it a long way. Widen the window with `//hud parambar accuracy
 window 30` if you want a steadier number, or read the `7 / 9` rather than the
 percentage.
 
-The `[R]` button to the left of the line empties the window on a left-click,
-so you can start a fresh count on a new fight or after a gear change. The
-click does not reach the game. `//hud parambar accuracy reset` does the same
+The `[R]` button after the line empties the window on a left-click, so you
+can start a fresh count on a new fight or after a gear change; the click does
+not reach the game. It sits at a fixed point past the longest line the row
+could ever draw rather than hard against the line on screen, so it never
+moves as the numbers change - which means a short reading leaves a gap before
+it. That gap is deliberate. `//hud parambar accuracy reset` does the same
 thing from the console.
 
 Switching the row on or off changes how tall the widget is, so the bars move
@@ -73,10 +76,10 @@ the first four are also set by command.
 | `low_mp_colors` | yellow / orange / red | the same for MP |
 | `accuracy.enabled` | `true` | draw the accuracy row above the TP bar |
 | `accuracy.window_seconds` | `15` | how many seconds of swings the row counts (1 to 600) |
-| `accuracy.font_size` | `10` | font size for the row - smaller than the numbers |
-| `accuracy.gap` | `2` | gap between the row and the bars, and between the button and the line |
+| `accuracy.font_size` | `6` | font size for the row - smaller than the numbers |
+| `accuracy.gap` | `2` | gap between the row and the bars, and between the line and the button - raise it if the row sits on the bar art, and note it widens both |
 | `accuracy.offset` | `0` | shifts the whole row sideways, in pixels |
-| `accuracy.text_width_ratio` | `0.68` | how wide a character is assumed to draw - sizes the `[R]` button's clickable area |
+| `accuracy.text_width_ratio` | `0.68` | how wide a character is assumed to draw - this both places the `[R]` button and sizes its clickable area, so changing it moves the button |
 | `accuracy.text_height_ratio` | `1.3` | how tall a line is assumed to draw - sets the row's height |
 
 ## Commands

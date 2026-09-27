@@ -75,15 +75,18 @@ local BANDS = { { 25, "red" }, { 50, "orange" }, { 75, "yellow" } }
 local SAMPLE_VITALS = { hp = 1500, hpp = 75, mp = 800, mpp = 50, tp = 1500 }
 local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78 }
 
---[[ The accuracy row. The button LEADS the readout, so the estimated width
-     of a line whose digits change can never move the one thing the player
-     has to click; the readout is measured against the widest line it can
-     ever draw, which is what keeps the row's own footprint still. ]]
+--[[ The accuracy row. The button FOLLOWS the readout (Kevin, 2026-09-27),
+     and is placed past the WIDEST line the row can ever draw rather than
+     past the one currently on screen - so the digits changing cannot move
+     the one thing the player has to click. The cost, accepted: a short line
+     leaves a gap before the button, which is the price of a still target.
+     FOUR digits, since the window runs to ten minutes and that is well past
+     a thousand swings on a dual-wielding multi-attack job. Under-reserving
+     is the expensive direction now that the button trails: the line would
+     draw into it. ]]
 local RESET_LABEL = "[R]"
--- Three digits, not two: a long window on a dual-wielding multi-attack job
--- reaches them, and the reserved width is what the bounds are measured from.
-local WIDEST_ACCURACY = "Accuracy: 000 / 000 (000%)"
-local EMPTY_ACCURACY = "Accuracy: 0 / 0 (--%)"
+local WIDEST_ACCURACY = "Acc: 0000 / 0000 (000%)"
+local EMPTY_ACCURACY = "Acc: 0 / 0 (--%)"
 
 local function zeroed()
   return { hp = 0, hpp = 0, mp = 0, mpp = 0, tp = 0 }
@@ -259,12 +262,14 @@ local function new(config)
     local scaled_font = font * scale
     return {
       font_size = math.floor(scaled_font + 0.5),
-      height = math.ceil(scaled_font * height_ratio),
       gap = gap * scale,
       offset = tonumber(set.offset) or 0,
       row_height = math.floor((font * height_ratio + gap) * scale + 0.5),
-      button_width = math.ceil(#RESET_LABEL * scaled_font * width_ratio),
-      readout_width = math.ceil(#WIDEST_ACCURACY * scaled_font * width_ratio),
+      -- Floored at nothing: a hand-edited negative font would otherwise
+      -- give a negative width and put the button left of the origin, where
+      -- `bounds` does not reach and core cannot clamp it.
+      button_width = math.max(0, math.ceil(#RESET_LABEL * scaled_font * width_ratio)),
+      readout_width = math.max(0, math.ceil(#WIDEST_ACCURACY * scaled_font * width_ratio)),
     }
   end
 
@@ -280,7 +285,7 @@ local function new(config)
   -- How far right the row reaches from the widget's own x: the button, the
   -- gap, and the widest line the readout can ever draw.
   local function accuracy_reach(metrics, row, scale)
-    return accuracy_row_x(metrics, row, scale) + row.button_width + row.gap + row.readout_width
+    return accuracy_row_x(metrics, row, scale) + row.readout_width + row.gap + row.button_width
   end
 
   -- Where every prim goes for a widget anchored at (x, y) and drawn at `scale`.
@@ -322,16 +327,22 @@ local function new(config)
 
     if row then
       local row_x = x + accuracy_row_x(metrics, row, scale)
+      geometry.accuracy = { x = row_x, y = y, font_size = row.font_size }
       geometry.reset_button = {
-        x = row_x,
+        x = row_x + row.readout_width + row.gap,
         y = y,
         width = row.button_width,
-        height = row.height,
+        -- The row's whole band rather than the glyph estimate alone: the
+        -- same ratio that reads short against the bar art would otherwise
+        -- leave the bottom pixels of the drawn label unclickable. The WIDTH
+        -- is still that class of estimate, deliberately - there is no band
+        -- to widen it to, and `text_width_ratio` also places the button, so
+        -- padding the rect would put it out of step with the glyph.
+        height = row.row_height,
         -- The label travels with the rect it was measured from, so the two
         -- cannot drift: what is drawn is what answers a click.
         label = RESET_LABEL,
       }
-      geometry.accuracy = { x = row_x + row.button_width + row.gap, y = y, font_size = row.font_size }
     end
 
     return geometry
@@ -421,7 +432,7 @@ local function new(config)
       -- Nothing swung is not nought per cent, and the row says so.
       return EMPTY_ACCURACY
     end
-    return string.format("Accuracy: %d / %d (%d%%)", sample.hits, sample.swings, sample.percent)
+    return string.format("Acc: %d / %d (%d%%)", sample.hits, sample.swings, sample.percent)
   end
 
   --[[ The render plan for this frame. `dirty` says whether the bar needs
