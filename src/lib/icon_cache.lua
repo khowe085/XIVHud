@@ -160,10 +160,13 @@ local function new(deps)
        draws nothing, silently, for a missing texture path. The re-extraction
        overwrites the file in place, which every instance already points at.
 
-       Note what this CANNOT do: extraction is deterministic, so an icon that
-       came out wrong comes out wrong again. It recovers a missing or abandoned
-       one - after a `game_path` correction, say - and it is how a file written
-       wrong by an older build gets replaced.
+       What this can and cannot do: re-running the same code over the same DAT
+       gives the same bytes, so it cannot fix an icon our current decode gets
+       wrong. It does replace a file that is stale, half-written or written by
+       an older build, and retries one abandoned after a `game_path`
+       correction - which is a real candidate fix for the two bad icons of
+       2026-09-18, the reference addon having drawn both correctly from a
+       cache of its own.
 
        Answers whether it had anything to forget. ]]
   function self.refresh(item_id)
