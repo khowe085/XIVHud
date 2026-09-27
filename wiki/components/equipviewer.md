@@ -43,16 +43,20 @@ command.
 
 If icons stay blank, the addon could not find your FFXI install. Set
 `game_path` to the game's folder, for example
-`"C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI"`, then run
-`//hud equipviewer icons clear` so the icons are read again with the new path.
+`"C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI"`, then unload
+and reload the addon so the icons are read again with the new path.
 
 If a single item draws the *wrong* icon, or no icon while everything else is
 fine, that is a different problem: the icons are read out of the game's own
 data files at a position worked out from the item's id, and for some items that
-position is not where the icon actually is. Clearing will not help - it reads
-the same place again. `//hud equipviewer icons probe` prints what it worked out
+position is not where the icon actually is. `//hud equipviewer icons probe` prints what it worked out
 for each equipped slot and writes the same, in more detail, to `icons.log`
 beside the addon's `load.log`; that file is what to send along with a report.
+
+To make the addon read an icon again, unload it (`//lua unload XIVHud`), delete
+the file `icons/<item id>.bmp` in the addon's folder, and load it again. There
+is no command for it: the addon cannot overwrite an image file it is currently
+drawing.
 
 ## Commands
 
@@ -61,5 +65,4 @@ beside the addon's `load.log`; that file is what to send along with a report.
 | `//hud equipviewer` | print both toggles as they stand |
 | `//hud equipviewer encumbrance on\|off` | show or hide the X over locked slots |
 | `//hud equipviewer ammocount on\|off` | show or hide the ammo count |
-| `//hud equipviewer icons clear` | read every equipped item's icon again, instead of using the copy already saved |
 | `//hud equipviewer icons probe` | print where each equipped slot's icon was read from, and write `icons.log` |

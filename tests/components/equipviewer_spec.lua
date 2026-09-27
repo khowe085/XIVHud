@@ -693,32 +693,6 @@ describe("equipviewer widget", function()
       widget.update()
     end)
 
-    it("clears every equipped icon so the next tick extracts it again", function()
-      files["addons/XIVHud/icons/4096.bmp"] = true
-      files["addons/XIVHud/icons/12345.bmp"] = true
-      widget.update()
-
-      local message = widget.handle_command({ "icons", "clear" })
-
-      assert.is_not_nil(tostring(message):find("2", 1, true), "it says how many it will re-read")
-      -- The icons directory is shared with the action bars, so nothing is
-      -- deleted: the re-extraction overwrites in place.
-      assert.is_true(files["addons/XIVHud/icons/4096.bmp"])
-      assert.is_true(files["addons/XIVHud/icons/12345.bmp"])
-
-      -- One icon is drained per frame, so both want a few.
-      dats["C:/FFXI/ROM/118/107.DAT"] = function()
-        return RECORD
-      end
-      dats["C:/FFXI/ROM/118/109.DAT"] = function()
-        return RECORD
-      end
-      for _ = 1, 6 do
-        widget.update()
-      end
-      assert.is_true(#writes > 0, "nothing was extracted again")
-    end)
-
     it("probes every equipped slot", function()
       local message = widget.handle_command({ "icons", "probe" })
       local said = type(message) == "table" and table.concat(message, "|") or tostring(message)
@@ -751,8 +725,8 @@ describe("equipviewer widget", function()
     it("hints rather than guessing at an unknown icons verb", function()
       local message = widget.handle_command({ "icons", "wat" })
       local said = type(message) == "table" and table.concat(message, "|") or tostring(message)
-      assert.is_not_nil(said:find("clear", 1, true))
       assert.is_not_nil(said:find("probe", 1, true))
+      assert.is_nil(said:find("clear", 1, true), "clear was withdrawn 2026-09-27")
     end)
   end)
 end)

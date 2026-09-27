@@ -362,33 +362,24 @@ local function new(ctx)
     return found
   end
 
-  --[[ `icons clear` and `icons probe`. Neither existed, and between them they
-       are the only way to recover from - or explain - an icon that came out
-       wrong: the cache hands back whatever .bmp is on disk without ever
-       looking at it, and abandons a failed extraction for the session, so
-       Almace drawing as a scythe and Mirage Stole +2 drawing as nothing
-       survived every login (Kevin, 2026-09-18).
+  --[[ `icons probe`: every number the extraction would use for what is worn.
+       It READS ONLY, and that is now the whole of the verb.
 
-       They reach the cache and the client, so they are answered here rather
-       than in logic.lua, which stays pure; the formatting is logic's. ]]
+       A companion `icons clear` re-extracted in place and was WITHDRAWN the
+       day it shipped (Kevin, 2026-09-27): a slot with no cached icon is
+       hidden, so it blanked the grid, and the re-extraction could not put it
+       back - `write_binary` opens the .bmp "wb" while the renderer still holds
+       that exact file open, which on Windows fails outright, abandoning the
+       item for the session, or truncates it (one slot came back a white
+       square). The reference addon never meets this because it only ever
+       writes a file that does NOT exist. Recovering a bad icon means deleting
+       it with the addon unloaded until something safer is worked out: nothing
+       here writes over a texture in use.
+
+       It reaches the cache and the client, so it is answered here rather than
+       in logic.lua, which stays pure; the formatting is logic's. ]]
   local function icons_command(word)
     word = tostring(word or ""):lower()
-
-    if word == "clear" then
-      -- Counted by ID rather than by slot: twin rings are one icon.
-      local seen, dropped = {}, 0
-      for _, item in ipairs(worn()) do
-        cache.refresh(item.id)
-        if not seen[item.id] then
-          seen[item.id] = true
-          dropped = dropped + 1
-        end
-      end
-      -- The next ticks re-request them, one icon per frame.
-      drawn = {}
-      render()
-      return string.format("equipviewer: %d icon(s) will be read from the DATs again", dropped)
-    end
 
     if word == "probe" then
       local reports = {}
@@ -409,7 +400,7 @@ local function new(ctx)
       return lines
     end
 
-    return string.format("equipviewer: no icons verb '%s' (clear, probe)", word)
+    return string.format("equipviewer: no icons verb '%s' (probe)", word)
   end
 
   --[[ `//hud equipviewer ...`. An icon that could not be extracted leaves a

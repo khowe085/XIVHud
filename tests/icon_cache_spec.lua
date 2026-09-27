@@ -172,59 +172,16 @@ describe("icon cache", function()
        2026-09-18) - survived every login with no way to clear it from in game.
        Forgetting one removes the file and lets the next request extract it
        afresh. ]]
-  describe("refreshing an icon", function()
-    --[[ The file is deliberately NOT deleted. Three cache instances share one
-         `icons/` directory (the equip viewer's and a bar's apiece) and each
-         remembers what it resolved, so deleting would leave the other two
-         pointing at a texture that is gone - and a missing texture path fails
-         SILENTLY in Windower, which is the worst shape this could take. The
-         re-extraction overwrites the file in place instead. ]]
-    it("re-extracts on the next request without deleting the file", function()
-      cache.request_icon(USABLE)
-      cache.drain_queue()
-      assert.is_not_nil(cache.cached_icon(USABLE))
-
-      assert.is_true(cache.refresh(USABLE))
-      assert.is_true(files["addons/XIVHud/icons/4096.bmp"], "the shared file was deleted")
-      assert.is_nil(cache.cached_icon(USABLE), "it still answers from the old file")
-
-      cache.request_icon(USABLE)
-      assert.is_true(cache.drain_queue())
-      assert.are.equal(2, #dat_reads, "the DAT was not read a second time")
-      assert.are.equal(2, #writes, "the icon was not written again")
-      assert.is_not_nil(cache.cached_icon(USABLE), "it did not come back after re-extraction")
-    end)
-
-    -- The queue is the other half: an id still waiting must not be queued twice.
-    it("does not queue an id twice when one was already pending", function()
-      cache.request_icon(USABLE)
-      cache.refresh(USABLE)
-      cache.request_icon(USABLE)
-
-      assert.is_true(cache.drain_queue())
-      assert.is_false(cache.drain_queue(), "the id was left in the queue twice")
-    end)
-
-    it("forgives an abandoned icon", function()
-      deps.read_dat = function()
-        return nil
-      end
-      cache.request_icon(USABLE)
-      cache.drain_queue()
-      assert.is_true(cache.is_abandoned(USABLE))
-      assert.are.equal(1, cache.abandoned_count())
-
-      cache.refresh(USABLE)
-      assert.is_false(cache.is_abandoned(USABLE))
-      assert.are.equal(0, cache.abandoned_count())
-    end)
-
-    -- Nothing known about it is nothing to refresh; it extracts as usual.
-    it("answers false for an icon it knew nothing about", function()
-      assert.is_false(cache.refresh(USABLE))
-    end)
-  end)
-
+  --[[ There is no way to re-extract an icon already on disk, deliberately.
+       `refresh` did that and was withdrawn the day it shipped: it left the
+       file in place and made `cached_icon` answer nil until the icon had been
+       read again, so the grid blanked - and the re-extraction could not put it
+       back, because `write_binary` opens the .bmp "wb" while the renderer
+       still holds that exact file open (Kevin, 2026-09-27). Deleting instead
+       is no better: three cache instances share one `icons/` directory and
+       each remembers separately what it resolved, so two would be left on a
+       texture that is gone, which Windower draws as silently nothing. Until
+       something safer is worked out, nothing writes over a texture in use. ]]
   --[[ The diagnostic. An icon that comes out wrong was read at the wrong
        record, and none of the numbers that decide the record - the DAT, the
        index, the byte offset, how much came back - is visible from in game. ]]
