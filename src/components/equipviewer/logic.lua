@@ -233,6 +233,15 @@ local function new(initial_config)
     state.count = count
   end
 
+  -- Where the client last said a slot's item sits: nil, nil once it emptied.
+  function self.location(slot)
+    local state = slots[slot]
+    if not state then
+      return nil, nil
+    end
+    return state.bag, state.index
+  end
+
   function self.item(slot)
     local state = slots[slot]
     return state and state.item_id or 0

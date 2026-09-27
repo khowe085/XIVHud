@@ -545,6 +545,31 @@ describe("equipviewer logic", function()
     end)
   end)
 
+  --[[ Where the client last put a slot's item. The widget drops a deferred
+       read whose slot has since moved, so this is what an equip, an unequip
+       and a refresh each have to leave behind. ]]
+  describe("a slot's location", function()
+    it("is the bag and index the equipment map named", function()
+      logic.set_equipment({ main = 5, main_bag = 8 })
+      assert.are.same({ 8, 5 }, { logic.location(MAIN) })
+    end)
+
+    it("follows an equip packet", function()
+      logic.on_chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 10 })
+      assert.are.same({ 10, 9 }, { logic.location(MAIN) })
+    end)
+
+    it("is nothing once an unequip empties the slot", function()
+      logic.on_chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      logic.on_chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 0, ["Inventory Bag"] = 0 })
+      assert.are.same({}, { logic.location(MAIN) })
+    end)
+
+    it("is nothing for a slot that does not exist", function()
+      assert.are.same({}, { logic.location(99) })
+    end)
+  end)
+
   --[[ The icon diagnostic. An icon that comes out wrong was read at the wrong
        record, and none of the numbers deciding the record is visible from in
        game - Almace drew as a scythe and Mirage Stole +2 drew as nothing at

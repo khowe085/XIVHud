@@ -42,7 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 -- An equipment table carrying OTHER slots but no `main` reads as an empty
 -- hand; one carrying nothing at all reads as a client that has not filled it
--- in yet. The read is whole-inventory and the client answers it whole, so a
+-- in yet. The client answers the equipment bag with every slot in it, so a
 -- table with no slot in it is not a character wearing nothing everywhere -
 -- and taking it for one would latch Hand-to-Hand at login, clear the dirty
 -- flag with it, and leave nothing to ask again until the player next changed

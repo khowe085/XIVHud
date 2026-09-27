@@ -46,10 +46,10 @@ If icons stay blank, the addon could not find your FFXI install. Set
 `"C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI"`, then unload
 and reload the addon so the icons are read again with the new path.
 
-If a single item draws the *wrong* icon, or no icon while everything else is
-fine, that is a different problem: the icons are read out of the game's own
-data files at a position worked out from the item's id, and for some items that
-position is not where the icon actually is. `//hud equipviewer icons probe` prints what it worked out
+If an item draws the *wrong* icon, or no icon while everything else is fine,
+that is a known open problem and not a setting. `//hud equipviewer icons probe`
+prints the item id the addon believes each slot holds - compare those with what
+you are actually wearing - along with what it worked out
 for each equipped slot and writes the same, in more detail, to `icons.log`
 beside the addon's `load.log`; that file is what to send along with a report.
 

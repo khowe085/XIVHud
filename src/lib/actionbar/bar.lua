@@ -361,9 +361,9 @@ local function new(deps)
   local temporary_seen = false
   local counts_dirty = true
   local counted_signature = nil
-  --[[ The class in the main hand is a whole-inventory call, so it is asked
-       only when a packet or a rescope says the gear may have moved - never
-       per frame. It starts DOWN, unlike `counts_dirty`: every attach clears
+  --[[ The class in the main hand costs an equipment read and an item lookup,
+       so it is asked only when a packet or a rescope says the gear may have
+       moved - never per frame. It starts DOWN, unlike `counts_dirty`: every attach clears
        the scope, so the first tick of any attach goes through try_scope,
        which arms it there. ]]
   local weapon_dirty = false

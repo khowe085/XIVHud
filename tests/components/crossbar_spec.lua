@@ -2251,7 +2251,7 @@ describe("crossbar live widget", function()
       assert.are.equal('input /ws "Savage Blade" <t>', press_slot(3), "the great axe has no layer")
     end)
 
-    --[[ The re-read is packet-driven: `get_equipment` is a whole-inventory
+    --[[ The re-read is packet-driven: `get_equipment` is an equipment-bag
          call, so nothing asks per frame - and equally, the class in hand
          must not go stale for the rest of the session once it has. ]]
     it("re-reads the main hand on the equip packet, and not before it", function()
@@ -2279,7 +2279,7 @@ describe("crossbar live widget", function()
       assert.are.equal('input /ws "Ukko" <t>', press_slot(3), "the equip packet moved the layer")
     end)
 
-    --[[ `get_equipment` is a whole-inventory read, and GearSwap fires a
+    --[[ `get_equipment` is a read of the client, and GearSwap fires a
          0x050 per slot it swaps on every cast. Only the MAIN hand can move
          this layer, and the packet says which slot it moved. ]]
     it("ignores an equip packet for a slot that is not the main hand", function()
@@ -2420,7 +2420,7 @@ describe("crossbar live widget", function()
       assert.are.equal("Ukko", text_of("xhb_left", 3, "name").last.text, "the slot was repainted")
     end)
 
-    -- The read is a whole-inventory call behind the service: it happens
+    -- The read is a client call behind the service: it happens
     -- when a packet says the gear may have moved, never every frame.
     it("reads the equipment only when something says it may have moved", function()
       build_world()

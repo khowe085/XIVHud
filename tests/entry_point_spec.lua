@@ -202,6 +202,21 @@ describe("entry point", function()
       assert.are.equal(boot.ctxs.equipviewer.get_equipment, boot.ctxs.crossbar.get_equipment)
     end)
 
+    --[[ The reference equipviewer's own call, verbatim: `get_items('equipment')`,
+         the equipment bag asked for by NAME. This read took the whole inventory
+         and its `.equipment` field until 2026-09-27 - the wiki says the two are
+         the same table, and nobody ever confirmed that in a client, while the
+         reference's call is proven by the addon that draws the same gear
+         correctly. A fresh login's read ran when fifteen garbage icons were
+         extracted (Kevin, live client, 2026-09-27) - whether it caused them is
+         not established. ]]
+    it("reads the equipment the way the reference addon does", function()
+      boot.item_reads = {}
+      boot.ctxs.equipviewer.get_equipment()
+      assert.are.equal(1, #boot.item_reads)
+      assert.are.same({ "equipment" }, boot.item_reads[1])
+    end)
+
     --[[ The crossbar reads the Equip packet itself, to tell a main-hand
          change from the fifteen other slots GearSwap moves on every cast.
          Same decode equipviewer uses on the same packet - an offset of its

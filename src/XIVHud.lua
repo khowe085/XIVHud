@@ -633,9 +633,17 @@ end
 -- Which bag and index each equipment slot is wearing - not the items
 -- themselves, which take a read apiece. Read once per refresh; the reference
 -- addon called this once per slot.
+--[[ The reference equipviewer's own call, verbatim: the equipment bag asked
+     for by NAME, answering `<slot>` and `<slot>_bag` per slot. This took the
+     whole inventory and its `.equipment` field until 2026-09-27; the wiki calls
+     the two the same table, and nobody ever confirmed that in a client, while
+     this one is proven by the addon that draws the same gear correctly.
+     get_gil below keeps the documented integer form for a string one; this
+     does the opposite for a reason that does not apply there - the equipment
+     is a pseudo-bag with no integer id to fall back to, and the string form
+     is what the one addon known to draw this gear right actually calls. ]]
 local function get_equipment()
-  local items = windower.ffxi.get_items()
-  return items and items.equipment
+  return windower.ffxi.get_items("equipment")
 end
 
 local function get_item(bag, index)

@@ -184,14 +184,10 @@ describe("equipviewer widget", function()
       assert.is_false(icon(BODY).visible)
     end)
 
-    --[[ On the NEXT TICK, never inside the chunk handler: Windower dispatches
-         an incoming chunk before the client applies it, so the inventory read
-         there still holds what was at that bag and index BEFORE the equip
-         (Kevin, live client, 2026-09-27). ]]
+    -- On the next tick, the way the reference addon schedules its own read.
     it("reads the item behind a slot the player just equipped", function()
       attach()
       widget.show()
-      equip("body", 9)
       put_item(0, 9, 777, 1)
       files["addons/XIVHud/icons/777.bmp"] = true
 
@@ -412,6 +408,9 @@ describe("equipviewer widget", function()
 
       lookups = 0
       chunk(EQUIP, { ["Equipment Slot"] = MAIN, ["Inventory Bag"] = 0, ["Inventory Index"] = 5 })
+      -- The read and the redraw it buys land a tick later, so the tick is what
+      -- would go looking on disk; without it this could never fail.
+      tick()
       assert.equal(0, lookups)
     end)
 
@@ -739,47 +738,136 @@ describe("equipviewer widget", function()
     end)
   end)
 
-  --[[ Windower dispatches an incoming chunk to addons BEFORE the client applies
-       it - that is what makes blocking possible - so the inventory read inside
-       the handler answers with the state from before the equip. Reading there
-       returned whatever had previously been at that bag and index, which is how
-       a sword slot came to draw a scythe and how a GearSwap burst filled the
-       grid with items nobody was wearing (Kevin, live client, 2026-09-27). The
-       reference addon defers its read by a tick for exactly this reason. ]]
+  --[[ The equip packet is handled exactly as the reference addon handles it:
+       the packet's own bag and index are read for THAT slot, one tick after the
+       packet arrived (`update_equipment_slot:schedule(0, ...)` there). A full
+       re-read of the equipment map replaced this for a day (2026-09-27), on the
+       claim that the item at that bag and index changes when it is equipped -
+       which equipping in FFXI does not do - and it made nothing better. ]]
   describe("the equip packet", function()
     before_each(function()
       equip("main", 5)
       put_item(0, 5, 4096, 1)
+      put_item(0, 9, 777, 1)
+      files["addons/XIVHud/icons/777.bmp"] = true
       attach()
+      widget.show()
       widget.update()
     end)
 
     it("reads no item inside the chunk handler", function()
       item_reads = {}
-      chunk(0x050, { ["Equipment Slot"] = 0, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
-      assert.are.equal(0, #item_reads, "the inventory was read before the client applied the packet")
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      assert.are.equal(0, #item_reads, "the reference reads a tick later, never in the handler")
     end)
 
-    it("reads the equipment afresh on the next tick", function()
-      chunk(0x050, { ["Equipment Slot"] = 0, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+    it("reads the packet's own bag and index on the next tick", function()
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      item_reads = {}
       local before = equipment_reads
 
       widget.update()
 
-      assert.are.equal(before + 1, equipment_reads, "the equipment map was not re-read")
+      assert.are.same({ "0:9" }, item_reads)
+      assert.are.equal(before, equipment_reads, "the whole equipment map was re-read")
+      assert.are.equal("addons/XIVHud/icons/777.bmp", icon(MAIN).last.path)
     end)
 
-    --[[ A burst is one read, not one per packet: GearSwap sends a 0x050 per
-         slot it swaps on every cast. ]]
-    it("coalesces a burst onto one refresh", function()
-      for slot = 0, 5 do
-        chunk(0x050, { ["Equipment Slot"] = slot, ["Inventory Index"] = 5, ["Inventory Bag"] = 0 })
-      end
-      local before = equipment_reads
+    --[[ An unequip empties its slot at once, while an equip's read waits a
+         tick - so a read a LATER packet has overtaken must be dropped, or an
+         equip then an unequip of one slot in one frame (a precast shield a
+         midcast two-hander takes off) would put the removed item back. ]]
+    it("drops a read an unequip of the same slot overtook", function()
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 0, ["Inventory Bag"] = 0 })
 
       widget.update()
 
-      assert.are.equal(before + 1, equipment_reads)
+      assert.is_false(icon(MAIN).visible, "the removed item came back")
+    end)
+
+    it("keeps only the last of two equips to one slot", function()
+      put_item(0, 11, 12345, 1)
+      files["addons/XIVHud/icons/12345.bmp"] = true
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 11, ["Inventory Bag"] = 0 })
+      item_reads = {}
+
+      widget.update()
+
+      assert.are.same({ "0:11" }, item_reads)
+      assert.are.equal("addons/XIVHud/icons/12345.bmp", icon(MAIN).last.path)
+    end)
+
+    --[[ These three put the equipment map where the client would have it a
+         tick after the packet - AGREEING with the packet - so the location
+         guard in `apply_reads` cannot be what passes them. A map that still
+         disagreed would be dropped by the guard whatever else went wrong. ]]
+    it("reads a slot once when a refresh answers its pending read", function()
+      equip("main", 9)
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      chunk(0x01B, {})
+      item_reads = {}
+
+      widget.update()
+      widget.update()
+
+      assert.are.same({ "0:9" }, item_reads, "the refresh and the pending read both took the slot")
+    end)
+
+    it("takes no read queued before a detach", function()
+      equip("main", 9)
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      widget.detach()
+      attach()
+      item_reads = {}
+
+      widget.update()
+      widget.update()
+
+      assert.are.same({}, item_reads, "a read queued before the detach was taken")
+    end)
+
+    --[[ Core re-attaches over a character switch without a detach, and early
+         in a login the client has not filled the equipment in yet. Whose a
+         read still pending then is was read both ways in review; a re-attach
+         starts with nothing pending either way (see the widget). ]]
+    it("takes no read queued before a re-attach the client could not answer", function()
+      equip("main", 9)
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      equipment = nil
+      attach()
+      item_reads = {}
+
+      widget.update()
+      widget.update()
+
+      assert.are.same({}, item_reads, "the outgoing character's read was taken")
+    end)
+
+    -- A refresh the client could not answer read nothing, so it answered none.
+    it("keeps a pending read through a refresh the client could not answer", function()
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      chunk(0x01D, { Flag = 0 })
+      equipment = nil
+
+      widget.update()
+      widget.update()
+
+      assert.are.equal("addons/XIVHud/icons/777.bmp", icon(MAIN).last.path)
+    end)
+
+    -- A GearSwap burst reads each slot it names, once, a tick later.
+    it("reads every slot of a burst on the next tick", function()
+      put_item(0, 11, 12345, 1)
+      chunk(0x050, { ["Equipment Slot"] = MAIN, ["Inventory Index"] = 9, ["Inventory Bag"] = 0 })
+      chunk(0x050, { ["Equipment Slot"] = HEAD, ["Inventory Index"] = 11, ["Inventory Bag"] = 0 })
+      item_reads = {}
+
+      widget.update()
+      widget.update()
+
+      assert.are.same({ "0:9", "0:11" }, item_reads)
     end)
   end)
 end)
