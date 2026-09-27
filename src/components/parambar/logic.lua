@@ -48,6 +48,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      thresholds and colours). TP is never banded — its only colouring is the
      full-TP highlight. ]]
 
+local new_accuracy = require("components/parambar/accuracy")
+
 local EASE = 0.1
 local FULL_TP = 1000
 local TP_PER_PERCENT = 10
@@ -71,6 +73,17 @@ local VITALS = { hp = "hp", hpp = "hp", mp = "mp", mpp = "mp", tp = "tp" }
 local BANDS = { { 25, "red" }, { 50, "orange" }, { 75, "yellow" } }
 
 local SAMPLE_VITALS = { hp = 1500, hpp = 75, mp = 800, mpp = 50, tp = 1500 }
+local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78 }
+
+--[[ The accuracy row. The button LEADS the readout, so the estimated width
+     of a line whose digits change can never move the one thing the player
+     has to click; the readout is measured against the widest line it can
+     ever draw, which is what keeps the row's own footprint still. ]]
+local RESET_LABEL = "[R]"
+-- Three digits, not two: a long window on a dual-wielding multi-attack job
+-- reaches them, and the reserved width is what the bounds are measured from.
+local WIDEST_ACCURACY = "Accuracy: 000 / 000 (000%)"
+local EMPTY_ACCURACY = "Accuracy: 0 / 0 (--%)"
 
 local function zeroed()
   return { hp = 0, hpp = 0, mp = 0, mpp = 0, tp = 0 }
@@ -104,10 +117,29 @@ local function new(config)
   local preview = false
   local widths = { hp = 0, mp = 0, tp = 0 }
   local dirty = { hp = true, mp = true, tp = true }
+  local accuracy_shown = nil
+  -- The clock the last tick sampled at, so a command answered between frames
+  -- reports the window as the row currently draws it.
+  local accuracy_sampled_at = 0
 
   local function vitals()
     return preview and SAMPLE_VITALS or live
   end
+
+  -- The accuracy block, or an empty stand-in for a hand edit that left it as
+  -- something other than a table. Nothing below may index it directly.
+  local function accuracy_config()
+    local set = config.accuracy
+    return type(set) == "table" and set or {}
+  end
+
+  -- Strictly true, the framework's rule for a switch: a broken file must not
+  -- turn something on.
+  local function accuracy_enabled()
+    return accuracy_config().enabled == true
+  end
+
+  local accuracy = new_accuracy(accuracy_config())
 
   local function mark_all_dirty()
     for _, key in ipairs(BARS) do
@@ -124,7 +156,28 @@ local function new(config)
 
   function self.set_config(new_config)
     config = new_config
+    -- Re-pointed rather than rebuilt: the window survives a settings change,
+    -- so switching the row off and on again does not throw the swings away.
+    accuracy.set_config(accuracy_config())
     mark_all_dirty()
+  end
+
+  --[[ One parsed `0x028`, straight through to the window. The widget reads
+       the player and the clock; nothing about accuracy is decided here
+       except when it is drawn. ]]
+  function self.on_action(action, player_id, now)
+    accuracy.on_action(action, player_id, now)
+  end
+
+  -- The reset button, and nothing else: there is no command for this.
+  function self.reset_accuracy()
+    accuracy.reset()
+  end
+
+  -- Whether the row is drawn. The widget asks outside a tick - on an attach,
+  -- a show, a hide - where there is no plan to read it off.
+  function self.accuracy_enabled()
+    return accuracy_enabled()
   end
 
   --[[ The current vitals, as `lib/player` hands them over: the client's own
@@ -187,14 +240,59 @@ local function new(config)
     }
   end
 
+  --[[ The accuracy row's own measurements. Every width here is an ESTIMATE:
+       Windower cannot be asked how wide a string will draw, so the two
+       ratios stand in for it (expbar's approach and its config names) and
+       `offset` is the knob for correcting the row in a live client.
+
+       `row_height` is what the whole widget grows by. The row is drawn at
+       the widget's origin and the bar art below it, rather than the other
+       way round: anything drawn ABOVE the origin would fall outside
+       `get_bounds` and defeat core's clamp. ]]
+  local function accuracy_metrics(scale)
+    local set = accuracy_config()
+    local font = tonumber(set.font_size) or 0
+    local height_ratio = tonumber(set.text_height_ratio) or 0
+    local width_ratio = tonumber(set.text_width_ratio) or 0
+    local gap = tonumber(set.gap) or 0
+    local scaled_font = font * scale
+    return {
+      font_size = math.floor(scaled_font + 0.5),
+      height = math.ceil(scaled_font * height_ratio),
+      gap = gap * scale,
+      offset = tonumber(set.offset) or 0,
+      row_height = math.floor((font * height_ratio + gap) * scale + 0.5),
+      button_width = math.ceil(#RESET_LABEL * scaled_font * width_ratio),
+      readout_width = math.ceil(#WIDEST_ACCURACY * scaled_font * width_ratio),
+    }
+  end
+
+  -- Where the row starts, measured from the widget's own x: the TP bar's
+  -- left edge, since that is the bar the row is about.
+  local function accuracy_row_x(metrics, row, scale)
+    local step = metrics.bar_width + metrics.spacing
+    -- Clamped at the origin: a negative offset pulls the row back rather
+    -- than drawing it outside the box `bounds` reports and core clamps.
+    return math.max(0, (BAR_X[#BARS] + metrics.offset + (#BARS - 1) * step + row.offset) * scale)
+  end
+
+  -- How far right the row reaches from the widget's own x: the button, the
+  -- gap, and the widest line the readout can ever draw.
+  local function accuracy_reach(metrics, row, scale)
+    return accuracy_row_x(metrics, row, scale) + row.button_width + row.gap + row.readout_width
+  end
+
   -- Where every prim goes for a widget anchored at (x, y) and drawn at `scale`.
   function self.geometry(x, y, scale)
     local metrics = self.metrics()
     local step = metrics.bar_width + metrics.spacing
+    local row = accuracy_enabled() and accuracy_metrics(scale) or nil
+    -- The frame's top, which is the origin only while the row is off.
+    local top = y + (row and row.row_height or 0)
     local geometry = {
       background = {
         x = x,
-        y = y,
+        y = top,
         width = metrics.total_width * scale,
         height = BACKGROUND_HEIGHT * scale,
       },
@@ -212,21 +310,47 @@ local function new(config)
       local shift = (index - 1) * step
       geometry.bars[index] = {
         x = x + (BAR_X[index] + metrics.offset + shift) * scale,
-        y = y + INSET_Y * scale,
+        y = top + INSET_Y * scale,
         height = FILL_HEIGHT * scale,
       }
       geometry.texts[index] = {
         x = x + (TEXT_X[index] + (config.text_offset or 0) + shift) * scale,
-        y = y + INSET_Y * scale,
+        y = top + INSET_Y * scale,
       }
+    end
+
+    if row then
+      local row_x = x + accuracy_row_x(metrics, row, scale)
+      geometry.reset_button = {
+        x = row_x,
+        y = y,
+        width = row.button_width,
+        height = row.height,
+        -- The label travels with the rect it was measured from, so the two
+        -- cannot drift: what is drawn is what answers a click.
+        label = RESET_LABEL,
+      }
+      geometry.accuracy = { x = row_x + row.button_width + row.gap, y = y, font_size = row.font_size }
     end
 
     return geometry
   end
 
+  --[[ The origin is the row's, not the frame's, whenever the row is on - the
+       contract is that `get_bounds` hands back the point `set_pos` was
+       given, and core clamps against it. The width grows with the readout
+       too: at the shipped font the line is wider than the bar art, and a
+       box that did not cover it would let the row slide off screen. ]]
   function self.bounds(x, y, scale)
     local metrics = self.metrics()
-    return x, y, metrics.total_width * scale, BACKGROUND_HEIGHT * scale
+    local width = metrics.total_width * scale
+    local height = BACKGROUND_HEIGHT * scale
+    if accuracy_enabled() then
+      local row = accuracy_metrics(scale)
+      width = math.max(width, accuracy_reach(metrics, row, scale))
+      height = height + row.row_height
+    end
+    return x, y, width, height
   end
 
   -- One eased step towards the target width, XIVBar's exponential ease-out.
@@ -291,9 +415,20 @@ local function new(config)
     return self.tpp()
   end
 
-  -- The render plan for this frame. `dirty` says whether the bar needs pushing
-  -- to its prims; it clears on the frame the animation converges.
-  function self.tick()
+  local function accuracy_line(sample)
+    if sample.swings <= 0 or not sample.percent then
+      -- Nothing swung is not nought per cent, and the row says so.
+      return EMPTY_ACCURACY
+    end
+    return string.format("Accuracy: %d / %d (%d%%)", sample.hits, sample.swings, sample.percent)
+  end
+
+  --[[ The render plan for this frame. `dirty` says whether the bar needs
+       pushing to its prims; it clears on the frame the animation converges.
+       `now` is the frame clock, and only the accuracy row reads it: the
+       window is pruned where it is sampled, so a widget that stops ticking
+       stops ageing its swings rather than losing them. ]]
+  function self.tick(now)
     local metrics = self.metrics()
     local plan = {}
 
@@ -319,6 +454,16 @@ local function new(config)
         alpha = alpha_for(bar, state),
       }
     end
+
+    --[[ The window is sampled whether or not the row is drawn, so switching
+         it back on shows what has been happening rather than starting over.
+         The line is diffed rather than pushed: the text only moves when a
+         swing lands or ages out, which is a handful of frames a fight. ]]
+    accuracy_sampled_at = now or 0
+    local sample = preview and SAMPLE_ACCURACY or accuracy.sample(accuracy_sampled_at)
+    local line = accuracy_line(sample)
+    plan.accuracy = { text = line, dirty = line ~= accuracy_shown }
+    accuracy_shown = line
 
     return plan
   end
@@ -356,14 +501,79 @@ local function new(config)
     return "parambar compact mode " .. wanted, true
   end
 
+  local function accuracy_status()
+    return string.format(
+      "parambar accuracy: %s, %g second window - %s",
+      accuracy_enabled() and "on" or "off",
+      accuracy.window(),
+      accuracy_line(preview and SAMPLE_ACCURACY or accuracy.sample(accuracy_sampled_at))
+    )
+  end
+
+  --[[ The accuracy verbs. `window` is a command rather than a file-only key
+       for wsgate's reason: it is settled by watching the number move in a
+       fight, and alt-tabbing to a text file between readings is the wrong
+       loop. The value the CLI refuses is exactly the value the module would
+       fall back over, and the length it reports comes from the module, so
+       neither can name a number that is not in force.
+
+       There is deliberately no `reset` verb: the row carries a button. ]]
+  --[[ A hand edit can leave something other than a table here, and the
+       defaults merge cannot repair it (the key exists). A command that
+       WRITES repairs it on the way; one that only reports or refuses must
+       not, or a refusal would silently discard what is in the file and
+       return `changed = false`, leaving memory and disk disagreeing until
+       some unrelated write. ]]
+  local function writable_accuracy()
+    local set = config.accuracy
+    if type(set) ~= "table" then
+      set = {}
+      config.accuracy = set
+      accuracy.set_config(set)
+    end
+    return set
+  end
+
+  local function set_accuracy(word, value)
+    if word == nil then
+      return accuracy_status(), false
+    end
+
+    word = word:lower()
+    if word == "on" or word == "off" then
+      writable_accuracy().enabled = word == "on"
+      mark_all_dirty()
+      return "parambar accuracy row " .. word, true
+    end
+
+    if word == "window" then
+      local seconds = whole_number(value)
+      local longest = accuracy.max_window()
+      if not seconds or seconds <= 0 or seconds > longest then
+        -- Bounded like the statusbar's rows and the invtracker's columns:
+        -- every swing inside the window is held in memory, and a window
+        -- nothing ever prunes is a session-long list.
+        return string.format("//hud parambar accuracy window needs a whole number of seconds, 1 to %d", longest), false
+      end
+      writable_accuracy().window_seconds = seconds
+      return string.format("parambar accuracy window set to %d seconds", seconds), true
+    end
+
+    -- `word` is the one that was not understood; `value` is whatever came
+    -- after it, and naming that instead would point at the wrong thing.
+    return string.format("//hud parambar accuracy takes on, off or window <seconds>, not '%s'", word), false
+  end
+
   local function status()
     local metrics = self.metrics()
     return string.format(
-      "parambar: width %d, spacing %d, offset %d, compact %s",
+      "parambar: width %d, spacing %d, offset %d, compact %s, accuracy %s (%gs)",
       metrics.bar_width,
       metrics.spacing,
       metrics.offset,
-      metrics.compact and "on" or "off"
+      metrics.compact and "on" or "off",
+      accuracy_enabled() and "on" or "off",
+      accuracy.window()
     )
   end
 
@@ -381,7 +591,10 @@ local function new(config)
     if verb == "compact" then
       return set_compact(args[2])
     end
-    return string.format("parambar has no '%s' setting (width, spacing, offset, compact)", args[1]), false
+    if verb == "accuracy" then
+      return set_accuracy(args[2], args[3])
+    end
+    return string.format("parambar has no '%s' setting (width, spacing, offset, compact, accuracy)", args[1]), false
   end
 
   return self

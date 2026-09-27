@@ -61,6 +61,26 @@ return function(screen_width, screen_height)
     -- plain defaults the user can change.
     text_stroke = { width = 2, a = 150, r = 80, g = 70, b = 30 },
     full_tp_color = { r = 80, g = 180, b = 250 }, -- Texts.FullTpColor
+    --[[ The melee accuracy row above the TP bar - XIVBar has no equivalent;
+         it is the scoreboard addon's accuracy over a rolling window, and
+         nothing else of that addon.
+
+         `window_seconds` is the whole point and is meant to be changed: 15
+         is four or five swings single-wield, so the percentage moves in
+         coarse steps. `offset` nudges the row sideways, and the two ratios
+         estimate how wide a string will draw - Windower cannot be asked, so
+         they are what the reset button's hit rect is measured with and are
+         config for a live client to settle (expbar's values, and its
+         names). ]]
+    accuracy = {
+      enabled = true,
+      window_seconds = 15,
+      font_size = 12,
+      gap = 2,
+      offset = 0,
+      text_width_ratio = 0.68,
+      text_height_ratio = 1.3,
+    },
     low_hp_colors = low_vitals_colors(),
     low_mp_colors = low_vitals_colors(),
     layout = {

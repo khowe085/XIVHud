@@ -31,6 +31,15 @@ describe("parambar logic", function()
     logic.set_vitals(vitals)
   end
 
+  -- One 0x028 of the player's own swings, as the entry point decodes it.
+  local function swings(messages, at)
+    local actions = {}
+    for index, message in ipairs(messages) do
+      actions[index] = { message = message }
+    end
+    logic.on_action({ actor_id = 7, targets = { { id = 99, actions = actions } } }, 7, at or 0)
+  end
+
   before_each(function()
     config = parambar_defaults(1920, 1080)
     logic = new_logic(config)
@@ -292,14 +301,14 @@ describe("parambar logic", function()
   describe("geometry", function()
     it("lays the bars and numbers out against the background frame", function()
       local geometry = logic.geometry(100, 200, 1)
-      assert.are.same({ x = 100, y = 200, width = 472, height = 24 }, geometry.background)
+      assert.are.same({ x = 100, y = 218, width = 472, height = 24 }, geometry.background)
       assert.are.equal(115, geometry.bars[1].x)
-      assert.are.equal(202, geometry.bars[1].y)
+      assert.are.equal(220, geometry.bars[1].y)
       assert.are.equal(8, geometry.bars[1].height)
       assert.are.equal(275, geometry.bars[2].x)
       assert.are.equal(435, geometry.bars[3].x)
       assert.are.equal(165, geometry.texts[1].x)
-      assert.are.equal(202, geometry.texts[1].y)
+      assert.are.equal(220, geometry.texts[1].y)
       assert.are.equal(330, geometry.texts[2].x)
       assert.are.equal(490, geometry.texts[3].x)
       assert.are.equal(14, geometry.font_size)
@@ -315,9 +324,9 @@ describe("parambar logic", function()
 
     it("multiplies every offset, size and font by the scale", function()
       local geometry = logic.geometry(100, 200, 2)
-      assert.are.same({ x = 100, y = 200, width = 944, height = 48 }, geometry.background)
+      assert.are.same({ x = 100, y = 235, width = 944, height = 48 }, geometry.background)
       assert.are.equal(130, geometry.bars[1].x)
-      assert.are.equal(204, geometry.bars[1].y)
+      assert.are.equal(239, geometry.bars[1].y)
       assert.are.equal(16, geometry.bars[1].height)
       assert.are.equal(230, geometry.texts[1].x)
       assert.are.equal(28, geometry.font_size)
@@ -327,9 +336,11 @@ describe("parambar logic", function()
       assert.are.equal(18, logic.geometry(0, 0, 1.25).font_size)
     end)
 
-    it("reports bounds matching the background frame", function()
-      assert.are.same({ 100, 200, 472, 24 }, { logic.bounds(100, 200, 1) })
-      assert.are.same({ 100, 200, 708, 36 }, { logic.bounds(100, 200, 1.5) })
+    -- With the accuracy row on, the box covers the row as well as the frame;
+    -- the plain frame bounds are pinned under "accuracy geometry" below.
+    it("reports bounds covering the frame and the row above it", function()
+      assert.are.same({ 100, 200, 575, 42 }, { logic.bounds(100, 200, 1) })
+      assert.are.same({ 100, 200, 861.5, 62 }, { logic.bounds(100, 200, 1.5) })
     end)
 
     it("scales the eased fill width too", function()
@@ -364,6 +375,159 @@ describe("parambar logic", function()
       set("hpp", 100)
       logic.set_preview(false)
       assert.are.equal("77", settle().hp.text)
+    end)
+  end)
+
+  describe("accuracy", function()
+    it("reads the window as a line above the bars", function()
+      swings({ 1, 1, 15 })
+      assert.are.equal("Accuracy: 2 / 3 (67%)", logic.tick(0).accuracy.text)
+    end)
+
+    it("says so plainly when nothing has swung yet", function()
+      assert.are.equal("Accuracy: 0 / 0 (--%)", logic.tick(0).accuracy.text)
+    end)
+
+    it("drops swings that have aged out of the window", function()
+      swings({ 1 }, 0)
+      assert.are.equal("Accuracy: 0 / 0 (--%)", logic.tick(20).accuracy.text)
+    end)
+
+    it("takes its window length from the config", function()
+      config.accuracy.window_seconds = 30
+      swings({ 1 }, 0)
+      assert.are.equal("Accuracy: 1 / 1 (100%)", logic.tick(20).accuracy.text)
+    end)
+
+    it("pushes the line only on the frames its text changes", function()
+      swings({ 1 })
+      assert.is_true(logic.tick(0).accuracy.dirty)
+      assert.is_false(logic.tick(0).accuracy.dirty)
+      swings({ 15 })
+      assert.is_true(logic.tick(0).accuracy.dirty)
+    end)
+
+    it("keeps recording while switched off, so a re-enable is not blank", function()
+      config.accuracy.enabled = false
+      logic.set_config(config)
+      swings({ 1, 15 })
+      config.accuracy.enabled = true
+      logic.set_config(config)
+      assert.are.equal("Accuracy: 1 / 2 (50%)", logic.tick(0).accuracy.text)
+    end)
+
+    it("answers whether the row is drawn at all, for the prims", function()
+      assert.is_true(logic.accuracy_enabled())
+      config.accuracy.enabled = false
+      logic.set_config(config)
+      assert.is_false(logic.accuracy_enabled())
+    end)
+
+    it("empties the window on demand, for the reset button", function()
+      swings({ 1, 15 })
+      logic.reset_accuracy()
+      assert.are.equal("Accuracy: 0 / 0 (--%)", logic.tick(0).accuracy.text)
+    end)
+
+    it("shows a sample while previewing, so the row can be positioned", function()
+      logic.set_preview(true)
+      assert.are.equal("Accuracy: 7 / 9 (78%)", logic.tick(0).accuracy.text)
+    end)
+
+    it("ignores an accuracy block a hand edit left as something else", function()
+      config.accuracy = "on"
+      logic.set_config(config)
+      assert.is_false(logic.accuracy_enabled())
+    end)
+  end)
+
+  describe("accuracy geometry", function()
+    it("stands the row above the bars and pushes the frame down by it", function()
+      local geometry = logic.geometry(100, 200, 1)
+      assert.are.equal(200, geometry.accuracy.y)
+      assert.are.equal(12, geometry.accuracy.font_size)
+      -- The frame, the fills and the numbers all sit below the row.
+      assert.are.equal(218, geometry.background.y)
+      assert.are.equal(220, geometry.bars[1].y)
+      assert.are.equal(220, geometry.texts[1].y)
+    end)
+
+    --[[ The row starts where the TP bar starts, since that is the bar it is
+         about; the button leads it, so the readout's own estimated width can
+         never move the one thing the player has to hit. ]]
+    it("lines the row up with the TP bar it reports on", function()
+      local geometry = logic.geometry(100, 200, 1)
+      assert.are.equal(geometry.bars[3].x, geometry.reset_button.x)
+      assert.are.equal(462, geometry.accuracy.x)
+    end)
+
+    it("moves the whole row with its own offset, leaving the numbers alone", function()
+      config.accuracy.offset = 20
+      local geometry = logic.geometry(100, 200, 1)
+      assert.are.equal(455, geometry.reset_button.x)
+      assert.are.equal(482, geometry.accuracy.x)
+      assert.are.equal(490, geometry.texts[3].x)
+    end)
+
+    it("gives the reset button a hit rect and the label that fills it", function()
+      local geometry = logic.geometry(100, 200, 1)
+      assert.are.equal(25, geometry.reset_button.width)
+      assert.are.equal(16, geometry.reset_button.height)
+      assert.are.equal(geometry.accuracy.y, geometry.reset_button.y)
+      -- One label: what is measured is what is drawn.
+      assert.are.equal("[R]", geometry.reset_button.label)
+    end)
+
+    --[[ A long window on a dual-wielding multi-attack job reaches three
+         digits, and the box has to cover the line that draws. ]]
+    it("reserves room for a three-digit count", function()
+      local geometry = logic.geometry(100, 200, 1)
+      local reach = select(3, logic.bounds(100, 200, 1)) + 100
+      assert.is_true(reach >= geometry.accuracy.x + 26 * 12 * 0.68)
+    end)
+
+    it("keeps the button still as the numbers in the line change", function()
+      local before = logic.geometry(100, 200, 1).reset_button.x
+      swings({ 1, 1, 1, 15, 15 })
+      assert.are.equal(before, logic.geometry(100, 200, 1).reset_button.x)
+    end)
+
+    --[[ The row is kept inside the box `get_bounds` reports, horizontally as
+         well as vertically: a negative offset pulls it back to the origin
+         rather than outside core's clamp. ]]
+    it("never draws the row left of the origin", function()
+      config.accuracy.offset = -1000
+      local geometry = logic.geometry(100, 200, 1)
+      assert.are.equal(100, geometry.reset_button.x)
+      assert.is_true(geometry.accuracy.x >= 100)
+    end)
+
+    it("scales the row with everything else", function()
+      local geometry = logic.geometry(100, 200, 2)
+      assert.are.equal(24, geometry.accuracy.font_size)
+      assert.are.equal(235, geometry.background.y)
+    end)
+
+    it("takes the row out of the geometry entirely when it is off", function()
+      config.accuracy.enabled = false
+      local geometry = logic.geometry(100, 200, 1)
+      assert.is_nil(geometry.accuracy)
+      assert.is_nil(geometry.reset_button)
+      assert.are.equal(200, geometry.background.y)
+      assert.are.equal(202, geometry.bars[1].y)
+    end)
+
+    it("reports bounds that cover the row as well as the frame", function()
+      local x, y, width, height = logic.bounds(100, 200, 1)
+      assert.are.same({ 100, 200 }, { x, y })
+      assert.are.equal(42, height)
+      local button = logic.geometry(100, 200, 1).reset_button
+      assert.is_true(width >= button.x + button.width - 100)
+    end)
+
+    it("reports the plain frame bounds when the row is off", function()
+      config.accuracy.enabled = false
+      assert.are.same({ 100, 200, 472, 24 }, { logic.bounds(100, 200, 1) })
     end)
   end)
 
@@ -438,6 +602,90 @@ describe("parambar logic", function()
       local message, changed = logic.command({ "compact", "maybe" })
       assert.is_false(changed)
       assert.is_not_nil(message:lower():find("on"))
+    end)
+
+    it("reports the accuracy row in the status line", function()
+      local message = logic.command({})
+      assert.is_not_nil(message:lower():find("accuracy"))
+      assert.is_not_nil(message:find("15", 1, true))
+    end)
+
+    it("switches the accuracy row on and off", function()
+      local message, changed = logic.command({ "accuracy", "off" })
+      assert.is_true(changed)
+      assert.is_false(config.accuracy.enabled)
+      assert.is_not_nil(message:lower():find("off"))
+      assert.is_true(select(2, logic.command({ "accuracy", "on" })))
+      assert.is_true(config.accuracy.enabled)
+    end)
+
+    it("reports the row on its own when given no argument", function()
+      local message, changed = logic.command({ "accuracy" })
+      assert.is_false(changed)
+      assert.is_nil(message:find("has no", 1, true))
+      assert.is_not_nil(message:find("15", 1, true))
+      assert.is_not_nil(message:find("Accuracy: 0 / 0 (--%)", 1, true))
+    end)
+
+    it("sets the window in seconds", function()
+      local message, changed = logic.command({ "accuracy", "window", "30" })
+      assert.is_true(changed)
+      assert.are.equal(30, config.accuracy.window_seconds)
+      assert.is_not_nil(message:find("30", 1, true))
+    end)
+
+    it("refuses a window longer than the module will hold", function()
+      local message, changed = logic.command({ "accuracy", "window", "9999" })
+      assert.is_false(changed)
+      assert.is_not_nil(message:find("600", 1, true))
+      assert.are.equal(15, config.accuracy.window_seconds)
+      assert.is_true(select(2, logic.command({ "accuracy", "window", "600" })))
+    end)
+
+    it("refuses a window the module would fall back over", function()
+      assert.is_false(select(2, logic.command({ "accuracy", "window", "0" })))
+      assert.is_false(select(2, logic.command({ "accuracy", "window", "soon" })))
+      assert.is_false(select(2, logic.command({ "accuracy", "window", "-5" })))
+      assert.are.equal(15, config.accuracy.window_seconds)
+    end)
+
+    it("hints on an accuracy word it does not know", function()
+      local message, changed = logic.command({ "accuracy", "wobble" })
+      assert.is_false(changed)
+      assert.is_not_nil(message:find("wobble", 1, true))
+    end)
+
+    it("names the word it did not understand, not the one after it", function()
+      local message, changed = logic.command({ "accuracy", "wobble", "bobble" })
+      assert.is_false(changed)
+      assert.is_not_nil(message:find("wobble", 1, true))
+      assert.is_nil(message:find("bobble", 1, true))
+    end)
+
+    --[[ A refused command must not write: the widget only saves on a change,
+         so a repair made on the way to a refusal would leave memory and disk
+         disagreeing until some unrelated write. ]]
+    it("leaves a broken accuracy block alone while only reporting", function()
+      config.accuracy = "on"
+      logic.set_config(config)
+      logic.command({ "accuracy" })
+      assert.are.equal("on", config.accuracy)
+      logic.command({ "accuracy", "window", "0" })
+      assert.are.equal("on", config.accuracy)
+      logic.command({ "accuracy", "wobble" })
+      assert.are.equal("on", config.accuracy)
+    end)
+
+    it("repairs an accuracy block a hand edit left as something else", function()
+      config.accuracy = "on"
+      logic.set_config(config)
+      assert.is_true(select(2, logic.command({ "accuracy", "on" })))
+      assert.are.equal("table", type(config.accuracy))
+      assert.is_true(logic.accuracy_enabled())
+    end)
+
+    it("names accuracy among the settings it does know", function()
+      assert.is_not_nil(logic.command({ "wobble" }):find("accuracy", 1, true))
     end)
 
     it("hints instead of staying silent on an unknown verb", function()

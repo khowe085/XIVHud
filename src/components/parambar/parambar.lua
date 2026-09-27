@@ -41,6 +41,9 @@ local new_logic = require("components/parambar/logic")
 local build_defaults = require("components/parambar/defaults")
 
 local ASSET_DIR = "assets/ffxiv/"
+-- The action packet, as the entry point dispatches it already parsed.
+local ACTION_CHUNK = 0x028
+local MOUSE_LEFT_DOWN, MOUSE_LEFT_UP = 1, 2
 local BARS = { "hp", "mp", "tp" }
 local FILL_TEXTURES = { "hp_fg.png", "mp_fg.png", "tp_fg.png" }
 
@@ -58,6 +61,11 @@ local function new(ctx)
   local pos = nil
   local scale = 1
   local visible = false
+  local previewing = false
+  -- Where the reset button was last drawn, for the hit test; nil while the
+  -- row is off, so what draws it and what answers a click are one fact.
+  local button_rect = nil
+  local swallow_left_up = false
   -- Which fills are currently empty; they stay hidden even when the widget as a
   -- whole is shown.
   local empty = { hp = false, mp = false, tp = false }
@@ -65,6 +73,20 @@ local function new(ctx)
   local background = ctx.new_image()
   local fills = {}
   local numbers = {}
+  -- The accuracy row: its readout, and the button that empties the window.
+  -- Built after the numbers, below, so the row sits at the end of the prim
+  -- list rather than in front of the bars it reports on.
+  local readout, reset_button
+
+  local function row_prims()
+    return { readout, reset_button }
+  end
+
+  -- The frame clock. Absent only in a harness; a window that cannot age is
+  -- better than a widget that throws sixty times a second.
+  local function now()
+    return ctx.now ~= nil and ctx.now() or 0
+  end
 
   local function setup_image(image, texture)
     image.draggable(false)
@@ -98,6 +120,14 @@ local function new(ctx)
     number.hide()
     numbers[index] = number
   end
+  readout = ctx.new_text()
+  reset_button = ctx.new_text()
+  for _, prim in ipairs(row_prims()) do
+    prim.draggable(false)
+    prim.bg_visible(false)
+    prim.bg_alpha(0)
+    prim.hide()
+  end
 
   local function apply_visibility()
     if not visible then
@@ -105,6 +135,9 @@ local function new(ctx)
       for index = 1, #BARS do
         fills[index].hide()
         numbers[index].hide()
+      end
+      for _, prim in ipairs(row_prims()) do
+        prim.hide()
       end
       return
     end
@@ -118,19 +151,29 @@ local function new(ctx)
         fills[index].show()
       end
     end
+    -- The row is a setting of its own on top of the widget's visibility.
+    for _, prim in ipairs(row_prims()) do
+      if logic.accuracy_enabled() then
+        prim.show()
+      else
+        prim.hide()
+      end
+    end
   end
 
   local function apply_text_style()
     local color = config.text_color or {}
     local stroke = config.text_stroke or {}
-    for index = 1, #BARS do
-      local number = numbers[index]
-      number.font(config.font)
-      number.color(color.r, color.g, color.b)
-      number.alpha(color.a or 255)
-      number.stroke_width(stroke.width)
-      number.stroke_color(stroke.r, stroke.g, stroke.b)
-      number.stroke_alpha(stroke.a)
+    -- The row takes the numbers' colour and stroke; only its size differs,
+    -- and that comes from the geometry with everything else scaled.
+    local texts = { numbers[1], numbers[2], numbers[3], readout, reset_button }
+    for _, text in ipairs(texts) do
+      text.font(config.font)
+      text.color(color.r, color.g, color.b)
+      text.alpha(color.a or 255)
+      text.stroke_width(stroke.width)
+      text.stroke_color(stroke.r, stroke.g, stroke.b)
+      text.stroke_alpha(stroke.a)
     end
   end
 
@@ -158,6 +201,17 @@ local function new(ctx)
       numbers[index].pos(geometry.texts[index].x, geometry.texts[index].y)
       numbers[index].size(geometry.font_size)
     end
+
+    button_rect = geometry.reset_button
+    if geometry.accuracy then
+      readout.pos(geometry.accuracy.x, geometry.accuracy.y)
+      readout.size(geometry.accuracy.font_size)
+      reset_button.pos(geometry.reset_button.x, geometry.reset_button.y)
+      reset_button.size(geometry.accuracy.font_size)
+      -- The label comes with the rect it was measured from, never a second
+      -- literal here: what is drawn is what answers a click.
+      reset_button.text(geometry.reset_button.label)
+    end
   end
 
   -- One frame of the render plan. Only bars the plan marks dirty are touched,
@@ -167,7 +221,7 @@ local function new(ctx)
       return
     end
 
-    local plan = logic.tick()
+    local plan = logic.tick(now())
     local geometry
 
     for index, bar in ipairs(BARS) do
@@ -187,6 +241,11 @@ local function new(ctx)
           end
         end
       end
+    end
+
+    -- The line moves only when a swing lands or ages out of the window.
+    if plan.accuracy.dirty then
+      readout.text(plan.accuracy.text)
     end
   end
 
@@ -219,6 +278,9 @@ local function new(ctx)
   function self.detach()
     attached = false
     save = nil
+    -- The window is this character's. speedcheck's rule: a detach forgets,
+    -- so a logout cannot carry one character's numbers into the next.
+    logic.reset_accuracy()
     self.hide()
   end
 
@@ -233,6 +295,7 @@ local function new(ctx)
   end
 
   function self.set_preview(on)
+    previewing = on and true or false
     logic.set_preview(on)
   end
 
@@ -258,7 +321,20 @@ local function new(ctx)
        result back through `ctx.get_player` - so a forwarded event needs no
        handling here, and a status change needs no special case: the service
        drops its interval on one, and the next tick sees the fresh numbers. ]]
-  function self.update(event)
+  function self.update(event, first, _second, parsed)
+    --[[ The action packet, already decoded by the entry point for the cast
+         bar and the skillchain engine - there is no second parse here, and
+         `parsed` is nil where that one failed. Only the player's own swings
+         count, so the packet is worth nothing without a player to compare
+         against; `ctx.get_player` is the service's, so asking on a packet
+         costs no client read of its own. ]]
+    if event == "chunk" then
+      if first == ACTION_CHUNK and parsed ~= nil then
+        local player = ctx.get_player()
+        logic.on_action(parsed, player and player.id or nil, now())
+      end
+      return
+    end
     if event ~= nil then
       return
     end
@@ -268,11 +344,48 @@ local function new(ctx)
     render()
   end
 
+  local function inside(x, y, rect)
+    return x >= rect.x and x <= rect.x + rect.width and y >= rect.y and y <= rect.y + rect.height
+  end
+
+  --[[ One gesture: a left-click on the reset button empties the window.
+
+       What DRAWS the button and what answers a click are the same fact - a
+       nil `button_rect` is a row that is off - so a button nobody can see
+       can never be clicked, the crossbar sword's rule. Layout mode owns the
+       mouse outright and core stops dispatching then; the preview flag is
+       refused here as well rather than trusting that.
+
+       Both edges are swallowed so the game does not act on a click that was
+       ours, and a fresh press clears a release that never arrived (taken by
+       an addon ahead of us, or dispatch off) rather than swallowing the
+       game's next one. ]]
+  function self.on_mouse(mouse_type, x, y)
+    if mouse_type == MOUSE_LEFT_UP then
+      local owed = swallow_left_up
+      swallow_left_up = false
+      return owed
+    end
+    if mouse_type ~= MOUSE_LEFT_DOWN then
+      return false
+    end
+    swallow_left_up = false
+    if not visible or previewing or button_rect == nil or not inside(x, y, button_rect) then
+      return false
+    end
+    logic.reset_accuracy()
+    swallow_left_up = true
+    return true
+  end
+
   function self.handle_command(args)
     local message, changed = logic.command(args)
     if changed then
       apply_text_style()
       apply_layout()
+      -- The accuracy verbs can raise or drop the row, which is a visibility
+      -- change as well as a layout one.
+      apply_visibility()
       if save then
         save()
       end
@@ -285,6 +398,9 @@ local function new(ctx)
     for index = 1, #BARS do
       fills[index].destroy()
       numbers[index].destroy()
+    end
+    for _, prim in ipairs(row_prims()) do
+      prim.destroy()
     end
   end
 

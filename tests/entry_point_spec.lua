@@ -128,6 +128,14 @@ describe("entry point", function()
     end)
   end)
 
+  describe("the parameter bar", function()
+    -- Its accuracy window ages against a clock, so the ctx has to carry one.
+    it("is given a clock", function()
+      assert.are.equal("function", type(boot.ctxs.parambar.now))
+      assert.are.equal("number", type(boot.ctxs.parambar.now()))
+    end)
+  end)
+
   --[[ The exp bar reads packets nothing else does, and asks the client for the
        last of two of them at attach. Neither the dep nor its pcall is visible
        from the component's own spec. ]]

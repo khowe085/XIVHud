@@ -2,7 +2,7 @@ local new_parambar = require("components/parambar/parambar")
 local fakes = require("tests/support/fakes")
 
 describe("parambar widget", function()
-  local prims, player, saves, assets, widget, reads
+  local prims, player, saves, assets, widget, reads, clock
 
   local function attach()
     widget.attach(widget.defaults, function()
@@ -23,6 +23,43 @@ describe("parambar widget", function()
     return prims.texts[index]
   end
 
+  -- The accuracy row: the readout, then the reset button beside it.
+  local function readout()
+    return prims.texts[4]
+  end
+
+  local function reset_button()
+    return prims.texts[5]
+  end
+
+  local MOUSE_LEFT_DOWN, MOUSE_LEFT_UP, MOUSE_RIGHT_DOWN = 1, 2, 4
+
+  -- Attached, placed and shown: the state every accuracy assertion needs.
+  local function place()
+    attach()
+    widget.set_pos(100, 200)
+    widget.show()
+    widget.update()
+  end
+
+  -- A point inside the reset button, taken from the geometry the row was laid
+  -- out at rather than from numbers written down here.
+  local function on_button()
+    return reset_button().x + 2, reset_button().y + 2
+  end
+
+  -- One 0x028 of the player's own swings, dispatched as core dispatches it.
+  local function swing(messages)
+    local actions = {}
+    for index, message in ipairs(messages) do
+      actions[index] = { message = message }
+    end
+    widget.update("chunk", 0x028, "raw bytes", {
+      actor_id = player.id,
+      targets = { { id = 99, actions = actions } },
+    })
+  end
+
   local function settle()
     for _ = 1, 200 do
       widget.update()
@@ -41,8 +78,9 @@ describe("parambar widget", function()
     prims = fakes.prims()
     saves = 0
     assets = {}
-    player = { vitals = { hp = 1000, hpp = 100, mp = 500, mpp = 100, tp = 500 } }
+    player = { id = 7, vitals = { hp = 1000, hpp = 100, mp = 500, mpp = 100, tp = 500 } }
     reads = 0
+    clock = 0
     widget = new_parambar({
       new_text = prims.new_text,
       new_image = prims.new_image,
@@ -56,6 +94,9 @@ describe("parambar widget", function()
       asset = function(file)
         assets[#assets + 1] = file
         return "addons/XIVHud/" .. file
+      end,
+      now = function()
+        return clock
       end,
     })
   end)
@@ -75,9 +116,9 @@ describe("parambar widget", function()
       assert.are.equal(1020, slot.pos.y)
     end)
 
-    it("builds one background, three fills and three numbers", function()
+    it("builds one background, three fills, three numbers and the accuracy row", function()
       assert.are.equal(4, #prims.images)
-      assert.are.equal(3, #prims.texts)
+      assert.are.equal(5, #prims.texts)
     end)
 
     it("makes every prim non-draggable, because the framework owns dragging", function()
@@ -207,30 +248,191 @@ describe("parambar widget", function()
     end)
   end)
 
+  --[[ The melee accuracy row. The swings come off the 0x028 the entry point
+       already decodes, so nothing new is registered; the widget supplies the
+       player id and the clock, and everything else is logic's. ]]
+  describe("the accuracy row", function()
+    it("draws the row above the bars, at the origin set_pos was given", function()
+      place()
+      assert.are.equal(200, readout().y)
+      assert.are.equal(200, reset_button().y)
+      assert.is_true(number(3).y > readout().y)
+    end)
+
+    it("draws it small, at its own font size rather than the numbers'", function()
+      place()
+      assert.are.equal(12, readout().font_size)
+      assert.are.equal(14, number(1).font_size)
+    end)
+
+    it("says so plainly before anything has swung", function()
+      place()
+      assert.are.equal("Accuracy: 0 / 0 (--%)", readout().last.text)
+      assert.are.equal("[R]", reset_button().last.text)
+    end)
+
+    it("counts the player's own melee swings off the action packet", function()
+      place()
+      swing({ 1, 1, 15 })
+      widget.update()
+      assert.are.equal("Accuracy: 2 / 3 (67%)", readout().last.text)
+    end)
+
+    it("ages swings out of the window as the clock moves", function()
+      place()
+      swing({ 1 })
+      widget.update()
+      clock = 20
+      widget.update()
+      assert.are.equal("Accuracy: 0 / 0 (--%)", readout().last.text)
+    end)
+
+    it("ignores a chunk that is not the action packet", function()
+      place()
+      widget.update("chunk", 0x029, "raw bytes", {
+        actor_id = player.id,
+        targets = { { id = 99, actions = { { message = 1 } } } },
+      })
+      widget.update()
+      assert.are.equal("Accuracy: 0 / 0 (--%)", readout().last.text)
+    end)
+
+    it("ignores an action packet the entry point could not parse", function()
+      place()
+      widget.update("chunk", 0x028, "raw bytes", nil)
+      widget.update()
+      assert.are.equal("Accuracy: 0 / 0 (--%)", readout().last.text)
+    end)
+
+    it("pushes the line only when it changes", function()
+      place()
+      swing({ 1 })
+      widget.update()
+      local pushes = #readout().calls
+      widget.update()
+      widget.update()
+      assert.are.equal(pushes, #readout().calls)
+    end)
+
+    it("hides the row with the rest of the widget", function()
+      place()
+      widget.hide()
+      assert.is_false(readout().visible)
+      assert.is_false(reset_button().visible)
+      widget.show()
+      assert.is_true(readout().visible)
+      assert.is_true(reset_button().visible)
+    end)
+
+    it("keeps the row down while the setting is off", function()
+      widget.defaults.accuracy.enabled = false
+      place()
+      assert.is_false(readout().visible)
+      assert.is_false(reset_button().visible)
+      assert.is_true(background().visible)
+    end)
+
+    --[[ speedcheck's rule: a detach forgets, so a logout cannot carry one
+         character's numbers into the next. ]]
+    it("forgets the window when it is detached", function()
+      place()
+      swing({ 1, 1, 15 })
+      widget.update()
+      widget.detach()
+      place()
+      assert.are.equal("Accuracy: 0 / 0 (--%)", readout().last.text)
+    end)
+
+    it("raises the row when the command switches it on", function()
+      widget.defaults.accuracy.enabled = false
+      place()
+      widget.handle_command({ "accuracy", "on" })
+      assert.is_true(readout().visible)
+      assert.are.equal(200, readout().y)
+    end)
+  end)
+
+  describe("the reset button", function()
+    before_each(function()
+      place()
+      swing({ 1, 1, 15 })
+      widget.update()
+    end)
+
+    it("empties the window when it is clicked", function()
+      local x, y = on_button()
+      assert.is_true(widget.on_mouse(MOUSE_LEFT_DOWN, x, y))
+      widget.update()
+      assert.are.equal("Accuracy: 0 / 0 (--%)", readout().last.text)
+    end)
+
+    it("swallows the release of a click it took", function()
+      local x, y = on_button()
+      widget.on_mouse(MOUSE_LEFT_DOWN, x, y)
+      assert.is_true(widget.on_mouse(MOUSE_LEFT_UP, x, y))
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_UP, x, y))
+    end)
+
+    it("leaves a click anywhere else to the game", function()
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, 1000, 1000))
+      widget.update()
+      assert.are.equal("Accuracy: 2 / 3 (67%)", readout().last.text)
+    end)
+
+    it("leaves every other button to the game", function()
+      local x, y = on_button()
+      assert.is_false(widget.on_mouse(MOUSE_RIGHT_DOWN, x, y))
+      widget.update()
+      assert.are.equal("Accuracy: 2 / 3 (67%)", readout().last.text)
+    end)
+
+    it("is inert while the widget is hidden", function()
+      widget.hide()
+      local x, y = reset_button().x + 2, reset_button().y + 2
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, x, y))
+    end)
+
+    it("is inert while the row is switched off", function()
+      widget.handle_command({ "accuracy", "off" })
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, 100, 200))
+    end)
+
+    --[[ Layout mode owns the mouse outright, so nothing should arrive here
+         then; the widget refuses on its own preview flag rather than trusting
+         core to have stopped dispatching, exactly as the crossbar's sword
+         does. ]]
+    it("is inert while layout mode is previewing", function()
+      widget.set_preview(true)
+      local x, y = on_button()
+      assert.is_false(widget.on_mouse(MOUSE_LEFT_DOWN, x, y))
+    end)
+  end)
+
   describe("layout", function()
     before_each(attach)
 
     it("moves every prim as a group", function()
       widget.set_pos(100, 200)
-      assert.are.same({ 100, 200 }, { background().x, background().y })
-      assert.are.same({ 115, 202 }, { fill(1).x, fill(1).y })
-      assert.are.same({ 275, 202 }, { fill(2).x, fill(2).y })
-      assert.are.same({ 165, 202 }, { number(1).x, number(1).y })
+      assert.are.same({ 100, 218 }, { background().x, background().y })
+      assert.are.same({ 115, 220 }, { fill(1).x, fill(1).y })
+      assert.are.same({ 275, 220 }, { fill(2).x, fill(2).y })
+      assert.are.same({ 165, 220 }, { number(1).x, number(1).y })
+      assert.are.same({ 435, 200 }, { reset_button().x, reset_button().y })
     end)
 
     it("scales positions, sizes and the font together", function()
       widget.set_pos(100, 200)
       widget.set_scale(2)
       assert.are.same({ 944, 48 }, { background().width, background().height })
-      assert.are.same({ 130, 204 }, { fill(1).x, fill(1).y })
+      assert.are.same({ 130, 239 }, { fill(1).x, fill(1).y })
       assert.are.equal(28, number(1).font_size)
     end)
 
-    it("reports bounds covering the background frame", function()
+    it("reports bounds covering the frame and the accuracy row above it", function()
       widget.set_pos(100, 200)
-      assert.are.same({ 100, 200, 472, 24 }, { widget.get_bounds() })
+      assert.are.same({ 100, 200, 575, 42 }, { widget.get_bounds() })
       widget.set_scale(0.5)
-      assert.are.same({ 100, 200, 236, 12 }, { widget.get_bounds() })
+      assert.are.same({ 100, 200, 288.5, 21 }, { widget.get_bounds() })
     end)
 
     it("reports no bounds before it has a position", function()

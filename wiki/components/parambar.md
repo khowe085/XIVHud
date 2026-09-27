@@ -17,6 +17,37 @@ the number beside each, sitting at the bottom centre of the screen.
   that.
 - A **compact** mode with narrower bars and tighter spacing.
 - Width, spacing and offset can be changed from the console.
+- A **melee accuracy** row above the TP bar - how many of your swings landed
+  over the last fifteen seconds, with a `[R]` button beside it that empties
+  the window.
+
+## The accuracy row
+
+`Accuracy: 7 / 9 (78%)` above the TP bar: the hits, the swings and the
+percentage, over a rolling window. It reads the same action packets the game
+prints your attacks from, counting the two hit messages (a hit and a critical
+hit) and the two miss messages, for your own swings only - your pet's do not
+count, and neither do your ranged attacks, which are a different stat.
+
+A parry, a block, a counter, a guard or a Third Eye evasion counts as
+**neither** a hit nor a miss, so none of them reaches the total. None of them
+is your accuracy failing. The figure is "of the swings that landed or missed",
+and that is the same rule the `scoreboard` addon uses.
+
+**The sample is small, and the counts are there so you can see how small.**
+Fifteen seconds is four or five swings with one weapon - more with dual wield
+or a multi-attack proc - so the percentage moves in coarse steps and a single
+miss swings it a long way. Widen the window with `//hud parambar accuracy
+window 30` if you want a steadier number, or read the `7 / 9` rather than the
+percentage.
+
+The `[R]` button to the left of the line empties the window on a left-click,
+so you can start a fresh count on a new fight or after a gear change. The
+click does not reach the game.
+
+Switching the row on or off changes how tall the widget is, so the bars move
+down or up by the height of the row; drag the parameter bar back where you
+want it in `//hud layout` afterwards.
 
 ## Configuration options
 
@@ -39,6 +70,13 @@ the first four are also set by command.
 | `full_tp_color` | blue | TP number colour at 1000 or more |
 | `low_hp_colors` | yellow / orange / red | HP number colour under 75% / 50% / 25% |
 | `low_mp_colors` | yellow / orange / red | the same for MP |
+| `accuracy.enabled` | `true` | draw the accuracy row above the TP bar |
+| `accuracy.window_seconds` | `15` | how many seconds of swings the row counts (1 to 600) |
+| `accuracy.font_size` | `12` | font size for the row - smaller than the numbers |
+| `accuracy.gap` | `2` | gap between the row and the bars, and between the button and the line |
+| `accuracy.offset` | `0` | shifts the whole row sideways, in pixels |
+| `accuracy.text_width_ratio` | `0.68` | how wide a character is assumed to draw - sizes the `[R]` button's clickable area |
+| `accuracy.text_height_ratio` | `1.3` | how tall a line is assumed to draw - sets the row's height |
 
 ## Commands
 
@@ -49,6 +87,12 @@ the first four are also set by command.
 | `//hud parambar spacing <px>` | set the gap between bars |
 | `//hud parambar offset <px>` | shift the bar fills sideways |
 | `//hud parambar compact on\|off` | switch compact mode |
+| `//hud parambar accuracy` | print the row's state, window and current reading |
+| `//hud parambar accuracy on\|off` | show or hide the accuracy row |
+| `//hud parambar accuracy window <seconds>` | set how much history the row counts (1 to 600) |
 
 `width`, `spacing` and `offset` change the metrics of whichever mode is on:
 with compact mode on they change the compact set.
+
+There is no `reset` command for the accuracy window - the `[R]` button beside
+the row is how it is emptied.
