@@ -197,6 +197,12 @@ describe("crossbar actions", function()
       assert.equal("party-member", actions.icon_for({ type = "open", action = "linkshell2" }))
     end)
 
+    it("opens the friend list with the linkshells' icon (Kevin, 2026-09-28)", function()
+      local actions = build()
+      assert.equal("input /flist", command_of(actions, { type = "open", action = "flist" }))
+      assert.equal("party-member", actions.icon_for({ type = "open", action = "flist" }))
+    end)
+
     it("asks the ladder for a stealth press and fires what it answers", function()
       local actions, state = build()
       state.stealth_command = 'input /ninjutsu "Monomi: Ichi" <me>'
