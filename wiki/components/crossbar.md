@@ -842,6 +842,7 @@ will still grey the slot for the minute.
 | `quests` | your quest log |
 | `linkshell` | a search listing your linkshell members |
 | `linkshell2` | the same for your second linkshell |
+| `flist` | your friend list |
 
 `//hud crossbar open` prints this list in game.
 
