@@ -55,10 +55,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      silently never moves. An unread fact must not disable a feature; the
      worst a missing gate can do is count a swing that was already a swing.
 
-     THE SAMPLE IS SMALL and that is inherent: fifteen seconds is four or
-     five swings single-wield, so the percentage moves in coarse steps. The
-     hit and swing counts ride alongside it for exactly that reason - a
-     reader can see how much the number is worth - and the window is config.
+     THE SAMPLE IS SMALL and that is inherent: the shipped thirty seconds is
+     eight or ten swings single-wield, and fifteen was four or five. The hit
+     and swing counts ride alongside the percentage for exactly that reason -
+     a reader can see how much the number is worth - and the window is
+     config.
 
      THE DELAY IS MEASURED BESIDE IT, never computed. Nothing in the client
      reports your haste: gear haste is only in item description text, and a
@@ -68,13 +69,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      rounds actually arrive at needs none of that. ONE PACKET IS ONE ROUND,
      however many swings it carries, and the MEDIAN gap is what is reported,
      since a weaponskill, a cast or a step out of range inserts a long gap.
-     THAT ONLY BUYS SO MUCH AT THE SHIPPED WINDOW: fifteen seconds of a
-     four-second delay is two or three gaps, and the median of an even pair
-     is their mean, so one interruption still moves it. The median starts
-     protecting properly at five gaps or so, which is a 30-60 second window -
-     widening it is the answer, and it is one command. A round in which every swing was parried
-     is invisible here (no countable swing, so no round), which lengthens one
-     gap - the median absorbs it.
+     HOW MUCH THAT BUYS DEPENDS ON THE WINDOW, which is half of why the
+     shipped one is thirty seconds: at a four-second delay that is six or
+     seven gaps, enough for the median to shrug off an interruption. At the
+     fifteen it shipped at there were two or three, and the median of an
+     even pair is their mean, so one weaponskill still moved it. A round in
+     which every swing was parried is invisible here (no countable swing, so
+     no round), which lengthens one gap - the median absorbs it.
 
      No Windower here: `now` is passed in, so the whole thing is a pure
      function of what it has been told. ]]
@@ -83,7 +84,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local HIT = { [1] = true, [67] = true }
 local MISS = { [15] = true, [63] = true }
 
-local DEFAULT_WINDOW = 15
+local DEFAULT_WINDOW = 30
 -- Every swing inside the window is held, so the window is bounded: ten
 -- minutes of a multi-attack job is already far past what a reading is for,
 -- and a window nothing prunes is a list that grows for the session.

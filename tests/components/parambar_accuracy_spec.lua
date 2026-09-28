@@ -120,11 +120,13 @@ describe("parambar accuracy", function()
       assert.is_nil(sample.percent)
     end)
 
+    -- Deliberately NOT the module's own default, or the test would pass
+    -- just as well if the config were ignored.
     it("takes its length from the config", function()
-      config.window_seconds = 30
+      config.window_seconds = 45
       observe({ 1 }, 0)
-      assert.are.equal(1, accuracy.sample(20).swings)
-      assert.are.equal(30, accuracy.window())
+      assert.are.equal(1, accuracy.sample(40).swings)
+      assert.are.equal(45, accuracy.window())
     end)
 
     --[[ The config is a file the user can hand-edit, so a value the module
@@ -132,9 +134,9 @@ describe("parambar accuracy", function()
          rule: the report and the fallback come from one place. ]]
     it("falls back to its own length when the config value is unusable", function()
       config.window_seconds = 0
-      assert.are.equal(15, accuracy.window())
+      assert.are.equal(30, accuracy.window())
       config.window_seconds = "soon"
-      assert.are.equal(15, accuracy.window())
+      assert.are.equal(30, accuracy.window())
     end)
   end)
 
@@ -182,16 +184,16 @@ describe("parambar accuracy", function()
       assert.are.equal(3, accuracy.sample(42).delay)
     end)
 
-    --[[ What the median is worth at the SHIPPED window, which is the case
-         the claim has to survive: fifteen seconds of a four-second delay is
-         two or three gaps, and the median of an even pair IS their mean, so
-         one interruption still moves the number. Pinned so the honest
-         limit cannot be quietly lost. ]]
+    --[[ What the median is worth over a SHORT window - fifteen seconds, the
+         row's own default until 2026-09-28 and still a value anyone can set.
+         A four-second delay gives two or three gaps there, and the median of
+         an even pair IS their mean, so one interruption still moves the
+         number. Pinned so the honest limit cannot be quietly lost. ]]
     it("is still dragged by one interruption while the window is short", function()
       observe({ 1 }, 8)
       observe({ 1 }, 12)
       observe({ 1 }, 20)
-      -- Gaps 4 and 8 inside the fifteen-second window: 6, not 4.
+      -- Gaps 4 and 8 inside this spec's fifteen-second window: 6, not 4.
       assert.are.equal(6, accuracy.sample(20).delay)
     end)
 

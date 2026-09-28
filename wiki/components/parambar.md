@@ -18,16 +18,17 @@ the number beside each, sitting at the bottom centre of the screen.
 - A **compact** mode with narrower bars and tighter spacing.
 - Width, spacing and offset can be changed from the console.
 - A **melee accuracy** row above the TP bar - how many of your swings landed
-  over the last fifteen seconds, with your measured attack delay on the
-  end; `//hud parambar accuracy reset` starts a fresh count.
+  over the last thirty seconds, with your measured attack delay on the end;
+  `//hud parambar accuracy reset` starts a fresh count.
 
 ## The accuracy row
 
-`Acc: 7 / 9 (78%) / 2.4s` above the TP bar: the hits, the swings, the
-percentage and your attack delay, over a rolling window. It reads the same action packets the game
-prints your attacks from, counting the two hit messages (a hit and a critical
-hit) and the two miss messages, for your own swings only - your pet's do not
-count, and neither do your ranged attacks, which are a different stat.
+`Acc: 78% (7/9) - 2.4s` above the TP bar: the percentage, the hits and swings
+it was measured over, and your attack delay, all on a rolling window. It reads
+the same action packets the game prints your attacks from, counting the two
+hit messages (a hit and a critical hit) and the two miss messages, for your
+own swings only - your pet's do not count, and neither do your ranged
+attacks, which are a different stat.
 
 A parry, a block, a counter, a guard or a Third Eye evasion counts as
 **neither** a hit nor a miss, so none of them reaches the total. None of them
@@ -43,20 +44,19 @@ the bard's own skill and instrument, which your client cannot see. It reads
 `--s` until two rounds have landed.
 
 The figure is the **median** gap rather than the average, so that a
-weaponskill, a cast or a step out of range does not drag it - but fifteen
-seconds only holds two or three gaps, and over so few the median is barely
-better than an average. Widen the window to about thirty seconds if you want
-a number that holds still.
+weaponskill, a cast or a step out of range does not drag it. That needs a
+handful of gaps to work, which is half of why the window is thirty seconds:
+at a four-second delay it holds six or seven. Shorten the window much and the
+delay gets jumpy.
 
 Both rounds have to fall inside the window for a gap to be measured, so a
-very slow weapon can sit at `--s` at the shipped fifteen seconds. Widen the
-window if it does.
+very slow weapon can sit at `--s`. Widen the window if it does.
 
 **The sample is small, and the counts are there so you can see how small.**
-Fifteen seconds is four or five swings with one weapon - more with dual wield
-or a multi-attack proc - so the percentage moves in coarse steps and a single
-miss swings it a long way. Widen the window with `//hud parambar accuracy
-window 30` if you want a steadier number, or read the `7 / 9` rather than the
+Thirty seconds is eight or ten swings with one weapon - more with dual wield
+or a multi-attack proc - so the percentage still moves in visible steps and a
+couple of misses swing it. Widen the window with `//hud parambar accuracy
+window 60` if you want a steadier number, or read the `(7/9)` rather than the
 percentage.
 
 `//hud parambar accuracy reset` empties the window, so you can start a fresh
@@ -69,6 +69,10 @@ down or up by the height of the row; drag the parameter bar back where you
 want it in `//hud layout` afterwards.
 
 ## Configuration options
+
+A default that changes later does not reach a `config.lua` that already
+exists - your own value wins - so a parameter bar set up before 2026-09-28
+keeps `window_seconds = 15` until you change it or reset the component.
 
 `config.lua` in the component's folder. Everything here can be left alone;
 the first four are also set by command.
@@ -90,7 +94,7 @@ the first four are also set by command.
 | `low_hp_colors` | yellow / orange / red | HP number colour under 75% / 50% / 25% |
 | `low_mp_colors` | yellow / orange / red | the same for MP |
 | `accuracy.enabled` | `true` | draw the accuracy row above the TP bar |
-| `accuracy.window_seconds` | `15` | how many seconds of swings the row counts (1 to 600) |
+| `accuracy.window_seconds` | `30` | how many seconds of swings the row counts (1 to 600) |
 | `accuracy.font_size` | `8` | font size for the row - smaller than the numbers |
 | `accuracy.bar_gap` | `7` | clearance between the row and the bars - raise it if the line sits on the bar art |
 | `accuracy.offset` | `0` | shifts the whole row sideways, in pixels |

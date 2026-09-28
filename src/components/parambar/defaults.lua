@@ -65,16 +65,18 @@ return function(screen_width, screen_height)
          it is the scoreboard addon's accuracy over a rolling window, and
          nothing else of that addon.
 
-         `window_seconds` is the whole point and is meant to be changed: 15
-         is four or five swings single-wield, so the percentage moves in
-         coarse steps. `offset` nudges the row sideways, and the two ratios
+         `window_seconds` is meant to be changed: 30 is eight or
+         ten swings single-wield, which is a percentage that still moves in
+         visible steps and a delay the median can actually defend (Kevin
+         settled on it 2026-09-28, the row having shipped at 15).
+         `offset` nudges the row sideways, and the two ratios
          estimate how wide and how tall a string will draw - Windower cannot
          be asked, so they size the room the row reserves and the band it
          stands in, and are config for a live client to settle (expbar's
          values, and its names). ]]
     accuracy = {
       enabled = true,
-      window_seconds = 15,
+      window_seconds = 30,
       font_size = 8,
       -- Lifts the row off the bar art: the knob for a line drawing on it.
       bar_gap = 7,

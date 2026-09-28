@@ -86,7 +86,7 @@ local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78, delay = 2.4 }
      to ten minutes and that is well past a thousand swings on a
      dual-wielding multi-attack job - and a delay as wide as the window
      itself, since the gap between two rounds can be the whole of it. ]]
-local WIDEST_ACCURACY = "Acc: 0000 / 0000 (000%) / 000.0s"
+local WIDEST_ACCURACY = "Acc: 000% (0000/0000) - 000.0s"
 local UNKNOWN_DELAY = "--s"
 
 local function zeroed()
@@ -410,10 +410,10 @@ local function new(config)
     return self.tpp()
   end
 
-  --[[ `Acc: 7 / 9 (78%) / 2.4s`. The delay is the MEASURED interval between
-       rounds (see accuracy.lua) and reads `--s` until two have landed, the
-       way the percentage reads `--%` until one swing has: neither is zero,
-       and a zero would be a claim. ]]
+  --[[ `Acc: 78% (7/9) - 2.4s` (Kevin's ordering, 2026-09-28): the figure
+       first, then what it was measured over, then the delay. Both readings
+       admit to knowing nothing rather than claiming a zero - `--%` until a
+       swing has landed, `--s` until two rounds have. ]]
   local function accuracy_line(sample)
     local delay = UNKNOWN_DELAY
     if sample.delay then
@@ -421,9 +421,9 @@ local function new(config)
     end
     if sample.swings <= 0 or not sample.percent then
       -- Nothing swung is not nought per cent, and the row says so.
-      return "Acc: 0 / 0 (--%) / " .. delay
+      return "Acc: --% (0/0) - " .. delay
     end
-    return string.format("Acc: %d / %d (%d%%) / %s", sample.hits, sample.swings, sample.percent, delay)
+    return string.format("Acc: %d%% (%d/%d) - %s", sample.percent, sample.hits, sample.swings, delay)
   end
 
   --[[ The render plan for this frame. `dirty` says whether the bar needs

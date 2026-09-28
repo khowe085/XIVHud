@@ -340,8 +340,8 @@ describe("parambar logic", function()
     -- With the accuracy row on, the box covers the row as well as the frame;
     -- the plain frame bounds are pinned under "accuracy geometry" below.
     it("reports bounds covering the frame and the row above it", function()
-      assert.are.same({ 100, 200, 510, 41 }, { logic.bounds(100, 200, 1) })
-      assert.are.same({ 100, 200, 764.5, 62 }, { logic.bounds(100, 200, 1.5) })
+      assert.are.same({ 100, 200, 499, 41 }, { logic.bounds(100, 200, 1) })
+      assert.are.same({ 100, 200, 747.5, 62 }, { logic.bounds(100, 200, 1.5) })
     end)
 
     it("scales the eased fill width too", function()
@@ -382,11 +382,11 @@ describe("parambar logic", function()
   describe("accuracy", function()
     it("reads the window as a line above the bars", function()
       swings({ 1, 1, 15 })
-      assert.are.equal("Acc: 2 / 3 (67%) / --s", logic.tick(0).accuracy.text)
+      assert.are.equal("Acc: 67% (2/3) - --s", logic.tick(0).accuracy.text)
     end)
 
     it("says so plainly when nothing has swung yet", function()
-      assert.are.equal("Acc: 0 / 0 (--%) / --s", logic.tick(0).accuracy.text)
+      assert.are.equal("Acc: --% (0/0) - --s", logic.tick(0).accuracy.text)
     end)
 
     --[[ The measured interval between rounds, not a computed one: nothing
@@ -396,29 +396,29 @@ describe("parambar logic", function()
     it("draws the measured delay at the end of the line", function()
       swings({ 1 }, 0)
       swings({ 15 }, 2.4)
-      assert.are.equal("Acc: 1 / 2 (50%) / 2.4s", logic.tick(2.4).accuracy.text)
+      assert.are.equal("Acc: 50% (1/2) - 2.4s", logic.tick(2.4).accuracy.text)
     end)
 
     it("rounds the delay to a tenth of a second", function()
       swings({ 1 }, 0)
       swings({ 1 }, 2.46)
-      assert.are.equal("Acc: 2 / 2 (100%) / 2.5s", logic.tick(2.46).accuracy.text)
+      assert.are.equal("Acc: 100% (2/2) - 2.5s", logic.tick(2.46).accuracy.text)
     end)
 
     it("says nothing for a delay until two rounds have landed", function()
       swings({ 1, 1 }, 0)
-      assert.are.equal("Acc: 2 / 2 (100%) / --s", logic.tick(0).accuracy.text)
+      assert.are.equal("Acc: 100% (2/2) - --s", logic.tick(0).accuracy.text)
     end)
 
     it("drops swings that have aged out of the window", function()
       swings({ 1 }, 0)
-      assert.are.equal("Acc: 0 / 0 (--%) / --s", logic.tick(20).accuracy.text)
+      assert.are.equal("Acc: --% (0/0) - --s", logic.tick(40).accuracy.text)
     end)
 
     it("takes its window length from the config", function()
-      config.accuracy.window_seconds = 30
+      config.accuracy.window_seconds = 60
       swings({ 1 }, 0)
-      assert.are.equal("Acc: 1 / 1 (100%) / --s", logic.tick(20).accuracy.text)
+      assert.are.equal("Acc: 100% (1/1) - --s", logic.tick(40).accuracy.text)
     end)
 
     it("pushes the line only on the frames its text changes", function()
@@ -435,7 +435,7 @@ describe("parambar logic", function()
       swings({ 1, 15 })
       config.accuracy.enabled = true
       logic.set_config(config)
-      assert.are.equal("Acc: 1 / 2 (50%) / --s", logic.tick(0).accuracy.text)
+      assert.are.equal("Acc: 50% (1/2) - --s", logic.tick(0).accuracy.text)
     end)
 
     it("answers whether the row is drawn at all, for the prims", function()
@@ -448,12 +448,12 @@ describe("parambar logic", function()
     it("empties the window on demand, for the reset verb", function()
       swings({ 1, 15 })
       logic.reset_accuracy()
-      assert.are.equal("Acc: 0 / 0 (--%) / --s", logic.tick(0).accuracy.text)
+      assert.are.equal("Acc: --% (0/0) - --s", logic.tick(0).accuracy.text)
     end)
 
     it("shows a sample while previewing, so the row can be positioned", function()
       logic.set_preview(true)
-      assert.are.equal("Acc: 7 / 9 (78%) / 2.4s", logic.tick(0).accuracy.text)
+      assert.are.equal("Acc: 78% (7/9) - 2.4s", logic.tick(0).accuracy.text)
     end)
 
     it("ignores an accuracy block a hand edit left as something else", function()
@@ -519,7 +519,7 @@ describe("parambar logic", function()
       swings({ 1 }, 600)
       config.accuracy.window_seconds = 600
       local line = logic.tick(600).accuracy.text
-      assert.are.equal("Acc: 4001 / 4001 (100%) / 600.0s", line)
+      assert.are.equal("Acc: 100% (4001/4001) - 600.0s", line)
       config.accuracy.offset = 200
       local geometry = logic.geometry(100, 200, 1)
       local drawn = #line * config.accuracy.font_size * config.accuracy.text_width_ratio
@@ -576,26 +576,27 @@ describe("parambar logic", function()
       assert.are.same({ 100, 200 }, { x, y })
       assert.are.equal(41, height)
       -- The line outreaches the bar art once the delay is on the end of it.
-      assert.are.equal(510, width)
+      assert.are.equal(499, width)
     end)
 
-    --[[ At the shipped font the row fits inside the bar art, so the frame
-         decides the width. A bigger font or a pushed-out offset is what the
-         widening is FOR, and without a case off the defaults nothing here
-         would notice if it stopped happening. ]]
-    it("widens the bounds for a row that outreaches the bar art", function()
+    --[[ The row already outreaches the bar art at the shipped font, so
+         `> 472` alone would pass without the widening happening at all.
+         These measure the GROWTH instead: a bigger font and a pushed-out
+         offset each have to move the reported width by what they add. ]]
+    it("widens the bounds with the font the row is drawn at", function()
+      local before = select(3, logic.bounds(100, 200, 1))
       config.accuracy.font_size = 14
       local width = select(3, logic.bounds(100, 200, 1))
-      assert.is_true(width > 472)
-      local geometry = logic.geometry(100, 200, 1)
-      local reserved = 23 * config.accuracy.font_size * config.accuracy.text_width_ratio
-      assert.is_true(width >= geometry.accuracy.x + reserved - 100)
+      assert.is_true(width > before)
+      -- The reservation is the widest line the row can draw, in full.
+      local reserved = #"Acc: 000% (0000/0000) - 000.0s" * 14 * config.accuracy.text_width_ratio
+      assert.is_true(width >= logic.geometry(100, 200, 1).accuracy.x + reserved - 100)
     end)
 
     it("widens the bounds for a row pushed out by its own offset", function()
+      local before = select(3, logic.bounds(100, 200, 1))
       config.accuracy.offset = 120
-      local width = select(3, logic.bounds(100, 200, 1))
-      assert.is_true(width > 472)
+      assert.are.equal(before + 120, select(3, logic.bounds(100, 200, 1)))
     end)
 
     it("reports the plain frame bounds when the row is off", function()
@@ -680,7 +681,7 @@ describe("parambar logic", function()
     it("reports the accuracy row in the status line", function()
       local message = logic.command({})
       assert.is_not_nil(message:lower():find("accuracy"))
-      assert.is_not_nil(message:find("15", 1, true))
+      assert.is_not_nil(message:find("30", 1, true))
     end)
 
     it("switches the accuracy row on and off", function()
@@ -696,22 +697,22 @@ describe("parambar logic", function()
       local message, changed = logic.command({ "accuracy" })
       assert.is_false(changed)
       assert.is_nil(message:find("has no", 1, true))
-      assert.is_not_nil(message:find("15", 1, true))
-      assert.is_not_nil(message:find("Acc: 0 / 0 (--%) / --s", 1, true))
+      assert.is_not_nil(message:find("30", 1, true))
+      assert.is_not_nil(message:find("Acc: --% (0/0) - --s", 1, true))
     end)
 
     it("sets the window in seconds", function()
-      local message, changed = logic.command({ "accuracy", "window", "30" })
+      local message, changed = logic.command({ "accuracy", "window", "45" })
       assert.is_true(changed)
-      assert.are.equal(30, config.accuracy.window_seconds)
-      assert.is_not_nil(message:find("30", 1, true))
+      assert.are.equal(45, config.accuracy.window_seconds)
+      assert.is_not_nil(message:find("45", 1, true))
     end)
 
     it("refuses a window longer than the module will hold", function()
       local message, changed = logic.command({ "accuracy", "window", "9999" })
       assert.is_false(changed)
       assert.is_not_nil(message:find("600", 1, true))
-      assert.are.equal(15, config.accuracy.window_seconds)
+      assert.are.equal(30, config.accuracy.window_seconds)
       assert.is_true(select(2, logic.command({ "accuracy", "window", "600" })))
     end)
 
@@ -719,7 +720,7 @@ describe("parambar logic", function()
       assert.is_false(select(2, logic.command({ "accuracy", "window", "0" })))
       assert.is_false(select(2, logic.command({ "accuracy", "window", "soon" })))
       assert.is_false(select(2, logic.command({ "accuracy", "window", "-5" })))
-      assert.are.equal(15, config.accuracy.window_seconds)
+      assert.are.equal(30, config.accuracy.window_seconds)
     end)
 
     it("hints on an accuracy word it does not know", function()
@@ -730,12 +731,12 @@ describe("parambar logic", function()
 
     it("empties the window on the reset verb", function()
       swings({ 1, 1, 15 })
-      assert.are.equal("Acc: 2 / 3 (67%) / --s", logic.tick(0).accuracy.text)
+      assert.are.equal("Acc: 67% (2/3) - --s", logic.tick(0).accuracy.text)
       local message, changed = logic.command({ "accuracy", "reset" })
       -- Nothing is stored, so nothing needs saving.
       assert.is_false(changed)
       assert.is_not_nil(message:lower():find("reset"))
-      assert.are.equal("Acc: 0 / 0 (--%) / --s", logic.tick(0).accuracy.text)
+      assert.are.equal("Acc: --% (0/0) - --s", logic.tick(0).accuracy.text)
     end)
 
     it("resets without repairing a hand-broken accuracy block", function()
