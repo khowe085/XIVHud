@@ -912,6 +912,9 @@ step("building the parambar component", function()
     new_image = wrap_image,
     screen = screen,
     get_player = read_player,
+    -- The accuracy row's rolling window ages against this, never a wall
+    -- clock: os.clock is monotonic, which is what a rolling window needs.
+    now = os.clock,
     asset = asset,
   }))
 end)

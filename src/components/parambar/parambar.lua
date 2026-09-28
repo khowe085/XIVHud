@@ -41,6 +41,8 @@ local new_logic = require("components/parambar/logic")
 local build_defaults = require("components/parambar/defaults")
 
 local ASSET_DIR = "assets/ffxiv/"
+-- The action packet, as the entry point dispatches it already parsed.
+local ACTION_CHUNK = 0x028
 local BARS = { "hp", "mp", "tp" }
 local FILL_TEXTURES = { "hp_fg.png", "mp_fg.png", "tp_fg.png" }
 
@@ -65,6 +67,16 @@ local function new(ctx)
   local background = ctx.new_image()
   local fills = {}
   local numbers = {}
+  -- The accuracy row: one text, built after the numbers below so it sits at
+  -- the end of the prim list rather than in front of the bars it reports on.
+  -- It is text and nothing else - no button, and so no mouse handler.
+  local readout
+
+  -- The frame clock. Absent only in a harness; a window that cannot age is
+  -- better than a widget that throws sixty times a second.
+  local function now()
+    return ctx.now ~= nil and ctx.now() or 0
+  end
 
   local function setup_image(image, texture)
     image.draggable(false)
@@ -98,6 +110,11 @@ local function new(ctx)
     number.hide()
     numbers[index] = number
   end
+  readout = ctx.new_text()
+  readout.draggable(false)
+  readout.bg_visible(false)
+  readout.bg_alpha(0)
+  readout.hide()
 
   local function apply_visibility()
     if not visible then
@@ -106,6 +123,7 @@ local function new(ctx)
         fills[index].hide()
         numbers[index].hide()
       end
+      readout.hide()
       return
     end
 
@@ -118,19 +136,27 @@ local function new(ctx)
         fills[index].show()
       end
     end
+    -- The row is a setting of its own on top of the widget's visibility.
+    if logic.accuracy_enabled() then
+      readout.show()
+    else
+      readout.hide()
+    end
   end
 
   local function apply_text_style()
     local color = config.text_color or {}
     local stroke = config.text_stroke or {}
-    for index = 1, #BARS do
-      local number = numbers[index]
-      number.font(config.font)
-      number.color(color.r, color.g, color.b)
-      number.alpha(color.a or 255)
-      number.stroke_width(stroke.width)
-      number.stroke_color(stroke.r, stroke.g, stroke.b)
-      number.stroke_alpha(stroke.a)
+    -- The row takes the numbers' colour and stroke; only its size differs,
+    -- and that comes from the geometry with everything else scaled.
+    local texts = { numbers[1], numbers[2], numbers[3], readout }
+    for _, text in ipairs(texts) do
+      text.font(config.font)
+      text.color(color.r, color.g, color.b)
+      text.alpha(color.a or 255)
+      text.stroke_width(stroke.width)
+      text.stroke_color(stroke.r, stroke.g, stroke.b)
+      text.stroke_alpha(stroke.a)
     end
   end
 
@@ -158,6 +184,11 @@ local function new(ctx)
       numbers[index].pos(geometry.texts[index].x, geometry.texts[index].y)
       numbers[index].size(geometry.font_size)
     end
+
+    if geometry.accuracy then
+      readout.pos(geometry.accuracy.x, geometry.accuracy.y)
+      readout.size(geometry.accuracy.font_size)
+    end
   end
 
   -- One frame of the render plan. Only bars the plan marks dirty are touched,
@@ -167,7 +198,7 @@ local function new(ctx)
       return
     end
 
-    local plan = logic.tick()
+    local plan = logic.tick(now())
     local geometry
 
     for index, bar in ipairs(BARS) do
@@ -187,6 +218,11 @@ local function new(ctx)
           end
         end
       end
+    end
+
+    -- The line moves only when a swing lands or ages out of the window.
+    if plan.accuracy.dirty then
+      readout.text(plan.accuracy.text)
     end
   end
 
@@ -219,6 +255,9 @@ local function new(ctx)
   function self.detach()
     attached = false
     save = nil
+    -- The window is this character's. speedcheck's rule: a detach forgets,
+    -- so a logout cannot carry one character's numbers into the next.
+    logic.reset_accuracy()
     self.hide()
   end
 
@@ -258,7 +297,20 @@ local function new(ctx)
        result back through `ctx.get_player` - so a forwarded event needs no
        handling here, and a status change needs no special case: the service
        drops its interval on one, and the next tick sees the fresh numbers. ]]
-  function self.update(event)
+  function self.update(event, first, _second, parsed)
+    --[[ The action packet, already decoded by the entry point for the cast
+         bar and the skillchain engine - there is no second parse here, and
+         `parsed` is nil where that one failed. Only the player's own swings
+         count, so the packet is worth nothing without a player to compare
+         against; `ctx.get_player` is the service's, so asking on a packet
+         costs no client read of its own. ]]
+    if event == "chunk" then
+      if first == ACTION_CHUNK and parsed ~= nil then
+        local player = ctx.get_player()
+        logic.on_action(parsed, player and player.id or nil, now())
+      end
+      return
+    end
     if event ~= nil then
       return
     end
@@ -273,6 +325,9 @@ local function new(ctx)
     if changed then
       apply_text_style()
       apply_layout()
+      -- The accuracy verbs can raise or drop the row, which is a visibility
+      -- change as well as a layout one.
+      apply_visibility()
       if save then
         save()
       end
@@ -286,6 +341,7 @@ local function new(ctx)
       fills[index].destroy()
       numbers[index].destroy()
     end
+    readout.destroy()
   end
 
   return self
