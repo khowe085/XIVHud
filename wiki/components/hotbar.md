@@ -34,9 +34,10 @@ bind here, and the same layers, contexts, sets and rotations apply.
   action from what your character knows. Menu entries - Stratagems, the Blood
   Pacts, the DNC modes - open what is behind them rather than binding, exactly
   as on the crossbar.
-- **Drag a slot onto the crossbar**, or a crossbar slot onto the hotbar from
-  the crossbar's binder: the two slots swap everything they hold, every
-  layer of it. See [dragging on the crossbar](crossbar.md).
+- **Drag a slot onto the crossbar**, or a crossbar slot onto the hotbar: the
+  two slots swap everything they hold, every layer of it. Edit mode covers
+  both bars, so `//hud hotbar edit` and `//hud crossbar edit` do the same
+  thing. See [dragging on the crossbar](crossbar.md).
 - **Sets, sharing and rotations** work exactly as on the crossbar: eight
   sets per job, any of them shared across jobs, each in the drawn rotation,
   the sheathed one, both or neither.
@@ -99,7 +100,7 @@ and the layer prefixes go in front as on the crossbar: `sub:3:7`, `wpn:3:7`,
 | `//hud hotbar [<bar>] hideempty on\|off` | XIV's "Hide empty slots": leave a row's unbound slots undrawn (row 1 when no row is named). A slot counts as empty when nothing is bound to it through the layers active right now. Every slot is still drawn while the binder or layout mode is open |
 | `//hud hotbar numbers [on\|off]` | show or hide the set number on every row, or say which it is |
 | `//hud hotbar help` | list every command |
-| `//hud hotbar edit` | toggle the mouse binder |
+| `//hud hotbar edit` | toggle the mouse binder, on the crossbar as well |
 | `//hud hotbar set <1-8>` | switch the active set (and so row 1) |
 | `//hud hotbar cycle` / `cycle back` | move to the next or previous set in the rotation |
 | `//hud hotbar list [<set>]` | list what is bound on this job, layer by layer |

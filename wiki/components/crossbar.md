@@ -153,7 +153,7 @@ right-hand cross is slots 1–4 and the left-hand cross 5–8.
 | --- | --- |
 | `//hud crossbar` | report the current job, the XHB's active set and weapon state, where each view points, and the weapon class in your main hand |
 | `//hud crossbar help` | list every command |
-| `//hud crossbar edit` | toggle the mouse binder |
+| `//hud crossbar edit` | toggle the mouse binder, on the hotbar as well |
 | `//hud crossbar set <1-8>` | switch the XHB's active set |
 | `//hud crossbar cycle` | advance the XHB to the next set in the rotation |
 | `//hud crossbar cycle back` | step the XHB back to the previous set in the rotation |
@@ -612,14 +612,24 @@ it, cancels quietly and changes nothing — it is never the empty screen that
 clears a layer.
 
 **Onto the hotbar, and back.** A slot can be dropped on a
-[hotbar](hotbar.md) slot too, and a hotbar slot on a crossbar one from the
-hotbar's own binder. It is the same swap: the two slots trade everything
-they hold, every layer of it, between the two bars' own files. While either
-binder is open the other bar shows every slot it has, empty ones included,
-so there is always somewhere to drop. Only one binder is open at a time, so
-the drag starts on the bar whose binder you opened; since a swap goes both
-ways, either binder reaches every pair of slots. Where the two bars overlap
-on screen, the slot of the bar you are editing takes the drop.
+[hotbar](hotbar.md) slot too, and a hotbar slot on a crossbar one. It is the
+same swap: the two slots trade everything they hold, every layer of it,
+between the two bars' own files. Where a slot of each bar sits on the same
+spot, the hotbar's is the one on top, and it is the one a click or a drop
+there reaches. Move one of the bars to get at the slot underneath. The one
+exception is a hotbar that is on screen but not in edit mode, having been
+hidden and shown again since: a click there reaches the crossbar's slot,
+while a drop still lands on the hotbar's.
+
+**Edit mode covers both bars.** `//hud crossbar edit` and `//hud hotbar edit`
+do the same thing: each puts both bars in edit mode, and either takes both
+out again. Both bars show every slot they have, empty ones included, and
+either can be clicked or dragged from. There is still only one window: click
+a slot on the other bar and the window moves over to it. A bar that is
+hidden is left out, and the reply names the other bars in edit mode; its own `edit`
+command answers that it is hidden, so use the other bar's to leave. A click
+on the window is always the window's, whatever slot of the other bar is
+under it.
 
 **One window, three steps.** Edit mode draws nothing until you click a slot.
 Then a single window opens dead centre and walks you through:
@@ -680,7 +690,7 @@ from that moment; the display picks the real keys back up when you leave. Leave
 it with `//hud crossbar edit` again, with **any press of the Select key**
 (`=`), or by entering `//hud layout`, which takes over from it. Edit mode
 needs the crossbar visible and a job loaded to open at all, and refuses while
-`//hud layout` is up or while the hotbar's binder is open.
+`//hud layout` is up. Leaving takes the hotbar out of edit mode with it.
 
 ---
 

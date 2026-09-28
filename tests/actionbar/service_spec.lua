@@ -746,6 +746,130 @@ describe("the action service", function()
     end)
   end)
 
+  describe("one edit mode over every bar", function()
+    -- A bar as the service sees it for this: a binder it can open or close,
+    -- and the window that binder has on screen.
+    local function editable(log, name, opts)
+      opts = opts or {}
+      return {
+        slot_at = function() end,
+        bindings = function() end,
+        repaint = function() end,
+        open_edit = function()
+          log[#log + 1] = name .. " asked to open"
+          return opts.opens ~= false
+        end,
+        close_edit = function()
+          log[#log + 1] = name .. " closed"
+        end,
+        window = function()
+          return opts.window
+        end,
+      }
+    end
+
+    it("opens every OTHER bar's binder beside the asker's and names the ones that came up", function()
+      local service = world()
+      local log = {}
+      service.register_bar("crossbar", editable(log, "crossbar"))
+      service.register_bar("hotbar", editable(log, "hotbar"))
+      service.register_bar("third", editable(log, "third", { opens = false }))
+      assert.are.same({ "hotbar" }, service.open_edit_with("crossbar"))
+      assert.are.same({ "hotbar asked to open", "third asked to open" }, log, "the asker opens its own")
+    end)
+
+    it("closes every bar's binder, the asker's included", function()
+      local service = world()
+      local log = {}
+      service.register_bar("crossbar", editable(log, "crossbar"))
+      service.register_bar("hotbar", editable(log, "hotbar"))
+      service.close_edit_all()
+      assert.are.same({ "crossbar closed", "hotbar closed" }, log)
+    end)
+
+    it("names the OTHER bar whose window is over a point", function()
+      -- Two binders each hit-test their own window and nobody else's, so a
+      -- click on one bar's window would be the other's click on the slot
+      -- beneath it.
+      local service = world()
+      local window = { x = 500, y = 240, width = 920, height = 600 }
+      service.register_bar("crossbar", editable({}, "crossbar", { window = window }))
+      service.register_bar("hotbar", editable({}, "hotbar"))
+      assert.are.equal("crossbar", service.window_at("hotbar", 900, 516))
+      assert.is_nil(service.window_at("hotbar", 499, 516), "clear of it")
+      assert.is_nil(service.window_at("hotbar", 1420, 516), "the far edge is outside")
+      assert.is_nil(service.window_at("crossbar", 900, 516), "its own window is its binder's to hit-test")
+    end)
+
+    describe("where two bars' slots overlap", function()
+      -- One point, a slot of each bar on it. The bar registered LATER is
+      -- the one built later and so drawn on top, and what is on top is
+      -- what the player is pointing at - core's own rule for anchors.
+      local function overlapping(names)
+        local service = world()
+        local asked = {}
+        for _, name in ipairs(names) do
+          local hooks = editable({}, name)
+          hooks.slot_at = function(x, y)
+            asked[#asked + 1] = name
+            return x == 10 and y == 20 and { set = 1, side = name, slot = 1 } or nil
+          end
+          service.register_bar(name, hooks)
+        end
+        return service, asked
+      end
+
+      it("names the bar drawn over the asker's slot, and none for the bar on top", function()
+        local service = overlapping({ "crossbar", "hotbar" })
+        assert.are.equal("hotbar", service.slot_above("crossbar", 10, 20))
+        assert.is_nil(service.slot_above("hotbar", 10, 20), "nothing is drawn over the last bar")
+        assert.is_nil(service.slot_above("crossbar", 11, 20), "nor over a point the other has no slot on")
+      end)
+
+      it("counts only bars in edit mode when asked to", function()
+        -- A press is only worth yielding to a binder that can take it.
+        local service = overlapping({ "crossbar", "hotbar" })
+        assert.is_nil(service.slot_above("crossbar", 10, 20, true))
+        service.set_edit_mode("hotbar", true)
+        assert.are.equal("hotbar", service.slot_above("crossbar", 10, 20, true))
+      end)
+
+      it("answers a drop with the topmost of the other bars", function()
+        local service, asked = overlapping({ "crossbar", "hotbar", "third" })
+        assert.are.equal("third", service.drop_target_at("crossbar", 10, 20).bar)
+        assert.are.same({ "third" }, asked)
+        assert.are.equal("hotbar", service.drop_target_at("third", 10, 20).bar)
+      end)
+    end)
+
+    it("stands every OTHER bar's binder down when one opens its window", function()
+      -- One window, by construction rather than by every path to a second
+      -- one happening to be closed.
+      local service = world()
+      local log = {}
+      for _, name in ipairs({ "crossbar", "hotbar", "third" }) do
+        local hooks = editable(log, name)
+        hooks.stand_down = function()
+          log[#log + 1] = name .. " stood down"
+        end
+        service.register_bar(name, hooks)
+      end
+      service.window_opened("hotbar")
+      assert.are.same({ "crossbar stood down", "third stood down" }, log)
+    end)
+
+    it("takes a bar that registered none of this as a bar with nothing to open", function()
+      local service = world()
+      service.register_bar("crossbar", { slot_at = function() end, repaint = function() end })
+      assert.are.same({}, service.open_edit_with("hotbar"))
+      assert.has_no.errors(service.close_edit_all)
+      assert.is_nil(service.window_at("hotbar", 900, 516))
+      assert.has_no.errors(function()
+        service.window_opened("hotbar")
+      end)
+    end)
+  end)
+
   describe("the rest of its surface", function()
     it("sheathes in game on the sword's click, one way", function()
       local service, env = world()

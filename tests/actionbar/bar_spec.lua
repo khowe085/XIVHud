@@ -116,7 +116,8 @@ local function world(opts)
     wsgate = require("lib/actionbar/wsgate")({}).defaults(),
     delay = 5,
   }
-  ctx.actions = fakes.action_service(ctx, env.service_config)
+  -- `actions` shares one service between two bars, as the entry point does.
+  ctx.actions = opts.actions or fakes.action_service(ctx, env.service_config)
   local render = new_render({ config = env.config })
   local store = {
     load = function(name)
@@ -128,8 +129,8 @@ local function world(opts)
   }
   local cells = {}
   local bar = new_bar({
-    name = "hotbar",
-    grammar = grammars.hotbar(),
+    name = opts.name or "hotbar",
+    grammar = opts.name == "crossbar" and grammars.crossbar() or grammars.hotbar(),
     views = false,
     ctx = ctx,
     config = function()
@@ -348,17 +349,17 @@ describe("one bar's state", function()
       assert.are.equal(1, env.config_saves)
     end)
 
-    it("refuses to open its binder over another bar's", function()
+    it("opens its binder beside another bar's", function()
+      -- It refused until 2026-09-28, one binder at a time: a slot could be
+      -- dragged off the bar being edited and never off the other.
       local bar, env, ctx, store = world()
       bar.attach(store)
       bar.try_scope()
       ctx.actions.set_edit_mode("crossbar", true)
       local reply = bar.command({ "edit" })
-      assert.is_not_nil(reply:find("crossbar's binder is open", 1, true), reply)
-      assert.is_false(bar.editing())
-      assert.are.same({}, env.edits)
-      ctx.actions.set_edit_mode("crossbar", false)
-      assert.is_not_nil(bar.command({ "edit" }):find("edit mode on", 1, true))
+      assert.is_not_nil(reply:find("edit mode on", 1, true), reply)
+      assert.is_true(bar.editing())
+      assert.are.same({ true }, env.edits)
     end)
 
     it("drops only its own held cast on detach", function()
@@ -539,6 +540,237 @@ describe("one bar's state", function()
       assert.are.same({ type = "ma", action = "Cure", target = "t" }, files.WAR.sets[2].left[5])
       assert.are.equal("hotbar: swapped set 1 row slot 3 with crossbar set 2 left slot 5", env.chat[#env.chat])
       assert.are.equal(1, repainted)
+    end)
+  end)
+
+  --[[ Two REAL bars over one service, as the entry point builds them: the
+       crossbar first, which is the order core hands each mouse event round
+       in. The hotbar draws `1:3` at (100, 100) and the crossbar `2L5` at
+       (100, 900), both clear of where a binder's window opens. ]]
+  describe("one edit mode over both bars", function()
+    local MOVE, LEFT_DOWN, LEFT_UP = 0, 1, 2
+    local PROVOKE = { type = "ja", action = "Provoke" }
+    local CURE = { type = "ma", action = "Cure", target = "t" }
+
+    local function pair()
+      local cross, cross_env, ctx, cross_store = world({
+        name = "crossbar",
+        store_files = { WAR = { sets = { [2] = { left = { [5] = { type = "ja", action = "Provoke" } } } } } },
+      })
+      local hot, hot_env, _, hot_store = world({ actions = ctx.actions })
+      cross.attach(cross_store)
+      cross.try_scope()
+      hot.attach(hot_store)
+      hot.try_scope()
+      cross_env.rects = { { x = 100, y = 900, width = 40, height = 40, set = 2, side = "left", slot = 5 } }
+      hot_env.rects = { { x = 100, y = 100, width = 40, height = 40, set = 1, side = "row", slot = 3 } }
+      local both = { cross = cross, cross_env = cross_env, hot = hot, hot_env = hot_env, service = ctx.actions }
+      -- Core's own dispatch: every bar hears every event, and the answers
+      -- are ORed.
+      function both.mouse(kind, x, y)
+        local crossbar = cross.editing() and cross.binder().mouse(kind, x, y, 0) or false
+        local hotbar = hot.editing() and hot.binder().mouse(kind, x, y, 0) or false
+        return crossbar or hotbar
+      end
+      function both.click(x, y)
+        both.mouse(LEFT_DOWN, x, y)
+        return both.mouse(LEFT_UP, x, y)
+      end
+      function both.drag(from_x, from_y, to_x, to_y)
+        both.mouse(LEFT_DOWN, from_x, from_y)
+        both.mouse(MOVE, to_x, to_y)
+        return both.mouse(LEFT_UP, to_x, to_y)
+      end
+      return both
+    end
+
+    it("opens every bar's binder from either bar's command, and says so", function()
+      local both = pair()
+      local reply = both.hot.command({ "edit" })
+      assert.is_not_nil(reply:find("^hotbar: edit mode on, crossbar too"), reply)
+      assert.is_true(both.hot.editing())
+      assert.is_true(both.cross.editing())
+      assert.are.same({ true }, both.cross_env.edits, "through the widget's own hook")
+    end)
+
+    it("closes every bar's binder from either bar's command", function()
+      local both = pair()
+      both.hot.command({ "edit" })
+      assert.are.equal("crossbar: edit mode off", both.cross.command({ "edit" }))
+      assert.is_false(both.hot.editing())
+      assert.is_false(both.cross.editing())
+      assert.is_nil(both.service.edit_owner())
+    end)
+
+    it("leaves out a bar that cannot open, and says nothing of it", function()
+      local both = pair()
+      both.cross_env.visible = false
+      local reply = both.hot.command({ "edit" })
+      assert.is_not_nil(reply:find("^hotbar: edit mode on %- "), reply)
+      assert.is_true(both.hot.editing())
+      assert.is_false(both.cross.editing())
+    end)
+
+    it("joins an edit mode the other bar is already in", function()
+      local both = pair()
+      both.cross_env.visible = false
+      both.hot.command({ "edit" })
+      both.cross_env.visible = true
+      local reply = both.cross.command({ "edit" })
+      assert.is_not_nil(reply:find("^crossbar: edit mode on, hotbar too"), reply)
+      assert.is_true(both.cross.editing())
+      assert.is_true(both.hot.editing(), "and the one already open stays open")
+    end)
+
+    it("opens nothing when the bar that was asked cannot", function()
+      local both = pair()
+      both.hot_env.visible = false
+      local reply = both.hot.command({ "edit" })
+      assert.is_not_nil(reply:find("hidden", 1, true), reply)
+      assert.is_false(both.cross.editing())
+    end)
+
+    it("drags a slot off either bar onto the other", function()
+      local both = pair()
+      both.hot.command({ "edit" })
+      assert.is_true(both.drag(120, 120, 120, 920), "off the hotbar")
+      assert.are.same(PROVOKE, both.hot_env.store_files.WAR.sets[1].row[3])
+      assert.are.same(CURE, both.cross_env.store_files.WAR.sets[2].left[5])
+      assert.is_true(both.drag(120, 920, 120, 120), "and off the crossbar")
+      assert.are.same(CURE, both.hot_env.store_files.WAR.sets[1].row[3])
+      assert.are.same(PROVOKE, both.cross_env.store_files.WAR.sets[2].left[5])
+    end)
+
+    it("puts one bar's window away when a slot on the other is clicked", function()
+      local both = pair()
+      both.hot.command({ "edit" })
+      both.click(120, 920)
+      assert.is_not_nil(both.cross.binder().window())
+      both.click(120, 120)
+      assert.is_nil(both.cross.binder().window(), "one window, whichever bar it is for")
+      assert.is_not_nil(both.hot.binder().window())
+    end)
+
+    it("leaves a click on one bar's window to that bar, whatever slot lies beneath", function()
+      -- The shipped hotbar row sits under the crossbar's centred window.
+      local both = pair()
+      both.hot_env.rects = { { x = 900, y = 516, width = 40, height = 40, set = 1, side = "row", slot = 3 } }
+      both.hot.command({ "edit" })
+      both.click(120, 920)
+      local window = both.cross.binder().window()
+      assert.are.equal("layer", window.step)
+      assert.is_false(both.hot.binder().mouse(LEFT_DOWN, 920, 536, 0), "not the hotbar's press")
+      assert.is_false(both.hot.binder().mouse(MOVE, 100, 100, 0), "so nothing is in hand")
+      assert.is_false(both.hot.binder().mouse(LEFT_UP, 920, 536, 0))
+      assert.is_nil(both.hot.binder().window(), "and no second window opened")
+      assert.is_true(both.click(920, 536), "it is the crossbar's, on its own window")
+      assert.are.equal(window.step, both.cross.binder().window().step)
+    end)
+
+    describe("with a slot of each on one point", function()
+      -- The hotbar's `1:3` laid over the crossbar's `2L5`. The hotbar is
+      -- registered second, so it is the one on top.
+      local function overlapping()
+        local both = pair()
+        both.cross_env.rects = {
+          { x = 100, y = 900, width = 40, height = 40, set = 2, side = "left", slot = 5 },
+          { x = 200, y = 900, width = 40, height = 40, set = 2, side = "left", slot = 6 },
+        }
+        both.hot_env.rects = { { x = 100, y = 900, width = 40, height = 40, set = 1, side = "row", slot = 3 } }
+        both.hot.command({ "edit" })
+        return both
+      end
+
+      it("opens ONE window for a click, the bar's that is drawn on top", function()
+        local both = overlapping()
+        both.click(120, 920)
+        assert.is_not_nil(both.hot.binder().window())
+        assert.is_nil(both.cross.binder().window())
+      end)
+
+      it("does ONE swap for a drag, of the slot that is drawn on top", function()
+        local both = overlapping()
+        both.drag(120, 920, 220, 920)
+        assert.are.same(PROVOKE, both.cross_env.store_files.WAR.sets[2].left[5], "the slot underneath is untouched")
+        assert.are.same(CURE, both.cross_env.store_files.WAR.sets[2].left[6])
+        assert.is_nil(both.hot_env.store_files.WAR.sets[1], "the hotbar's slot moved onto an empty one")
+        assert.are.equal(1, #both.hot_env.chat)
+        assert.are.equal(0, #both.cross_env.chat)
+      end)
+
+      it("drops onto the slot that is drawn on top", function()
+        local both = overlapping()
+        both.cross.bindings().bind("2", "left", 6, { type = "ja", action = "Berserk" })
+        both.drag(220, 920, 120, 920)
+        assert.are.same({ type = "ja", action = "Berserk" }, both.hot_env.store_files.WAR.sets[1].row[3])
+        assert.are.same(CURE, both.cross_env.store_files.WAR.sets[2].left[6])
+        assert.are.same(PROVOKE, both.cross_env.store_files.WAR.sets[2].left[5], "the slot underneath is untouched")
+      end)
+    end)
+
+    it("keeps to one window after a drag whose release never arrived", function()
+      --[[ The hotbar's drag loses its release, so its window stays put
+           away; the next press lands on a crossbar slot INSIDE that window's
+           rect. The crossbar hears it first and sees no window there; the
+           hotbar then puts its window back and takes the same press for it.
+           Both acted on the release, and from then on one click drove two
+           wizards - a bind would have been written into both bars' files. ]]
+      local both = pair()
+      both.cross_env.rects = { { x = 900, y = 516, width = 40, height = 40, set = 2, side = "left", slot = 5 } }
+      both.hot.command({ "edit" })
+      both.click(120, 120)
+      both.mouse(LEFT_DOWN, 120, 120)
+      both.mouse(MOVE, 4, 4)
+      both.click(920, 536)
+      assert.is_not_nil(both.cross.binder().window(), "the slot that was pressed")
+      assert.is_nil(both.hot.binder().window(), "and nothing else")
+      local row = both.cross.binder().layer_view().rows[1]
+      both.click(row.x + 5, row.y + 5)
+      assert.are.equal("catalog", both.cross.binder().window().step)
+      assert.is_nil(both.hot.binder().window())
+    end)
+
+    it("keeps a drag to one bar after a drag whose release never arrived", function()
+      -- The same lost release, followed by a DRAG off the crossbar slot
+      -- rather than a click on it: nothing opens a window, so nothing stood
+      -- the hotbar down, and its binder acted on the release as a click on
+      -- a row of the window it had put back.
+      local both = pair()
+      both.cross_env.rects = {
+        { x = 900, y = 516, width = 40, height = 40, set = 2, side = "left", slot = 5 },
+        { x = 100, y = 900, width = 40, height = 40, set = 2, side = "left", slot = 6 },
+      }
+      both.hot.command({ "edit" })
+      both.click(120, 120)
+      local row = both.hot.binder().layer_view().rows[1]
+      both.click(row.x + 5, row.y + 5)
+      assert.are.equal("catalog", both.hot.binder().window().step)
+      both.mouse(LEFT_DOWN, 120, 120)
+      both.mouse(MOVE, 4, 4)
+      local said = #both.hot_env.chat
+      assert.is_true(both.drag(920, 536, 120, 920))
+      assert.are.equal(said, #both.hot_env.chat, "the hotbar did nothing")
+      assert.are.same(CURE, both.hot_env.store_files.WAR.sets[1].row[3])
+      assert.is_nil(both.hot.binder().window())
+      assert.are.same(
+        PROVOKE,
+        both.cross_env.store_files.WAR.sets[2].left[6],
+        "the crossbar's drag is the one that ran"
+      )
+      assert.is_nil(both.cross_env.store_files.WAR.sets[2].left[5])
+    end)
+
+    it("reaches the slot under a window that a drag has put away", function()
+      local both = pair()
+      both.hot_env.rects = { { x = 900, y = 516, width = 40, height = 40, set = 1, side = "row", slot = 3 } }
+      both.hot.command({ "edit" })
+      both.click(120, 920)
+      assert.are.equal("crossbar", both.service.window_at("hotbar", 920, 536))
+      both.mouse(LEFT_DOWN, 120, 920)
+      both.mouse(MOVE, 920, 536)
+      assert.is_nil(both.service.window_at("hotbar", 920, 536), "off screen for the length of the drag")
+      both.mouse(LEFT_UP, 920, 536)
+      assert.are.same(PROVOKE, both.hot_env.store_files.WAR.sets[1].row[3])
     end)
   end)
 end)

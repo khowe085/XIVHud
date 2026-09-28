@@ -155,6 +155,9 @@ local function build(opts)
     end,
     drop_target = opts.drop_target,
     bar_at = opts.bar_at,
+    other_window = opts.other_window,
+    slot_above = opts.slot_above,
+    window_opened = opts.window_opened,
   })
   env.binder = binder
   return binder, env
@@ -1177,15 +1180,79 @@ describe("crossbar binder", function()
       assert.are.equal(0, other.repaints)
     end)
 
-    it("prefers its own slot where the two bars overlap", function()
+    it("takes the drop on its own slot where the other bar's lies UNDER it", function()
       local other = other_bar({ everywhere = true })
-      local binder, env = build({ drop_target = other.drop_target })
+      local binder, env = build({
+        drop_target = other.drop_target,
+        slot_above = function()
+          return nil
+        end,
+      })
       binder.open()
       local from_x, from_y = slot_point(env, "left", 3)
       local to_x, to_y = slot_point(env, "right", 2)
       drag(binder, from_x, from_y, to_x, to_y)
       assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "right", 2))
       assert.are.same({}, other.files)
+    end)
+
+    it("yields the drop to the other bar's slot where that is drawn OVER its own", function()
+      -- What is on top is what the player dropped it on.
+      local other = other_bar({ everywhere = true })
+      local above, asked = nil, {}
+      local binder, env = build({
+        drop_target = other.drop_target,
+        slot_above = function(_, _, editing_only)
+          asked[#asked + 1] = editing_only == true
+          return above
+        end,
+      })
+      binder.open()
+      local from_x, from_y = slot_point(env, "left", 3)
+      binder.mouse(LEFT_DOWN, from_x, from_y, 0)
+      binder.mouse(MOVE, 4, 4, 0)
+      above, asked = "hotbar", {}
+      binder.mouse(LEFT_UP, slot_point(env, "right", 2))
+      assert.is_nil(env.bindings.entry_at("1", "right", 2), "not its own slot")
+      assert.are.same({ type = "ja", action = "Provoke" }, other.files.WAR.sets[3].row[7])
+      assert.are.same({ false }, asked, "any bar on screen can take a drop, in edit mode or not")
+    end)
+
+    it("leaves a press to the bar whose slot is drawn over its own", function()
+      -- Both binders hear the press. Taken by both, one click opened two
+      -- windows and one drag did two swaps.
+      local above, asked = "hotbar", {}
+      local binder, env = build({
+        slot_above = function(_, _, editing_only)
+          asked[#asked + 1] = editing_only == true
+          return above
+        end,
+      })
+      binder.open()
+      local x, y = slot_point(env, "left", 3)
+      assert.is_false(binder.mouse(LEFT_DOWN, x, y, 0), "not its press")
+      assert.are.same({ true }, asked, "yielded only to a binder that can take it")
+      assert.is_false(binder.mouse(MOVE, 4, 4, 0), "so nothing is in hand")
+      assert.is_false(binder.mouse(LEFT_UP, 4, 4, 0))
+      assert.is_nil(binder.window())
+      assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "left", 3))
+      above = nil
+      assert.is_true(click(binder, x, y))
+      assert.is_not_nil(binder.window(), "its own where nothing is drawn over it")
+    end)
+
+    it("asks who is on top only where it has a slot of its own", function()
+      local asked = 0
+      local binder = build({
+        slot_above = function()
+          asked = asked + 1
+          return nil
+        end,
+      })
+      binder.open()
+      binder.mouse(MOVE, 4, 4, 0)
+      click(binder, 4, 4)
+      assert.are.equal(0, asked)
     end)
 
     it("cancels a drop that lands on a bar but on no slot of it", function()
@@ -1238,6 +1305,109 @@ describe("crossbar binder", function()
       assert.is_false(click(binder, x, y), "a click on the other bar is not the binder's")
       assert.are.equal(0, other.asked)
       assert.are.same({}, other.files)
+    end)
+  end)
+
+  describe("beside another bar's binder", function()
+    -- Both binders are open at once, and core hands each of them every
+    -- mouse event.
+    it("leaves a point under the other binder's window alone, whatever slot of its own is there", function()
+      local covered = false
+      local binder, env = build({
+        other_window = function()
+          return covered
+        end,
+      })
+      binder.open()
+      local x, y = slot_point(env, "left", 3)
+      covered = true
+      binder.mouse(MOVE, x, y, 0)
+      assert.is_nil(binder.details(), "nothing to describe: the slot is under a window")
+      assert.is_false(binder.mouse(LEFT_DOWN, x, y, 0), "not its press")
+      assert.is_false(binder.mouse(MOVE, 4, 4, 0), "so nothing is in hand")
+      assert.is_false(binder.mouse(LEFT_UP, 4, 4, 0))
+      assert.is_nil(binder.window(), "and no window of its own opened")
+      assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "left", 3))
+      covered = false
+      assert.is_true(click(binder, x, y), "its own again once the window is gone")
+      assert.is_not_nil(binder.window())
+    end)
+
+    it("still answers for its OWN window where the other's overlaps it", function()
+      local covered = false
+      local binder, env = build({
+        other_window = function()
+          return covered
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      local window = binder.window()
+      covered = true
+      assert.is_true(click(binder, centre(row_named(env, "base"))), "a row of its own window")
+      assert.are.equal("catalog", binder.window().step)
+      assert.are.equal(window.x, binder.window().x)
+    end)
+
+    it("says so each time it opens its window on a slot", function()
+      local opened = 0
+      local binder, env = build({
+        window_opened = function()
+          opened = opened + 1
+        end,
+      })
+      binder.open()
+      assert.are.equal(0, opened, "edit mode alone opens no window")
+      click(binder, slot_point(env, "left", 3))
+      assert.are.equal(1, opened)
+      click(binder, centre(row_named(env, "base")))
+      assert.are.equal(1, opened, "a step inside the window is not a new one")
+      binder.deselect()
+      click(binder, slot_point(env, "right", 2))
+      assert.are.equal(2, opened)
+    end)
+
+    it("stands down for the other binder's window: no window, no press, no ghost, still in edit mode", function()
+      local binder, env = build({
+        icon = function()
+          return "addon/icons/provoke.png"
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "ctx:light-arts")))
+      assert.is_not_nil(last_preview(env), "a context is being previewed")
+      -- A press armed on its own window, as one that superseded a drag
+      -- whose release never arrived would be.
+      binder.mouse(LEFT_DOWN, centre(binder.window()))
+      binder.stand_down()
+      assert.is_nil(binder.window())
+      assert.is_nil(shown_text(env, "[ X ]"))
+      assert.is_nil(last_preview(env), "the preview came down with it")
+      assert.is_true(binder.active())
+      assert.is_false(binder.mouse(LEFT_UP, 4, 4, 0), "the press it had armed is gone")
+      -- And mid-drag: the slot in hand is let go of.
+      local x, y = slot_point(env, "left", 3)
+      binder.mouse(LEFT_DOWN, x, y, 0)
+      binder.mouse(MOVE, 500, 300, 0)
+      binder.stand_down()
+      for _, prim in ipairs(env.prims.all) do
+        assert.is_false(prim.visible and prim.destroyed == 0, "nothing of the binder's is on screen")
+      end
+      assert.is_false(binder.mouse(MOVE, 600, 300, 0), "motion is the game's again")
+    end)
+
+    it("names the window it has on screen, and none while a slot is in hand", function()
+      local binder, env = build()
+      binder.open()
+      assert.is_nil(binder.window_on_screen(), "no slot picked, no window")
+      local x, y = slot_point(env, "left", 3)
+      click(binder, x, y)
+      assert.are.equal(binder.window(), binder.window_on_screen())
+      binder.mouse(LEFT_DOWN, x, y, 0)
+      binder.mouse(MOVE, 4, 4, 0)
+      assert.is_nil(binder.window_on_screen(), "put away for the drag")
+      assert.is_not_nil(binder.window(), "though the drop still reads its rect")
+      binder.mouse(LEFT_UP, 300, 4, 0)
+      assert.are.equal(binder.window(), binder.window_on_screen())
     end)
   end)
 
@@ -1415,17 +1585,56 @@ describe("crossbar binder", function()
       assert.are.same({}, visible_prims(env))
     end)
 
-    it("clears a drag whose release never arrived when the next press lands", function()
-      -- A release taken by an addon ahead of us would otherwise leave the
-      -- ghost on screen and the window hidden for good.
-      local binder, env = build(with_icons({}))
-      open_stack(binder, env, "left", 3)
-      local x, y = slot_point(env, "left", 3)
-      binder.mouse(LEFT_DOWN, x, y, 0)
-      binder.mouse(MOVE, 500, 300, 0)
-      binder.mouse(LEFT_DOWN, centre(binder.window()))
-      assert.is_not_nil(shown_text(env, "[ X ]"), "the window is back")
-      assert.is_nil(shown_text(env, "Provoke"), "and the ghost is gone")
+    --[[ A release taken by an addon ahead of us leaves the drag standing:
+         the ghost up and the window away. The NEXT press ends it, and is
+         read against the screen as it stood when the player pressed - with
+         no window on it. It used to be read against the window it had just
+         put back (until 2026-09-28), which nobody could have been aiming
+         at, and which another bar's binder had already looked for and not
+         found. ]]
+    describe("and its release never arriving", function()
+      local function stranded(opts)
+        local binder, env = build(with_icons(opts or {}))
+        open_stack(binder, env, "left", 3)
+        local x, y = slot_point(env, "left", 3)
+        binder.mouse(LEFT_DOWN, x, y, 0)
+        binder.mouse(MOVE, 500, 300, 0)
+        return binder, env
+      end
+
+      it("reads the next press on empty screen as one, though the window had stood there", function()
+        local binder, env = stranded()
+        assert.is_false(binder.mouse(LEFT_DOWN, centre(binder.window())), "the client's, like any press on nothing")
+        assert.is_nil(shown_text(env, "Provoke"), "the ghost is gone")
+        assert.is_nil(binder.window(), "and the press dismissed the panel, as one on empty screen does")
+        assert.is_true(binder.active())
+        assert.is_false(binder.mouse(MOVE, 4, 4, 0), "motion is the game's again")
+      end)
+
+      it("reads the next press on a slot the window had covered as that slot's", function()
+        local binder, env = stranded({
+          groups = function()
+            return {
+              { key = "xhb_left", bar = "xhb", side = "left", x = ANCHOR_X, y = ANCHOR_Y, scale = 1, set = 1 },
+              { key = "xhb_right", bar = "xhb", side = "right", x = 600, y = 400, scale = 1, set = 1 },
+            }
+          end,
+        })
+        local x, y = slot_point(env, "right", 2)
+        x, y = x - ANCHOR_X + 600, y - ANCHOR_Y + 400
+        assert.is_true(click(binder, x, y))
+        assert.is_nil(shown_text(env, "Provoke"), "the ghost is gone")
+        assert.is_not_nil(shown_text(env, "[ X ]"), "the window is up again")
+        assert.are.same({ set = 1, side = "right", slot = 2 }, binder.window().address, "on the slot that was pressed")
+      end)
+
+      it("leaves a later press to the window, once it is back on screen", function()
+        local binder, env = stranded()
+        local x, y = slot_point(env, "left", 3)
+        click(binder, x, y)
+        assert.is_true(click(binder, centre(row_named(env, "base"))))
+        assert.are.equal("catalog", binder.window().step)
+      end)
     end)
   end)
 

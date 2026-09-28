@@ -1169,6 +1169,21 @@ local function new(deps)
     return { kind = "slot", set = rect.set, side = rect.side, slot = rect.slot, rect = rect }
   end
 
+  --[[ This bar's slot at a point, unless ANOTHER bar draws one over it: what
+       is on top is what the player is pointing at, and the service says
+       who that is. Every binder hears every mouse event, so a point with a
+       slot of each bar on it has to have ONE owner - taken by both, a click
+       opened two windows and a drag did two swaps. `editing_only` is for a
+       press, which is only worth yielding to a binder that can take it; a
+       drop lands on any bar that is on screen. ]]
+  local function own_slot_at(x, y, editing_only)
+    local own = slot_under(x, y)
+    if own ~= nil and deps.slot_above ~= nil and deps.slot_above(x, y, editing_only) ~= nil then
+      return nil
+    end
+    return own
+  end
+
   --[[ The window first: it draws over the bar, so a slot beneath it is not
        clickable while it is open.
 
@@ -1176,9 +1191,12 @@ local function new(deps)
        measures against that rect - never against the slot grid alone. A row
        whose rect went missing would arm a drag on the pixel of drift every
        real click has, and since no drop gesture starts on a row, the click
-       would simply vanish. ]]
-  local function hit(x, y)
-    if window ~= nil and inside(x, y, window) then
+       would simply vanish.
+
+       `window_away` reads the point as the screen stands while a drag has
+       the window put away: the slots, and nothing of the window. ]]
+  local function hit(x, y, window_away)
+    if not window_away and window ~= nil and inside(x, y, window) then
       -- The two ways out are checked before anything else in the window, so
       -- no row - and no drag handle - can ever be laid over them.
       if inside(x, y, window.close) then
@@ -1225,18 +1243,26 @@ local function new(deps)
            column never reads as the empty space that clears a slot. ]]
       return { kind = "panel", rect = window }
     end
-    return slot_under(x, y)
+    --[[ ANOTHER bar's binder has its window here. Every bar hears every
+         mouse event and each binder knows its own window alone, so this
+         binder has to be told - or a click on that window would also be a
+         click on whichever of this bar's slots lies beneath it. It answers
+         as nothing of ours: not a press, not a hover. ]]
+    if deps.other_window ~= nil and deps.other_window(x, y) then
+      return nil
+    end
+    return own_slot_at(x, y, true)
   end
 
   --[[ Where a slot in hand comes down. NOT `hit`: the window is off screen
-       for the length of the drag, so the slots come first - this bar's, then
-       any other bar's, which only the action service can answer for - and
-       the window's rect is read last. It still cancels there (Kevin,
-       2026-09-27): the window comes back on that spot, so a release over it
-       with no slot beneath is a miss, never the empty space that clears a
-       layer. ]]
+       for the length of the drag, so the slots come first - this bar's
+       unless another's is drawn over it, then any other bar's, which only
+       the action service can answer for - and the window's rect is read
+       last. It still cancels there (Kevin, 2026-09-27): the window comes
+       back on that spot, so a release over it with no slot beneath is a
+       miss, never the empty space that clears a layer. ]]
   local function drop_target(x, y)
-    local own = slot_under(x, y)
+    local own = own_slot_at(x, y, false)
     if own ~= nil then
       return own
     end
@@ -1389,6 +1415,10 @@ local function new(deps)
     end
     slot = { set = target.set, side = target.side, slot = target.slot, rect = target.rect }
     step, page, submenu = STEP_LAYER, 1, nil
+    -- The window is this binder's now: any other bar's stands down.
+    if deps.window_opened ~= nil then
+      deps.window_opened()
+    end
   end
 
   local function close_panel()
@@ -1634,6 +1664,22 @@ local function new(deps)
     redraw()
   end
 
+  --[[ Another bar's binder has opened its window. This one gives up the
+       screen and the gesture with it - the window, the slot in hand and any
+       press it had armed - and stays in edit mode, so its slots are still
+       there to click. The press matters as much as the window: one armed
+       here would be acted on at the release, on a window that has just
+       been put away. ]]
+  function self.stand_down()
+    if not active then
+      return
+    end
+    press = nil
+    drop_ghost()
+    close_panel()
+    redraw()
+  end
+
   --[[ The cursor against the rows the slot offers NOW. It deliberately
        outlives a bind, so it can outlive its row - a subjob change takes a
        context out of reach and unequipping takes the weapon row away - and
@@ -1697,6 +1743,15 @@ local function new(deps)
   --- The one window, and the step it is showing. Nil while no slot is
   --- picked - edit mode itself draws nothing until you click one.
   function self.window()
+    return window
+  end
+
+  --- The window as another bar's binder must see it: nil while a drag has
+  --- it put away, when the slots beneath it are anybody's to drop on.
+  function self.window_on_screen()
+    if slot_drag() then
+      return nil
+    end
     return window
   end
 
@@ -1822,14 +1877,21 @@ local function new(deps)
       --[[ A fresh press supersedes whatever the last one left behind: a
            release consumed by an addon ahead of us, or delivered off-window,
            would otherwise strand a drag that swallows motion for good - and
-           a slot's drag would leave its ghost up and the window down. ]]
+           a slot's drag would leave its ghost up and the window down.
+
+           The press that ends a stranded slot drag is read AS THE SCREEN
+           STOOD when it was made: the window away. Read against the window
+           it is about to put back, it was a press on something nobody
+           could see - and with two binders, one a bar earlier in the
+           dispatch had already taken for the slot the window was hiding,
+           so both acted on the release. ]]
       local stranded = slot_drag()
       press = nil
+      local target = hit(x, y, stranded)
       if stranded then
         drop_ghost()
         redraw()
       end
-      local target = hit(x, y)
       if target == nil then
         -- Nothing of ours under the cursor: the click is the client's, and
         -- it dismisses the panel (rule 5 - nothing is sticky). Resolved on

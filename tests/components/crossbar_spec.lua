@@ -6095,6 +6095,29 @@ describe("crossbar live widget", function()
       assert.is_not_nil(said():lower():find("edit mode off"), "a bare tap exits: " .. said())
     end)
 
+    it("exits on that key when only ANOTHER bar's binder is still open", function()
+      -- Hidden and shown again mid-edit, the crossbar's own binder is shut
+      -- while the hotbar's is not. The key means LEAVE for as long as any
+      -- binder is up: it must not read as a toggle and open this one.
+      build_world()
+      local closed = 0
+      service_under_test.register_bar("hotbar", {
+        slot_at = function() end,
+        repaint = function() end,
+        close_edit = function()
+          closed = closed + 1
+          service_under_test.set_edit_mode("hotbar", false)
+        end,
+      })
+      service_under_test.set_edit_mode("hotbar", true)
+      env.chat = {}
+      press(SHORTCUT)
+      assert.are.equal(1, closed, "the hotbar's binder was closed")
+      assert.is_nil(service_under_test.edit_owner())
+      assert.is_not_nil(said():lower():find("crossbar: edit mode off", 1, true), "said: " .. said())
+      assert.is_nil(said():find("edit mode on", 1, true), "and the crossbar's own did not open")
+    end)
+
     it("fires nothing from a slot key while the binder is open", function()
       build_world()
       widget.handle_command({ "edit" })

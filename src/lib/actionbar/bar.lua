@@ -952,13 +952,65 @@ local function new(deps)
     end,
     -- Any bar's footprint, this one's included.
     bar_at = service.bar_at,
+    -- Whether ANOTHER bar's binder window is over a point: that point is
+    -- that binder's, whatever slot of this bar lies beneath it.
+    other_window = function(x, y)
+      return service.window_at(name, x, y) ~= nil
+    end,
+    -- The bar that draws a slot OVER this one's at a point, which is the
+    -- one that owns it.
+    slot_above = function(x, y, editing_only)
+      return service.slot_above(name, x, y, editing_only)
+    end,
+    window_opened = function()
+      service.window_opened(name)
+    end,
   })
 
-  --[[ And the other half: this bar as the target of another bar's drag. No
-       `accept` filter, the binder's own rule - while any binder is open a
-       bar draws every slot it holds. A hidden bar answers nothing: a drop
-       there lands on what the player cannot see. ]]
+  --[[ Opens this bar's binder, or answers why it cannot. Its own half of
+       the shared edit mode: the command that was typed opens its own bar
+       through here and the service opens the others the same way. ]]
+  local function open_edit()
+    if editing() then
+      return nil
+    end
+    if not deps.visible() then
+      return name .. ": the " .. name .. " is hidden - //hud show " .. name .. " first"
+    end
+    if scoped_main == nil then
+      -- Nothing is bindable before a job is named: the binder would open on
+      -- a bar with no set behind it, which is worse than a refusal.
+      return name .. ": no job scoped yet - log in first"
+    end
+    binder.open()
+    -- The service refuses a trip while any bar's binder is up, and calls
+    -- off one already counting down.
+    service.set_edit_mode(name, true)
+    deps.on_edit(true)
+    -- The bar repaints into its edit-mode dress: each slot wearing the tag
+    -- of the layer its winner came from.
+    deps.repaint()
+    return nil
+  end
+
+  --[[ And the other half: this bar as the other bars' binders see it - the
+       target of their drags, and one of the binders in the edit mode they
+       share. No `accept` filter on its slots, the binder's own rule - while
+       any binder is open a bar draws every slot it holds. A hidden bar
+       answers nothing: a drop there lands on what the player cannot see. ]]
   service.register_bar(name, {
+    open_edit = function()
+      return open_edit() == nil
+    end,
+    close_edit = function()
+      self.close_edit()
+    end,
+    window = function()
+      return binder.window_on_screen()
+    end,
+    stand_down = function()
+      binder.stand_down()
+    end,
     slot_at = function(x, y)
       if not deps.visible() then
         return nil
@@ -1006,37 +1058,31 @@ local function new(deps)
     end
   end
 
+  --[[ ONE edit mode over every bar (Kevin, 2026-09-28): this bar's `edit`
+       opens the others' binders beside its own and closes them with it, so
+       a slot can be picked up off any bar. It was one binder at a time - a
+       second refused to open over the first, because core ORs every bar's
+       mouse handler and each binder answers for its own window alone. The
+       binders now ask the service whose window a point is under instead.
+
+       The bar that was ASKED answers for itself: its refusal is the reply
+       and nothing opens. Another bar that cannot open is left out. A bar
+       not yet in an edit mode the others are in joins it. ]]
   function self.toggle_edit()
     if editing() then
-      self.close_edit()
+      service.close_edit_all()
       return name .. ": edit mode off"
     end
     if ctx.layout_active ~= nil and ctx.layout_active() then
       return name .. ": //hud layout owns the mouse - leave layout mode first"
     end
-    if not deps.visible() then
-      return name .. ": the " .. name .. " is hidden - //hud show " .. name .. " first"
+    local refusal = open_edit()
+    if refusal ~= nil then
+      return refusal
     end
-    -- Two binders would each answer one click: core ORs every bar's mouse
-    -- handler, and each routes to its own window unconditionally.
-    local other = service.edit_owner()
-    if other ~= nil and other ~= name then
-      return name .. ": the " .. other .. "'s binder is open - close it first"
-    end
-    if scoped_main == nil then
-      -- Nothing is bindable before a job is named: the binder would open on
-      -- a bar with no set behind it, which is worse than a refusal.
-      return name .. ": no job scoped yet - log in first"
-    end
-    binder.open()
-    -- The service refuses a trip while any bar's binder is up, and calls
-    -- off one already counting down.
-    service.set_edit_mode(name, true)
-    deps.on_edit(true)
-    -- The bar repaints into its edit-mode dress: each slot wearing the tag
-    -- of the layer its winner came from.
-    deps.repaint()
-    return name .. ": edit mode on - click a slot, then a layer, an action, and a target"
+    local others = service.open_edit_with(name)
+    local beside = #others > 0 and (", " .. table.concat(others, " and ") .. " too") or ""
+    return name .. ": edit mode on" .. beside .. " - click a slot, then a layer, an action, and a target"
   end
 
   --[[ Commands ------------------------------------------------------------ ]]

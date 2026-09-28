@@ -1055,7 +1055,17 @@ local function new(ctx)
         service.builtin("draw")
         bar.sync_weapon()
       elseif intent.type == "shortcut" then
-        run_shortcut(intent.verb)
+        if intent.verb == "edit" and not editing() and service.edit_owner() ~= nil then
+          --[[ The key means LEAVE for as long as ANY binder is up, and the
+               machine sends it on that footing. `edit` itself is a toggle
+               that JOINS an edit mode this bar is not yet in - so with the
+               crossbar's own binder shut (hidden and shown again mid-edit)
+               and the hotbar's still open, it would open one more. ]]
+          service.close_edit_all()
+          say("crossbar: edit mode off")
+        else
+          run_shortcut(intent.verb)
+        end
       end
     end
     return block
