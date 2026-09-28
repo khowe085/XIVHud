@@ -34,6 +34,9 @@ bind here, and the same layers, contexts, sets and rotations apply.
   action from what your character knows. Menu entries - Stratagems, the Blood
   Pacts, the DNC modes - open what is behind them rather than binding, exactly
   as on the crossbar.
+- **Drag a slot onto the crossbar**, or a crossbar slot onto the hotbar from
+  the crossbar's binder: the two slots swap everything they hold, every
+  layer of it. See [dragging on the crossbar](crossbar.md).
 - **Sets, sharing and rotations** work exactly as on the crossbar: eight
   sets per job, any of them shared across jobs, each in the drawn rotation,
   the sheathed one, both or neither.

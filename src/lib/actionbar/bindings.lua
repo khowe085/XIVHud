@@ -959,6 +959,118 @@ local function new(deps)
     return true
   end
 
+  -- The layers a stack has above its base, by their key in the job file.
+  local OVERRIDE_LAYERS = { "sub", "weapons", "contexts" }
+
+  local function stack_address(address)
+    local ok, err = require_job()
+    if ok == nil then
+      return nil, err
+    end
+    local side = type(address) == "table" and SIDES[address.side] or nil
+    if not (side and valid_set(address.set) and valid_slot(address.slot, SLOT_COUNT)) then
+      return nil, "swap needs two addresses as " .. geometry.form
+    end
+    return { set = address.set, side = side, slot = address.slot }
+  end
+
+  --- An address's ENTIRE stack, copied by value: the base (from the store
+  --- its set's flag selects) and every subjob, weapon and context override,
+  --- each under the name its layer is keyed by. The read half of a swap
+  --- ACROSS bars, where the other address lives in a model this one cannot
+  --- reach into.
+  function self.stack_at(address)
+    local at, err = stack_address(address)
+    if at == nil then
+      return nil, err
+    end
+    local stack = { base = deep_copy(slot_in(base_sets(at.set), at.set, at.side, at.slot)) }
+    for _, layer in ipairs(OVERRIDE_LAYERS) do
+      stack[layer] = {}
+      for name, tree in pairs(job_data[layer]) do
+        stack[layer][name] = deep_copy(slot_in(tree, at.set, at.side, at.slot))
+      end
+    end
+    return stack
+  end
+
+  --- Replace an address's entire stack with one `stack_at` answered. A layer
+  --- the stack names and this file has never held is made for it; one the
+  --- write empties is dropped, the way unbind's prune does.
+  function self.put_stack(address, stack)
+    local at, err = stack_address(address)
+    if at == nil then
+      return nil, err
+    end
+    write_slot(base_sets(at.set), at.set, at.side, at.slot, stack.base)
+    for _, layer in ipairs(OVERRIDE_LAYERS) do
+      local trees = job_data[layer]
+      local names = {}
+      for name in pairs(trees) do
+        names[name] = true
+      end
+      for name in pairs(stack[layer] or {}) do
+        names[name] = true
+      end
+      for name in pairs(names) do
+        local entry = (stack[layer] or {})[name]
+        if entry ~= nil then
+          trees[name] = trees[name] or {}
+        end
+        if trees[name] ~= nil then
+          write_slot(trees[name], at.set, at.side, at.slot, entry)
+          if next(trees[name]) == nil then
+            trees[name] = nil
+          end
+        end
+      end
+    end
+    save_job()
+    if is_shared(at.set) then
+      deps.save("SHARED", shared_data)
+    end
+    return true
+  end
+
+  local function stack_is_empty(stack)
+    if stack.base ~= nil then
+      return false
+    end
+    for _, layer in ipairs(OVERRIDE_LAYERS) do
+      if next(stack[layer]) ~= nil then
+        return false
+      end
+    end
+    return true
+  end
+
+  --- `swap`, with the second address in ANOTHER bar's model: the crossbar's
+  --- `1L1` against the hotbar's `3:7`. Both stacks are read before either is
+  --- written, and a read refuses exactly what a write would, so a refusal
+  --- leaves both stores as they were. A third answer of `true` says the
+  --- refusal was the OTHER model's, so the caller can name the right bar.
+  function self.swap_across(a, other, b)
+    local mine, err = self.stack_at(a)
+    if mine == nil then
+      return nil, err
+    end
+    local theirs, their_err = other.stack_at(b)
+    if theirs == nil then
+      return nil, their_err, true
+    end
+    -- Every layer is keyed inside the MAIN job's file, so a stack handed to
+    -- another job's file would be one job's bindings under another's name.
+    if job_name ~= (other.job()) then
+      return nil, "the two bars are scoped to different jobs"
+    end
+    if stack_is_empty(mine) and stack_is_empty(theirs) then
+      return true
+    end
+    self.put_stack(a, theirs)
+    other.put_stack(b, mine)
+    return true
+  end
+
   --- Seed this job's bindings from another job's file: base, subjob layers,
   --- weapon layers and context overrides, copied by value (shared sets are
   --- already everywhere). The active set stays this job's own.

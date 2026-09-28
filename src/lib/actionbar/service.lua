@@ -433,8 +433,68 @@ local function new(deps)
        binder, so it is the one that is open when both look it. ]]
   local editing = {}
 
+  --[[ The bars, in the order they registered, each as the four things a
+       binder needs of it: `slot_at(x, y)` over the slots it has on screen,
+       `covers(x, y)` over its whole footprint, `bindings()` for its model
+       and `repaint()`. A slot dragged off one bar can be dropped on
+       another, and this is the only place the two meet - a component never
+       requires a sibling. ]]
+  local bars = {}
+
+  function self.register_bar(name, hooks)
+    for index, bar in ipairs(bars) do
+      if bar.name == name then
+        bars[index] = { name = name, hooks = hooks }
+        return
+      end
+    end
+    bars[#bars + 1] = { name = name, hooks = hooks }
+  end
+
+  --- The slot some OTHER bar draws under a point, with that bar's name,
+  --- model and repaint, or nil. The asker's own slots are never answered:
+  --- its binder hit-tests those itself.
+  function self.drop_target_at(asker, x, y)
+    for _, bar in ipairs(bars) do
+      if bar.name ~= asker then
+        local rect = bar.hooks.slot_at(x, y)
+        if rect ~= nil then
+          return {
+            bar = bar.name,
+            set = rect.set,
+            side = rect.side,
+            slot = rect.slot,
+            rect = rect,
+            bindings = bar.hooks.bindings(),
+            repaint = bar.hooks.repaint,
+          }
+        end
+      end
+    end
+    return nil
+  end
+
+  --- The bar a point falls on, the asker's own as much as another's, or
+  --- nil. A drop there that found no slot is a near miss and not the empty
+  --- space that clears a layer, whichever bar it missed.
+  function self.bar_at(x, y)
+    for _, bar in ipairs(bars) do
+      if bar.hooks.covers ~= nil and bar.hooks.covers(x, y) then
+        return bar.name
+      end
+    end
+    return nil
+  end
+
   function self.set_edit_mode(owner, open)
     editing[owner] = open and true or nil
+    -- Every other bar dresses as a drop target while a binder is open, and
+    -- nothing else tells it one has opened or closed.
+    for _, bar in ipairs(bars) do
+      if bar.name ~= owner then
+        bar.hooks.repaint()
+      end
+    end
   end
 
   local function layout_active()

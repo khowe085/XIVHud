@@ -43,7 +43,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      `groups()` (the drawn groups the binder resolves a click over),
      `cells(visit)` (walks every slot object, for the ids they are bound
      to), `repaint()`, `visible()` (the widget's own switch, for edit mode's
-     refusal), `on_edit(open)` (the widget's own edit-mode housekeeping) and
+     refusal), `footprint()` (the rects of what it has on screen, slots and
+     everything between them, where a drop that finds no slot is a miss),
+     `on_edit(open)` (the widget's own edit-mode housekeeping) and
      an optional `status()` (the bare command's lines, when the widget has
      more to say than the head line here). ]]
 
@@ -943,6 +945,41 @@ local function new(deps)
       apply_buffs()
       deps.repaint()
     end,
+    -- The slot ANOTHER bar draws under a drop. Only the service can say:
+    -- this bar's render knows its own geometry and nobody else's.
+    drop_target = function(x, y)
+      return service.drop_target_at(name, x, y)
+    end,
+    -- Any bar's footprint, this one's included.
+    bar_at = service.bar_at,
+  })
+
+  --[[ And the other half: this bar as the target of another bar's drag. No
+       `accept` filter, the binder's own rule - while any binder is open a
+       bar draws every slot it holds. A hidden bar answers nothing: a drop
+       there lands on what the player cannot see. ]]
+  service.register_bar(name, {
+    slot_at = function(x, y)
+      if not deps.visible() then
+        return nil
+      end
+      return deps.render().slot_at(deps.groups(), x, y)
+    end,
+    covers = function(x, y)
+      if not deps.visible() or deps.footprint == nil then
+        return false
+      end
+      for _, rect in ipairs(deps.footprint()) do
+        if x >= rect.x and x < rect.x + rect.width and y >= rect.y and y < rect.y + rect.height then
+          return true
+        end
+      end
+      return false
+    end,
+    bindings = function()
+      return bindings
+    end,
+    repaint = deps.repaint,
   })
 
   function self.binder()

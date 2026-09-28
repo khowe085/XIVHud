@@ -597,10 +597,29 @@ In edit mode:
 **Dragging** does two things, both of them on the bar rather than in the
 window: drag a slot onto another slot to swap them entirely, or drag a slot
 onto **genuinely empty screen** to clear it — which removes it from the layer
-you are editing, and leaves every other layer alone. Dragging an action out
-of the list does nothing; the steps are the way to bind. A drop that
-lands on any part of the binder — the window, the bar itself — cancels
-quietly and changes nothing.
+you are editing, and leaves every other layer alone. Empty means clear of
+everything: a drop that lands on a bar but misses its slots — between two of
+them, on a name, on the set number — cancels and changes nothing, on the
+crossbar and the hotbar alike. Dragging an action out
+of the list does nothing; the steps are the way to bind. Dropping a slot
+back where it came from changes nothing.
+
+While a slot is in your hand the window steps out of the way and the slot's
+icon and name follow the cursor, so you can see what you are carrying and
+drop it on a slot the window was covering. The window comes back on the
+drop. Letting go over the spot where the window stood, with no slot under
+it, cancels quietly and changes nothing — it is never the empty screen that
+clears a layer.
+
+**Onto the hotbar, and back.** A slot can be dropped on a
+[hotbar](hotbar.md) slot too, and a hotbar slot on a crossbar one from the
+hotbar's own binder. It is the same swap: the two slots trade everything
+they hold, every layer of it, between the two bars' own files. While either
+binder is open the other bar shows every slot it has, empty ones included,
+so there is always somewhere to drop. Only one binder is open at a time, so
+the drag starts on the bar whose binder you opened; since a swap goes both
+ways, either binder reaches every pair of slots. Where the two bars overlap
+on screen, the slot of the bar you are editing takes the drop.
 
 **One window, three steps.** Edit mode draws nothing until you click a slot.
 Then a single window opens dead centre and walks you through:
@@ -644,8 +663,9 @@ there next time rather than back in the middle. It is always kept fully on
 screen, including a position saved at a resolution you no longer play at.
 
 The window does not dodge the bar. If you have put the bar in the middle of
-the screen the window will cover it, and slots underneath cannot be clicked or
-dropped onto while the binder is open.
+the screen the window will cover it, and slots underneath cannot be clicked
+while it is up. They can still be dropped onto: the window is out of the way
+for as long as you are dragging a slot.
 
 **Changing set.** The set switch still works in edit mode — tap `` ` `` to
 cycle, or hold it and press a number to jump — because which set is on screen

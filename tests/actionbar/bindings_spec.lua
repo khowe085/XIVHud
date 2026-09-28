@@ -1931,4 +1931,168 @@ describe("crossbar bindings", function()
       assert.are.equal(2, bindings.cycle(), "the only non-empty set")
     end)
   end)
+
+  describe("swap across bars", function()
+    local grammar = require("lib/actionbar/grammar")
+
+    -- Two models over two stores, as the crossbar and the hotbar each own
+    -- one: nothing is shared between them but the job they are scoped to.
+    local function pair(opts)
+      opts = opts or {}
+      local cross, cross_world = build({ files = opts.cross or {}, set_flags = opts.cross_flags })
+      local hot, hot_world = build({ files = opts.hot or {}, set_flags = opts.hot_flags, geometry = grammar.hotbar() })
+      cross.set_job(opts.job or "SCH", "RDM")
+      hot.set_job(opts.hot_job or opts.job or "SCH", "RDM")
+      return cross, cross_world, hot, hot_world
+    end
+
+    local A, B = { set = 1, side = "l", slot = 1 }, { set = 3, side = "row", slot = 10 }
+
+    it("exchanges the whole stack between the two stores", function()
+      local cross, cross_world, hot, hot_world = pair({
+        cross = {
+          SCH = {
+            sets = { [1] = { left = { [1] = record("A Base") } } },
+            sub = { RDM = { [1] = { left = { [1] = ja("A Sub") } } } },
+            weapons = { Staff = { [1] = { left = { [1] = record("A Staff") } } } },
+          },
+        },
+        hot = {
+          SCH = {
+            sets = { [3] = { row = { [10] = record("B Base") } } },
+            contexts = { ["light-arts"] = { [3] = { row = { [10] = ja("B Ctx") } } } },
+          },
+        },
+      })
+      assert.is_true(cross.swap_across(A, hot, B))
+      assert.are.same(record("B Base"), cross_world.files.SCH.sets[1].left[1])
+      assert.are.same(ja("B Ctx"), cross_world.files.SCH.contexts["light-arts"][1].left[1])
+      assert.are.same(record("A Base"), hot_world.files.SCH.sets[3].row[10])
+      -- Layers the receiving store had never held are made for the arrival.
+      assert.are.same(ja("A Sub"), hot_world.files.SCH.sub.RDM[3].row[10])
+      assert.are.same(record("A Staff"), hot_world.files.SCH.weapons.Staff[3].row[10])
+      -- And both models resolve through what they were handed.
+      local entry, source = hot.resolve(3, "row", 10)
+      assert.are.equal("A Sub", entry.action)
+      assert.are.equal("sub", source)
+      cross.update_buffs({ 358 })
+      assert.are.equal("B Ctx", cross.resolve(1, "left", 1).action)
+    end)
+
+    it("moves into an empty stack and leaves no husk behind", function()
+      local cross, cross_world, hot, hot_world = pair({
+        cross = {
+          SCH = {
+            sets = { [1] = { left = { [1] = record("Only") } } },
+            sub = { RDM = { [1] = { left = { [1] = ja("Only Sub") } } } },
+          },
+        },
+      })
+      assert.is_true(cross.swap_across(A, hot, B))
+      assert.are.same(record("Only"), hot_world.files.SCH.sets[3].row[10])
+      assert.are.same(ja("Only Sub"), hot_world.files.SCH.sub.RDM[3].row[10])
+      assert.is_nil(cross_world.files.SCH.sets[1])
+      assert.is_nil(cross_world.files.SCH.sub.RDM, "a layer emptied by the move is not left as {}")
+      assert.are.same({}, hot_world.files.SCH.contexts, "and a layer neither side held is not made")
+    end)
+
+    it("leaves every other address in a layer where it was", function()
+      local cross, cross_world, hot = pair({
+        cross = {
+          SCH = {
+            sets = { [1] = { left = { [1] = record("Moves"), [2] = record("Stays") } } },
+            sub = { RDM = { [1] = { left = { [1] = ja("Moves Sub"), [2] = ja("Stays Sub") } } } },
+          },
+        },
+      })
+      assert.is_true(cross.swap_across(A, hot, B))
+      assert.are.same(record("Stays"), cross_world.files.SCH.sets[1].left[2])
+      assert.are.same(ja("Stays Sub"), cross_world.files.SCH.sub.RDM[1].left[2])
+      assert.is_nil(cross_world.files.SCH.sub.RDM[1].left[1])
+    end)
+
+    it("copies by value, so the two stores never hold one table", function()
+      local original = record("Only")
+      local cross, _, hot, hot_world = pair({ cross = { SCH = { sets = { [1] = { left = { [1] = original } } } } } })
+      local held = cross.resolve(1, "left", 1)
+      assert.is_true(cross.swap_across(A, hot, B))
+      assert.are_not.equal(held, hot_world.files.SCH.sets[3].row[10])
+      assert.are.same(original, hot_world.files.SCH.sets[3].row[10])
+    end)
+
+    it("puts each base in the store its own bar's flag selects", function()
+      local flags = default_flags()
+      flags[1].shared = true
+      local cross, cross_world, hot, hot_world = pair({
+        cross = { SHARED = { sets = { [1] = { left = { [1] = record("Was Shared") } } } } },
+        cross_flags = flags,
+        hot = { SCH = { sets = { [3] = { row = { [10] = record("Was Job") } } } } },
+      })
+      -- set_job's own landing saves when it moves the set: only what the
+      -- swap adds is counted.
+      local cross_before, hot_before = cross_world.saved.SCH or 0, hot_world.saved.SCH or 0
+      assert.is_true(cross.swap_across(A, hot, B))
+      assert.are.same(record("Was Job"), cross_world.files.SHARED.sets[1].left[1])
+      assert.is_nil(cross_world.files.SCH.sets[1], "the crossbar's set 1 is shared, so its job file takes no base")
+      assert.are.same(record("Was Shared"), hot_world.files.SCH.sets[3].row[10])
+      assert.is_nil(hot_world.saved.SHARED, "the hotbar's set 3 is not")
+      assert.are.equal(1, cross_world.saved.SHARED)
+      assert.are.equal(cross_before + 1, cross_world.saved.SCH)
+      assert.are.equal(hot_before + 1, hot_world.saved.SCH)
+    end)
+
+    it("writes nothing when neither address holds anything", function()
+      local cross, cross_world, hot, hot_world = pair()
+      -- set_job's own landing may have saved: only what the swap adds counts.
+      local before_cross, before_hot = cross_world.saved.SCH, hot_world.saved.SCH
+      assert.is_true(cross.swap_across(A, hot, B))
+      assert.are.equal(before_cross, cross_world.saved.SCH)
+      assert.are.equal(before_hot, hot_world.saved.SCH)
+    end)
+
+    it("refuses before either bar has a job, and writes to neither", function()
+      local cross, cross_world = build({ files = { SCH = { sets = { [1] = { left = { [1] = record("Only") } } } } } })
+      local hot, hot_world = build({ geometry = grammar.hotbar() })
+      cross.set_job("SCH", "RDM")
+      local ok, err, theirs = cross.swap_across(A, hot, B)
+      assert.is_nil(ok)
+      assert.is_string(err)
+      assert.is_true(theirs, "and says the refusal was the other bar's")
+      assert.are.same(record("Only"), cross_world.files.SCH.sets[1].left[1])
+      assert.are.same({}, hot_world.saved)
+      ok, err, theirs = hot.swap_across(B, cross, A)
+      assert.is_nil(ok)
+      assert.is_string(err)
+      assert.is_nil(theirs, "its own, asked the other way round")
+    end)
+
+    it("refuses an address the other bar does not have, and writes to neither", function()
+      local cross, cross_world, hot, hot_world = pair({
+        cross = { SCH = { sets = { [1] = { left = { [1] = record("Only") } } } } },
+      })
+      local before = hot_world.saved.SCH
+      -- Slot 10 is the hotbar's alone, and `left` the crossbar's.
+      local ok, err = cross.swap_across(A, hot, { set = 3, side = "left", slot = 1 })
+      assert.is_nil(ok)
+      assert.is_string(err)
+      ok, err = cross.swap_across({ set = 1, side = "l", slot = 10 }, hot, B)
+      assert.is_nil(ok)
+      assert.is_string(err)
+      assert.are.same(record("Only"), cross_world.files.SCH.sets[1].left[1])
+      assert.are.equal(before, hot_world.saved.SCH)
+    end)
+
+    it("refuses two bars scoped to different jobs", function()
+      -- Every layer is keyed inside the MAIN job's file, so a stack handed
+      -- to another job's file would be one job's bindings under another's.
+      local cross, cross_world, hot = pair({
+        cross = { SCH = { sets = { [1] = { left = { [1] = record("Only") } } } } },
+        hot_job = "WAR",
+      })
+      local ok, err = cross.swap_across(A, hot, B)
+      assert.is_nil(ok)
+      assert.is_not_nil(err:find("job", 1, true), err)
+      assert.are.same(record("Only"), cross_world.files.SCH.sets[1].left[1])
+    end)
+  end)
 end)

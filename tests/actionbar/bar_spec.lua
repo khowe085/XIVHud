@@ -141,8 +141,10 @@ local function world(opts)
     render = function()
       return render
     end,
+    -- The shared render hit-tests rects as they are, so a spec that wants
+    -- slots on screen names them outright.
     groups = function()
-      return {}
+      return env.rects or {}
     end,
     cells = function(visit)
       for _, cell in ipairs(cells) do
@@ -154,6 +156,9 @@ local function world(opts)
     end,
     visible = function()
       return env.visible
+    end,
+    footprint = function()
+      return env.footprint or {}
     end,
     on_edit = function(open)
       env.edits[#env.edits + 1] = open
@@ -394,6 +399,146 @@ describe("one bar's state", function()
       assert.is_not_nil(bar.command({ "edit" }):find("edit mode off", 1, true))
       assert.is_false(bar.editing())
       assert.are.same({ true, false }, env.edits)
+    end)
+  end)
+
+  describe("as one of two bars", function()
+    local MOVE, LEFT_DOWN, LEFT_UP = 0, 1, 2
+
+    local function on_screen(env)
+      env.rects = { { x = 100, y = 100, width = 40, height = 40, key = "bar3", set = 1, side = "row", slot = 3 } }
+    end
+
+    it("answers another bar's drop with the slot it draws there and its own model", function()
+      local bar, env, ctx, store = world()
+      bar.attach(store)
+      bar.try_scope()
+      on_screen(env)
+      assert.is_nil(ctx.actions.drop_target_at("hotbar", 120, 120), "never to itself")
+      assert.is_nil(ctx.actions.drop_target_at("crossbar", 90, 120), "nor where it draws nothing")
+      local target = ctx.actions.drop_target_at("crossbar", 120, 120)
+      assert.are.equal("hotbar", target.bar)
+      assert.are.same({ 1, "row", 3 }, { target.set, target.side, target.slot })
+      assert.are.equal(bar.bindings(), target.bindings)
+      local repaints = env.repaints
+      target.repaint()
+      assert.are.equal(repaints + 1, env.repaints)
+    end)
+
+    it("answers nothing while it is hidden", function()
+      local bar, env, ctx, store = world()
+      bar.attach(store)
+      bar.try_scope()
+      on_screen(env)
+      env.footprint = { { x = 90, y = 90, width = 200, height = 60 } }
+      env.visible = false
+      assert.is_nil(ctx.actions.drop_target_at("crossbar", 120, 120))
+      assert.is_nil(ctx.actions.bar_at(120, 120))
+    end)
+
+    it("covers every rect of its footprint, and nothing past them", function()
+      local bar, env, ctx, store = world()
+      bar.attach(store)
+      bar.try_scope()
+      assert.is_nil(ctx.actions.bar_at(95, 95), "a bar that names no footprint covers nothing")
+      env.footprint = {
+        { x = 90, y = 90, width = 200, height = 60 },
+        { x = 90, y = 300, width = 200, height = 60 },
+      }
+      assert.are.equal("hotbar", ctx.actions.bar_at(95, 95))
+      assert.are.equal("hotbar", ctx.actions.bar_at(289, 359))
+      assert.is_nil(ctx.actions.bar_at(290, 95), "the far edge is outside")
+      assert.is_nil(ctx.actions.bar_at(95, 200), "and so is the space between two rows")
+    end)
+
+    it("cancels a slot dropped on the bar but on no slot of it", function()
+      local files = {
+        WAR = {
+          sets = { [1] = { row = { [3] = { type = "ma", action = "Cure", target = "t" } } } },
+          sub = { NIN = { [1] = { row = { [3] = { type = "ja", action = "Provoke" } } } } },
+        },
+      }
+      local bar, env, _, store = world({ store_files = files })
+      bar.attach(store)
+      bar.try_scope()
+      on_screen(env)
+      env.footprint = { { x = 90, y = 90, width = 200, height = 60 } }
+      bar.command({ "edit" })
+      local binder = bar.binder()
+      -- Pick the slot, then its subjob layer: the layer a drop on empty
+      -- space clears.
+      binder.mouse(LEFT_DOWN, 120, 120, 0)
+      binder.mouse(LEFT_UP, 120, 120, 0)
+      for _, row in ipairs(binder.layer_view().rows) do
+        if row.source == "sub" then
+          binder.mouse(LEFT_DOWN, row.x + 5, row.y + 5, 0)
+          binder.mouse(LEFT_UP, row.x + 5, row.y + 5, 0)
+        end
+      end
+      assert.are.equal("sub", binder.layer())
+      local said = #env.chat
+      binder.mouse(LEFT_DOWN, 120, 120, 0)
+      binder.mouse(MOVE, 200, 145, 0)
+      binder.mouse(LEFT_UP, 200, 145, 0)
+      assert.are.same({ type = "ja", action = "Provoke" }, env.store_files.WAR.sub.NIN[1].row[3])
+      assert.are.equal(said, #env.chat, "and quietly")
+      binder.mouse(LEFT_DOWN, 120, 120, 0)
+      binder.mouse(MOVE, 4, 4, 0)
+      binder.mouse(LEFT_UP, 4, 4, 0)
+      assert.is_nil(env.store_files.WAR.sub.NIN, "clear of the bar still clears the layer")
+    end)
+
+    it("repaints when another bar's binder opens and when it closes", function()
+      local bar, env, ctx, store = world()
+      bar.attach(store)
+      bar.try_scope()
+      local repaints = env.repaints
+      ctx.actions.set_edit_mode("crossbar", true)
+      assert.are.equal(repaints + 1, env.repaints)
+      ctx.actions.set_edit_mode("crossbar", false)
+      assert.are.equal(repaints + 2, env.repaints)
+    end)
+
+    it("swaps a slot dragged off it with the other bar's slot under the drop", function()
+      local bar, env, ctx, store = world()
+      bar.attach(store)
+      bar.try_scope()
+      on_screen(env)
+      local files = { WAR = { sets = { [2] = { left = { [5] = { type = "ja", action = "Provoke" } } } } } }
+      local crossbar = require("lib/actionbar/bindings")({
+        load = function(name)
+          return files[name]
+        end,
+        save = function(name, value)
+          files[name] = value
+        end,
+        get_config = function()
+          return env.config
+        end,
+      })
+      crossbar.set_job("WAR", "NIN")
+      local repainted = 0
+      ctx.actions.register_bar("crossbar", {
+        slot_at = function(x, y)
+          return x == 600 and y == 120 and { set = 2, side = "left", slot = 5 } or nil
+        end,
+        bindings = function()
+          return crossbar
+        end,
+        repaint = function()
+          repainted = repainted + 1
+        end,
+      })
+      bar.command({ "edit" })
+      repainted = 0
+      local binder = bar.binder()
+      binder.mouse(LEFT_DOWN, 120, 120, 0)
+      binder.mouse(MOVE, 600, 120, 0)
+      binder.mouse(LEFT_UP, 600, 120, 0)
+      assert.are.same({ type = "ja", action = "Provoke" }, env.store_files.WAR.sets[1].row[3])
+      assert.are.same({ type = "ma", action = "Cure", target = "t" }, files.WAR.sets[2].left[5])
+      assert.are.equal("hotbar: swapped set 1 row slot 3 with crossbar set 2 left slot 5", env.chat[#env.chat])
+      assert.are.equal(1, repainted)
     end)
   end)
 end)
