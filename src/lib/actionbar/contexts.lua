@@ -29,9 +29,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --[[ The code-defined context roster: buff-conditioned binding layers, in
      stack order -- later in the list wins. Definitions and their order are
      code; users author only the per-context overrides (in the per-job files).
-     Adding a context is one entry here. The roster is RDM's Composure, the
-     SCH arts/addendum family (buff ids ported from an xivcrossbar fork) and
-     BLU's Unbridled Learning.
+     Adding a context is one entry here. The roster is SCH's Klimaform and
+     storms, RDM's Composure, the SCH arts/addendum family (buff ids ported
+     from an xivcrossbar fork) and BLU's Unbridled Learning.
 
      Every entry names the JOB it belongs to, and off that job it is neither
      listed nor live (Kevin, 2026-09-04): a context watches a buff only one
@@ -48,10 +48,84 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      list rather than deltas -- belongs to the binding model.) ]]
 
 local contexts = {
-  --[[ FIRST, so the arts family overrides it (Kevin, 2026-09-13): `jobs`
-       counts the sub job for arts, so a RDM/SCH can hold Composure and Light
-       Arts at once and something has to win. Unbridled is BLU-main and this
-       RDM-main, so those two can never co-occur and their order says nothing.
+  --[[ The storm family (Kevin, 2026-09-29), FIRST and so under everything:
+       a RDM/SCH can hold a storm with Composure, and a SCH one with its arts.
+       Klimaform leads it, so a storm overrides Klimaform - the two are
+       usually up together, while only one storm can be. Each storm counts its
+       Storm II buff too, the way an arts context counts its addendum. Buff
+       ids are each spell's `status` in Windower's spells resource.
+
+       The icons are the art the bar draws for the spell itself: the pack has
+       no by-name art for these, so a bound slot falls to the spell sheet,
+       keyed by recast id. ]]
+  {
+    name = "klimaform",
+    label = "Klimaform",
+    any_of = { 407 },
+    icon = "spells/00287",
+    jobs = { "SCH" },
+  },
+  {
+    name = "sandstorm",
+    label = "Sandstorm",
+    any_of = { 181, 592 },
+    icon = "spells/00099",
+    jobs = { "SCH" },
+  },
+  {
+    name = "rainstorm",
+    label = "Rainstorm",
+    any_of = { 183, 594 },
+    icon = "spells/00113",
+    jobs = { "SCH" },
+  },
+  {
+    name = "windstorm",
+    label = "Windstorm",
+    any_of = { 180, 591 },
+    icon = "spells/00114",
+    jobs = { "SCH" },
+  },
+  {
+    name = "firestorm",
+    label = "Firestorm",
+    any_of = { 178, 589 },
+    icon = "spells/00115",
+    jobs = { "SCH" },
+  },
+  {
+    name = "hailstorm",
+    label = "Hailstorm",
+    any_of = { 179, 590 },
+    icon = "spells/00116",
+    jobs = { "SCH" },
+  },
+  {
+    name = "thunderstorm",
+    label = "Thunderstorm",
+    any_of = { 182, 593 },
+    icon = "spells/00117",
+    jobs = { "SCH" },
+  },
+  {
+    name = "voidstorm",
+    label = "Voidstorm",
+    any_of = { 185, 596 },
+    icon = "spells/00118",
+    jobs = { "SCH" },
+  },
+  {
+    name = "aurorastorm",
+    label = "Aurorastorm",
+    any_of = { 184, 595 },
+    icon = "spells/00119",
+    jobs = { "SCH" },
+  },
+  --[[ Under the arts family, so it overrides Composure (Kevin, 2026-09-13):
+       `jobs` counts the sub job for arts, so a RDM/SCH can hold Composure and
+       Light Arts at once and something has to win. Unbridled is BLU-main and
+       this RDM-main, so those two can never co-occur and their order says
+       nothing.
 
        The icon is the JOB's, for the reason unbridled's is: the shipped
        ability sheet is keyed by RECAST id (render.lua), which this container

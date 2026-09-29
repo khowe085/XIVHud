@@ -89,6 +89,7 @@ unverified is the **wired component** behaving the same way.
 | 4.12 | While the binder is up, hold a side key and press slot keys | Nothing happens — no side lights, no slot fires, the bar holds still under the window. The set switch is the one exception (4.11b) | The machine keeps tracking keys; only the widget's reaction is suppressed |
 | 4.13 | Enter `//hud layout` with the binder open | Edit mode closes and layout mode takes the mouse; `//hud crossbar edit` is refused while layout mode is on | The two must never contend for the mouse |
 | 4.14 | Gain Light Arts, then Addendum: White | The overridden slots swap as each context activates, and swap back when it drops | CB7's acceptance, the scenario the layer stack exists for |
+| 4.14a | On SCH, bind one slot in `klimaform`, `firestorm` and `dark-arts`. Cast Klimaform, then Firestorm, then Dark Arts; then swap Firestorm for Firestorm II | Klimaform's binding, then Firestorm's over it, then Dark Arts' over both; Firestorm II keeps the `firestorm` layer live. `context list` shows all nine storm-family entries on SCH main or sub, none on any other job | The Storm II ids (589-596) come from the spells resource's `status` field, not from a client. A storm cast on you by a party SCH while you are not SCH switches on no layer: the family is scoped to SCH main or sub |
 
 ## 5. Skillchains
 

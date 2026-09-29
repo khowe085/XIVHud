@@ -794,7 +794,8 @@ describe("crossbar bindings", function()
 
     --[[ The pairing composure's stack position exists for: `jobs` counts the
          sub job for arts, so RDM/SCH can hold both at once and the LATER
-         entry wins. Composure is first, so the arts layer takes the slot. ]]
+         entry wins. Composure sits under the arts family, so the arts layer
+         takes the slot. ]]
     it("lets the arts layer beat composure on the same slot", function()
       local bindings = build()
       bindings.set_job("RDM", "SCH")
@@ -805,15 +806,89 @@ describe("crossbar bindings", function()
       assert.same({ type = "ma", action = "Cure" }, bindings.resolve(1, "left", 3))
     end)
 
+    -- The storm family is SCH 41-48 and Klimaform SCH 46: /SCH reaches all nine.
+    it("lights a storm on either its Storm I or Storm II buff, on a SCH subjob too", function()
+      local bindings = build()
+      bindings.set_job("RDM", "SCH")
+      bindings.update_buffs({ 181 })
+      assert.same({ "sandstorm" }, bindings.active_contexts())
+      bindings.update_buffs({ 592 })
+      assert.same({ "sandstorm" }, bindings.active_contexts())
+    end)
+
+    it("keeps the storm family inert off SCH", function()
+      local bindings = build()
+      bindings.set_job("WHM", "BLM")
+      bindings.update_buffs({ 407, 181 })
+      assert.same({}, bindings.active_contexts())
+    end)
+
+    -- Klimaform and a storm are usually up together, and the storm wins.
+    it("lets a storm beat klimaform on the same slot", function()
+      local bindings = build()
+      bindings.set_job("SCH", "RDM")
+      bindings.bind("ctx:klimaform:1", "left", 3, { type = "ma", action = "Stone" })
+      bindings.bind("ctx:firestorm:1", "left", 3, { type = "ma", action = "Fire" })
+      bindings.update_buffs({ 407, 178 })
+      assert.same({ "klimaform", "firestorm" }, bindings.active_contexts())
+      assert.same({ type = "ma", action = "Fire" }, bindings.resolve(1, "left", 3))
+    end)
+
+    -- A RDM/SCH can hold Composure and a storm at once (Kevin, 2026-09-29).
+    it("lets composure beat a storm on the same slot", function()
+      local bindings = build()
+      bindings.set_job("RDM", "SCH")
+      bindings.bind("ctx:thunderstorm:1", "left", 3, { type = "ma", action = "Thunder" })
+      bindings.bind("ctx:composure:1", "left", 3, { type = "ma", action = "Refresh" })
+      bindings.update_buffs({ 182, 419 })
+      assert.same({ "thunderstorm", "composure" }, bindings.active_contexts())
+      assert.same({ type = "ma", action = "Refresh" }, bindings.resolve(1, "left", 3))
+    end)
+
+    it("lets the arts layer beat a storm on the same slot", function()
+      local bindings = build()
+      bindings.set_job("SCH", "RDM")
+      bindings.bind("ctx:rainstorm:1", "left", 3, { type = "ma", action = "Water" })
+      bindings.bind("ctx:dark-arts:1", "left", 3, { type = "ma", action = "Drain" })
+      bindings.update_buffs({ 183, 359 })
+      assert.same({ type = "ma", action = "Drain" }, bindings.resolve(1, "left", 3))
+    end)
+
     it("lists the contexts this job can reach, in roster order", function()
       local bindings = build()
       bindings.set_job("SCH", "WHM")
-      assert.same({ "light-arts", "dark-arts", "addendum-white", "addendum-black" }, bindings.available_contexts())
+      assert.same({
+        "klimaform",
+        "sandstorm",
+        "rainstorm",
+        "windstorm",
+        "firestorm",
+        "hailstorm",
+        "thunderstorm",
+        "voidstorm",
+        "aurorastorm",
+        "light-arts",
+        "dark-arts",
+        "addendum-white",
+        "addendum-black",
+      }, bindings.available_contexts())
       bindings.set_job("BLU", "SCH")
-      assert.same(
-        { "light-arts", "dark-arts", "addendum-white", "addendum-black", "unbridled" },
-        bindings.available_contexts()
-      )
+      assert.same({
+        "klimaform",
+        "sandstorm",
+        "rainstorm",
+        "windstorm",
+        "firestorm",
+        "hailstorm",
+        "thunderstorm",
+        "voidstorm",
+        "aurorastorm",
+        "light-arts",
+        "dark-arts",
+        "addendum-white",
+        "addendum-black",
+        "unbridled",
+      }, bindings.available_contexts())
       bindings.set_job("WAR", "NIN")
       assert.same({}, bindings.available_contexts())
     end)
