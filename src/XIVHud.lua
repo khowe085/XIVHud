@@ -1324,16 +1324,26 @@ local function check_assets()
     "icons/map.png",
     "icons/party-member.png",
     -- contexts.lua: the icons the roster entries name - the arts/addendum
-    -- books, and the job icons for unbridled and composure (the shipped
+    -- books, the job icons for unbridled and composure (the shipped
     -- ability sheet is keyed by recast id, which nothing here can look up,
-    -- so an entry with no book art borrows its job's). Load-checked with
-    -- the rest though no surface draws a roster icon yet: the field is what
-    -- the roster carries, and art that is missing should say so at load
-    -- rather than the day something starts drawing it.
+    -- so an entry with no book art borrows its job's), and the spell-sheet
+    -- art for klimaform and the storms. Load-checked with the rest though
+    -- no surface draws a roster icon yet: the field is what the roster
+    -- carries, and art that is missing should say so at load rather than
+    -- the day something starts drawing it.
     "icons/abilities/book_white.png",
     "icons/abilities/book_black.png",
     "icons/jobs/blu.png",
     "icons/jobs/rdm.png",
+    "icons/spells/00287.png",
+    "icons/spells/00099.png",
+    "icons/spells/00113.png",
+    "icons/spells/00114.png",
+    "icons/spells/00115.png",
+    "icons/spells/00116.png",
+    "icons/spells/00117.png",
+    "icons/spells/00118.png",
+    "icons/spells/00119.png",
     -- catalog.lua: the parent-menu families' art. Stratagems has the grimoire
     -- above; every other family falls back to its job's glyph, and the five
     -- distinct ones are named here for the same reason the roster's are.

@@ -565,13 +565,21 @@ Scholar is the clearest example:
 - Your four stratagem slots hold the light stratagems under Light Arts and
   the dark ones under Dark Arts, automatically.
 
-Contexts ship with the addon; you fill in what goes in them. The list today is
-Scholar's four — `light-arts`, `dark-arts`, `addendum-white`, `addendum-black`
-— and Blue Mage's `unbridled` (Unbridled Learning or Unbridled Wisdom).
+Contexts ship with the addon; you fill in what goes in them. The list today,
+lowest priority first (when two live contexts both fill a slot, the later one
+wins):
+
+- Scholar's `klimaform`, then one per storm — `sandstorm`, `rainstorm`,
+  `windstorm`, `firestorm`, `hailstorm`, `thunderstorm`, `voidstorm`,
+  `aurorastorm` (each also live under its Storm II)
+- Red Mage's `composure`
+- Scholar's `light-arts`, `dark-arts`, `addendum-white`, `addendum-black`
+- Blue Mage's `unbridled` (Unbridled Learning or Unbridled Wisdom)
+
 `//hud crossbar context list` shows them and which are live. A context only
 exists on the job it belongs to: the Scholar contexts appear on SCH main or
-sub, `unbridled` on BLU main, and on any other job they are neither listed
-nor active.
+sub, `composure` on RDM main, `unbridled` on BLU main, and on any other job
+they are neither listed nor active.
 
 ### Editing without guessing
 
