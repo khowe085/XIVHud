@@ -6095,6 +6095,29 @@ describe("crossbar live widget", function()
       assert.is_not_nil(said():lower():find("edit mode off"), "a bare tap exits: " .. said())
     end)
 
+    it("exits on that key when only ANOTHER bar's binder is still open", function()
+      -- Hidden and shown again mid-edit, the crossbar's own binder is shut
+      -- while the hotbar's is not. The key means LEAVE for as long as any
+      -- binder is up: it must not read as a toggle and open this one.
+      build_world()
+      local closed = 0
+      service_under_test.register_bar("hotbar", {
+        slot_at = function() end,
+        repaint = function() end,
+        close_edit = function()
+          closed = closed + 1
+          service_under_test.set_edit_mode("hotbar", false)
+        end,
+      })
+      service_under_test.set_edit_mode("hotbar", true)
+      env.chat = {}
+      press(SHORTCUT)
+      assert.are.equal(1, closed, "the hotbar's binder was closed")
+      assert.is_nil(service_under_test.edit_owner())
+      assert.is_not_nil(said():lower():find("crossbar: edit mode off", 1, true), "said: " .. said())
+      assert.is_nil(said():find("edit mode on", 1, true), "and the crossbar's own did not open")
+    end)
+
     it("fires nothing from a slot key while the binder is open", function()
       build_world()
       widget.handle_command({ "edit" })
@@ -6458,6 +6481,94 @@ describe("crossbar live widget", function()
       widget.handle_command({ "edit" })
       assert.is_true(image_of("wxhb_left", 1, "background").visible, "all sides render in edit mode")
       assert.is_true(image_of("wxhb_right", 1, "background").visible)
+    end)
+
+    describe("while ANOTHER bar's binder is open", function()
+      -- A slot dragged off that bar can land on any of this one's, so this
+      -- one wears what it wears for its own binder.
+      it("shows every empty slot, whatever the config says", function()
+        build_world({
+          tune_config = function(tuned)
+            tuned.hide.empty_slots = true
+          end,
+        })
+        assert.is_false(image_of("xhb_left", 8, "background").visible, "hidden in play")
+        service_under_test.set_edit_mode("hotbar", true)
+        assert.is_true(image_of("xhb_left", 8, "background").visible, "an empty slot is a drop target")
+        service_under_test.set_edit_mode("hotbar", false)
+        assert.is_false(image_of("xhb_left", 8, "background").visible)
+      end)
+
+      it("draws both WXHB halves, so every side can take a drop", function()
+        build_world()
+        widget.set_pos(400, 100, "wxhb_left")
+        widget.set_pos(800, 100, "wxhb_right")
+        assert.is_false(image_of("wxhb_left", 1, "background").visible)
+        service_under_test.set_edit_mode("hotbar", true)
+        assert.is_true(image_of("wxhb_left", 1, "background").visible)
+        assert.is_true(image_of("wxhb_right", 1, "background").visible)
+        service_under_test.set_edit_mode("hotbar", false)
+        assert.is_false(image_of("wxhb_left", 1, "background").visible)
+      end)
+
+      it("tags each slot with the layer its winner came from", function()
+        -- The whole stack travels with a swap, so what is under the winner
+        -- is worth seeing before the drop.
+        local files = war_bindings()
+        files.WAR.sub = { SCH = { [1] = { left = { [4] = { type = "ja", action = "Berserk" } } } } }
+        build_world({ store_files = files })
+        assert.are.equal("Berserk", text_of("xhb_left", 4, "name").last.text)
+        service_under_test.set_edit_mode("hotbar", true)
+        assert.are.equal("+ Berserk", text_of("xhb_left", 4, "name").last.text)
+        service_under_test.set_edit_mode("hotbar", false)
+        assert.are.equal("Berserk", text_of("xhb_left", 4, "name").last.text)
+      end)
+
+      it("names its footprint to the service: every anchor on screen, and only those", function()
+        build_world()
+        widget.set_pos(400, 100, "wxhb_left")
+        local render = new_render({ config = widget.defaults })
+        local width, height = render.bounds("main", 1)
+        local x, y = render.slot_pos("xhb", "left", 3)
+        local size = render.metrics().slot
+        assert.are.equal("crossbar", service_under_test.bar_at(100 + x + size + 1, 900 + y + 5), "beside a slot")
+        assert.are.equal("crossbar", service_under_test.bar_at(100 + width - 1, 900 + height - 1), "its far corner")
+        assert.is_nil(service_under_test.bar_at(100 + width, 900 + height - 1), "past its edge")
+        assert.is_nil(service_under_test.bar_at(405, 105), "a WXHB half placed there but not drawn")
+        service_under_test.set_edit_mode("hotbar", true)
+        assert.are.equal("crossbar", service_under_test.bar_at(405, 105), "and drawn")
+        service_under_test.set_edit_mode("hotbar", false)
+        widget.hide()
+        assert.is_nil(service_under_test.bar_at(100 + x + size + 1, 900 + y + 5), "hidden, it covers nothing")
+      end)
+
+      it("counts the set label and the sword wherever they have been dragged to", function()
+        -- Each is an anchor of its own, so either can sit well clear of the
+        -- bar - and a near miss on one must not read as empty space.
+        build_world()
+        widget.set_pos(1500, 300, "weapon")
+        widget.set_pos(1500, 500, "set")
+        assert.are.equal("crossbar", service_under_test.bar_at(1505, 305), "the sword")
+        assert.are.equal("crossbar", service_under_test.bar_at(1505, 505), "the set label")
+        assert.is_nil(service_under_test.bar_at(1505, 400), "and not the space between them")
+        widget.hide("weapon")
+        assert.is_nil(service_under_test.bar_at(1505, 305), "an anchor switched off covers nothing")
+        assert.are.equal("crossbar", service_under_test.bar_at(1505, 505), "the other is still up")
+      end)
+
+      it("answers that binder's drop for a slot it draws only because of it", function()
+        build_world({
+          tune_config = function(tuned)
+            tuned.hide.empty_slots = true
+          end,
+        })
+        service_under_test.set_edit_mode("hotbar", true)
+        local render = new_render({ config = widget.defaults })
+        local x, y = render.slot_pos("xhb", "left", 8)
+        local target = service_under_test.drop_target_at("hotbar", 100 + x + 5, 900 + y + 5)
+        assert.are.same({ "crossbar", "left", 8 }, { target.bar, target.side, target.slot })
+        service_under_test.set_edit_mode("hotbar", false)
+      end)
     end)
 
     it("tears the binder down on hide, detach and destroy", function()

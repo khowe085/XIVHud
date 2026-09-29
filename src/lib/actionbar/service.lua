@@ -433,8 +433,147 @@ local function new(deps)
        binder, so it is the one that is open when both look it. ]]
   local editing = {}
 
+  --[[ The bars, in the order they registered, each as what another bar's
+       binder needs of it: `slot_at(x, y)` over the slots it has on screen,
+       `covers(x, y)` over its whole footprint, `bindings()` for its model,
+       `repaint()`, and for the edit mode they share `open_edit()`,
+       `close_edit()`, `window()` and `stand_down()`. A slot dragged off one
+       bar can be dropped on another, and this is the only place the two
+       meet - a component never requires a sibling. ]]
+  local bars = {}
+
+  function self.register_bar(name, hooks)
+    for index, bar in ipairs(bars) do
+      if bar.name == name then
+        bars[index] = { name = name, hooks = hooks }
+        return
+      end
+    end
+    bars[#bars + 1] = { name = name, hooks = hooks }
+  end
+
+  --[[ Where two bars' slots share a point, the bar registered LATER has it:
+       it is the one built later and so drawn on top, and what is on top is
+       what the player is pointing at - core's own rule for overlapping
+       anchors, and render.slot_at's for overlapping slots. Every binder
+       hears every mouse event, so without ONE owner per point a single
+       click opens two windows and a single drag does two swaps.
+
+       Answers the bar drawn over the asker's slot at a point, or nil.
+       `editing_only` counts just the bars whose binder is open: a press is
+       only worth yielding to a binder that can take it. ]]
+  function self.slot_above(asker, x, y, editing_only)
+    for index = #bars, 1, -1 do
+      local bar = bars[index]
+      if bar.name == asker then
+        return nil
+      end
+      if (not editing_only or editing[bar.name]) and bar.hooks.slot_at(x, y) ~= nil then
+        return bar.name
+      end
+    end
+    return nil
+  end
+
+  --- The slot some OTHER bar draws under a point, with that bar's name,
+  --- model and repaint, or nil - the topmost, where several do. The asker's
+  --- own slots are never answered: its binder hit-tests those itself.
+  function self.drop_target_at(asker, x, y)
+    for index = #bars, 1, -1 do
+      local bar = bars[index]
+      if bar.name ~= asker then
+        local rect = bar.hooks.slot_at(x, y)
+        if rect ~= nil then
+          return {
+            bar = bar.name,
+            set = rect.set,
+            side = rect.side,
+            slot = rect.slot,
+            rect = rect,
+            bindings = bar.hooks.bindings(),
+            repaint = bar.hooks.repaint,
+          }
+        end
+      end
+    end
+    return nil
+  end
+
+  --- The bar a point falls on, the asker's own as much as another's, or
+  --- nil. A drop there that found no slot is a near miss and not the empty
+  --- space that clears a layer, whichever bar it missed.
+  function self.bar_at(x, y)
+    for _, bar in ipairs(bars) do
+      if bar.hooks.covers ~= nil and bar.hooks.covers(x, y) then
+        return bar.name
+      end
+    end
+    return nil
+  end
+
+  --[[ ONE edit mode over every bar (Kevin, 2026-09-28): whichever bar's
+       `edit` is typed, the others' binders open beside it, so a slot can be
+       picked up off any of them. It was one binder at a time, the rest drop
+       targets only, which made a drag a one-way street. A bar that cannot
+       open - hidden, or with no job scoped - is left out rather than
+       holding the rest up. Answers the names that did come up. ]]
+  function self.open_edit_with(asker)
+    local opened = {}
+    for _, bar in ipairs(bars) do
+      if bar.name ~= asker and bar.hooks.open_edit ~= nil and bar.hooks.open_edit() then
+        opened[#opened + 1] = bar.name
+      end
+    end
+    return opened
+  end
+
+  function self.close_edit_all()
+    for _, bar in ipairs(bars) do
+      if bar.hooks.close_edit ~= nil then
+        bar.hooks.close_edit()
+      end
+    end
+  end
+
+  --[[ A binder has opened its window on a slot, so every other binder
+       stands down: its window is put away and whatever press it had armed
+       is dropped. ONE window, by construction, where it would otherwise
+       only follow from each point having one owner: two windows on one
+       spot answer every click twice, and a bind then goes into both bars'
+       files. The one path round the owner rule that review found - a drag
+       whose release never arrived - is closed in the binder itself, so
+       this is the belt to that pair of braces. ]]
+  function self.window_opened(owner)
+    for _, bar in ipairs(bars) do
+      if bar.name ~= owner and bar.hooks.stand_down ~= nil then
+        bar.hooks.stand_down()
+      end
+    end
+  end
+
+  --- The OTHER bar whose binder window is over a point, or nil. Core hands
+  --- every bar every mouse event and each binder hit-tests its own window
+  --- alone, so without this a click on one bar's window is also the other
+  --- bar's click on the slot beneath it.
+  function self.window_at(asker, x, y)
+    for _, bar in ipairs(bars) do
+      local rect = bar.name ~= asker and bar.hooks.window ~= nil and bar.hooks.window() or nil
+      if rect and x >= rect.x and x < rect.x + rect.width and y >= rect.y and y < rect.y + rect.height then
+        return bar.name
+      end
+    end
+    return nil
+  end
+
   function self.set_edit_mode(owner, open)
     editing[owner] = open and true or nil
+    -- Every other bar dresses as a drop target while a binder is open, and
+    -- nothing else tells it one has opened or closed.
+    for _, bar in ipairs(bars) do
+      if bar.name ~= owner then
+        bar.hooks.repaint()
+      end
+    end
   end
 
   local function layout_active()
@@ -970,8 +1109,9 @@ local function new(deps)
     end
   end
 
-  --- Which bar's binder is open, or nil: a second bar must not open its own
-  --- over it, or one click would be answered by both.
+  --- A bar whose binder is open, or nil for none: what a bar asks to know
+  --- whether ANY binder is up, which is when its keys and clicks go inert
+  --- and it dresses as a drop target.
   function self.edit_owner()
     return (next(editing))
   end

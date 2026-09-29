@@ -192,6 +192,15 @@ local function new(ctx)
     return bar ~= nil and bar.editing()
   end
 
+  --[[ The bar's edit-mode DRESS - every slot drawn, both WXHB halves up,
+       each winner tagged with its layer - which it wears for ANY bar's
+       binder, not its own alone: a slot dragged off the hotbar can come
+       down on any slot here, and an undrawn slot is no drop target.
+       Everything else about edit mode stays `editing()`'s. ]]
+  local function dressed()
+    return editing() or service.edit_owner() ~= nil
+  end
+
   local visible = false
   local preview = false
   -- The release of a press the sword took, owed back to nothing: see on_mouse.
@@ -359,14 +368,14 @@ local function new(ctx)
 
        Empty slots come back for the binder whatever that config says - an
        invisible slot is still a drop target, which is the one thing edit
-       mode cannot have - which is why `editing()` is in here. ]]
+       mode cannot have - which is why `dressed()` is in here. ]]
   local function slot_drawn(group_key, slot)
     local slots = prims ~= nil and prims.groups[group_key] or nil
     local cell = slots ~= nil and slots[slot] or nil
     if cell == nil then
       return false
     end
-    return cell.record() ~= nil or editing() or not config_hide("empty_slots")
+    return cell.record() ~= nil or dressed() or not config_hide("empty_slots")
   end
 
   --[[ Only the groups actually on screen, with the anchor placement they
@@ -511,7 +520,7 @@ local function new(ctx)
     end
     local hidden = not visible or machine == nil
     local plan = render.visible(active_state, { hidden = hidden })
-    if (preview or editing()) and not hidden then
+    if (preview or dressed()) and not hidden then
       -- Layout placement: with always_show_wxhb off the WXHB is invisible
       -- in play, so preview forces its halves up to give the anchors a
       -- visible footprint. Edit mode wants them for the same reason from
@@ -614,7 +623,7 @@ local function new(ctx)
            context, so "where is this coming from" is answered before any
            click - and the tags leave with edit mode, since the played bar
            has no room for them. ]]
-      mark = (record ~= nil and editing()) and bar.binder().mark(source) or "",
+      mark = (record ~= nil and dressed()) and bar.binder().mark(source) or "",
       resolve_icon = bar.pick_icon,
       item_icon = bar.item_icon,
     })
@@ -868,6 +877,30 @@ local function new(ctx)
     visible = function()
       return visible
     end,
+    -- Every anchor with something on screen, as the rect core clamps it by.
+    -- The label and the sword are up whenever the widget is; a group's
+    -- anchor only while the group is drawn.
+    footprint = function()
+      local rects = {}
+      if machine == nil then
+        return rects
+      end
+      local on_screen = { set = true, weapon = true }
+      for _, group in ipairs(GROUPS) do
+        if shown_groups[group.key] then
+          on_screen[group.anchor] = true
+        end
+      end
+      for _, anchor in ipairs(ANCHORS) do
+        if on_screen[anchor] and anchor_at(anchor) ~= nil then
+          local x, y, width, height = self.get_bounds(anchor)
+          if x ~= nil and width ~= nil then
+            rects[#rects + 1] = { x = x, y = y, width = width, height = height }
+          end
+        end
+      end
+      return rects
+    end,
     on_edit = function(open)
       -- The owed release is settled here too, beside hide, detach and
       -- set_preview: from here the binder answers the mouse, so a debt the
@@ -1022,7 +1055,17 @@ local function new(ctx)
         service.builtin("draw")
         bar.sync_weapon()
       elseif intent.type == "shortcut" then
-        run_shortcut(intent.verb)
+        if intent.verb == "edit" and not editing() and service.edit_owner() ~= nil then
+          --[[ The key means LEAVE for as long as ANY binder is up, and the
+               machine sends it on that footing. `edit` itself is a toggle
+               that JOINS an edit mode this bar is not yet in - so with the
+               crossbar's own binder shut (hidden and shown again mid-edit)
+               and the hotbar's still open, it would open one more. ]]
+          service.close_edit_all()
+          say("crossbar: edit mode off")
+        else
+          run_shortcut(intent.verb)
+        end
       end
     end
     return block

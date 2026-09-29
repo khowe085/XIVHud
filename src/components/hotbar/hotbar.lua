@@ -106,6 +106,14 @@ local function new(ctx)
     return bar ~= nil and bar.editing()
   end
 
+  --[[ The bar's edit-mode DRESS - every slot drawn, each winner tagged with
+       its layer - which it wears for ANY bar's binder, not its own alone: a
+       slot dragged off the crossbar can come down on any slot here, and an
+       undrawn slot is no drop target. ]]
+  local function dressed()
+    return editing() or service.edit_owner() ~= nil
+  end
+
   -- One entry per anchor: its slots and label once built, and whether the
   -- last refresh left it on screen.
   local rows = {}
@@ -265,7 +273,7 @@ local function new(ctx)
     if cell == nil then
       return false
     end
-    return cell.record() ~= nil or editing() or preview or not hides_empty(anchor)
+    return cell.record() ~= nil or dressed() or preview or not hides_empty(anchor)
   end
 
   --[[ Only the rows on screen, with the placement they are drawn at and the
@@ -349,7 +357,7 @@ local function new(ctx)
     cell.paint(record, bar.meta_for(record), {
       state = state,
       builtin = record ~= nil and icon_for(record, state) or nil,
-      mark = (record ~= nil and editing()) and bar.binder().mark(source) or "",
+      mark = (record ~= nil and dressed()) and bar.binder().mark(source) or "",
       resolve_icon = bar.pick_icon,
       item_icon = bar.item_icon,
     })
@@ -683,6 +691,19 @@ local function new(ctx)
     repaint = repaint,
     visible = function()
       return visible
+    end,
+    -- Every row on screen, as the rect core clamps it by.
+    footprint = function()
+      local rects = {}
+      for _, anchor in ipairs(ANCHORS) do
+        if rows[anchor].shown then
+          local x, y, width, height = self.get_bounds(anchor)
+          if x ~= nil and width ~= nil then
+            rects[#rects + 1] = { x = x, y = y, width = width, height = height }
+          end
+        end
+      end
+      return rects
     end,
     on_edit = function()
       -- From here the binder answers the mouse, so a debt the bar took is
