@@ -60,6 +60,13 @@ local LABELS = { bar1 = "statusbar bar1", bar2 = "statusbar bar2", bar3 = "statu
 
 -- XIV's four arrangements, by rows: 20x1, 10x2, 7x3, 5x4.
 local COLUMNS_BY_ROWS = { [1] = 20, [2] = 10, [3] = 7, [4] = 5 }
+-- The same four as the settings window offers them: the word `rows` takes,
+-- and the shape it buys.
+local ROW_OPTIONS, ROW_LABELS = {}, {}
+for rows, cols in ipairs(COLUMNS_BY_ROWS) do
+  ROW_OPTIONS[rows] = rows
+  ROW_LABELS[rows] = cols .. "x" .. rows
+end
 
 -- The icon art is 32px; the timer sits in a band beneath it.
 local ICON_SIZE = 32
@@ -602,6 +609,40 @@ local function new(deps)
     end
 
     return unknown(words[1])
+  end
+
+  --[[ The same settings as rows of the `//hud config` window, each naming
+       the command above that sets it. A value is the one IN FORCE rather
+       than the one stored - `shape`'s row count, and `all` for a name that
+       is not a category, since that restricts nothing - and a bar whose
+       commands would refuse it has no rows to offer. ]]
+  function self.config_panel()
+    local rows = {}
+    for index, bar in ipairs(BARS) do
+      local entry = bar_settings(bar)
+      if entry then
+        local _, count = shape(entry)
+        rows[#rows + 1] = {
+          label = ("Bar %d rows"):format(index),
+          kind = "choice",
+          options = ROW_OPTIONS,
+          labels = ROW_LABELS,
+          value = count,
+          command = { bar, "rows" },
+        }
+        rows[#rows + 1] = {
+          label = ("Bar %d filter"):format(index),
+          kind = "choice",
+          options = categories.NAMES,
+          value = is_filter_name(entry.filter) and entry.filter or "all",
+          command = { bar, "filter" },
+          route = "buffs",
+        }
+      end
+    end
+    rows[#rows + 1] = { label = "Timers", kind = "toggle", value = config.timers ~= false, command = { "timers" } }
+    rows[#rows + 1] = { label = "Tooltips", kind = "toggle", value = self.tooltips_on(), command = { "tooltips" } }
+    return { rows = rows }
   end
 
   return self

@@ -74,6 +74,10 @@ switches one off, or SHIFT + right-click it in layout mode.
 Every command takes an optional bar word in front of the verb: `main` (the
 default) or `subtarget`.
 
+Each bar's range mode can also be changed with the mouse: `//hud config
+targetbar` opens the [settings window](../Home.md#settings-window) on this
+component.
+
 | Command | What it does |
 | --- | --- |
 | `//hud targetbar` | print both bars and the range mode each is in |

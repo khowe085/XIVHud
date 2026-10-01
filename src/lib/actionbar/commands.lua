@@ -82,13 +82,31 @@ local VIEW_KEYS = {
   ["exp-rl"] = "expanded_rl",
 }
 local VIEW_ORDER = { "wxhb-L", "wxhb-R", "exp-LR", "exp-RL" }
+-- What the settings window calls each, by config key.
+local VIEW_LABELS = {
+  wxhb_left = "WXHB left",
+  wxhb_right = "WXHB right",
+  expanded_lr = "Expanded L then R",
+  expanded_rl = "Expanded R then L",
+}
 -- The same four in the shape the widget's status line wants, derived so the
 -- two can never drift. The keys are lower case and the spellings upper, so
 -- the lookup folds exactly as the verb's own does.
 local VIEW_LIST = {}
 for _, cli in ipairs(VIEW_ORDER) do
-  VIEW_LIST[#VIEW_LIST + 1] = { cli = cli, key = VIEW_KEYS[cli:lower()] }
+  local key = VIEW_KEYS[cli:lower()]
+  VIEW_LIST[#VIEW_LIST + 1] = { cli = cli, key = key, label = VIEW_LABELS[key] }
 end
+
+-- The rotation modes `cycle <set> <mode>` takes, as the membership each
+-- writes, and the order the settings window walks them in.
+local CYCLE_MODES = {
+  both = { drawn = true, sheathed = true },
+  drawn = { drawn = true, sheathed = false },
+  sheathed = { drawn = false, sheathed = true },
+  none = { drawn = false, sheathed = false },
+}
+local CYCLE_ORDER = { "both", "drawn", "sheathed", "none" }
 
 --[[ One command per line throughout (Kevin, 2026-08-29). A spaced ` | `
      crammed several unrelated commands onto a shared line, which reads as
@@ -1107,17 +1125,13 @@ local function new(deps)
       return complaint
     end
     local mode = args[3] and args[3]:lower() or nil
-    local states = {
-      drawn = { drawn = true, sheathed = false },
-      sheathed = { drawn = false, sheathed = true },
-      both = { drawn = true, sheathed = true },
-      none = { drawn = false, sheathed = false },
-    }
-    local cycle = mode and states[mode] or nil
+    local cycle = mode and CYCLE_MODES[mode] or nil
     if cycle == nil then
       return hint("cycle <set> drawn|sheathed|both|none")
     end
-    flags_for(set).cycle = cycle
+    -- A table of the set's own: the config is written through, and two sets
+    -- must not come to hold one.
+    flags_for(set).cycle = { drawn = cycle.drawn, sheathed = cycle.sheathed }
     return hint("set " .. set .. " cycles when " .. mode), true, true
   end
 
@@ -1269,6 +1283,99 @@ local function new(deps)
   -- The one view map: the widget's status line reads these rather than
   -- keeping a second copy that could disagree about a spelling.
   self.views = VIEW_LIST
+
+  --- Where a view points, as the word `view` takes - `2L` - or nil for one
+  --- the bar draws nothing for: a view the config does not carry, or one
+  --- whose side the model cannot read. The side is folded as the model
+  --- folds it, so a hand-written `side = "L"` reads as the left it draws.
+  function self.view_word(key)
+    local target = bindings().view_target(key)
+    if type(target) ~= "table" then
+      return nil
+    end
+    local side = grammar.sides[target.side]
+    if side == nil then
+      return nil
+    end
+    return tostring(target.set) .. (side == "left" and "L" or "R")
+  end
+
+  --[[ The config verbs as tabs of the `//hud config` window: each row names
+       the verb that sets it and carries the value in force, read through
+       the binding model rather than off the config table, so a hand-broken
+       flag shows as the default the bar is actually running on. Built here,
+       once, so the two bars cannot come to offer different rows. ]]
+  local VIEW_TARGETS = {}
+  for set = 1, SET_COUNT do
+    VIEW_TARGETS[#VIEW_TARGETS + 1] = set .. "L"
+    VIEW_TARGETS[#VIEW_TARGETS + 1] = set .. "R"
+  end
+
+  local function cycle_mode(set)
+    local drawn, sheathed = bindings().cycles(set, "drawn"), bindings().cycles(set, "sheathed")
+    for _, mode in ipairs(CYCLE_ORDER) do
+      if CYCLE_MODES[mode].drawn == drawn and CYCLE_MODES[mode].sheathed == sheathed then
+        return mode
+      end
+    end
+  end
+
+  local function set_rows()
+    local rows = {}
+    for set = 1, SET_COUNT do
+      rows[#rows + 1] = {
+        label = "Set " .. set .. " shared",
+        kind = "toggle",
+        value = bindings().shared(set),
+        command = { "share", tostring(set) },
+      }
+    end
+    for set = 1, SET_COUNT do
+      rows[#rows + 1] = {
+        label = "Set " .. set .. " cycle",
+        kind = "choice",
+        options = CYCLE_ORDER,
+        value = cycle_mode(set),
+        command = { "cycle", tostring(set) },
+      }
+    end
+    return rows
+  end
+
+  local function view_rows()
+    local rows = {}
+    for index, entry in ipairs(VIEW_LIST) do
+      rows[index] = {
+        label = entry.label,
+        kind = "choice",
+        options = VIEW_TARGETS,
+        value = self.view_word(entry.key) or "none",
+        command = { "view", entry.cli },
+      }
+    end
+    return rows
+  end
+
+  function self.config_tabs()
+    local tabs = { { name = "sets", rows = set_rows() } }
+    if with_views then
+      tabs[#tabs + 1] = { name = "views", rows = view_rows() }
+      tabs[#tabs + 1] = {
+        name = "general",
+        rows = {
+          {
+            label = "Always show WXHB",
+            kind = "toggle",
+            -- `true` alone rests the WXHB on screen; any other truthy value
+            -- is garbage the bar draws as off, whatever bare `wxhb` reports.
+            value = config().always_show_wxhb == true,
+            command = { "wxhb" },
+          },
+        },
+      }
+    end
+    return tabs
+  end
 
   self.command = command
 

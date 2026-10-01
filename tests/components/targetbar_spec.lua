@@ -1365,6 +1365,111 @@ describe("targetbar widget", function()
     end)
   end)
 
+  describe("its panel in the settings window", function()
+    local panels = require("tests/support/panels")
+    local BARS = { "main", "subtarget" }
+
+    -- What the `mode` verb itself says it takes, for the bar named.
+    local function modes_the_verb_takes(bar)
+      return widget.handle_command({ bar, "mode" }):match("needs one of: (.+)$")
+    end
+
+    it("is one the window can draw", function()
+      attach()
+      assert.are.same({}, panels.problems(widget.config_panel()))
+    end)
+
+    it("offers each bar's range mode on one page, as it stands", function()
+      attach()
+      local panel = widget.config_panel()
+      assert.is_nil(panel.tabs)
+      local rows = panel.rows
+      assert.are.equal(2, #rows)
+      assert.are.same({ "Target mode", "Subtarget mode" }, { rows[1].label, rows[2].label })
+      assert.are.same({ "choice", "choice" }, { rows[1].kind, rows[2].kind })
+      assert.are.same({ "auto", "auto" }, { rows[1].value, rows[2].value })
+
+      widget.handle_command({ "subtarget", "mode", "bow" })
+      rows = widget.config_panel().rows
+      assert.are.same({ "auto", "bow" }, { rows[1].value, rows[2].value })
+    end)
+
+    --[[ The bar word leads the verb even on the target bar's row, where the
+         parser would let it go: a row is one bar's, and says so. ]]
+    it("names each row's own bar in front of the mode verb", function()
+      attach()
+      local rows = widget.config_panel().rows
+      assert.are.same({ "main", "mode" }, rows[1].command)
+      assert.are.same({ "subtarget", "mode" }, rows[2].command)
+    end)
+
+    it("offers exactly the modes the verb takes", function()
+      local config = attach()
+      local rows = widget.config_panel().rows
+      for index, bar in ipairs(BARS) do
+        assert.are.equal(modes_the_verb_takes(bar), table.concat(rows[index].options, "|"))
+        assert.is_nil(rows[index].labels)
+        for _, mode in ipairs(rows[index].options) do
+          widget.handle_command({ bar, "mode", mode })
+          assert.are.equal(mode, config.bars[bar].distance.mode)
+        end
+      end
+    end)
+
+    it("changes each bar's mode through its own command, and saves it", function()
+      local config = attach()
+      local records = panels.exercise(widget)
+      assert.are.same({}, panels.failures(records))
+      assert.are.same({ "main", "mode", "default" }, records[1].words)
+      assert.are.same({ "subtarget", "mode", "default" }, records[2].words)
+      assert.are.equal(4, saves, "each of the two was moved and moved back")
+      assert.are.equal("auto", config.bars.main.distance.mode)
+      assert.are.equal("auto", config.bars.subtarget.distance.mode)
+    end)
+
+    --[[ A hand-edited file can hold anything. The colouring runs such a bar
+         on `default` and the status line says so, and the window must not
+         show a mode that is not in force. ]]
+    describe("over a stored mode that is not one", function()
+      local config
+
+      before_each(function()
+        config = copy(widget.defaults)
+        config.bars.main.distance.mode = "trebuchet"
+        config.bars.subtarget.distance = "bow"
+        attach(config)
+      end)
+
+      it("shows the mode in force, as the status line does", function()
+        local rows = widget.config_panel().rows
+        assert.are.same({ "default", "default" }, { rows[1].value, rows[2].value })
+        assert.are.same({}, panels.problems(widget.config_panel()))
+        for _, bar in ipairs(BARS) do
+          assert.is_truthy(widget.handle_command({ bar }):find("range mode: default", 1, true))
+        end
+      end)
+
+      it("can still be changed from there", function()
+        assert.are.same({}, panels.failures(panels.exercise(widget)))
+      end)
+    end)
+
+    it("hands out a list of modes nothing can change the verb's own through", function()
+      attach()
+      local before = modes_the_verb_takes("main")
+      local rows = widget.config_panel().rows
+      rows[1].options[1] = "trebuchet"
+      table.remove(rows[2].options)
+
+      for index, bar in ipairs(BARS) do
+        assert.are.equal(before, table.concat(widget.config_panel().rows[index].options, "|"))
+        assert.are.equal(before, modes_the_verb_takes(bar))
+      end
+      widget.handle_command({ "mode", "trebuchet" })
+      assert.are.equal(0, saves)
+    end)
+  end)
+
   --[[ Everything below the target itself comes from the player: the job that
        picks the range scheme, the model size every range band is measured
        from, and the id that decides whose claim is whose. Each is a separate

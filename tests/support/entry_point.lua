@@ -293,6 +293,11 @@ local function build_core(boot)
     return boot.core_config
   end
 
+  -- Whether `//hud config`'s window is open: a spec flips `boot.settings_open`.
+  function core.config_active()
+    return boot.settings_open == true
+  end
+
   for _, name in ipairs({
     "suppressed",
     "component_visible",

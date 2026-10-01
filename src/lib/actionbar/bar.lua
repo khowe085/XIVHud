@@ -1076,6 +1076,11 @@ local function new(deps)
     if ctx.layout_active ~= nil and ctx.layout_active() then
       return name .. ": //hud layout owns the mouse - leave layout mode first"
     end
+    -- So does the settings window, and a binder opened under it would sit
+    -- on the same spot with no click able to reach it.
+    if service.settings_open() then
+      return name .. ": //hud config owns the mouse - close the settings window first"
+    end
     local refusal = open_edit()
     if refusal ~= nil then
       return refusal
@@ -1207,6 +1212,12 @@ local function new(deps)
     -- routing above asks handles() first), so this is the only hint an
     -- unknown verb ever sees, and the full list is one word away.
     return name .. ": unknown command '" .. verb .. "' - try help, set, cycle, open or edit"
+  end
+
+  --- The bar's tabs in the `//hud config` window - the CLI's, over this
+  --- bar's own config. A widget appends what is its own.
+  function self.config_tabs()
+    return authoring.config_tabs()
   end
 
   --[[ The bar's attach and detach halves of the widget contract. ]]

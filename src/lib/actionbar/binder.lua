@@ -57,7 +57,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
          threshold, which makes a plain click a zero-distance drag whose
          fate depends on its two disagreeing hit-tests. Ours hit-tests once,
          through the same render.lua geometry the bar is drawn with. The
-         title strip is the one exception and says so where it is read.
+         title strip keeps the same threshold, which lib/window owns.
 
      Prims exist only while edit mode is open: they are built by open() and
      destroyed by close(), so nothing here is on the per-frame path when the
@@ -65,9 +65,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local contexts = require("lib/actionbar/contexts")
 local grammars = require("lib/actionbar/grammar")
-
--- Windower's mouse types, as layout_mode names them.
-local MOVE, LEFT_DOWN, LEFT_UP, WHEEL = 0, 1, 2, 10
+local new_window = require("lib/window")
 
 --[[ ONE window, and a wizard inside it (Kevin, 2026-08-22). It replaced a
      stack panel, a catalog and a floating tooltip drawn beside one another:
@@ -102,39 +100,15 @@ local STEP_LAYER, STEP_CATALOG, STEP_TARGET = "layer", "catalog", "target"
      the rule `paged` already keeps for the catalog and target steps. ]]
 local STEP_SUBMENU = "submenu"
 
-local FONT_SIZE = 18
-local ROW_HEIGHT = 26
-local PAD = 10
-local GAP = 12
-local WINDOW_WIDTH = 920
-local WINDOW_HEIGHT = 600
+-- The window itself - its size, its rows, its controls - is lib/window's.
+-- These are the columns laid inside it.
 local CATEGORY_WIDTH = 210
 local DETAILS_WIDTH = 280
-local BACK_WIDTH = 90
-local CLOSE_WIDTH = 50
--- The title line and the line under it naming the slot and the choice so far.
-local HEADER_ROWS = 2
---[[ Rows are derived from the window rather than fixed, so changing its
-     height moves the lists with it instead of leaving them short or
-     overflowing. The entry list gives one row back to the pager; the
-     category column and the details pane use the full body. ]]
-local BODY_ROWS = math.floor((WINDOW_HEIGHT - PAD * 2 - HEADER_ROWS * ROW_HEIGHT) / ROW_HEIGHT)
-local ENTRY_ROWS = BODY_ROWS - 1
---[[ The shipped catalog produces fifteen categories (eight magic groups,
-     Trusts among them, then abilities, weaponskills, items, enchanted,
-     mounts, open, general), so the body carries them with room to spare.
-     What will not fit is COUNTED and said in the header rather than dropped
-     silently - the CLI can still reach it. ]]
-local CATEGORY_ROWS = BODY_ROWS
-local DETAIL_ROWS = BODY_ROWS
 -- base/shared + the worn subjob + the weapon in hand + every roster context,
 -- with headroom so a roster addition needs no prim-count edit here. Counted
 -- off the WHOLE roster though the job gate hides most of it: the panel is
 -- rebuilt per job and the prims are not.
 local STACK_ROWS = #contexts + 5
--- Panel chrome: the component's own white square, tinted and dimmed.
-local PANEL_TEXTURE = "assets/own/black-square.png"
-local PANEL_ALPHA = 220
 local ICON_SIZE = 16
 -- A dragged slot's ghost: see-through, so the slot it is over still reads.
 local GHOST_ALPHA = 180
@@ -188,16 +162,6 @@ end
 -- case), one mark for a subjob layer, one for the weapon layer, another for
 -- a context. Each is a single character none of them can start a name with.
 local MARKS = { sub = "+", wpn = "^", ctx = "*" }
-
-local function inside(x, y, rect)
-  return rect ~= nil
-    and type(x) == "number"
-    and type(y) == "number"
-    and x >= rect.x
-    and x < rect.x + rect.width
-    and y >= rect.y
-    and y < rect.y + rect.height
-end
 
 -- Every field through tostring: the binding files are hand-editable, and a
 -- record whose `type` is a table must not throw inside a mouse handler.
@@ -262,6 +226,33 @@ local function new(deps)
   local bar_name = deps.name or "crossbar"
   local grammar = deps.grammar or grammars.crossbar()
 
+  local chrome = new_window({
+    new_image = deps.new_image,
+    new_text = deps.new_text,
+    asset = deps.asset,
+    screen = deps.screen,
+    font = function()
+      return (deps.text_style ~= nil and deps.text_style() or {}).font
+    end,
+    back = true,
+  })
+  local MOVE, LEFT_DOWN, LEFT_UP, WHEEL = chrome.MOVE, chrome.LEFT_DOWN, chrome.LEFT_UP, chrome.WHEEL
+  local inside, draw_rows = chrome.inside, chrome.draw_rows
+  local metrics = chrome.metrics()
+  local FONT_SIZE, ROW_HEIGHT, GAP = metrics.font_size, metrics.row_height, metrics.gap
+  --[[ The entry list gives one row of the body back to the pager; the
+       category column and the details pane use all of it.
+
+       The shipped catalog produces fifteen categories (eight magic groups,
+       Trusts among them, then abilities, weaponskills, items, enchanted,
+       mounts, open, general), so the body carries them with room to spare.
+       What will not fit is COUNTED and said in the header rather than
+       dropped silently - the CLI can still reach it. ]]
+  local BODY_ROWS = metrics.body_rows
+  local ENTRY_ROWS = BODY_ROWS - 1
+  local CATEGORY_ROWS = BODY_ROWS
+  local DETAIL_ROWS = BODY_ROWS
+
   local active = false
   local prims = nil
   --[[ The clicked slot (with the screen rect it was clicked in), which step
@@ -285,7 +276,6 @@ local function new(deps)
   local target_page = 1
   local catalog_groups = nil
   local category_index, page = 1, 1
-  local press = nil
   --[[ Where the player dragged the window to, or nil for dead centre. Read
        from the config on open and written back on the drop, so it survives
        a reload - the window is a working surface, and having to shove it
@@ -364,14 +354,6 @@ local function new(deps)
     return deps.render ~= nil and deps.render() or nil
   end
 
-  local function screen()
-    if deps.screen == nil then
-      return 1920, 1080
-    end
-    local width, height = deps.screen()
-    return width or 1920, height or 1080
-  end
-
   --[[ Prims ---------------------------------------------------------------- ]]
 
   --[[ The job PAIR the catalog listing was built for: a job change under an
@@ -416,77 +398,32 @@ local function new(deps)
     icon_memo = {}
   end
 
+  local pool = nil
+
   local function build_prims()
-    if deps.new_image == nil or deps.new_text == nil or deps.asset == nil then
+    pool = chrome.pool()
+    if pool == nil then
       return
-    end
-    local style = deps.text_style ~= nil and deps.text_style() or {}
-    local function image(texture)
-      local prim = deps.new_image()
-      prim.draggable(false)
-      prim.repeat_xy(1, 1)
-      prim.fit(false)
-      if texture ~= nil then
-        prim.path(deps.asset(texture))
-      end
-      prim.color(255, 255, 255)
-      prim.hide()
-      return prim
-    end
-    local function text()
-      local prim = deps.new_text()
-      prim.font(style.font or "sans-serif")
-      -- The FAMILY is the widget's, the SIZE is the window's: the bar's
-      -- 10pt is unreadable at this scale.
-      prim.size(FONT_SIZE)
-      prim.color(255, 255, 255)
-      prim.stroke_width(1)
-      prim.stroke_color(0, 0, 0)
-      -- stroke_alpha, not stroke_transparency: the library reads a 0..1
-      -- transparency and would turn a 0-255 alpha wildly negative.
-      prim.stroke_alpha(255)
-      -- The texts library draws its own opaque box behind a line unless
-      -- told not to; every other widget here turns it off (parambar,
-      -- partylist, targetbar, equipviewer, lib/overlay).
-      prim.bg_visible(false)
-      prim.right_justified(false)
-      prim.text("")
-      prim.hide()
-      return prim
-    end
-    local function texts(count)
-      local list = {}
-      for index = 1, count do
-        list[index] = text()
-      end
-      return list
-    end
-    local function images(count)
-      local list = {}
-      for index = 1, count do
-        list[index] = image()
-      end
-      return list
     end
     --[[ One backdrop for one window. The row prims are shared across the
          steps rather than one set each: only one step is on screen at a
          time, and three sets would be three times the prims for no frame
          that could ever use them. ]]
     prims = {
-      window_bg = image(PANEL_TEXTURE),
-      back = text(),
-      close = text(),
-      title = text(),
-      subhead = text(),
-      categories = texts(CATEGORY_ROWS),
-      entries = texts(math.max(ENTRY_ROWS, STACK_ROWS)),
-      entry_icons = images(ENTRY_ROWS),
-      pager = text(),
-      details = texts(DETAIL_ROWS),
+      window_bg = pool.backdrop(),
+      back = pool.text(),
+      close = pool.text(),
+      title = pool.text(),
+      subhead = pool.text(),
+      categories = pool.texts(CATEGORY_ROWS),
+      entries = pool.texts(math.max(ENTRY_ROWS, STACK_ROWS)),
+      entry_icons = pool.images(ENTRY_ROWS),
+      pager = pool.text(),
+      details = pool.texts(DETAIL_ROWS),
       -- What a dragged slot looks like on its way: the slot's own icon and
       -- name, following the cursor.
-      ghost_icon = image(),
-      ghost_label = text(),
+      ghost_icon = pool.image(),
+      ghost_label = pool.text(),
     }
     prims.ghost_icon.alpha(GHOST_ALPHA)
     prims.ghost_label.alpha(GHOST_ALPHA)
@@ -496,47 +433,10 @@ local function new(deps)
   end
 
   local function destroy_prims()
-    if prims == nil then
-      return
+    if pool ~= nil then
+      pool.destroy()
     end
-    local function kill(prim)
-      prim.destroy()
-    end
-    kill(prims.window_bg)
-    kill(prims.back)
-    kill(prims.close)
-    kill(prims.title)
-    kill(prims.subhead)
-    kill(prims.pager)
-    kill(prims.ghost_icon)
-    kill(prims.ghost_label)
-    for _, list in ipairs({ prims.categories, prims.entries, prims.entry_icons, prims.details }) do
-      for _, prim in ipairs(list) do
-        kill(prim)
-      end
-    end
-    prims = nil
-  end
-
-  local function draw_backdrop(prim, rect)
-    prim.color(0, 0, 0)
-    prim.alpha(PANEL_ALPHA)
-    prim.pos(rect.x, rect.y)
-    prim.size(rect.width, rect.height)
-    prim.show()
-  end
-
-  local function draw_rows(list, lines)
-    for index, prim in ipairs(list) do
-      local line = lines[index]
-      if line == nil then
-        prim.hide()
-      else
-        prim.text(line.text)
-        prim.pos(line.x, line.y)
-        prim.show()
-      end
-    end
+    pool, prims = nil, nil
   end
 
   --[[ Geometry -------------------------------------------------------------- ]]
@@ -546,64 +446,17 @@ local function new(deps)
        window over a slot makes that slot unclickable. Predictable placement
        won that trade. It is still a DROP target: the window is put away
        while a slot is in hand (2026-09-27). ]]
-  --[[ Fully on screen, always. A position saved at one resolution and
-       opened at another would otherwise leave the window unreachable, and
-       there is no keyboard in edit mode to recentre it with. A window
-       larger than the screen pins to the top left rather than inverting
-       the range. ]]
-  local function clamp_to_screen(x, y)
-    local screen_width, screen_height = screen()
-    return math.max(0, math.min(x, screen_width - WINDOW_WIDTH)),
-      math.max(0, math.min(y, screen_height - WINDOW_HEIGHT))
-  end
-
   local function build_frame()
-    local screen_width, screen_height = screen()
-    -- `position` is clamped where it is SET - on the drag and on the read at
-    -- open - so there is one clamp per way in rather than a second one here
-    -- that would make both untestable.
-    local x = position ~= nil and position.x or math.max(0, math.floor(screen_width / 2 - WINDOW_WIDTH / 2))
-    local y = position ~= nil and position.y or math.max(0, math.floor(screen_height / 2 - WINDOW_HEIGHT / 2))
-    local frame = { x = x, y = y, width = WINDOW_WIDTH, height = WINDOW_HEIGHT }
-    frame.back = { x = frame.x + PAD, y = frame.y + PAD, width = BACK_WIDTH, height = ROW_HEIGHT }
-    -- Inset from the right edge exactly as back is from the left, so the two
-    -- controls read as a pair however wide the window is.
-    frame.close = {
-      x = frame.x + WINDOW_WIDTH - PAD - CLOSE_WIDTH,
-      y = frame.y + PAD,
-      width = CLOSE_WIDTH,
-      height = ROW_HEIGHT,
-    }
-    frame.title = { x = frame.back.x + BACK_WIDTH + GAP, y = frame.y + PAD }
-    --[[ The drag handle: the top strip, back button excluded, which is
-         checked first so a slip onto it is still back. It spans the rest of
-         the width rather than only the title text, because a handle you
-         have to aim at is worse than no handle. Close sits INSIDE it and is
-         checked first for the same reason. The strip does NOT reclaim the
-         width back leaves on the first step (Kevin, 2026-08-31): that top
-         left corner simply drags nothing there. ]]
-    frame.header = {
-      x = frame.back.x + BACK_WIDTH,
-      y = frame.y,
-      width = WINDOW_WIDTH - PAD - BACK_WIDTH,
-      height = PAD + ROW_HEIGHT,
-    }
-    frame.subhead = { x = frame.x + PAD, y = frame.y + PAD + ROW_HEIGHT }
-    local body_y = frame.y + PAD + HEADER_ROWS * ROW_HEIGHT
-    local body_height = BODY_ROWS * ROW_HEIGHT
+    local frame = chrome.frame(position)
+    local body = frame.body
     frame.details = {
-      x = frame.x + WINDOW_WIDTH - PAD - DETAILS_WIDTH,
-      y = body_y,
+      x = body.x + body.width - DETAILS_WIDTH,
+      y = body.y,
       width = DETAILS_WIDTH,
-      height = body_height,
+      height = body.height,
     }
     -- Everything left of the details column, which every step lists into.
-    frame.list = {
-      x = frame.x + PAD,
-      y = body_y,
-      width = WINDOW_WIDTH - PAD * 2 - DETAILS_WIDTH - GAP,
-      height = body_height,
-    }
+    frame.list = { x = body.x, y = body.y, width = body.width - DETAILS_WIDTH - GAP, height = body.height }
     return frame
   end
 
@@ -616,7 +469,9 @@ local function new(deps)
     frame.step = step
     if step == STEP_LAYER then
       -- Not merely hidden: an undrawn control that still answered the hit
-      -- test would swallow clicks on the first step for good.
+      -- test would swallow clicks on the first step for good. The title
+      -- strip does NOT reclaim the width back leaves here (Kevin,
+      -- 2026-08-31): that top left corner simply drags nothing.
       frame.back = nil
     end
     frame.address = { set = slot.set, side = slot.side, slot = slot.slot }
@@ -632,27 +487,9 @@ local function new(deps)
        entries and the target tokens, so the pager, the clamp and the row
        rects cannot drift apart between two steps that look the same. ]]
   local function paged(items, column, rows_per_page)
-    local pages = math.max(1, math.ceil(#items / rows_per_page))
-    if page > pages then
-      page = pages
-    end
-    local first = (page - 1) * rows_per_page
-    local built = {}
-    for index = 1, rows_per_page do
-      local item = items[first + index]
-      if item == nil then
-        break
-      end
-      built[index] = {
-        item = item,
-        index = first + index,
-        x = column.x,
-        y = column.y + (index - 1) * ROW_HEIGHT,
-        width = column.width,
-        height = ROW_HEIGHT,
-      }
-    end
-    return built, pages
+    local rows, pages
+    rows, pages, page = chrome.paged(items, column, rows_per_page, page)
+    return rows, pages
   end
 
   --[[ The stack ------------------------------------------------------------- ]]
@@ -1013,6 +850,7 @@ local function new(deps)
   -- A slot is in hand: the press left the slot it started on and has not
   -- been released.
   local function slot_drag()
+    local press = chrome.pressed()
     return press ~= nil and press.drag and press.target.kind == "slot"
   end
 
@@ -1037,11 +875,7 @@ local function new(deps)
          prims go: the descriptors stay, because the drop still reads the
          window's rect. ]]
     if window == nil or slot_drag() then
-      prims.window_bg.hide()
-      prims.back.hide()
-      prims.close.hide()
-      prims.title.hide()
-      prims.subhead.hide()
+      chrome.hide_frame(prims)
       prims.pager.hide()
       draw_rows(prims.categories, {})
       draw_rows(prims.entries, {})
@@ -1052,26 +886,10 @@ local function new(deps)
       return
     end
 
-    draw_backdrop(prims.window_bg, window)
     -- The first step has nothing to retreat to, so back is absent there
     -- rather than drawn dead; the X is up on every step.
-    if window.back ~= nil then
-      prims.back.text("[ < back ]")
-      prims.back.pos(window.back.x, window.back.y)
-      prims.back.show()
-    else
-      prims.back.hide()
-    end
-    prims.close.text("[ X ]")
-    prims.close.pos(window.close.x, window.close.y)
-    prims.close.show()
     local title, subhead = header_text(window)
-    prims.title.text(title)
-    prims.title.pos(window.title.x, window.title.y)
-    prims.title.show()
-    prims.subhead.text(subhead)
-    prims.subhead.pos(window.subhead.x, window.subhead.y)
-    prims.subhead.show()
+    chrome.draw_frame(prims, window, title, subhead)
 
     local categories, rows, pager = {}, {}, nil
     local icons = {}
@@ -1197,16 +1015,11 @@ local function new(deps)
        the window put away: the slots, and nothing of the window. ]]
   local function hit(x, y, window_away)
     if not window_away and window ~= nil and inside(x, y, window) then
-      -- The two ways out are checked before anything else in the window, so
-      -- no row - and no drag handle - can ever be laid over them.
-      if inside(x, y, window.close) then
-        return { kind = "close", rect = window.close }
-      end
-      if window.back ~= nil and inside(x, y, window.back) then
-        return { kind = "back", rect = window.back }
-      end
-      if inside(x, y, window.header) then
-        return { kind = "header", rect = window.header }
+      -- The two ways out and the drag handle are checked before anything
+      -- else in the window, so no row can ever be laid over them.
+      local control = chrome.control_at(window, x, y)
+      if control ~= nil then
+        return control
       end
       if layer_view ~= nil then
         for index, row in ipairs(layer_view.rows) do
@@ -1621,19 +1434,15 @@ local function new(deps)
       return
     end
     active = true
-    slot, step, cursor, pending, press, details, hovered, submenu = nil, nil, nil, nil, nil, nil, nil, nil
-    -- Rebuilt every time edit mode opens: the inventory, the known spells
-    -- and the job pair all move in play.
+    slot, step, cursor, pending, details, hovered, submenu = nil, nil, nil, nil, nil, nil, nil
+    chrome.cancel()
     --[[ Read once per open rather than per frame: the config is the
          player's own file and nothing else writes this key. A stored value
          that is not a pair of numbers is ignored rather than trusted -
          these files are hand-editable. ]]
-    position = nil
-    local stored = deps.window_pos ~= nil and deps.window_pos() or nil
-    if type(stored) == "table" and type(stored.x) == "number" and type(stored.y) == "number" then
-      position = { x = 0, y = 0 }
-      position.x, position.y = clamp_to_screen(stored.x, stored.y)
-    end
+    position = chrome.position(deps.window_pos ~= nil and deps.window_pos() or nil)
+    -- Rebuilt every time edit mode opens: the inventory, the known spells
+    -- and the job pair all move in play.
     rebuild_catalog()
     build_prims()
     redraw()
@@ -1644,7 +1453,8 @@ local function new(deps)
       return
     end
     active = false
-    slot, step, cursor, pending, press, details, hovered, submenu = nil, nil, nil, nil, nil, nil, nil, nil
+    slot, step, cursor, pending, details, hovered, submenu = nil, nil, nil, nil, nil, nil, nil
+    chrome.cancel()
     window, layer_view, catalog_view, target_view, catalog_groups = nil, nil, nil, nil, nil
     icon_memo = {}
     apply_preview()
@@ -1674,7 +1484,7 @@ local function new(deps)
     if not active then
       return
     end
-    press = nil
+    chrome.cancel()
     drop_ghost()
     close_panel()
     redraw()
@@ -1784,6 +1594,7 @@ local function new(deps)
   function self.refresh_details()
     -- Never mid-gesture: a drag owns the cursor, and the details it stood
     -- down stay down until the drop resolves.
+    local press = chrome.pressed()
     if not active or hovered == nil or (press ~= nil and press.drag) then
       return
     end
@@ -1818,22 +1629,21 @@ local function new(deps)
       return false
     end
     if kind == MOVE then
+      local press = chrome.pressed()
       if press ~= nil then
-        if press.target.kind == "header" and (press.drag or not inside(x, y, press.rect)) then
-          --[[ The same threshold every other press here uses: a drag
-               starts once the cursor LEAVES what it started on. Without it
-               a one-pixel slip while clicking the strip wrote the config
-               file. The grab point stays under the cursor either way, so
-               the window does not jump to have its corner there. ]]
-          press.drag = true
-          position = { x = 0, y = 0 }
-          position.x, position.y = clamp_to_screen(x - press.offset.x, y - press.offset.y)
+        -- The threshold is lib/window's: a drag starts once the cursor
+        -- LEAVES what it started on, the title strip included.
+        local phase, moved_x, moved_y = chrome.motion(x, y)
+        if press.target.kind == "header" then
+          if phase == "click" then
+            return false
+          end
+          position = { x = moved_x, y = moved_y }
           details, hovered = nil, nil
           redraw()
           return true
         end
-        if not press.drag and not inside(x, y, press.rect) then
-          press.drag = true
+        if phase == "start" then
           -- The cursor left what it started on: this is a drag, so the
           -- details it was describing stand down - and the target they were
           -- built from goes with them, or the cadence rebuild would put
@@ -1886,7 +1696,7 @@ local function new(deps)
            dispatch had already taken for the slot the window was hiding,
            so both acted on the release. ]]
       local stranded = slot_drag()
-      press = nil
+      chrome.cancel()
       local target = hit(x, y, stranded)
       if stranded then
         drop_ghost()
@@ -1899,23 +1709,19 @@ local function new(deps)
         on_click(nil)
         return false
       end
-      press = { target = target, rect = target.rect, drag = false }
-      if target.kind == "header" and window ~= nil then
-        press.offset = { x = x - window.x, y = y - window.y }
-      end
+      chrome.press(target, x, y, window)
       return true
     end
     if kind == LEFT_UP then
-      local armed = press
-      press = nil
+      local armed = chrome.release()
       if armed == nil then
         return false
       end
       if armed.target.kind == "header" then
         -- Saved on the drop, not on every pixel: a drag is a stream of
         -- moves, and this writes a config file.
-        if armed.drag and position ~= nil and deps.save_window_pos ~= nil then
-          deps.save_window_pos(position.x, position.y)
+        if armed.position ~= nil and deps.save_window_pos ~= nil then
+          deps.save_window_pos(armed.position.x, armed.position.y)
         end
       elseif armed.drag then
         drop_ghost()
@@ -1952,7 +1758,8 @@ local function new(deps)
   --- exit would - there is no second, quieter shutdown path to keep in step.
   function self.destroy()
     self.close()
-    press, details, hovered = nil, nil, nil
+    chrome.cancel()
+    details, hovered = nil, nil
     window, layer_view, catalog_view, target_view = nil, nil, nil, nil
   end
 

@@ -92,6 +92,12 @@ word**, `<set>:<slot>` - `3:7` is set 3, slot 7, and `3:10` its last slot -
 and the layer prefixes go in front as on the crossbar: `sub:3:7`, `wpn:3:7`,
 `ctx:light-arts:3:7`.
 
+The settings that are not about one slot - which sets are shared, which
+rotation each set is in, each row's shape and hide-empty switch, and the set
+numbers - can also be changed with the mouse: `//hud config hotbar` opens the
+[settings window](../Home.md#settings-window) on this component. Slots
+themselves are edited in edit mode, not there.
+
 | Command | What it does |
 | --- | --- |
 | `//hud hotbar` | the job, active set and weapon state, then one line per row: on or off, shape, the set it shows, and whether it hides empty slots |

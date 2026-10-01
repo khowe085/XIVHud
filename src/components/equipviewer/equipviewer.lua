@@ -467,6 +467,10 @@ local function new(ctx)
     }
   end
 
+  function self.config_panel()
+    return logic.config_panel()
+  end
+
   function self.destroy()
     panel.destroy()
     ammo.destroy()

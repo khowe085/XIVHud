@@ -774,3 +774,52 @@ describe("one bar's state", function()
     end)
   end)
 end)
+
+describe("one bar's tabs in the settings window", function()
+  local panels = require("tests/support/panels")
+
+  it("hands out the CLI's tabs over its own config, job or no job", function()
+    local bar, env = world()
+    local tabs = bar.config_tabs()
+    assert.are.same({}, panels.problems({ tabs = tabs }))
+    assert.are.equal(1, #tabs, "a bar without views has its sets and nothing else")
+    assert.are.equal("sets", tabs[1].name)
+    assert.are.equal(16, #tabs[1].rows)
+    assert.are.equal("Set 2 shared", tabs[1].rows[2].label)
+    assert.is_false(tabs[1].rows[2].value)
+    env.config.set_flags[2].shared = true
+    env.config.set_flags[3].cycle = { drawn = true, sheathed = false }
+    tabs = bar.config_tabs()
+    assert.is_true(tabs[1].rows[2].value)
+    assert.are.equal("drawn", tabs[1].rows[11].value)
+  end)
+
+  it("names commands the bar itself answers, and saves", function()
+    local bar, env, _, store = world()
+    bar.attach(store)
+    bar.try_scope()
+    for _, row in ipairs(bar.config_tabs()[1].rows) do
+      local words = { row.command[1], row.command[2], row.kind == "toggle" and "on" or "none" }
+      local reply = bar.command(words)
+      reply = type(reply) == "table" and reply[1] or reply
+      assert.is_nil(reply:find("unknown command", 1, true), reply)
+    end
+    assert.are.equal(16, env.config_saves)
+    for index, row in ipairs(bar.config_tabs()[1].rows) do
+      assert.are.equal(index <= 8 or "none", row.value, row.label)
+    end
+  end)
+
+  it("reads the config a re-attach swapped in", function()
+    local bar, env, _, store = world()
+    bar.attach(store)
+    local flags = {}
+    for set = 1, 8 do
+      flags[set] = { shared = set == 5, cycle = { drawn = true, sheathed = true } }
+    end
+    env.config = { set_flags = flags, hide = {} }
+    bar.attach(store)
+    assert.is_true(bar.config_tabs()[1].rows[5].value)
+    assert.is_false(bar.config_tabs()[1].rows[4].value)
+  end)
+end)

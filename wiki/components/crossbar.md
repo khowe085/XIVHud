@@ -137,6 +137,12 @@ All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
 `cb` is the crossbar's short name and stands in for `crossbar` anywhere it is
 taken: `//hud cb set 3`, `//hud show cb`, `//hud reset cb`.
 
+The settings that are not about one slot - which sets are shared, which
+rotation each set is in, where the WXHB and Expanded Hold views point, and
+whether the WXHB always shows - can also be changed with the mouse:
+`//hud config crossbar` opens the [settings window](../Home.md#settings-window)
+on this component. Slots themselves are edited in edit mode, not there.
+
 **An address is one word**: `<set><L|R><slot>`, so `1L1` is set 1, left side,
 slot 1, and `2R8` is set 2, right side, slot 8. Four verbs — `bind`, `unbind`,
 `alias` and `icon` — also take a layer prefix in front: `sub:1L6`,

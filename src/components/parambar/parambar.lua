@@ -335,6 +335,10 @@ local function new(ctx)
     return message
   end
 
+  function self.config_panel()
+    return logic.config_panel()
+  end
+
   function self.destroy()
     background.destroy()
     for index = 1, #BARS do

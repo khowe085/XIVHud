@@ -298,6 +298,13 @@ describe("entry point", function()
       assert.is_not_nil(boot.core_deps.resources)
     end)
 
+    -- Without it the settings window has no backdrop to draw, and a window
+    -- that cannot draw builds no prims at all.
+    it("hands core the asset resolver the components draw with, for its settings window", function()
+      assert.is_function(boot.core_deps.asset)
+      assert.are.equal(boot.ctxs.parambar.asset, boot.core_deps.asset)
+    end)
+
     it("leaves core reading the client directly", function()
       assert.are_not.equal(boot.core_deps.get_player, boot.ctxs.parambar.get_player)
 
@@ -560,6 +567,12 @@ describe("entry point", function()
 
     it("reads its tuning off core's own config", function()
       assert.are.equal(boot.core_config, boot.service_deps.config())
+    end)
+
+    it("asks core whether the settings window is open, so a trip can be called off under it", function()
+      assert.is_false(boot.service_deps.settings_open())
+      boot.settings_open = true
+      assert.is_true(boot.service_deps.settings_open())
     end)
 
     it("takes the members the crossbar no longer reads", function()

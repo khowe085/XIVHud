@@ -138,6 +138,9 @@ local function world(opts)
     layout_active = function()
       return env.layout
     end,
+    settings_open = function()
+      return env.settings_open
+    end,
     config = function()
       return env.config
     end,
@@ -582,6 +585,42 @@ describe("the action service", function()
       env.now = 6
       service.tick()
       assert.are.same({}, env.commands)
+    end)
+
+    it("counts the settings window as a config mode, by its own name", function()
+      local service, env = world()
+      assert.is_nil(service.mode())
+      env.settings_open = true
+      assert.are.equal("//hud config", service.mode())
+      service.warp(false)
+      assert.is_not_nil(said(env):find("not while //hud config is open"), "said: " .. said(env))
+      assert.is_false(service.travel.armed())
+      env.layout = true
+      assert.are.equal("//hud layout", service.mode(), "layout mode is asked first: entering it closes the window")
+    end)
+
+    it("calls a countdown off when the settings window opens under it", function()
+      local service, env = world()
+      service.warp(false)
+      assert.is_true(service.travel.armed())
+      env.settings_open = true
+      service.tick()
+      assert.is_false(service.travel.armed())
+    end)
+
+    it("says whether the settings window is open, for a bar deciding whether its binder may be", function()
+      local service, env = world()
+      assert.is_false(service.settings_open())
+      env.settings_open = true
+      assert.is_true(service.settings_open())
+      local unwired = require("lib/actionbar/service")({})
+      assert.is_false(unwired.settings_open(), "a service nobody told about the window has none open")
+    end)
+
+    it("does not dress the bars for the settings window", function()
+      local service, env = world()
+      env.settings_open = true
+      assert.is_nil(service.edit_owner(), "a bar asks this to know whether a binder is up")
     end)
   end)
 

@@ -172,6 +172,9 @@ for _, mode in ipairs(MODES) do
   IS_MODE[mode] = true
 end
 
+-- What each bar's mode row is called in the settings window.
+local PANEL_LABEL = { main = "Target mode", subtarget = "Subtarget mode" }
+
 --[[ In casting range, or not. The dead branches in the source
      (`floor(model_size * 10) == 44` and `== 53`) are not reproduced: they sit
      behind the `> 2` test in an elseif chain, and every model size that could
@@ -618,6 +621,26 @@ local function new(initial_config, resources, variant)
     end
 
     return ("%s has no '%s' setting (mode %s)"):format(label(), tostring(args[1]), mode_list()), false
+  end
+
+  --[[ This bar's row in the `//hud config` window: the same mode, set by the
+       command above. The value is the mode in FORCE - a stored one the
+       colouring would not honour is not something to show as chosen - and
+       the bar word leads the command, so a row can only ever set its own
+       bar. The options are a copy: the list handed out is the caller's to
+       keep, and MODES is what the parser itself answers from. ]]
+  function self.config_row()
+    local options = {}
+    for index, mode in ipairs(MODES) do
+      options[index] = mode
+    end
+    return {
+      label = PANEL_LABEL[variant],
+      kind = "choice",
+      options = options,
+      value = configured_mode(),
+      command = { variant, "mode" },
+    }
   end
 
   --[[ Layout ------------------------------------------------------------- ]]

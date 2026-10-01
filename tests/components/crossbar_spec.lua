@@ -5953,6 +5953,83 @@ describe("crossbar live widget", function()
     end)
   end)
 
+  describe("its panel in the settings window", function()
+    local panels = require("tests/support/panels")
+
+    local function tab(name)
+      for _, candidate in ipairs(widget.config_panel().tabs) do
+        if candidate.name == name then
+          return candidate.rows
+        end
+      end
+      return nil
+    end
+
+    local function shown(name, index)
+      local row = tab(name)[index]
+      return { row.label, row.value }
+    end
+
+    it("is one the window can draw", function()
+      build_world()
+      assert.are.same({}, panels.problems(widget.config_panel()))
+    end)
+
+    it("has the sets, the views and the WXHB switch, as they stand", function()
+      build_world()
+      local tabs = widget.config_panel().tabs
+      assert.are.same({ "sets", "views", "general" }, { tabs[1].name, tabs[2].name, tabs[3].name })
+      assert.are.same({ 16, 4, 1 }, { #tabs[1].rows, #tabs[2].rows, #tabs[3].rows })
+      assert.are.same({ "Set 1 shared", false }, shown("sets", 1))
+      assert.are.same({ "Set 8 cycle", "both" }, shown("sets", 16))
+      assert.are.same({ "WXHB left", "2L" }, shown("views", 1))
+      assert.are.same({ "Expanded R then L", "3R" }, shown("views", 4))
+      assert.are.same({ "Always show WXHB", false }, shown("general", 1))
+    end)
+
+    it("shows what its commands have set", function()
+      build_world()
+      widget.handle_command({ "share", "6", "on" })
+      widget.handle_command({ "cycle", "2", "drawn" })
+      widget.handle_command({ "view", "wxhb-R", "5L" })
+      widget.handle_command({ "wxhb", "on" })
+      assert.are.same({ "Set 6 shared", true }, shown("sets", 6))
+      assert.are.same({ "Set 2 cycle", "drawn" }, shown("sets", 10))
+      assert.are.same({ "WXHB right", "5L" }, shown("views", 2))
+      assert.are.same({ "Always show WXHB", true }, shown("general", 1))
+    end)
+
+    it("reads the config the character was attached with", function()
+      build_world({
+        tune_config = function(tuned)
+          tuned.set_flags[3].shared = true
+          tuned.views.expanded_lr = { set = 7, side = "right" }
+          tuned.always_show_wxhb = true
+        end,
+      })
+      assert.is_true(tab("sets")[3].value)
+      assert.are.equal("7R", tab("views")[3].value)
+      assert.is_true(tab("general")[1].value)
+    end)
+
+    it("changes each setting through its own command, and saves it", function()
+      build_world()
+      assert.are.same({}, panels.failures(panels.exercise(widget)))
+      assert.are.equal(42, env.config_saves, "each of the twenty-one was moved and moved back")
+    end)
+
+    it("leaves the bindings and the bar's config as it found them", function()
+      build_world()
+      local views = { config.views.wxhb_left.set, config.views.wxhb_left.side }
+      panels.exercise(widget)
+      assert.are.same(views, { config.views.wxhb_left.set, config.views.wxhb_left.side })
+      assert.is_false(config.set_flags[1].shared)
+      assert.are.same({ drawn = true, sheathed = true }, config.set_flags[1].cycle)
+      assert.are.equal("Savage Blade", env.store_files.WAR.sets[1].left[3].action)
+      assert.are.same({}, env.commands, "a setting is not a press")
+    end)
+  end)
+
   -- CB8: the mouse-driven binder. The widget owns the toggle, the mouse
   -- dispatch and the teardown; binder.lua owns the surfaces themselves.
   describe("edit mode", function()

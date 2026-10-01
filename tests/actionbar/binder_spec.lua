@@ -80,12 +80,13 @@ local function build(opts)
     asset = function(path)
       return "addon/" .. path
     end,
-    screen = function()
+    screen = opts.screen or function()
       return 1920, 1080
     end,
-    text_style = function()
+    -- `text_style = false` builds a binder whose bar names no style at all.
+    text_style = opts.text_style ~= false and (opts.text_style or function()
       return { font = "sans-serif", size = 10 }
-    end,
+    end) or nil,
     render = function()
       return render
     end,
@@ -2516,6 +2517,291 @@ describe("crossbar binder", function()
       pick(binder, env, "Broken")
       assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "left", 3), "nothing written")
       assert.is_not_nil(env.said[1], "and the refusal is said")
+    end)
+  end)
+
+  --[[ Pinned before the window's chrome moved into lib/window: four things
+       the binder did that no other test here could see change. ]]
+  describe("the window's chrome", function()
+    local entry_rows = math.max(19, #require("lib/actionbar/contexts") + 5)
+
+    it("builds its prims in one fixed order", function()
+      local binder, env = build()
+      binder.open()
+      local kinds = {}
+      for index, prim in ipairs(env.prims.all) do
+        kinds[index] = prim.kind
+      end
+      local expected = {}
+      local function run(kind, count)
+        for _ = 1, count do
+          expected[#expected + 1] = kind
+        end
+      end
+      run("image", 1)
+      run("text", 4 + 20 + entry_rows)
+      run("image", 19)
+      run("text", 1 + 20)
+      run("image", 1)
+      run("text", 1)
+      assert.are.same(expected, kinds)
+
+      local images, texts = env.prims.images, env.prims.texts
+      assert.are.equal("addon/assets/own/black-square.png", images[1].last.path, "the backdrop")
+      for index = 2, 20 do
+        assert.is_nil(images[index].last.path, "an entry icon takes its art when it is drawn")
+      end
+      assert.are.equal(180, images[#images].last.alpha, "the ghost icon")
+      assert.are.equal(180, texts[#texts].last.alpha, "the ghost label")
+    end)
+
+    it("draws each part of the window on the prim built for it", function()
+      -- Windower draws texts in creation order, so which prim plays which
+      -- part is what decides what overlaps what.
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local texts, window = env.prims.texts, binder.window()
+      assert.are.equal("[ < back ]", texts[1].last.text)
+      assert.are.equal("[ X ]", texts[2].last.text)
+      assert.are.same({ window.title.x, window.title.y }, { texts[3].x, texts[3].y }, "the title")
+      assert.are.same({ window.subhead.x, window.subhead.y }, { texts[4].x, texts[4].y }, "the subhead")
+      assert.are.equal("> Job Abilities", texts[5].last.text, "the first category")
+      assert.are.equal("Berserk", texts[25].last.text, "the first entry")
+      assert.are.equal("page 1/1 - wheel to scroll", texts[24 + entry_rows + 1].last.text, "the pager")
+    end)
+
+    it("reads a slip inside the title strip as a click, not a drag", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      local before = binder.window()
+      local grab_x, grab_y = before.header.x + 20, before.header.y + 5
+      binder.mouse(LEFT_DOWN, grab_x, grab_y, 0)
+      assert.is_false(binder.mouse(MOVE, grab_x + 2, grab_y + 1, 0), "the motion is still the game's")
+      assert.are.same({ before.x, before.y }, { binder.window().x, binder.window().y }, "it did not move")
+      assert.is_true(binder.mouse(LEFT_UP, grab_x + 2, grab_y + 1, 0))
+      assert.is_nil(env.window_saves, "and nothing was written")
+    end)
+
+    it("stands the details down while the window is dragged", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      binder.mouse(MOVE, slot_point(env, "left", 3))
+      assert.is_not_nil(binder.details(), "the hovered slot is described")
+      local header = binder.window().header
+      binder.mouse(LEFT_DOWN, header.x + 20, header.y + 5, 0)
+      binder.mouse(MOVE, header.x - 200, header.y - 150, 0)
+      assert.is_nil(binder.details())
+    end)
+
+    it("drops an armed press when edit mode is closed and reopened", function()
+      local binder, env = build()
+      binder.open()
+      local x, y = slot_point(env, "left", 3)
+      assert.is_true(binder.mouse(LEFT_DOWN, x, y, 0))
+      binder.close()
+      binder.open()
+      assert.is_false(binder.mouse(LEFT_UP, x, y, 0), "the release belongs to no press")
+      assert.is_nil(binder.window(), "and opens nothing")
+    end)
+
+    it("draws the window in the bar's own font family", function()
+      local binder, env = build({
+        text_style = function()
+          return { font = "Arial", size = 10 }
+        end,
+      })
+      binder.open()
+      for index, text in ipairs(env.prims.texts) do
+        assert.are.equal("Arial", text.last.font, "text " .. index)
+      end
+      assert.are.equal(18, env.prims.texts[1].font_size, "at the window's size, not the bar's")
+    end)
+
+    it("falls back to sans-serif for a bar that names no text style", function()
+      local binder, env = build({ text_style = false })
+      binder.open()
+      assert.are.equal("sans-serif", env.prims.texts[1].last.font)
+    end)
+
+    it("centres on the screen it is told about, not on an assumed one", function()
+      local binder, env = build({
+        screen = function()
+          return 2560, 1440
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      assert.are.same({ 820, 420 }, { binder.window().x, binder.window().y })
+    end)
+
+    it("lays the list and the details column into the window's body", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      local window = binder.window()
+      assert.are.same({ x = 510, y = 302, width = 608, height = 520 }, window.list)
+      assert.are.same({ x = 1130, y = 302, width = 280, height = 520 }, window.details)
+    end)
+
+    it("wraps the details column at the width the window's font allows", function()
+      local binder = build()
+      assert.are.equal(28, binder.detail_columns())
+    end)
+
+    it("builds the ghost icon with no art of its own", function()
+      local binder, env = build()
+      binder.open()
+      local images = env.prims.images
+      assert.are.equal(21, #images)
+      assert.is_nil(images[21].last.path)
+    end)
+
+    it("comes back to a page the catalog still has when it shrank under a later step", function()
+      local size = { 40 }
+      local binder, env = build({
+        catalog_factory = function()
+          return {
+            build = function()
+              local entries = {}
+              for index = 1, size[1] do
+                entries[index] = { label = ("Spell %02d"):format(index), record = { type = "ma", action = "Spell" } }
+              end
+              return { { name = "White Magic", entries = entries } }
+            end,
+          }
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local window = binder.window()
+      binder.mouse(WHEEL, window.x + 10, window.y + 10, -1)
+      assert.are.equal(2, binder.catalog_view().page)
+      click(binder, centre(binder.catalog_view().entries[1]))
+      assert.is_not_nil(binder.target_view(), "on the target step, with page two remembered")
+      size[1] = 2
+      env.bindings.set_job("WAR", "NIN")
+      binder.refresh()
+      back(binder, env)
+      local view = binder.catalog_view()
+      assert.are.same({ 1, 1 }, { view.page, view.pages }, "the page it built, not the one it was asked for")
+      assert.is_not_nil(shown_text(env, "page 1/1 - wheel to scroll"))
+    end)
+
+    it("takes the motion of a title-strip drag from the game", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      local header = binder.window().header
+      binder.mouse(LEFT_DOWN, header.x + 20, header.y + 5, 0)
+      assert.is_true(binder.mouse(MOVE, header.x - 200, header.y - 150, 0), "the move that starts it")
+      assert.is_true(binder.mouse(MOVE, header.x - 210, header.y - 150, 0), "and every one after")
+    end)
+
+    it("lifts the ghost once, as the drag goes live, and only places it after that", function()
+      local binder, env = build()
+      binder.open()
+      local x, y = slot_point(env, "left", 3)
+      binder.mouse(LEFT_DOWN, x, y, 0)
+      binder.mouse(MOVE, 500, 300, 0)
+      local label = env.prims.texts[#env.prims.texts]
+      assert.are.equal("Provoke", label.last.text)
+      local before = prim_calls(env)
+      binder.mouse(MOVE, 700, 200, 0)
+      assert.are.equal(1, prim_calls(env) - before, "one pos on the label, and no redraw")
+    end)
+
+    it("leaves the details down after a window drag until the cursor moves", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      binder.mouse(MOVE, slot_point(env, "left", 3))
+      assert.is_not_nil(binder.details())
+      local header = binder.window().header
+      binder.mouse(LEFT_DOWN, header.x + 20, header.y + 5, 0)
+      binder.mouse(MOVE, header.x - 200, header.y - 150, 0)
+      binder.mouse(LEFT_UP, header.x - 200, header.y - 150, 0)
+      binder.refresh_details()
+      assert.is_nil(binder.details(), "the cadence rebuild has no target to put them back from")
+    end)
+
+    it("leaves the details down after a cancelled slot drag until the cursor moves", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      local x, y = slot_point(env, "left", 3)
+      binder.mouse(MOVE, x, y, 0)
+      assert.is_not_nil(binder.details())
+      local to_x, to_y = centre(binder.window())
+      drag(binder, x, y, to_x, to_y)
+      assert.are.same({ type = "ja", action = "Provoke" }, env.files.WAR.sets[1].left[3], "the drop cancelled")
+      binder.refresh_details()
+      assert.is_nil(binder.details(), "the cadence rebuild has no target to put them back from")
+    end)
+  end)
+
+  --[[ The settings window is drawn with the same chrome but sequences its
+       own mouse events, so the answers the two share are compared directly:
+       a player must not find the title strip, the X, the wheel or a stray
+       click behaving one way on one window and another on the other. ]]
+  describe("beside the settings window", function()
+    local new_config_window = require("lib/config_window")
+
+    local function settings_window()
+      local saved = {}
+      local window = new_config_window({
+        screen = function()
+          return 1920, 1080
+        end,
+        entries = function()
+          return { "global" }
+        end,
+        panel = function()
+          return { rows = {} }
+        end,
+        save_window_pos = function(x, y)
+          saved[#saved + 1] = { x = x, y = y }
+        end,
+      })
+      window.open()
+      return window, saved
+    end
+
+    it("answers the same mouse script the same way", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      local settings, saved = settings_window()
+      local frame = binder.window()
+      assert.are.same({ frame.x, frame.y, frame.width, frame.height }, {
+        settings.view().frame.x,
+        settings.view().frame.y,
+        settings.view().frame.width,
+        settings.view().frame.height,
+      }, "one window, in one place")
+
+      -- A point on the title strip of both: the binder's starts past where
+      -- its back button would be.
+      local grab_x, grab_y = frame.x + 300, frame.y + 5
+      local corner_x, corner_y = frame.x + frame.width - 30, frame.y + frame.height - 30
+      local script = {
+        { "press the strip", LEFT_DOWN, grab_x, grab_y },
+        { "slip inside it", MOVE, grab_x + 2, grab_y + 1 },
+        { "release", LEFT_UP, grab_x + 2, grab_y + 1 },
+        { "press the strip again", LEFT_DOWN, grab_x, grab_y },
+        { "drag it away", MOVE, grab_x - 200, grab_y - 150 },
+        { "and further", MOVE, grab_x - 220, grab_y - 150 },
+        { "drop it", LEFT_UP, grab_x - 220, grab_y - 150 },
+        { "wheel over the window", WHEEL, frame.x, frame.y + 300 },
+        { "wheel off it", WHEEL, 1900, 1060 },
+        { "idle motion over it", MOVE, frame.x, frame.y + 300 },
+        { "press its empty corner", LEFT_DOWN, corner_x - 220, corner_y - 150 },
+        { "slide off the window", MOVE, 1900, 1060 },
+        { "release out there", LEFT_UP, 1900, 1060 },
+        { "press far outside", LEFT_DOWN, 1900, 1060 },
+        { "release far outside", LEFT_UP, 1900, 1060 },
+      }
+      for _, step in ipairs(script) do
+        local name, kind, x, y = step[1], step[2], step[3], step[4]
+        local delta = kind == WHEEL and -1 or 0
+        assert.are.equal(binder.mouse(kind, x, y, delta), settings.mouse(kind, x, y, delta), name)
+      end
+      assert.are.equal(1, env.window_saves, "one save, on the drop")
+      assert.are.same({ env.window_pos }, saved, "to the same place")
     end)
   end)
 

@@ -596,6 +596,160 @@ describe("parambar widget", function()
     end)
   end)
 
+  describe("its panel in the settings window", function()
+    local panels = require("tests/support/panels")
+
+    local function rows()
+      return widget.config_panel().rows
+    end
+
+    -- One field of every row, in row order.
+    local function column(key)
+      local values = {}
+      for index, row in ipairs(rows()) do
+        values[index] = row[key]
+      end
+      return values
+    end
+
+    -- Whether the component's own parser took the words: a refusal saves nothing.
+    local function accepted(words)
+      local before = saves
+      widget.handle_command(words)
+      return saves > before
+    end
+
+    local function with_value(row, value)
+      local words = {}
+      for index, word in ipairs(row.command) do
+        words[index] = word
+      end
+      words[#words + 1] = tostring(value)
+      return words
+    end
+
+    it("is one the window can draw", function()
+      attach()
+      assert.same({}, panels.problems(widget.config_panel()))
+    end)
+
+    it("sends the value and nothing after it, down its own command path", function()
+      -- The parser ignores a trailing word, so a stray one would go unseen.
+      attach()
+      assert.same({}, column("suffix"))
+      assert.same({}, column("route"))
+    end)
+
+    it("shows a window the step does not land on exactly as it stands", function()
+      attach()
+      widget.handle_command({ "accuracy", "window", "42" })
+      assert.equal(42, rows()[6].value)
+    end)
+
+    it("offers its six settings in order, each naming the command that sets it", function()
+      attach()
+      assert.same(
+        { "Bar width", "Bar spacing", "Bar offset", "Compact", "Accuracy row", "Accuracy window (s)" },
+        column("label")
+      )
+      assert.same({ "stepper", "stepper", "stepper", "toggle", "toggle", "stepper" }, column("kind"))
+      assert.same(
+        { { "width" }, { "spacing" }, { "offset" }, { "compact" }, { "accuracy" }, { "accuracy", "window" } },
+        column("command")
+      )
+      assert.same({ 4, 1, 1, [6] = 5 }, column("step"))
+    end)
+
+    it("shows every setting as it stands", function()
+      attach()
+      assert.same({ 132, 18, 0, false, true, 30 }, column("value"))
+      widget.handle_command({ "width", "100" })
+      widget.handle_command({ "accuracy", "off" })
+      widget.handle_command({ "accuracy", "window", "45" })
+      assert.same({ 100, 18, 0, false, false, 45 }, column("value"))
+    end)
+
+    --[[ width, spacing and offset write whichever block compact mode
+         selects, so that block is the one the three rows have to show. ]]
+    it("shows the metrics of the block compact mode selects", function()
+      attach()
+      widget.handle_command({ "offset", "3" })
+      widget.handle_command({ "compact", "on" })
+      assert.same({ 116, 16, 0, true, true, 30 }, column("value"))
+      widget.handle_command({ "width", "120" })
+      assert.same({ 120, 16, 0, true, true, 30 }, column("value"))
+      widget.handle_command({ "compact", "off" })
+      assert.same({ 132, 18, 3, false, true, 30 }, column("value"))
+    end)
+
+    it("bounds each metric at the least its own command takes", function()
+      attach()
+      for index = 1, 3 do
+        local row = rows()[index]
+        assert.is_nil(row.max, row.label)
+        assert.is_true(accepted(with_value(row, row.min)), row.label .. " refused its own minimum")
+        assert.is_false(accepted(with_value(row, row.min - 1)), row.label .. " goes lower than its row says")
+      end
+    end)
+
+    it("bounds the accuracy window at what its own command takes", function()
+      attach()
+      local row = rows()[6]
+      assert.is_true(accepted(with_value(row, row.min)))
+      assert.is_false(accepted(with_value(row, row.min - 1)))
+      assert.is_true(accepted(with_value(row, row.max)))
+      assert.is_false(accepted(with_value(row, row.max + 1)))
+      assert.equal(row.max, rows()[6].value)
+    end)
+
+    --[[ A stored window the tracker refuses is not the one in force: the row
+         shows what the status line reports, never what the file says. ]]
+    it("shows the accuracy window in force, not a stored one the tracker refuses", function()
+      widget.defaults.accuracy.window_seconds = 9999
+      attach()
+      assert.equal(30, rows()[6].value)
+      assert.is_not_nil(widget.handle_command({}):find("(30s)", 1, true))
+      assert.same({}, panels.problems(widget.config_panel()))
+    end)
+
+    it("shows a switch as off unless it is exactly true, as the widget reads it", function()
+      widget.defaults.compact = "yes"
+      widget.defaults.accuracy.enabled = 1
+      attach()
+      assert.same({ 132, 18, 0, false, false, 30 }, column("value"))
+    end)
+
+    --[[ A metrics block that is not a table draws at nought, and the status
+         line says so; the rows say the same rather than a default nothing
+         is drawn at. ]]
+    it("shows the metrics as nought over a bar block a hand edit has broken", function()
+      widget.defaults.bar = "broken"
+      attach()
+      assert.same({ 0, 0, 0, false, true, 30 }, column("value"))
+      assert.is_not_nil(widget.handle_command({}):find("width 0, spacing 0, offset 0", 1, true))
+    end)
+
+    it("still draws over an accuracy block a hand edit has broken", function()
+      widget.defaults.accuracy = "broken"
+      attach()
+      assert.same({ 132, 18, 0, false, false, 30 }, column("value"))
+      assert.same({}, panels.failures(panels.exercise(widget)))
+    end)
+
+    it("changes each setting through its own command, and saves it", function()
+      attach()
+      assert.same({}, panels.failures(panels.exercise(widget)))
+      assert.equal(12, saves, "each of the six was moved and moved back")
+    end)
+
+    it("moves the compact block's metrics while compact mode is on", function()
+      attach()
+      widget.handle_command({ "compact", "on" })
+      assert.same({}, panels.failures(panels.exercise(widget)))
+      assert.same({ width = 132, spacing = 18, offset = 0 }, widget.defaults.bar)
+    end)
+  end)
+
   describe("teardown", function()
     it("disposes every prim so a reload leaves nothing on screen", function()
       attach()

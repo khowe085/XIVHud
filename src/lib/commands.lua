@@ -47,6 +47,10 @@ local RESERVED = {
   slot = true,
   copy = true,
   buffs = true,
+  config = true,
+  -- The settings window's name for the framework's own panel: a component
+  -- called this could never be opened by `//hud config <name>`.
+  global = true,
   -- The action service's own verbs and its three tuning words.
   warp = true,
   mr = true,
@@ -56,13 +60,18 @@ local RESERVED = {
   retry = true,
   wsgate = true,
   delay = true,
+  hidecutscene = true,
 }
+
+-- The settings window's panel for what is not a component's.
+local GLOBAL_PANEL = "global"
 
 -- Framework-level presses: run by the action service, never by a bar.
 local ACTION_VERBS = { mr = true, sneak = true, invisible = true, draw = true }
--- The service's tuning: the words after the verb go through untouched, and
--- core answers them over its own config.
-local TUNING_VERBS = { retry = true, wsgate = true, delay = true }
+-- The options core.lua carries - the service's tuning and the framework's
+-- own: the words after the verb go through untouched, and core answers them
+-- over its own config.
+local TUNING_VERBS = { retry = true, wsgate = true, delay = true, hidecutscene = true }
 
 local SLOT_OPS = { list = true, create = true, delete = true }
 
@@ -238,6 +247,26 @@ local function new(deps)
     return { action = "buffs", component = component, args = passthrough }
   end
 
+  -- `//hud config [<panel>]`: the settings window, opened on `global` or on
+  -- a component's panel when one is named.
+  local function parse_config(words)
+    if #words > 2 then
+      return fail("'//hud config' takes at most one panel: global, or a component name")
+    end
+    local panel = words[2]
+    if panel == nil then
+      return { action = "config" }
+    end
+    if panel:lower() == GLOBAL_PANEL then
+      return { action = "config", panel = GLOBAL_PANEL }
+    end
+    local component = resolve_component(panel)
+    if not component then
+      return fail("no component named '" .. panel .. "'")
+    end
+    return { action = "config", panel = component }
+  end
+
   -- Parses one `//hud ...` invocation into an action table. Never returns nil.
   function self.parse(args)
     local words = clean(args)
@@ -259,6 +288,8 @@ local function new(deps)
       return parse_copy(words)
     elseif verb == "buffs" then
       return parse_buffs(words)
+    elseif verb == "config" then
+      return parse_config(words)
     elseif verb == "warp" then
       local all = words[2] ~= nil and words[2]:lower() == "all"
       if #words > 2 or (words[2] ~= nil and not all) then

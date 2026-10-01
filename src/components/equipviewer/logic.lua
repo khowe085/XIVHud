@@ -463,6 +463,15 @@ local function new(initial_config)
     return string.format("equipviewer has no '%s' setting (encumbrance, ammocount)", word), false
   end
 
+  -- The same two switches as rows of the `//hud config` window, each naming
+  -- the command above that sets it.
+  function self.config_panel()
+    local function switch(label, verb)
+      return { label = label, kind = "toggle", value = config[verb.key] and true or false, command = { verb.word } }
+    end
+    return { rows = { switch("Encumbrance", TOGGLES.encumbrance), switch("Ammo count", TOGGLES.ammocount) } }
+  end
+
   -- The ammo count, drawn over the lower half of the ammo icon.
   function self.ammo_position(x, y, scale)
     local size = cell_size(scale)

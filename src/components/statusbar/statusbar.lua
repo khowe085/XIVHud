@@ -600,6 +600,10 @@ local function new(ctx)
     return answer(logic.buff_command(args))
   end
 
+  function self.config_panel()
+    return logic.config_panel()
+  end
+
   function self.destroy()
     if tip then
       tip.destroy()
