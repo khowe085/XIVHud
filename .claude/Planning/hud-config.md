@@ -2,7 +2,7 @@
 
 Status: all five phases built, 2026-10-01, in worktree `.claude/worktrees/hud-config`, branch
 `work/claude/hud-config`: the pull, the chrome extraction, the framework and the `global` panel,
-and the panels of all eight components. Not committed, and not verified in a live client.
+and the panels of all eight components. PR #61 against dev (2c44ca8). Not verified in a live client.
 Decisions settled with Kevin 2026-10-01 (below).
 
 ## Goal
