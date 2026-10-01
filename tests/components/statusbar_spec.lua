@@ -671,6 +671,171 @@ describe("statusbar widget", function()
     end)
   end)
 
+  describe("its panel in the settings window", function()
+    local panels = require("tests/support/panels")
+    local categories = require("components/statusbar/categories")
+    local new_logic = require("components/statusbar/logic")
+
+    local function column(key, panel)
+      local out = {}
+      for index, row in ipairs((panel or widget.config_panel()).rows) do
+        out[index] = row[key]
+      end
+      return out
+    end
+
+    it("is one the window can draw", function()
+      attach()
+      assert.same({}, panels.problems(widget.config_panel()))
+    end)
+
+    it("draws a shape by its label and a category by its own word, and sends the value last", function()
+      attach()
+      local shown, sent = {}, {}
+      for index, record in ipairs(panels.exercise(widget)) do
+        shown[index] = record.before
+        sent[index] = table.concat(record.words, " ")
+      end
+      assert.same({ "20x1", "all", "20x1", "debuffs", "20x1", "other", "[ on ]", "[ on ]" }, shown)
+      assert.same({
+        "bar1 rows 2",
+        "bar1 filter buffs",
+        "bar2 rows 2",
+        "bar2 filter other",
+        "bar3 rows 2",
+        "bar3 filter all",
+        "timers off",
+        "tooltips off",
+      }, sent)
+    end)
+
+    it("reads either switch as on where it is missing or is anything but false", function()
+      local loaded = build_defaults(1920, 1080)
+      loaded.timers, loaded.tooltips = "no", nil
+      attach(loaded)
+      local rows = widget.config_panel().rows
+      assert.same({ true, true }, { rows[7].value, rows[8].value })
+      assert.equal("  timers on, tooltips on", widget.handle_command({})[4])
+    end)
+
+    it("shows what is in force for a row count stored as text and a category in another case", function()
+      local loaded = build_defaults(1920, 1080)
+      loaded.bars.bar1.rows = "3"
+      loaded.bars.bar2.filter = "Debuffs"
+      attach(loaded)
+      assert.same({}, panels.problems(widget.config_panel()))
+      assert.same({ 3, "all", 1, "all", 1, "other", true, true }, column("value"))
+    end)
+
+    it("offers each bar's shape and category, then the two shared switches, as they stand", function()
+      attach()
+      assert.same({
+        "Bar 1 rows",
+        "Bar 1 filter",
+        "Bar 2 rows",
+        "Bar 2 filter",
+        "Bar 3 rows",
+        "Bar 3 filter",
+        "Timers",
+        "Tooltips",
+      }, column("label"))
+      assert.same({ "choice", "choice", "choice", "choice", "choice", "choice", "toggle", "toggle" }, column("kind"))
+      assert.same({ 1, "all", 1, "debuffs", 1, "other", true, true }, column("value"))
+      widget.handle_command({ "bar2", "rows", "3" })
+      widget.handle_buffs({ "bar3", "filter", "buffs" })
+      widget.handle_command({ "timers", "off" })
+      assert.same({ 1, "all", 3, "debuffs", 1, "buffs", false, true }, column("value"))
+    end)
+
+    -- A category is set through `//hud buffs statusbar` and nowhere else, so
+    -- those three rows are the only ones routed there.
+    it("names the command that sets each row, a category going through the buff verbs", function()
+      attach()
+      assert.same({
+        { "bar1", "rows" },
+        { "bar1", "filter" },
+        { "bar2", "rows" },
+        { "bar2", "filter" },
+        { "bar3", "rows" },
+        { "bar3", "filter" },
+        { "timers" },
+        { "tooltips" },
+      }, column("command"))
+      local routes = {}
+      for index, row in ipairs(widget.config_panel().rows) do
+        routes[index] = row.route or "command"
+      end
+      assert.same({ "command", "buffs", "command", "buffs", "command", "buffs", "command", "command" }, routes)
+    end)
+
+    it("offers the four shapes the rows command takes, and no other", function()
+      attach()
+      local row = widget.config_panel().rows[3]
+      assert.same({ 1, 2, 3, 4 }, row.options)
+      assert.same({ "20x1", "10x2", "7x3", "5x4" }, row.labels)
+      for _, option in ipairs(row.options) do
+        widget.handle_command({ "bar2", "rows", tostring(option) })
+        assert.equal(option, config.bars.bar2.rows)
+      end
+      local before = saves
+      widget.handle_command({ "bar2", "rows", "0" })
+      widget.handle_command({ "bar2", "rows", "5" })
+      assert.equal(before, saves, "one past either end is refused")
+    end)
+
+    it("offers the categories the filter verb takes", function()
+      attach()
+      local row = widget.config_panel().rows[4]
+      assert.same(categories.NAMES, row.options)
+      for _, option in ipairs(row.options) do
+        widget.handle_buffs({ "bar2", "filter", option })
+        assert.equal(option, config.bars.bar2.filter)
+      end
+    end)
+
+    it("changes each setting through its own command, and saves it", function()
+      attach()
+      assert.same({}, panels.failures(panels.exercise(widget)))
+      assert.equal(16, saves, "each of the eight was moved and put back")
+    end)
+
+    -- An unusable row count draws one row and a name that is not a category
+    -- restricts nothing: the row says what the bar is doing, not what is stored.
+    it("shows what is in force where a stored value is not one the bar can use", function()
+      local loaded = build_defaults(1920, 1080)
+      loaded.bars.bar1.rows = 9
+      loaded.bars.bar2.filter = "nonsense"
+      attach(loaded)
+      assert.same({}, panels.problems(widget.config_panel()))
+      assert.same({ 1, "all", 1, "all", 1, "other", true, true }, column("value"))
+      assert.same({}, panels.failures(panels.exercise(widget)))
+    end)
+
+    it("reads a switch as off only where it is stored as exactly false", function()
+      local loaded = build_defaults(1920, 1080)
+      loaded.timers, loaded.tooltips = nil, "no"
+      attach(loaded)
+      assert.same({ true, true }, { widget.config_panel().rows[7].value, widget.config_panel().rows[8].value })
+      loaded = build_defaults(1920, 1080)
+      loaded.timers, loaded.tooltips = false, false
+      attach(loaded)
+      assert.same({ false, false }, { widget.config_panel().rows[7].value, widget.config_panel().rows[8].value })
+    end)
+
+    -- The widget replaces such an entry at attach, so only the logic alone
+    -- can meet one; its commands refuse that bar, so it has no rows to offer.
+    it("leaves out a bar whose settings are not a table", function()
+      local loaded = build_defaults(1920, 1080)
+      loaded.bars.bar2 = "nonsense"
+      local panel = new_logic({ config = loaded, resources = RESOURCES }).config_panel()
+      assert.same({}, panels.problems(panel))
+      assert.same(
+        { "Bar 1 rows", "Bar 1 filter", "Bar 3 rows", "Bar 3 filter", "Timers", "Tooltips" },
+        column("label", panel)
+      )
+    end)
+  end)
+
   describe("attach and detach", function()
     it("replaces a bar entry that is not a table with a fresh default", function()
       local broken = build_defaults(1920, 1080)

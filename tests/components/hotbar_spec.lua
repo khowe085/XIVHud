@@ -486,6 +486,160 @@ describe("hotbar", function()
     end)
   end)
 
+  describe("its panel in the settings window", function()
+    local panels = require("tests/support/panels")
+
+    local function tab(name)
+      for _, candidate in ipairs(widget.config_panel().tabs) do
+        if candidate.name == name then
+          return candidate.rows
+        end
+      end
+      return nil
+    end
+
+    local function column(rows, field, from, to)
+      local values = {}
+      for index = from or 1, to or #rows do
+        values[#values + 1] = rows[index][field]
+      end
+      return values
+    end
+
+    it("is one the window can draw", function()
+      build_world()
+      push()
+      assert.are.same({}, panels.problems(widget.config_panel()))
+    end)
+
+    it("has the sets, the rows and the set numbers, in that order", function()
+      build_world()
+      push()
+      local tabs = widget.config_panel().tabs
+      assert.are.same({ "sets", "rows", "general" }, { tabs[1].name, tabs[2].name, tabs[3].name })
+      assert.are.same({ 16, 16, 1 }, { #tabs[1].rows, #tabs[2].rows, #tabs[3].rows })
+    end)
+
+    it("takes its sets from the engine both bars share, over its own config", function()
+      build_world()
+      push()
+      local rows = tab("sets")
+      assert.are.same({ "Set 1 shared", "toggle", false }, { rows[1].label, rows[1].kind, rows[1].value })
+      assert.are.same({ "share", "1" }, rows[1].command)
+      assert.are.same({ "Set 8 cycle", "choice", "both" }, { rows[16].label, rows[16].kind, rows[16].value })
+      assert.are.same({ "cycle", "8" }, rows[16].command)
+      widget.handle_command({ "share", "4", "on" })
+      widget.handle_command({ "cycle", "3", "sheathed" })
+      assert.is_true(tab("sets")[4].value)
+      assert.are.equal("sheathed", tab("sets")[11].value)
+    end)
+
+    it("lists a shape for each of the eight rows, then a hide-empty switch for each", function()
+      build_world()
+      push()
+      local rows = tab("rows")
+      for index, anchor in ipairs(ANCHORS) do
+        assert.are.same({
+          label = "Bar " .. index .. " shape",
+          kind = "choice",
+          options = { 1, 2, 5, 10 },
+          labels = { "10x1", "5x2", "2x5", "1x10" },
+          value = 1,
+          command = { anchor, "rows" },
+        }, rows[index])
+        assert.are.same({
+          label = "Bar " .. index .. " hide empty",
+          kind = "toggle",
+          value = false,
+          command = { anchor, "hideempty" },
+        }, rows[8 + index])
+      end
+    end)
+
+    it("offers exactly the shapes the rows verb takes, labelled as its reply names them", function()
+      build_world()
+      push()
+      local row = tab("rows")[3]
+      for index, shape in ipairs(row.options) do
+        local reply = widget.handle_command({ "bar3", "rows", tostring(shape) })
+        assert.is_not_nil(reply:find("(" .. row.labels[index] .. ")", 1, true), reply)
+        assert.are.equal(shape, tab("rows")[3].value)
+      end
+      assert.are.same({ 1, 1, 10, 1, 1, 1, 1, 1 }, column(tab("rows"), "value", 1, 8))
+    end)
+
+    it("shows a hand-broken shape as the 10x1 the row is drawn in", function()
+      build_world({
+        tune = function(tuned)
+          tuned.bars.bar2.rows = 3
+          tuned.bars.bar4 = "junk"
+        end,
+      })
+      push()
+      assert.are.same({ 1, 1, 1, 1 }, column(tab("rows"), "value", 1, 4))
+    end)
+
+    it("shows each row's own hide-empty switch once hideempty has set one", function()
+      build_world()
+      push()
+      widget.handle_command({ "bar2", "hideempty", "on" })
+      assert.are.same({ false, true, false, false, false, false, false, false }, column(tab("rows"), "value", 9, 16))
+    end)
+
+    it("shows the bar-wide hide.empty_slots for a row that has no switch of its own", function()
+      build_world({
+        tune = function(tuned)
+          tuned.hide.empty_slots = true
+        end,
+      })
+      push()
+      assert.are.same({ true, true, true, true, true, true, true, true }, column(tab("rows"), "value", 9, 16))
+      widget.handle_command({ "bar5", "hideempty", "off" })
+      assert.are.same(
+        { true, true, true, true, false, true, true, true },
+        column(tab("rows"), "value", 9, 16),
+        "a row's own switch outranks it"
+      )
+      local lines = widget.handle_command({})
+      for index = 1, 8 do
+        assert.are.equal(
+          tab("rows")[8 + index].value,
+          lines[1 + index]:find("hides empty slots", 1, true) ~= nil,
+          "the window and the status line agree on bar" .. index
+        )
+      end
+    end)
+
+    it("has the set numbers switch, on unless it was switched off", function()
+      build_world()
+      push()
+      assert.are.same({
+        { label = "Set numbers", kind = "toggle", value = true, command = { "numbers" } },
+      }, tab("general"))
+      widget.handle_command({ "numbers", "off" })
+      assert.is_false(tab("general")[1].value)
+      config.numbers = nil
+      assert.is_true(tab("general")[1].value, "absent is on, as the rows are drawn")
+    end)
+
+    it("changes each setting through its own command, and saves it", function()
+      build_world()
+      push()
+      assert.are.same({}, panels.failures(panels.exercise(widget)))
+      assert.are.equal(66, env.config_saves, "each of the thirty-three was moved and moved back")
+      assert.are.same({}, env.commands, "a setting is not a press")
+    end)
+
+    it("changes them with no job scoped too", function()
+      build_world()
+      env.player = nil
+      widget.attach(config, function()
+        env.config_saves = env.config_saves + 1
+      end, store)
+      assert.are.same({}, panels.failures(panels.exercise(widget)))
+    end)
+  end)
+
   describe("visibility", function()
     it("takes a row down and brings it back without rebuilding it", function()
       build_world()

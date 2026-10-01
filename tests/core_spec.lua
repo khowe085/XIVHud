@@ -433,6 +433,61 @@ describe("core", function()
       assert.is_false(widget.shown)
       assert.is_true(core.layout_active(), "the mode itself stays on")
     end)
+
+    describe("the hidecutscene verb", function()
+      it("says how the option stands", function()
+        core.register(bar())
+        login()
+        core.on_command({ "hidecutscene" })
+        assert.is_not_nil(env.said():find("hide in cutscenes: on", 1, true))
+      end)
+
+      it("switches the option, writing core.lua at once", function()
+        core.register(bar())
+        login()
+        core.on_command({ "hidecutscene", "OFF" })
+        assert.is_false(core.config().hideCutscene)
+        assert.is_not_nil(env.fs.files["data/Azureblood/core.lua"]:find("hideCutscene = false", 1, true))
+        assert.is_not_nil(env.said():find("hide in cutscenes: off", 1, true))
+        core.on_command({ "hidecutscene", "on" })
+        assert.is_true(core.config().hideCutscene)
+      end)
+
+      it("takes effect in the cutscene it is typed in, not at the next login", function()
+        local widget = core.register(bar())
+        login()
+        core.on_status_change(EVENT_STATUS)
+        assert.is_false(widget.shown)
+        core.on_command({ "hidecutscene", "off" })
+        assert.is_true(widget.shown, "the HUD comes back mid-cutscene")
+        core.on_command({ "hidecutscene", "on" })
+        assert.is_false(widget.shown, "and goes again")
+      end)
+
+      it("answers its form for a word that is neither on nor off, and changes nothing", function()
+        core.register(bar())
+        login()
+        core.on_command({ "hidecutscene", "maybe" })
+        assert.is_not_nil(env.said():find("hidecutscene [on|off]", 1, true))
+        core.on_command({ "hidecutscene", "off", "now" })
+        assert.is_true(core.config().hideCutscene)
+      end)
+
+      it("needs a character, and nothing of the action service", function()
+        core.on_command({ "hidecutscene", "off" })
+        assert.is_not_nil(env.said():lower():find("log in"))
+        env.forget()
+        login()
+        core.on_command({ "hidecutscene", "off" })
+        assert.is_nil(env.said():lower():find("action service"))
+        assert.is_false(core.config().hideCutscene)
+      end)
+
+      it("is listed in help", function()
+        core.on_command({ "help" })
+        assert.is_not_nil(env.said():find("//hud hidecutscene", 1, true))
+      end)
+    end)
   end)
 
   describe("the render loop", function()
@@ -2145,6 +2200,474 @@ describe("core", function()
       login()
       core.on_logout()
       assert.are.same({ { "logout" } }, calls)
+    end)
+  end)
+
+  --[[ `//hud config`: core's third config mode. The window itself has its
+       own spec; this is what core does around it - what it lists, where a
+       click goes, and how it shares the screen with the other modes. It is
+       driven the way a player drives it: by clicking the texts it draws. ]]
+  describe("the settings window", function()
+    local service
+
+    -- The tuning the real service reads is core's own config, so this one
+    -- reads it too: a change made through the window shows up in the panel.
+    local function fake_service()
+      service = { binders_closed = 0, synced = 0 }
+      function service.config_defaults()
+        return {
+          retry = { enabled = false },
+          wsgate = { enabled = false, melee_range = 4, size_pivot = 1.3 },
+          delay = 5,
+        }
+      end
+      service.retry = {
+        sync = function()
+          service.synced = service.synced + 1
+        end,
+      }
+      service.wsgate = {
+        enabled = function()
+          return core.config().wsgate.enabled == true
+        end,
+        melee_range = function()
+          return core.config().wsgate.melee_range
+        end,
+        size_pivot = function()
+          return core.config().wsgate.size_pivot
+        end,
+        reach_for = function()
+          return nil
+        end,
+      }
+      service.travel = {
+        delay = function()
+          return core.config().delay
+        end,
+      }
+      function service.tick() end
+      function service.on_logout() end
+      function service.close_edit_all()
+        service.binders_closed = service.binders_closed + 1
+      end
+      return service
+    end
+
+    local function service_core()
+      deps, env = fakes.core_deps({ actions = fake_service() })
+      core = new_core(deps)
+    end
+
+    -- A component that declares a panel, and records what reaches it.
+    local function gauge(name)
+      local widget = fakes.widget(name or "gauge", placed(100, 200))
+      widget.settings = { loud = false, size = 3 }
+      widget.commands, widget.buff_commands, widget.mice = {}, {}, {}
+      function widget.config_panel()
+        return {
+          rows = {
+            { label = "Loud", kind = "toggle", value = widget.settings.loud, command = { "loud" } },
+            {
+              label = "Size",
+              kind = "stepper",
+              value = widget.settings.size,
+              min = 1,
+              max = 5,
+              step = 1,
+              command = { "size" },
+            },
+            { label = "Filter", kind = "toggle", value = false, command = { "filter" }, route = "buffs" },
+          },
+        }
+      end
+      function widget.handle_command(args)
+        widget.commands[#widget.commands + 1] = args
+        if args[1] == "loud" then
+          widget.settings.loud = args[2] == "on"
+        elseif args[1] == "size" then
+          widget.settings.size = tonumber(args[2])
+        end
+        return widget.name .. " " .. table.concat(args, " ")
+      end
+      function widget.handle_buffs(args)
+        widget.buff_commands[#widget.buff_commands + 1] = args
+        return { "filter set", "a second line" }
+      end
+      function widget.on_mouse(...)
+        widget.mice[#widget.mice + 1] = { ... }
+        return true
+      end
+      return widget
+    end
+
+    local function live_text(label, y)
+      for _, prim in ipairs(env.prims.texts) do
+        if prim.visible and prim.destroyed == 0 and prim.last.text == label and (y == nil or prim.y == y) then
+          return prim
+        end
+      end
+      return nil
+    end
+
+    local function click_at(x, y)
+      core.on_mouse(LEFT_DOWN, x, y, 0, false)
+      return core.on_mouse(LEFT_UP, x, y, 0, false)
+    end
+
+    local function click_text(label)
+      local prim = assert(live_text(label), label .. " is not on screen")
+      return click_at(prim.x + 2, prim.y + 2)
+    end
+
+    -- The control drawn level with a row's label.
+    local function click_control(row, control)
+      local label = assert(live_text(row), row .. " is not on screen")
+      local prim = assert(live_text(control, label.y), control .. " is not beside " .. row)
+      return click_at(prim.x + 2, prim.y + 2)
+    end
+
+    local function live_prims()
+      local count = 0
+      for _, prim in ipairs(env.prims.all) do
+        if prim.destroyed == 0 then
+          count = count + 1
+        end
+      end
+      return count
+    end
+
+    describe("the verb", function()
+      it("needs a character", function()
+        core.on_command({ "config" })
+        assert.is_not_nil(env.said():lower():find("log in"))
+        assert.is_false(core.config_active())
+      end)
+
+      it("opens the window, takes the mouse and says how to leave", function()
+        login()
+        core.on_command({ "config" })
+        assert.is_true(core.config_active())
+        assert.is_true(env.capture)
+        assert.is_not_nil(live_text("XIVHud settings"))
+        assert.is_not_nil(env.said():find("//hud config", 1, true))
+      end)
+
+      it("closes it again, giving the mouse back and leaving no prim behind", function()
+        login()
+        core.on_command({ "config" })
+        core.on_command({ "config" })
+        assert.is_false(core.config_active())
+        assert.is_false(env.capture)
+        assert.are.equal(0, live_prims())
+      end)
+
+      it("closes from the window's own X too", function()
+        login()
+        core.on_command({ "config" })
+        click_text("[ X ]")
+        assert.is_false(core.config_active())
+        assert.is_false(env.capture)
+      end)
+
+      it("is listed in help", function()
+        core.on_command({ "help" })
+        assert.is_not_nil(env.said():find("//hud config", 1, true))
+      end)
+    end)
+
+    describe("the menu", function()
+      it("lists global first, then the components that declare a panel, and no others", function()
+        core.register(bar("plain"))
+        core.register(gauge("gauge"))
+        core.register(gauge("dial"))
+        login()
+        core.on_command({ "config" })
+        local global, first, second = live_text("> global"), live_text("  gauge"), live_text("  dial")
+        assert.is_true(global.y < first.y and first.y < second.y, "in registration order")
+        assert.is_nil(live_text("  plain"))
+      end)
+
+      it("opens on the panel the command names, by name or alias", function()
+        local widget = gauge("gauge")
+        widget.alias = "gg"
+        core.register(widget)
+        login()
+        core.on_command({ "config", "gg" })
+        assert.is_not_nil(live_text("> gauge"))
+        assert.is_not_nil(live_text("Loud"))
+      end)
+
+      it("moves an open window to the panel the command names, rather than closing it", function()
+        core.register(gauge("gauge"))
+        login()
+        core.on_command({ "config" })
+        core.on_command({ "config", "gauge" })
+        assert.is_true(core.config_active())
+        assert.is_not_nil(live_text("> gauge"))
+        core.on_command({ "config", "global" })
+        assert.is_not_nil(live_text("> global"))
+      end)
+
+      it("says so for a component with no panel, and opens nothing", function()
+        core.register(bar("plain"))
+        login()
+        core.on_command({ "config", "plain" })
+        assert.is_not_nil(env.said():find("plain has no settings in the window", 1, true))
+        assert.is_false(core.config_active())
+      end)
+    end)
+
+    describe("the global panel", function()
+      it("carries the cutscene switch alone when the action service did not load", function()
+        login()
+        core.on_command({ "config" })
+        assert.is_not_nil(live_text("Hide in cutscenes"))
+        assert.is_nil(live_text("Cast retry"))
+      end)
+
+      it("carries the service's tuning beside it", function()
+        service_core()
+        login()
+        core.on_command({ "config" })
+        for _, label in ipairs({
+          "Cast retry",
+          "Weaponskill gate",
+          "Gate melee reach (yalms)",
+          "Gate size pivot (yalms)",
+          "Travel delay (seconds)",
+          "Hide in cutscenes",
+        }) do
+          assert.is_not_nil(live_text(label), label)
+        end
+        local reach = live_text("Gate melee reach (yalms)")
+        assert.is_not_nil(live_text("4", reach.y))
+        assert.is_not_nil(live_text("1.3", live_text("Gate size pivot (yalms)").y))
+      end)
+
+      it("switches the cast retry through the command's own handler", function()
+        service_core()
+        login()
+        core.on_command({ "config" })
+        env.forget()
+        assert.is_true(click_control("Cast retry", "[ off ]"))
+        assert.is_true(core.config().retry.enabled)
+        assert.are.equal(1, service.synced, "the retry heard the write, as it does from the CLI")
+        assert.is_not_nil(env.fs.files["data/Azureblood/core.lua"]:find("enabled = true", 1, true))
+        assert.is_not_nil(live_text("[ on ]", live_text("Cast retry").y))
+        assert.is_not_nil(live_text("cast retry: on"), "the answer is on the status line")
+        assert.are.equal("", env.said(), "and not in chat")
+      end)
+
+      it("steps the gate's reach and pivot and the travel delay", function()
+        service_core()
+        login()
+        core.on_command({ "config" })
+        click_control("Gate melee reach (yalms)", "[+]")
+        assert.are.equal(4.5, core.config().wsgate.melee_range)
+        click_control("Gate size pivot (yalms)", "[-]")
+        assert.are.equal("1.2", tostring(core.config().wsgate.size_pivot))
+        click_control("Travel delay (seconds)", "[-]")
+        assert.are.equal(4, core.config().delay)
+        click_control("Weaponskill gate", "[ off ]")
+        assert.is_true(core.config().wsgate.enabled)
+      end)
+
+      it("will not step the reach to zero, which the command refuses", function()
+        service_core()
+        env.fs.put("data/Azureblood/core.lua", "return { wsgate = { melee_range = 0.5 } }")
+        login()
+        core.on_command({ "config" })
+        click_control("Gate melee reach (yalms)", "[-]")
+        assert.are.equal(0.5, core.config().wsgate.melee_range)
+      end)
+
+      it("switches the cutscene hiding, at once", function()
+        local widget = core.register(bar())
+        login()
+        core.on_command({ "config" })
+        click_control("Hide in cutscenes", "[ on ]")
+        assert.is_false(core.config().hideCutscene)
+        core.on_status_change(EVENT_STATUS)
+        assert.is_true(widget.shown, "no longer hidden by a cutscene")
+      end)
+    end)
+
+    describe("a component's panel", function()
+      it("sends a click to the component's command handler as the words a player types", function()
+        local widget = core.register(gauge())
+        login()
+        core.on_command({ "config", "gauge" })
+        env.forget()
+        click_control("Loud", "[ off ]")
+        click_control("Size", "[+]")
+        assert.are.same({ { "loud", "on" }, { "size", "4" } }, widget.commands)
+        assert.is_not_nil(live_text("gauge size 4"), "the handler's answer is the status line")
+        assert.is_not_nil(live_text("[ on ]", live_text("Loud").y))
+        assert.are.equal("", env.said())
+      end)
+
+      it("sends a row routed to the buff verbs to handle_buffs instead", function()
+        local widget = core.register(gauge())
+        login()
+        core.on_command({ "config", "gauge" })
+        click_control("Filter", "[ off ]")
+        assert.are.same({ { "filter", "on" } }, widget.buff_commands)
+        assert.are.same({}, widget.commands)
+        assert.is_not_nil(live_text("filter set"))
+      end)
+
+      it("says in chat whatever of a longer answer the status line cannot hold", function()
+        -- `share <set> on` answers a second line warning that the job's own
+        -- bindings go dormant: the window has one line, and it must not be lost.
+        core.register(gauge())
+        login()
+        core.on_command({ "config", "gauge" })
+        env.forget()
+        click_control("Filter", "[ off ]")
+        assert.is_not_nil(live_text("filter set"))
+        assert.are.equal("a second line", env.said())
+      end)
+
+      it("says so, rather than throwing in the mouse handler, for a panel with no handler behind it", function()
+        local widget = gauge()
+        widget.handle_command, widget.handle_buffs = nil, nil
+        core.register(widget)
+        login()
+        core.on_command({ "config", "gauge" })
+        click_control("Loud", "[ off ]")
+        assert.is_not_nil(live_text("gauge takes no commands"))
+        click_control("Filter", "[ off ]")
+        assert.is_not_nil(live_text("gauge draws no buffs"), "as `//hud buffs gauge` itself answers")
+      end)
+
+      it("never hands a row routed to the buff verbs to the command handler instead", function()
+        -- A widget with commands and no buff verbs: the words are buff words,
+        -- and its command parser would read them as something else.
+        local widget = gauge()
+        widget.handle_buffs = nil
+        core.register(widget)
+        login()
+        core.on_command({ "config", "gauge" })
+        click_control("Filter", "[ off ]")
+        assert.are.same({}, widget.commands)
+        assert.is_not_nil(live_text("gauge draws no buffs"))
+      end)
+
+      it("shows what a typed command changed while it was open", function()
+        local widget = core.register(gauge())
+        login()
+        core.on_command({ "config", "gauge" })
+        core.on_command({ "gauge", "loud", "on" })
+        assert.is_true(widget.settings.loud)
+        assert.is_not_nil(live_text("[ on ]", live_text("Loud").y))
+      end)
+    end)
+
+    describe("the mouse", function()
+      it("is the window's alone while it is open", function()
+        local widget = core.register(gauge())
+        login()
+        core.on_command({ "config" })
+        local heard = #widget.mice
+        click_text("Hide in cutscenes")
+        assert.is_false(click_at(5, 5), "a click outside is still the game's")
+        assert.are.equal(heard, #widget.mice, "and no component's")
+        assert.is_true(core.config_active(), "nor does it close the window")
+        core.on_command({ "config" })
+        click_at(5, 5)
+        assert.are.equal(heard + 2, #widget.mice, "closed, the components have it back")
+      end)
+
+      it("tells every component the cursor has gone as it takes the mouse", function()
+        -- One that was mid-hover - the status bar's tooltip - would otherwise
+        -- keep its hover up for as long as the window is open.
+        local widget = core.register(gauge())
+        login()
+        core.on_command({ "config" })
+        assert.are.same({ { MOVE, -1, -1, 0 } }, widget.mice)
+        core.on_command({ "config", "gauge" })
+        assert.are.equal(1, #widget.mice, "once, as it opens - not again for a change of panel")
+      end)
+
+      it("drags the window by its title and keeps the place in core.lua", function()
+        login()
+        core.on_command({ "config" })
+        local title = live_text("XIVHud settings")
+        core.on_mouse(LEFT_DOWN, title.x + 50, title.y, 0, false)
+        core.on_mouse(MOVE, title.x - 150, title.y - 100, 0, false)
+        core.on_mouse(LEFT_UP, title.x - 150, title.y - 100, 0, false)
+        assert.are.same({ x = 300, y = 140 }, core.config().config_pos)
+        assert.is_not_nil(env.fs.files["data/Azureblood/core.lua"]:find("config_pos", 1, true))
+        core.on_command({ "config" })
+        core.on_command({ "config" })
+        assert.are.equal(310, live_text("XIVHud settings").x, "it reopens where it was left")
+      end)
+    end)
+
+    describe("beside the other modes", function()
+      it("is refused while layout mode is on", function()
+        login()
+        core.on_command({ "layout" })
+        env.forget()
+        core.on_command({ "config" })
+        assert.is_false(core.config_active())
+        assert.is_true(core.layout_active())
+        assert.is_not_nil(env.said():find("not while //hud layout is on", 1, true))
+      end)
+
+      it("gives way to layout mode", function()
+        login()
+        core.on_command({ "config" })
+        core.on_command({ "layout" })
+        assert.is_false(core.config_active())
+        assert.is_true(core.layout_active())
+        assert.is_true(env.capture, "layout mode holds the mouse now")
+      end)
+
+      it("closes every binder as it opens", function()
+        service_core()
+        login()
+        core.on_command({ "config" })
+        assert.are.equal(1, service.binders_closed)
+      end)
+
+      it("goes off screen under a cutscene and comes back after it, still open", function()
+        login()
+        core.on_command({ "config" })
+        core.on_status_change(EVENT_STATUS)
+        assert.is_nil(live_text("XIVHud settings"))
+        assert.is_true(core.config_active())
+        core.on_status_change(0)
+        assert.is_not_nil(live_text("XIVHud settings"))
+      end)
+
+      it("opens off screen when it is opened under a cutscene", function()
+        login()
+        core.on_status_change(EVENT_STATUS)
+        core.on_command({ "config" })
+        assert.is_true(core.config_active())
+        assert.is_nil(live_text("XIVHud settings"))
+      end)
+
+      it("closes on logout, on a change of character and on unload", function()
+        login()
+        core.on_command({ "config" })
+        core.on_logout()
+        assert.is_false(core.config_active())
+        assert.are.equal(0, live_prims())
+
+        login()
+        core.on_command({ "config" })
+        env.login("Other")
+        core.on_login()
+        assert.is_false(core.config_active(), "another character's settings are not this window's")
+
+        core.on_command({ "config" })
+        assert.is_true(core.config_active())
+        core.on_unload()
+        assert.is_false(core.config_active())
+        assert.are.equal(0, live_prims())
+      end)
     end)
   end)
 end)

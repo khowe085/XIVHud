@@ -913,6 +913,44 @@ local function new(ctx)
     return dispatch_command(args)
   end
 
+  --[[ The bar's sets, then the hotbar's own verbs as rows of the `//hud
+       config` window. Every value is read through the function the row is
+       drawn by, so a row with no `hide_empty` of its own shows the bar-wide
+       switch it is following. ]]
+  function self.config_panel()
+    local shapes = render.shapes()
+    local shape_names = {}
+    for index, shape in ipairs(shapes) do
+      shape_names[index] = ("%dx%d"):format(render.columns_for(shape), shape)
+    end
+    local controls = {}
+    for index, anchor in ipairs(ANCHORS) do
+      controls[#controls + 1] = {
+        label = "Bar " .. index .. " shape",
+        kind = "choice",
+        options = shapes,
+        labels = shape_names,
+        value = rows_of(anchor),
+        command = { anchor, "rows" },
+      }
+    end
+    for index, anchor in ipairs(ANCHORS) do
+      controls[#controls + 1] = {
+        label = "Bar " .. index .. " hide empty",
+        kind = "toggle",
+        value = hides_empty(anchor),
+        command = { anchor, "hideempty" },
+      }
+    end
+    local tabs = bar.config_tabs()
+    tabs[#tabs + 1] = { name = "rows", rows = controls }
+    tabs[#tabs + 1] = {
+      name = "general",
+      rows = { { label = "Set numbers", kind = "toggle", value = config.numbers ~= false, command = { "numbers" } } },
+    }
+    return { tabs = tabs }
+  end
+
   function self.on_mouse(mouse_type, x, y, delta)
     if editing() then
       return bar.binder().mouse(mouse_type, x, y, delta) == true

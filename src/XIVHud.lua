@@ -851,6 +851,10 @@ local action_service = step("building the action service", function()
     layout_active = function()
       return core.layout_active()
     end,
+    -- `//hud config`'s window, the third config mode a trip is called off under.
+    settings_open = function()
+      return core.config_active()
+    end,
     config = function()
       return core and core.config() or nil
     end,
@@ -898,6 +902,8 @@ step("building the framework", function()
     overlay_texture = function()
       return windower.addon_path .. OVERLAY_TEXTURE
     end,
+    -- For the settings window's backdrop.
+    asset = asset,
   })
 end)
 

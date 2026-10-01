@@ -119,6 +119,10 @@ describe("the crossbar and the hotbar together", function()
       layout_active = function()
         return false
       end,
+      -- `//hud config`'s window, which the service asks core about.
+      settings_open = function()
+        return env.settings_open == true
+      end,
       component_visible = function()
         return true
       end,
@@ -217,6 +221,32 @@ describe("the crossbar and the hotbar together", function()
     assert.is_nil(service.edit_owner())
     mouse(LEFT_DOWN, crossbar_slot("left", 3))
     assert.are.equal(1, #env.commands, "the crossbar is live again: its binder closed with the hotbar's")
+  end)
+
+  --[[ The settings window owns the mouse while it is open, so a binder opened
+       under it could be seen and never clicked - and the two windows sit on
+       the same spot. Refused the way it is under layout mode, for either bar. ]]
+  it("opens no binder while the settings window is open, and says why", function()
+    env.settings_open = true
+    for _, bar in ipairs({ crossbar, hotbar }) do
+      local reply = bar.handle_command({ "edit" })
+      assert.is_not_nil(reply:find("//hud config", 1, true), reply)
+      assert.is_nil(service.edit_owner(), bar.name .. " opened its binder under the window")
+    end
+    env.settings_open = false
+    assert.is_not_nil(
+      crossbar.handle_command({ "edit" }):find("edit mode on", 1, true),
+      "and opens again once it is shut"
+    )
+  end)
+
+  it("still closes an edit mode that was open before the settings window", function()
+    -- Core closes the binders as the window opens; if one is somehow still
+    -- up, `edit` must remain the way out rather than be refused.
+    crossbar.handle_command({ "edit" })
+    env.settings_open = true
+    assert.is_not_nil(crossbar.handle_command({ "edit" }):find("edit mode off", 1, true))
+    assert.is_nil(service.edit_owner())
   end)
 
   it("drags a slot off the crossbar onto the hotbar", function()

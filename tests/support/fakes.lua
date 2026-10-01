@@ -382,6 +382,9 @@ function M.core_deps(overrides)
     overlay_texture = function()
       return "addons/XIVHud/assets/overlay.png"
     end,
+    asset = function(path)
+      return "addons/XIVHud/" .. path
+    end,
   }
 
   for key, value in pairs(overrides or {}) do

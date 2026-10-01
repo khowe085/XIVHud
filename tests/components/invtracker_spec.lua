@@ -718,6 +718,253 @@ describe("invtracker widget", function()
     end)
   end)
 
+  describe("its panel in the settings window", function()
+    local panels = require("tests/support/panels")
+
+    local GROUPS = {
+      "Equipment",
+      "Inventory",
+      "Safe",
+      "Storage",
+      "Locker",
+      "Satchel",
+      "Sack",
+      "Case",
+      "Wardrobe",
+      "Temporary",
+      "Treasure",
+    }
+
+    local function rows_of(name)
+      for _, tab in ipairs(widget.config_panel().tabs) do
+        if tab.name == name then
+          return tab.rows
+        end
+      end
+      return {}
+    end
+
+    local function column(rows, field)
+      local out = {}
+      for index, row in ipairs(rows) do
+        out[index] = row[field]
+      end
+      return out
+    end
+
+    local function row_named(tab, label)
+      for _, row in ipairs(rows_of(tab)) do
+        if row.label == label then
+          return row
+        end
+      end
+      return nil
+    end
+
+    -- Whether the component's own parser takes `value` for the row's command.
+    local function accepts(row, value)
+      local words = {}
+      for index, word in ipairs(row.command) do
+        words[index] = word
+      end
+      words[#words + 1] = tostring(value)
+      local before = saves
+      widget.handle_command(words)
+      return saves > before
+    end
+
+    it("is one the window can draw", function()
+      attach()
+
+      assert.same({}, panels.problems(widget.config_panel()))
+    end)
+
+    it("moves a spacing one pixel a click, and shows the alignment by its own word", function()
+      attach()
+      local moved = {}
+      for _, record in ipairs(panels.exercise(widget)) do
+        if record.tab == "general" then
+          moved[record.label] = { record.before, record.after }
+        end
+      end
+
+      assert.same({ "4", "5" }, moved["Slot spacing"])
+      assert.same({ "4", "5" }, moved["Block spacing"])
+      assert.same({ "bottom", "top" }, moved["Align"])
+    end)
+
+    it("shows what is drawn at the far end of each clamp, and for a value that is not whole", function()
+      local config = attach()
+      config.spacing = 500
+      config.block_spacing = -9
+      config.bags.inventory.columns = 5.5
+      config.bags.safe.enabled = "yes"
+
+      assert.same({ true, true, 32, 0, "bottom" }, column(rows_of("general"), "value"))
+      assert.equal(5, row_named("columns", "Inventory").value)
+      assert.is_true(row_named("bags", "Safe").value)
+    end)
+
+    it("floors the slot spacing where the command does for a square that is not a whole size", function()
+      local config = attach()
+      local function floor_at(slot_size)
+        config.slot_size = slot_size
+        return row_named("general", "Slot spacing").min, widget.handle_command({ "spacing", "none" })
+      end
+
+      local min, refusal = floor_at(2.5)
+      assert.equal(2, min)
+      assert.equal("invtracker spacing takes a number from 2 to 32", refusal)
+      min, refusal = floor_at(0.5)
+      assert.equal(1, min)
+      assert.equal("invtracker spacing takes a number from 1 to 32", refusal)
+      min, refusal = floor_at(nil)
+      assert.equal(1, min)
+      assert.equal("invtracker spacing takes a number from 1 to 32", refusal)
+    end)
+
+    it("splits into the bags, their columns and everything else", function()
+      attach()
+
+      assert.same({ "bags", "columns", "general" }, column(widget.config_panel().tabs, "name"))
+    end)
+
+    it("switches each bag group, in the order the status line reports them", function()
+      attach()
+      local rows = rows_of("bags")
+
+      assert.same(GROUPS, column(rows, "label"))
+      assert.same({ false, true, false, false, false, true, true, true, false, true, true }, column(rows, "value"))
+      for _, row in ipairs(rows) do
+        assert.equal("toggle", row.kind)
+        assert.same({ row.label:lower() }, row.command)
+      end
+
+      widget.handle_command({ "wardrobe", "on" })
+      widget.handle_command({ "inventory", "off" })
+
+      assert.is_true(row_named("bags", "Wardrobe").value)
+      assert.is_false(row_named("bags", "Inventory").value)
+    end)
+
+    it("steps each bag group's column count", function()
+      attach()
+      local rows = rows_of("columns")
+
+      assert.same(GROUPS, column(rows, "label"))
+      assert.same({ 4, 5, 5, 4, 5, 5, 5, 5, 5, 1, 1 }, column(rows, "value"))
+      for _, row in ipairs(rows) do
+        assert.equal("stepper", row.kind)
+        assert.same({ row.label:lower(), "columns" }, row.command)
+      end
+
+      widget.handle_command({ "inventory", "columns", "10" })
+
+      assert.equal(10, row_named("columns", "Inventory").value)
+    end)
+
+    it("bounds a column count exactly where the command does", function()
+      attach()
+      local row = row_named("columns", "Satchel")
+
+      assert.equal(1, row.step or 1)
+      assert.is_true(accepts(row, row.min))
+      assert.is_false(accepts(row, row.min - 1))
+      assert.is_true(accepts(row, row.max))
+      assert.is_false(accepts(row, row.max + 1))
+    end)
+
+    it("offers the sort, the labels, both spacings and the alignment as they stand", function()
+      attach()
+      local rows = rows_of("general")
+
+      assert.same({ "Sort", "Labels", "Slot spacing", "Block spacing", "Align" }, column(rows, "label"))
+      assert.same({ "toggle", "toggle", "stepper", "stepper", "choice" }, column(rows, "kind"))
+      assert.same({ { "sort" }, { "labels" }, { "spacing" }, { "blockspacing" }, { "align" } }, column(rows, "command"))
+      assert.same({ true, true, 4, 4, "bottom" }, column(rows, "value"))
+      assert.same({ "top", "bottom" }, row_named("general", "Align").options)
+
+      widget.handle_command({ "sort", "off" })
+      widget.handle_command({ "labels", "off" })
+      widget.handle_command({ "spacing", "6" })
+      widget.handle_command({ "blockspacing", "9" })
+      widget.handle_command({ "align", "top" })
+
+      assert.same({ false, false, 6, 9, "top" }, column(rows_of("general"), "value"))
+    end)
+
+    it("bounds the slot spacing exactly where the command does", function()
+      attach()
+      local row = row_named("general", "Slot spacing")
+
+      assert.equal(3, row.min, "the square the pitch has to clear")
+      assert.is_true(accepts(row, row.min))
+      assert.is_false(accepts(row, row.min - 1))
+      assert.is_true(accepts(row, row.max))
+      assert.is_false(accepts(row, row.max + 1))
+    end)
+
+    it("raises the slot spacing's floor with the square it carries", function()
+      attach({ slot_size = 6, spacing = 8 })
+      local row = row_named("general", "Slot spacing")
+
+      assert.equal(6, row.min)
+      assert.is_true(accepts(row, 6))
+      assert.is_false(accepts(row, 5))
+    end)
+
+    it("bounds the block spacing exactly where the command does", function()
+      attach()
+      local row = row_named("general", "Block spacing")
+
+      assert.is_true(accepts(row, row.min))
+      assert.is_false(accepts(row, row.min - 1))
+      assert.is_true(accepts(row, row.max))
+      assert.is_false(accepts(row, row.max + 1))
+    end)
+
+    it("reads a setting the file does not carry the way the grid does", function()
+      local config = attach()
+      config.sort = nil
+      config.align = nil
+      config.labels = nil
+
+      assert.same({ true, false, 4, 4, "bottom" }, column(rows_of("general"), "value"))
+    end)
+
+    it("shows what is drawn where a stored value is one the grid clamps", function()
+      -- A hand-edited file can carry any of these; none is what is in force.
+      local config = attach()
+      config.spacing = 1
+      config.block_spacing = 500
+      config.align = "middle"
+      config.bags.inventory.columns = 500
+      config.bags.sack.columns = 0
+
+      assert.same({ true, true, 3, 64, "bottom" }, column(rows_of("general"), "value"))
+      assert.equal(20, row_named("columns", "Inventory").value)
+      assert.equal(1, row_named("columns", "Sack").value)
+      assert.same({}, panels.problems(widget.config_panel()))
+    end)
+
+    it("leaves out a bag group the command would refuse for having no settings", function()
+      local config = attach()
+      config.bags.safe = nil
+
+      assert.is_nil(row_named("bags", "Safe"))
+      assert.is_nil(row_named("columns", "Safe"))
+      assert.equal(10, #rows_of("bags"))
+      assert.same({}, panels.failures(panels.exercise(widget)))
+    end)
+
+    it("changes each setting through its own command, and saves it", function()
+      attach()
+
+      assert.same({}, panels.failures(panels.exercise(widget)))
+      assert.equal(54, saves, "each of the twenty-seven was moved and put back")
+    end)
+  end)
+
   it("disposes every prim it built", function()
     attach({ bags = { inventory = { enabled = true, columns = 5 } } })
     tick()

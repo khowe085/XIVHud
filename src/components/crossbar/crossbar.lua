@@ -1251,6 +1251,10 @@ local function new(ctx)
     return bar.command(args)
   end
 
+  function self.config_panel()
+    return { tabs = bar.config_tabs() }
+  end
+
   --[[ The mouse, dispatched by core while any component declares
        `on_mouse` (touchpoint 3). Core has already answered an event layout
        mode owns or another addon took, so everything arriving here is

@@ -413,6 +413,10 @@ local function new(ctx)
     return message
   end
 
+  function self.config_panel()
+    return logic.config_panel()
+  end
+
   function self.destroy()
     for _, bag in pairs(squares) do
       for _, square in pairs(bag) do

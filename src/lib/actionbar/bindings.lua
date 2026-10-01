@@ -801,6 +801,12 @@ local function new(deps)
     return is_shared(set)
   end
 
+  --- Whether a set is in the rotation of a weapon state, `drawn` or
+  --- `sheathed`, by the same read the rotation itself walks on.
+  function self.cycles(set, state)
+    return cycle_flags(set)[state] and true or false
+  end
+
   --- The scope: the main job and subjob currently loaded, or nothing at all
   --- before set_job has named one.
   function self.job()

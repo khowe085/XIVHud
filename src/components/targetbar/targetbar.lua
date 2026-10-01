@@ -349,6 +349,10 @@ local function new_bar(ctx, variant, config)
     return logic.command(args)
   end
 
+  function bar.config_row()
+    return logic.config_row()
+  end
+
   function bar.detach()
     attached = false
     --[[ Only the target is dropped. The roster and the player need no clearing
@@ -654,6 +658,14 @@ local function new(ctx)
       save()
     end
     return reply
+  end
+
+  function self.config_panel()
+    local rows = {}
+    for _, anchor in ipairs(ANCHORS) do
+      rows[#rows + 1] = bars[anchor].config_row()
+    end
+    return { rows = rows }
   end
 
   function self.destroy()

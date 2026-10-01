@@ -121,6 +121,8 @@ anywhere: `//hud reset tb` is `//hud reset targetbar`.
 | `//hud buffs <component> ...` | a component's buff order and filter settings (see below) |
 | `//hud draw`, `mr`, `warp`, `sneak`, `invisible` | actions on the game itself (see Action commands below) |
 | `//hud retry`, `wsgate`, `delay` | settings shared by the crossbar and hotbar (see Action commands below) |
+| `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default |
+| `//hud config [<component>]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
 
 **`show` and `hide` take a piece name** for components made of several
@@ -160,6 +162,53 @@ A buff can be named by its id or by its name (`//hud buffs partylist top
 haste`). `//hud buffs active` shows the ids of everything currently on you.
 See the [party list](components/partylist.md) and [status bar](components/statusbar.md)
 pages for what each one adds.
+
+## Settings window
+
+`//hud config` opens a window for changing settings with the mouse instead of
+typing them. Down its left side is a menu: `global`, for the settings that
+belong to no one component, and one entry for each component that has
+settings there. Click an entry to see its settings on the right.
+
+| Control | How it works |
+| --- | --- |
+| `[ on ]` / `[ off ]` | a switch: click it to flip it |
+| `[-] 5 [+]` | a number: `[-]` steps it down, `[+]` steps it up, one step per click |
+| `[<] magic [>]` | one of a list: the arrows step through the choices and wrap round |
+
+A component with more settings than one page holds splits them across tabs
+along the top; click a tab to see its page.
+
+Every change is saved as you make it. The line under the title shows what the
+matching command would have answered, including a refusal - the window sets
+exactly what the commands set, with the same limits, so anything you change
+here you can also type.
+
+`global` holds the cast retry, the weaponskill gate with its reach and pivot,
+the travel delay (see [Action commands](#action-commands)) and whether the HUD
+hides during cutscenes. The components with a page of their own are the
+parameter bar, target bar, party list, status bar, equipment viewer, inventory
+tracker, crossbar and hotbar; each one's page says what is on it. A number that
+needs a value the steps do not land on, the buff order and filter lists, and
+anything about a single action-bar slot are still typed.
+
+- **Move it** by dragging its title bar. It reopens where you left it.
+- **Close it** with `[ X ]`, or `//hud config` again.
+- **Open it on one panel** with `//hud config <component>`, for example
+  `//hud config global`. If the window is already open, that switches panel.
+
+While the window is open the mouse belongs to it: a click on the window never
+reaches the game, a click anywhere else does, and the action bars do not
+answer the mouse. Your keys still work. Opening it closes the action bars'
+edit mode, which cannot be opened again until the window is closed, and
+cancels a mount or warp that is counting down. It cannot be opened in layout
+mode, and entering layout mode closes it. Like the rest of
+the HUD it hides during a cutscene and comes back afterwards.
+
+Position, size and on/off are not in this window: those are layout mode's
+(`//hud layout`). Neither are an action bar's slots, which are edited in the
+bars' own edit mode (`//hud crossbar edit`, on the
+[crossbar](components/crossbar.md) page).
 
 ## Action commands
 
@@ -232,13 +281,15 @@ file is damaged the component falls back to its defaults and says so in chat.
 | --- | --- | --- |
 | `snap` | `10` | the grid, in pixels, that dragging snaps to in layout mode |
 | `slot` | `"default"` | the active layout slot |
-| `hideCutscene` | `true` | hide the HUD during cutscenes and the NPC conversations that lock your character |
+| `hideCutscene` | `true` | hide the HUD during cutscenes and the NPC conversations that lock your character (`//hud hidecutscene on\|off`) |
+| `config_pos` | centred | where you last dragged the settings window to |
 | `retry` | off | the cast retry for the crossbar and hotbar |
 | `wsgate` | off, range 4, pivot 1.3 | the weaponskill gate and its reach |
 | `delay` | `5` | seconds a mount or warp counts down before it goes |
 
 ## Auto-hide
 
-The whole HUD hides during cutscenes (unless `hideCutscene` is off), while
+The whole HUD hides during cutscenes (unless you turn that off with
+`//hud hidecutscene off`), while
 zoning and for a few seconds after, and while logged out. It comes back by
 itself. Layout mode does not override this.

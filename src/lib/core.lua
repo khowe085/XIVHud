@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local new_buffs = require("lib/buffs")
 local new_commands = require("lib/commands")
+local new_config_window = require("lib/config_window")
 local new_layout = require("lib/layout")
 local new_layout_mode = require("lib/layout_mode")
 local new_overlay = require("lib/overlay")
@@ -61,6 +62,8 @@ local CHARACTER_RETRY_SECONDS = 1
 local LOADING_RETRY_SECONDS = 0.05
 
 local CORE_NAMESPACE = "core"
+-- Windower's mouse type for a move, as layout_mode names it.
+local MOUSE_MOVE = 0
 -- What the client puts in an unused buff slot.
 local EMPTY_BUFF = 255
 local CORE_DEFAULTS = {
@@ -103,6 +106,11 @@ local HELP = {
   "  //hud wsgate [on|off]      drop a weaponskill press the game would refuse;",
   "                            wsgate range|pivot <yalms> tune its reach",
   "  //hud delay [<seconds>]    the countdown before a mount or a warp goes",
+  "  //hud hidecutscene [on|off]",
+  "                            hide the HUD during cutscenes",
+  "  //hud config [<name>]      the settings window: the options above and the",
+  "                            components' own, changed with a click; name a",
+  "                            component, or global, to open on its panel",
   "  //hud <name> ...           pass a command to a component",
   "  //hud <alias> ...          a component answers to its short name too,",
   "                            which //hud list prints beside it",
@@ -112,6 +120,9 @@ local function new(deps)
   local self = {}
   local registry
   local core_handle
+  -- `//hud config`'s window. Built once the tuners it reaches exist, far
+  -- below; everything above that closes or hides it reads this.
+  local config_window
   local next_character_check = nil
   local awaiting_login = false
 
@@ -443,6 +454,8 @@ local function new(deps)
     for _, component in ipairs(registry.all()) do
       apply(component)
     end
+    -- Suppression outranks the settings window as it does layout mode.
+    config_window.set_hidden(visibility.suppressed())
   end
 
   local layout_mode = new_layout_mode({
@@ -501,6 +514,9 @@ local function new(deps)
 
   local function set_layout_mode(on)
     if on then
+      -- Layout mode owns the mouse outright, so the settings window gives
+      -- way to it exactly as a binder does.
+      config_window.close()
       layout_mode.enter()
     else
       layout_mode.exit()
@@ -536,6 +552,8 @@ local function new(deps)
     if not settings.set_character(name) then
       return false
     end
+    -- What it was showing was the outgoing character's.
+    config_window.close()
 
     if not core_handle then
       -- Character-scoped, not slot-scoped: core holds the active slot, so its
@@ -633,6 +651,7 @@ local function new(deps)
     if layout_mode.active() then
       set_layout_mode(false)
     end
+    config_window.close()
     overlay.destroy_all()
     registry.destroy_all()
     handles = {}
@@ -715,6 +734,11 @@ local function new(deps)
     -- component's edit mode, so the two never contend (touchpoint 3).
     if layout_mode.active() then
       return layout_mode.mouse(mouse_type, x, y, delta)
+    end
+    -- So does the settings window: a click that misses it is the game's,
+    -- never a component's, for as long as it is open.
+    if config_window.active() then
+      return config_window.mouse(mouse_type, x, y, delta)
     end
     local block = false
     for _, component in ipairs(registry.all()) do
@@ -1294,27 +1318,27 @@ local function new(deps)
     return config[key]
   end
 
+  --[[ Each tuner ANSWERS its line rather than saying it: `//hud` says the
+       answer in chat and the settings window writes it on its status line,
+       so a click and a typed command are one behaviour through two doors. ]]
   local function tune_retry(words)
     if #words > 1 then
-      say("retry [on|off]")
-      return
+      return "retry [on|off]"
     end
     if words[1] == nil then
       local block = core_config().retry
-      say("cast retry: " .. (type(block) == "table" and block.enabled == true and "on" or "off"))
-      return
+      return "cast retry: " .. (type(block) == "table" and block.enabled == true and "on" or "off")
     end
     local on = parse_switch(words[1])
     if on == nil then
-      say("retry [on|off]")
-      return
+      return "retry [on|off]"
     end
     tuning_table("retry").enabled = on
     core_handle.save()
     -- Switching off drops a cast held at that moment rather than letting a
     -- last one through; the service's retry reads the write it just saw.
     deps.actions.retry.sync()
-    say("cast retry: " .. (on and "on" or "off"))
+    return "cast retry: " .. (on and "on" or "off")
   end
 
   local WSGATE_FORM = "wsgate [on|off] - or wsgate range <yalms>, wsgate pivot <yalms>"
@@ -1355,17 +1379,14 @@ local function new(deps)
     local sub = type(words[1]) == "string" and words[1]:lower() or nil
     if sub == "range" or sub == "pivot" then
       if #words > 2 then
-        say(WSGATE_FORM)
-        return
+        return WSGATE_FORM
       end
       local gate = deps.actions.wsgate
       if words[2] == nil then
         if sub == "range" then
-          say("weaponskill gate melee reach: " .. tostring(gate.melee_range()) .. " yalms")
-        else
-          say("weaponskill gate size pivot: " .. tostring(gate.size_pivot()) .. " yalms")
+          return "weaponskill gate melee reach: " .. tostring(gate.melee_range()) .. " yalms"
         end
-        return
+        return "weaponskill gate size pivot: " .. tostring(gate.size_pivot()) .. " yalms"
       end
       -- Refused rather than stored: the module falls back to the shipped
       -- value for one it cannot use, so writing it would leave the player
@@ -1376,68 +1397,267 @@ local function new(deps)
       local bad = yalms == nil or yalms ~= yalms or yalms == math.huge
       if sub == "range" then
         if bad or yalms <= 0 then
-          say("wsgate range <yalms> - a distance greater than zero")
-          return
+          return "wsgate range <yalms> - a distance greater than zero"
         end
         tuning_table("wsgate").melee_range = yalms
         core_handle.save()
-        say("weaponskill gate melee reach: " .. tostring(yalms) .. " yalms")
-      else
-        if bad or yalms < 0 then
-          say("wsgate pivot <yalms> - a distance of zero or more")
-          return
-        end
-        tuning_table("wsgate").size_pivot = yalms
-        core_handle.save()
-        say("weaponskill gate size pivot: " .. tostring(yalms) .. " yalms")
+        return "weaponskill gate melee reach: " .. tostring(yalms) .. " yalms"
       end
-      return
+      if bad or yalms < 0 then
+        return "wsgate pivot <yalms> - a distance of zero or more"
+      end
+      tuning_table("wsgate").size_pivot = yalms
+      core_handle.save()
+      return "weaponskill gate size pivot: " .. tostring(yalms) .. " yalms"
     end
     if #words > 1 then
-      say(WSGATE_FORM)
-      return
+      return WSGATE_FORM
     end
     if words[1] == nil then
-      say(wsgate_state())
-      return
+      return wsgate_state()
     end
     local on = parse_switch(words[1])
     if on == nil then
-      say(WSGATE_FORM)
-      return
+      return WSGATE_FORM
     end
     tuning_table("wsgate").enabled = on
     core_handle.save()
-    say("weaponskill gate: " .. (on and "on" or "off"))
+    return "weaponskill gate: " .. (on and "on" or "off")
   end
 
   local function tune_delay(words)
     if words[1] == nil then
       local span = deps.actions.travel.delay()
-      say("travel delay: " .. tostring(span) .. (span == 1 and " second" or " seconds") .. " - zero switches it off")
-      return
+      return "travel delay: " .. tostring(span) .. (span == 1 and " second" or " seconds") .. " - zero switches it off"
     end
     local seconds = tonumber(words[1])
     if #words > 1 or seconds == nil or seconds ~= seconds or seconds == math.huge or seconds < 0 then
-      say("delay <seconds> - zero or more; zero switches the countdown off")
-      return
+      return "delay <seconds> - zero or more; zero switches the countdown off"
     end
     core_config().delay = seconds
     core_handle.save()
-    say("travel delay: " .. tostring(seconds) .. (seconds == 1 and " second" or " seconds"))
+    return "travel delay: " .. tostring(seconds) .. (seconds == 1 and " second" or " seconds")
   end
 
+  --[[ `hideCutscene` is read into the resolver at login, so a switch has to
+       be pushed there itself: one that waited for the next login would read
+       as broken to someone standing in the cutscene they typed it in. ]]
+  local function tune_hidecutscene(words)
+    if #words > 1 then
+      return "hidecutscene [on|off]"
+    end
+    if words[1] == nil then
+      return "hide in cutscenes: " .. (core_config().hideCutscene ~= false and "on" or "off")
+    end
+    local on = parse_switch(words[1])
+    if on == nil then
+      return "hidecutscene [on|off]"
+    end
+    core_config().hideCutscene = on
+    core_handle.save()
+    if visibility.set_hide_event(on) then
+      apply_all()
+    end
+    return "hide in cutscenes: " .. (on and "on" or "off")
+  end
+
+  local TUNERS = { retry = tune_retry, wsgate = tune_wsgate, delay = tune_delay, hidecutscene = tune_hidecutscene }
+  -- The three that are the action service's own tuning, and need it loaded.
+  local SERVICE_TUNERS = { retry = true, wsgate = true, delay = true }
+
   local function run_tune(action)
-    if not require_character() or not require_service() then
+    if not require_character() then
       return
     end
-    if action.verb == "retry" then
-      tune_retry(action.words)
-    elseif action.verb == "wsgate" then
-      tune_wsgate(action.words)
-    elseif action.verb == "delay" then
-      tune_delay(action.words)
+    if SERVICE_TUNERS[action.verb] and not require_service() then
+      return
     end
+    say(TUNERS[action.verb](action.words))
+  end
+
+  --[[ The settings window ---------------------------------------------------
+       Core's third config mode, beside layout mode and the bars' binders.
+       It lists `global` - the options core.lua carries - and every
+       component declaring `config_panel()`, an opt-in member detected
+       exactly as `handle_buffs` is, and every click goes back out through
+       the handler the same words reach when they are typed. ]]
+  local GLOBAL_PANEL = "global"
+
+  local function config_entries()
+    local names = { GLOBAL_PANEL }
+    for _, component in ipairs(registry.all()) do
+      if component.config_panel then
+        names[#names + 1] = component.name
+      end
+    end
+    return names
+  end
+
+  -- The service's tuning only where the service loaded: without it those
+  -- verbs answer nothing, and a row that could not be changed is worse than
+  -- no row.
+  local function global_panel()
+    local rows = {}
+    if deps.actions ~= nil then
+      local retry, gate = core_config().retry, deps.actions.wsgate
+      rows = {
+        {
+          label = "Cast retry",
+          kind = "toggle",
+          value = type(retry) == "table" and retry.enabled == true,
+          command = { "retry" },
+        },
+        { label = "Weaponskill gate", kind = "toggle", value = gate.enabled(), command = { "wsgate" } },
+        -- Half a yalm is as near to zero as the reach steps: the command
+        -- refuses zero itself, `wsgate off` being the off switch.
+        {
+          label = "Gate melee reach (yalms)",
+          kind = "stepper",
+          value = gate.melee_range(),
+          min = 0.5,
+          step = 0.5,
+          command = { "wsgate", "range" },
+        },
+        {
+          label = "Gate size pivot (yalms)",
+          kind = "stepper",
+          value = gate.size_pivot(),
+          min = 0,
+          step = 0.1,
+          command = { "wsgate", "pivot" },
+        },
+        {
+          label = "Travel delay (seconds)",
+          kind = "stepper",
+          value = deps.actions.travel.delay(),
+          min = 0,
+          step = 1,
+          command = { "delay" },
+        },
+      }
+    end
+    rows[#rows + 1] = {
+      label = "Hide in cutscenes",
+      kind = "toggle",
+      value = core_config().hideCutscene ~= false,
+      command = { "hidecutscene" },
+    }
+    return { rows = rows }
+  end
+
+  local function config_panel(name)
+    if name == GLOBAL_PANEL then
+      return global_panel()
+    end
+    local component = registry.get(name)
+    return component ~= nil and component.config_panel ~= nil and component.config_panel() or nil
+  end
+
+  --- One change, as the words a player would have typed after `//hud` (for
+  --- `global`) or after the component's name. Answers the handler's reply.
+  local function config_apply(name, words, route)
+    if name == GLOBAL_PANEL then
+      local tuner = TUNERS[words[1]]
+      if tuner == nil or (SERVICE_TUNERS[words[1]] and deps.actions == nil) then
+        return nil
+      end
+      local rest = {}
+      for index = 2, #words do
+        rest[index - 1] = words[index]
+      end
+      return tuner(rest)
+    end
+    --[[ A panel naming a handler its widget does not carry: said, as the
+         CLI says it, not thrown - this runs inside the mouse handler. The
+         two routes are kept apart rather than falling back on one another:
+         buff words handed to a command parser would be read as something
+         else. ]]
+    local component = registry.get(name) or {}
+    local reply
+    if route == "buffs" then
+      if not component.handle_buffs then
+        return name .. " draws no buffs"
+      end
+      reply = component.handle_buffs(words)
+    else
+      if not component.handle_command then
+        return name .. " takes no commands"
+      end
+      reply = component.handle_command(words)
+    end
+    -- The window has one status line, and a command's second line is where
+    -- it puts a warning: what the window cannot hold is said in chat, as the
+    -- CLI would have said all of it.
+    if type(reply) == "table" then
+      for index = 2, #reply do
+        say(reply[index])
+      end
+    end
+    return reply
+  end
+
+  config_window = new_config_window({
+    new_image = deps.new_image,
+    new_text = deps.new_text,
+    asset = deps.asset,
+    screen = deps.screen,
+    entries = config_entries,
+    panel = config_panel,
+    apply = config_apply,
+    window_pos = function()
+      local config = core_config()
+      return config and config.config_pos or nil
+    end,
+    save_window_pos = function(x, y)
+      core_config().config_pos = { x = x, y = y }
+      core_handle.save()
+    end,
+    on_close = function()
+      deps.set_input_capture(false)
+    end,
+  })
+
+  function self.config_active()
+    return config_window.active()
+  end
+
+  local function run_config(action)
+    if layout_mode.active() then
+      say("settings window - not while //hud layout is on; //hud layout again first")
+      return
+    end
+    local panel = action.panel
+    if panel ~= nil and panel ~= GLOBAL_PANEL and not registry.get(panel).config_panel then
+      say(panel .. " has no settings in the window")
+      return
+    end
+    if config_window.active() then
+      -- Naming a panel moves an open window to it; the bare verb toggles.
+      if panel ~= nil then
+        config_window.select(panel)
+        return
+      end
+      config_window.close()
+      say("settings window closed")
+      return
+    end
+    -- One config mode at a time: the binders close, as they do for layout
+    -- mode.
+    if deps.actions ~= nil and deps.actions.close_edit_all ~= nil then
+      deps.actions.close_edit_all()
+    end
+    -- No component hears the mouse again until the window closes, so each
+    -- is told the cursor has gone: one that was mid-hover would otherwise
+    -- keep its hover up - the status bar's tooltip - for all that time.
+    for _, component in ipairs(registry.all()) do
+      if component.on_mouse then
+        component.on_mouse(MOUSE_MOVE, -1, -1, 0)
+      end
+    end
+    deps.set_input_capture(true)
+    config_window.set_hidden(visibility.suppressed())
+    config_window.open(panel)
+    say("settings window open - //hud config again, or its X, to close it")
   end
 
   local function run(action)
@@ -1494,6 +1714,10 @@ local function new(deps)
       run_action(action)
     elseif action.action == "tune" then
       run_tune(action)
+    elseif action.action == "config" then
+      if require_character() then
+        run_config(action)
+      end
     elseif action.action == "component" then
       if not require_character() then
         return
@@ -1511,6 +1735,8 @@ local function new(deps)
 
   function self.on_command(args)
     run(commands.parse(args))
+    -- Any command can move what an open settings window is showing.
+    config_window.refresh()
   end
 
   return self

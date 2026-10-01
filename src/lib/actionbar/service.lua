@@ -426,11 +426,12 @@ local function new(deps)
     end
   end
 
-  --[[ The config modes: `//hud layout` and a bar's binder are for arranging
-       the HUD, not for playing in. A bar reports its binder here, so a trip
-       refuses to arm under either and one already counting down is called
-       off. Layout mode is asked first because entering it closes every
-       binder, so it is the one that is open when both look it. ]]
+  --[[ The config modes: `//hud layout`, the settings window and a bar's
+       binder are for arranging the HUD, not for playing in. A bar reports
+       its binder here, so a trip refuses to arm under any of them and one
+       already counting down is called off. Layout mode is asked first
+       because entering it closes the other two, so it is the one that is
+       open when more than one looks it. ]]
   local editing = {}
 
   --[[ The bars, in the order they registered, each as what another bar's
@@ -584,9 +585,22 @@ local function new(deps)
     return deps.chat_open ~= nil and deps.chat_open() == true
   end
 
+  --[[ Whether `//hud config`'s window is open. Asked rather than told, as
+       layout mode is: the window is core's, and a flag kept here would be a
+       second opinion of whether it is open. Not an `editing` owner either -
+       every bar dresses as a drop target for one of those. A bar asks this
+       too: the window owns the mouse, so a binder opened under it could
+       never be clicked. ]]
+  function self.settings_open()
+    return deps.settings_open ~= nil and deps.settings_open() == true
+  end
+
   local function config_mode()
     if layout_active() then
       return "//hud layout"
+    end
+    if self.settings_open() then
+      return "//hud config"
     end
     if next(editing) ~= nil then
       return "edit mode"

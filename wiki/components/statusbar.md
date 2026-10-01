@@ -48,6 +48,11 @@ switches one on, or SHIFT + right-click it in layout mode.
 Per-bar commands take an optional bar word in front of the verb: `bar1` (the
 default), `bar2` or `bar3`.
 
+Each bar's rows and predefined filter, and the timer and tooltip switches,
+can also be changed with the mouse: `//hud config statusbar` opens the
+[settings window](../Home.md#settings-window) on this component. The buff
+order and each bar's own filter list stay commands.
+
 | Command | What it does |
 | --- | --- |
 | `//hud statusbar` | print all three bars and the two switches |

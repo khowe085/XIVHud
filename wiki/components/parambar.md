@@ -103,6 +103,10 @@ the first four are also set by command.
 
 ## Commands
 
+Every setting below can also be changed with the mouse: `//hud config parambar`
+opens the [settings window](../Home.md#settings-window) on this component.
+(`accuracy reset` is an action rather than a setting, so it is not there.)
+
 | Command | What it does |
 | --- | --- |
 | `//hud parambar` | print the current width, spacing, offset and compact state |

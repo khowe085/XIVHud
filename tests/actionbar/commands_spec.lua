@@ -2052,3 +2052,245 @@ describe("crossbar commands", function()
     end)
   end)
 end)
+
+describe("the action bars' tabs in the settings window", function()
+  local panels = require("tests/support/panels")
+  local grammar = require("lib/actionbar/grammar")
+  local CYCLE_MODES = { "both", "drawn", "sheathed", "none" }
+
+  local function hotbar(opts)
+    opts = opts or {}
+    opts.name = "hotbar"
+    opts.grammar = grammar.hotbar()
+    opts.views = false
+    return build(opts)
+  end
+
+  local function tab(commands, name)
+    for _, candidate in ipairs(commands.config_tabs()) do
+      if candidate.name == name then
+        return candidate.rows
+      end
+    end
+    return nil
+  end
+
+  local function column(rows, field)
+    local values = {}
+    for index, row in ipairs(rows) do
+      values[index] = row[field]
+    end
+    return values
+  end
+
+  local function names(commands)
+    return column(commands.config_tabs(), "name")
+  end
+
+  it("gives the crossbar its sets, views and general, and a bar without views its sets alone", function()
+    assert.are.same({ "sets", "views", "general" }, names((build())))
+    assert.are.same({ "sets" }, names((hotbar())))
+  end)
+
+  it("are tabs the window can draw", function()
+    assert.are.same({}, panels.problems({ tabs = build().config_tabs() }))
+    assert.are.same({}, panels.problems({ tabs = hotbar().config_tabs() }))
+  end)
+
+  describe("sets", function()
+    it("lists a shared switch for each of the eight sets, then a rotation choice for each", function()
+      local rows = tab(build(), "sets")
+      assert.are.equal(16, #rows)
+      for set = 1, 8 do
+        assert.are.same({
+          label = "Set " .. set .. " shared",
+          kind = "toggle",
+          value = false,
+          command = { "share", tostring(set) },
+        }, rows[set])
+        assert.are.same({
+          label = "Set " .. set .. " cycle",
+          kind = "choice",
+          options = CYCLE_MODES,
+          value = "both",
+          command = { "cycle", tostring(set) },
+        }, rows[8 + set])
+      end
+    end)
+
+    it("is the same sixteen rows on a bar without views", function()
+      assert.are.same(tab(build(), "sets"), tab(hotbar(), "sets"))
+    end)
+
+    it("shows what share and cycle have set", function()
+      local commands = build()
+      commands.command({ "share", "3", "on" })
+      commands.command({ "cycle", "2", "drawn" })
+      commands.command({ "cycle", "5", "sheathed" })
+      commands.command({ "cycle", "7", "none" })
+      local values = column(tab(commands, "sets"), "value")
+      assert.are.same({ false, false, true, false, false, false, false, false }, { unpack(values, 1, 8) })
+      assert.are.same(
+        { "both", "drawn", "both", "both", "sheathed", "both", "none", "both" },
+        { unpack(values, 9, 16) }
+      )
+    end)
+
+    it("offers exactly the rotation modes the cycle verb takes", function()
+      local commands = build()
+      for _, mode in ipairs(tab(commands, "sets")[12].options) do
+        local reply, saved = commands.command({ "cycle", "4", mode })
+        assert.is_true(saved, mode .. ": " .. text_of(reply))
+        assert.are.equal(mode, tab(commands, "sets")[12].value)
+      end
+    end)
+
+    it("needs no job scoped", function()
+      local commands = build({ job = false })
+      commands.command({ "share", "2", "on" })
+      commands.command({ "cycle", "2", "sheathed" })
+      local rows = tab(commands, "sets")
+      assert.is_true(rows[2].value)
+      assert.are.equal("sheathed", rows[10].value)
+    end)
+
+    it("reads a hand-broken flag the way the binding model does", function()
+      local commands, world = build({
+        set_flags = {
+          [1] = "junk",
+          [2] = { shared = 1 },
+          [3] = { cycle = false },
+          [4] = { cycle = "junk" },
+          [5] = { cycle = { drawn = true } },
+          [6] = { cycle = {} },
+          [8] = { shared = false, cycle = { drawn = false, sheathed = 1 } },
+        },
+      })
+      local values = column(tab(commands, "sets"), "value")
+      assert.are.same({ false, true, false, false, false, false, false, false }, { unpack(values, 1, 8) })
+      assert.are.same(
+        { "both", "both", "none", "both", "drawn", "none", "both", "sheathed" },
+        { unpack(values, 9, 16) }
+      )
+      for set = 1, 8 do
+        assert.are.equal(world.bindings.shared(set), values[set], "set " .. set)
+      end
+      world.config.set_flags = "junk"
+      values = column(tab(commands, "sets"), "value")
+      assert.is_false(values[2])
+      assert.are.equal("both", values[11])
+    end)
+
+    it("says a set is in a rotation exactly when the rotation lands on it", function()
+      local commands, world = build({ set_flags = { [2] = { cycle = false }, [3] = { cycle = { drawn = true } } } })
+      for set = 1, 4 do
+        world.bindings.bind(set, "l", 1, { type = "ja", action = "Provoke" })
+      end
+      local values = column(tab(commands, "sets"), "value")
+      assert.are.same({ "both", "none", "drawn", "both" }, { unpack(values, 9, 12) })
+      assert.are.equal(4, world.bindings.cycle(), "sheathed: sets 2 and 3 are passed over")
+    end)
+
+    it("writes each set a rotation table of its own, never the one the verb looks its mode up in", function()
+      local commands, world = build()
+      commands.command({ "cycle", "1", "drawn" })
+      commands.command({ "cycle", "2", "drawn" })
+      local flags = world.config.set_flags
+      assert.are_not.equal(flags[1].cycle, flags[2].cycle)
+      flags[1].cycle.drawn, flags[1].cycle.sheathed = false, true
+      assert.are.same({ drawn = true, sheathed = false }, flags[2].cycle, "set 2 kept its own")
+      commands.command({ "cycle", "3", "drawn" })
+      assert.are.same({ drawn = true, sheathed = false }, flags[3].cycle, "and the verb still writes drawn")
+      assert.are.same({ "sheathed", "drawn", "drawn" }, { unpack(column(tab(commands, "sets"), "value"), 9, 11) })
+    end)
+  end)
+
+  describe("views", function()
+    local TARGETS = {}
+    for set = 1, 8 do
+      TARGETS[#TARGETS + 1] = set .. "L"
+      TARGETS[#TARGETS + 1] = set .. "R"
+    end
+
+    it("lists the four views the view verb takes, each over the sixteen sides", function()
+      local rows = tab(build(), "views")
+      assert.are.same({ "WXHB left", "WXHB right", "Expanded L then R", "Expanded R then L" }, column(rows, "label"))
+      assert.are.same({
+        { "view", "wxhb-L" },
+        { "view", "wxhb-R" },
+        { "view", "exp-LR" },
+        { "view", "exp-RL" },
+      }, column(rows, "command"))
+      assert.are.same({ "2L", "2R", "3L", "3R" }, column(rows, "value"))
+      for _, row in ipairs(rows) do
+        assert.are.equal("choice", row.kind)
+        assert.are.same(TARGETS, row.options)
+      end
+    end)
+
+    it("names each view by the word the CLI's own map spells", function()
+      local commands = build()
+      for index, view in ipairs(commands.views) do
+        assert.are.same({ "view", view.cli }, tab(commands, "views")[index].command)
+      end
+    end)
+
+    it("shows where the view verb pointed one, for every target it offers", function()
+      local commands = build()
+      for _, target in ipairs(TARGETS) do
+        local reply, saved = commands.command({ "view", "exp-RL", target })
+        assert.is_true(saved, target .. ": " .. text_of(reply))
+        assert.are.equal(target, tab(commands, "views")[4].value)
+      end
+      assert.are.same({ "2L", "2R", "3L", "8R" }, column(tab(commands, "views"), "value"))
+    end)
+
+    it("says none for a view the config does not carry, as the bar draws none", function()
+      local commands, world = build()
+      world.config.views.wxhb_right = nil
+      assert.are.same({ "2L", "none", "3L", "3R" }, column(tab(commands, "views"), "value"))
+      assert.is_nil(world.bindings.view_target("wxhb_right"))
+      world.config.views = "junk"
+      assert.are.same({ "none", "none", "none", "none" }, column(tab(commands, "views"), "value"))
+    end)
+
+    it("says none for a view stored as something that is not a table", function()
+      local commands, world = build()
+      world.config.views.wxhb_left = "junk"
+      world.config.views.expanded_lr = 5
+      assert.are.same({ "none", "2R", "none", "3R" }, column(tab(commands, "views"), "value"))
+    end)
+
+    it("shows a view's side the way the binding model reads it", function()
+      -- A hand-written `side = "L"` is one the model folds and the bar draws.
+      local commands, world = build()
+      world.bindings.bind(2, "l", 1, { type = "ja", action = "Provoke" })
+      world.config.views.wxhb_left = { set = 2, side = "L" }
+      local target = world.bindings.view_target("wxhb_left")
+      assert.is_not_nil(world.bindings.resolve(target.set, target.side, 1), "the bar draws set 2's LEFT side")
+      assert.are.equal("2L", tab(commands, "views")[1].value)
+      world.config.views.wxhb_left = { set = 2, side = "junk" }
+      assert.is_nil(world.bindings.resolve(2, "junk", 1), "and nothing for a side the model cannot read")
+      assert.are.equal("none", tab(commands, "views")[1].value)
+    end)
+  end)
+
+  describe("general", function()
+    it("is the resting WXHB switch", function()
+      local commands = build()
+      assert.are.same({
+        { label = "Always show WXHB", kind = "toggle", value = false, command = { "wxhb" } },
+      }, tab(commands, "general"))
+      commands.command({ "wxhb", "on" })
+      assert.is_true(tab(commands, "general")[1].value)
+      commands.command({ "wxhb", "off" })
+      assert.is_false(tab(commands, "general")[1].value)
+    end)
+
+    it("reads only a true flag as on, which is all the bar rests the WXHB for", function()
+      local commands, world = build()
+      world.config.always_show_wxhb = 1
+      assert.is_false(tab(commands, "general")[1].value)
+    end)
+  end)
+end)
