@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      up. Openers fire immediately and unconditionally: the v4 activators are
      punctuation, so no held modifier can contaminate an injected chord. ]]
 
+local jobchange = require("lib/actionbar/jobchange")
 local openers = require("lib/actionbar/openers")
 
 -- Types whose word is the FFXI command word, fired as /<type> "<name>".
@@ -291,6 +292,13 @@ local function new(deps)
     if kind == "open" then
       return open_plan(record.action)
     end
+    if kind == "jc" then
+      local main, sub = jobchange.parse(record.action)
+      if main == nil then
+        return nil, sub
+      end
+      return command_plan("jc " .. main:lower() .. "/" .. sub:lower())
+    end
     if kind == "draw" then
       return draw_plan(state)
     end
@@ -385,6 +393,10 @@ local function new(deps)
       local entry = openers[record.action]
       return entry and entry.icon
     end
+    if record.type == "jc" then
+      local main = jobchange.parse(record.action)
+      return main and jobchange.icon(main)
+    end
     local entry = BUILTINS[record.type]
     return entry and entry.icon
   end
@@ -418,6 +430,16 @@ local function new(deps)
       -- charged is a question about right now, and binding is not now.
       if not valid_name(record.action) then
         return nil, "enchanteditem needs an item name"
+      end
+      return true
+    end
+    if kind == "jc" then
+      if record.target ~= nil then
+        return nil, "jc takes no target"
+      end
+      local main, complaint = jobchange.parse(record.action)
+      if main == nil then
+        return nil, complaint
       end
       return true
     end

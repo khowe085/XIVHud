@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      in question is the MAIN one (merits and job points apply to the main job
      alone - the same main-only rule the stratagem gift follows). ]]
 
+local jobchange = require("lib/actionbar/jobchange")
 local openers = require("lib/actionbar/openers")
 local enchanted = require("lib/actionbar/enchanted")
 
@@ -536,6 +537,24 @@ local function new(deps)
     end
   end
 
+  --[[ Main job, then sub job: two nested menus, in the game's own order. All
+       22 on both levels, unlocked or not (Kevin, 2026-10-09) - the JobChange
+       addon refuses a locked job at the press. The alias is the sub, since
+       the icon already says the main. ]]
+  local function job_change_menu()
+    local mains = {}
+    for _, main in ipairs(jobchange.JOBS) do
+      local subs = {}
+      for _, sub in ipairs(jobchange.JOBS) do
+        if sub ~= main then
+          subs[#subs + 1] = { label = sub, record = { type = "jc", action = main .. "/" .. sub, alias = sub } }
+        end
+      end
+      mains[#mains + 1] = { label = main, icon = jobchange.icon(main), children = subs }
+    end
+    return mains
+  end
+
   -- The built-ins need no client at all, which is what keeps the catalog
   -- useful before the resources library has answered anything.
   local function builtins(groups)
@@ -545,6 +564,7 @@ local function new(deps)
     for name in pairs(openers) do
       add(groups, "Open", { label = name, record = { type = "open", action = name } })
     end
+    add(groups, "General", { label = "Job Change", children = job_change_menu() })
   end
 
   --- Every bindable action right now, grouped and ordered for the picker.

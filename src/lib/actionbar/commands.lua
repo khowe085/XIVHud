@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local roster = require("lib/actionbar/contexts")
 local grammars = require("lib/actionbar/grammar")
+local jobchange = require("lib/actionbar/jobchange")
 
 -- The component's own asset root, for the shipped half of an icon name.
 -- The asset ROOT, not one folder in it: what hangs off this is `own/` for
@@ -710,7 +711,8 @@ local function new(deps)
     -- Whether a target could have been given at all, which decides how a
     -- target word inside a label reads: a late aim on the types that take
     -- one, an ordinary word of the alias on the types that do not.
-    local targetable = kind == "ra" or not (NO_ACTION_TYPES[kind] or WHOLE_LINE_TYPES[kind] or kind == "open")
+    local targetable = kind == "ra"
+      or not (NO_ACTION_TYPES[kind] or WHOLE_LINE_TYPES[kind] or kind == "open" or kind == "jc")
     local labelled = has_alias(rest, labels_at)
     if NO_ACTION_TYPES[kind] then
       if kind == "ra" and #head > 0 then
@@ -776,6 +778,16 @@ local function new(deps)
         )
       end
       record.action = undelimit(head[1]):lower()
+    elseif kind == "jc" then
+      if #head ~= 1 then
+        return hint("jc takes one main/sub pair, like WAR/BLM, then alias= and icon=")
+      end
+      local main, sub = jobchange.parse(undelimit(head[1]))
+      if main == nil then
+        return hint(sub)
+      end
+      -- The binder's label: the icon already says the main job.
+      record.action, record.alias = main .. "/" .. sub, sub
     else
       local complaint_text
       record.action, record.target, complaint_text, absorbed = split_action_target(head)
@@ -788,7 +800,7 @@ local function new(deps)
       if labels == nil then
         return hint(labels_complaint)
       end
-      record.alias, record.icon = labels.alias, labels.icon
+      record.alias, record.icon = labels.alias or record.alias, labels.icon
     end
     local ok, complaint_text = deps.validate(record)
     if ok == nil then
