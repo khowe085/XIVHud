@@ -98,6 +98,9 @@ local ROW_INSET_CHARACTERS = 1
 -- "99.99", the widest the clamp below allows.
 local DISTANCE_CHARACTERS = 5
 local MAX_DISTANCE = 99.99
+-- The treasure hunter suffix, " - TH:14": reserved past the name's cap rather
+-- than cut from it, so the box does not move as a level appears.
+local TH_CHARACTERS = 8
 
 -- partylist's bands, strictly less than, on the percent value.
 local BANDS = { { 25, "red" }, { 50, "orange" }, { 75, "yellow" } }
@@ -255,8 +258,11 @@ end
      two bars answering identically would leave the user unable to tell which
      one they had just changed. It defaults to the target bar rather than to a
      nameless one: the widget always passes it, and a bar with no name in its
-     own replies is not a state worth carrying code for. ]]
-local function new(initial_config, resources, variant)
+     own replies is not a state worth carrying code for.
+
+     `treasure` answers a mob id with its treasure hunter level, or nil; the
+     widget hands every bar the one tracker. Absent, no level is ever shown. ]]
+local function new(initial_config, resources, variant, treasure)
   local self = {}
   local config = initial_config or {}
   variant = variant or "main"
@@ -466,6 +472,14 @@ local function new(initial_config, resources, variant)
     return ("%.2f"):format(math.min(distance, MAX_DISTANCE))
   end
 
+  local function th_suffix(mob)
+    local level = treasure and treasure(mob.id)
+    if not level then
+      return ""
+    end
+    return (" - TH:%d"):format(level)
+  end
+
   --[[ The three row segments. Each carries its own colour because each is a
        separate prim: the hp number bands, the distance follows the range
        scheme, and the name is never coloured by either. ]]
@@ -495,7 +509,7 @@ local function new(initial_config, resources, variant)
         color = range_colors[distance_state(distance)] or text_color,
       },
       name = {
-        text = mob.name:sub(1, name_cap()),
+        text = mob.name:sub(1, name_cap()) .. th_suffix(mob),
         color = text_color,
       },
     }
@@ -641,7 +655,7 @@ local function new(initial_config, resources, variant)
     local text_height = font_size * TEXT_HEIGHT_RATIO
     local hp_reserve = reserve(HP_CHARACTERS, font_size)
     local distance_reserve = reserve(DISTANCE_CHARACTERS, font_size)
-    local name_reserve = reserve(name_cap(), font_size)
+    local name_reserve = reserve(name_cap() + TH_CHARACTERS, font_size)
     local row_inset = ROW_INSET_CHARACTERS * font_size * RATIO
 
     -- Floored at the frame's own drawn width: the art is that wide whatever

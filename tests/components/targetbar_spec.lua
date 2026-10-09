@@ -1248,6 +1248,90 @@ describe("targetbar widget", function()
     end)
   end)
 
+  describe("treasure hunter", function()
+    local function u32(value)
+      return string.char(
+        value % 256,
+        math.floor(value / 256) % 256,
+        math.floor(value / 65536) % 256,
+        math.floor(value / 16777216) % 256
+      )
+    end
+
+    local function proc(mob_id, level)
+      widget.update("chunk", 0x028, "raw action bytes", {
+        actor_id = 1,
+        category = 1,
+        targets = {
+          {
+            id = mob_id,
+            actions = { { message = 1, has_add_effect = true, add_effect_message = 603, add_effect_param = level } },
+          },
+        },
+      })
+    end
+
+    before_each(function()
+      attach()
+      widget.set_pos(100, 100, "main")
+      widget.set_pos(100, 300, "subtarget")
+      widget.show()
+      target = mob({ id = 100, name = "Colibri" })
+    end)
+
+    it("follows the target's name once it procs", function()
+      proc(100, 4)
+      widget.update()
+      assert.are.equal("Colibri - TH:4", name().last.text)
+    end)
+
+    it("is not drawn on a mob that has not procced", function()
+      proc(101, 4)
+      widget.update()
+      assert.are.equal("Colibri", name().last.text)
+    end)
+
+    it("is drawn on the subtarget bar for the mob it shows", function()
+      subtarget = mob({ id = 101, name = "Bat" })
+      proc(101, 3)
+      widget.update()
+      assert.are.equal("Bat - TH:3", sub_name().last.text)
+      assert.are.equal("Colibri", name().last.text)
+    end)
+
+    it("is forgotten when the mob despawns", function()
+      proc(100, 4)
+      widget.update("chunk", 0x038, "\56\0\0\0" .. u32(100) .. u32(100) .. "kesu\0\0\0\0")
+      widget.update()
+      assert.are.equal("Colibri", name().last.text)
+    end)
+
+    it("is forgotten on a zone", function()
+      proc(100, 4)
+      widget.update("chunk", 0x00A, "zone bytes")
+      widget.update()
+      assert.are.equal("Colibri", name().last.text)
+    end)
+
+    it("is forgotten on a detach, so the next character does not inherit it", function()
+      proc(100, 4)
+      widget.detach()
+      attach()
+      widget.show()
+      widget.update()
+      assert.are.equal("Colibri", name().last.text)
+    end)
+
+    it("is not recorded while detached", function()
+      widget.detach()
+      proc(100, 4)
+      attach()
+      widget.show()
+      widget.update()
+      assert.are.equal("Colibri", name().last.text)
+    end)
+  end)
+
   describe("events it is handed but does not want", function()
     before_each(function()
       attach()
