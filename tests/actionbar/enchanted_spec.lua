@@ -288,3 +288,13 @@ describe("crossbar enchanted", function()
     end)
   end)
 end)
+
+describe("enchanted.give_up_for", function()
+  it("gives the thirty-second reraise gear the same headroom as the Tavnazian Ring", function()
+    -- Each warms for thirty seconds (`cast_delay` in the items resource),
+    -- which sits exactly on the default bound.
+    for _, name in ipairs({ "Reraise Ring", "Reraise Earring", "Reraise Hairpin", "Reraise Gorget" }) do
+      assert.equal(enchanted.give_up_for("Tavnazian Ring"), enchanted.give_up_for(name), name)
+    end
+  end)
+end)

@@ -1837,6 +1837,19 @@ describe("crossbar live widget", function()
       assert.is_not_nil(said():lower():find("warp"), "the ladder was walked: " .. said())
     end)
 
+    it("fires reraise from a shortcut key", function()
+      build_world({
+        tune_config = function(tuned)
+          tuned.input.shortcuts[58] = { tap = "reraise" }
+        end,
+      })
+      press(58)
+      release(58)
+      -- A WAR with nothing learned and no bag the ladder can read reaches
+      -- the first item, the stealth ladders' own rule for an unread bag.
+      assert.are.same({ 'input /item "Super Reraiser" <me>' }, env.commands, said())
+    end)
+
     it("ignores a hand-edited non-string shortcut verb", function()
       build_world({
         tune_config = function(tuned)
