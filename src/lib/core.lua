@@ -749,9 +749,10 @@ local function new(deps)
          component sees a key an earlier one took as already blocked, exactly
          as it sees one a prior addon took. Two bars own overlapping keys -
          the crossbar's slot keys are the number row while a side is held,
-         the hotbar's the bare row - and neither can see the other's held
-         key, so this order is the arbitration: the crossbar is registered
-         first. Delivery is unchanged; only the flag carries more. ]]
+         the hotbar's the same row under CTRL, ALT or SHIFT - and neither
+         can see the other's held key, so this order is the arbitration: the
+         crossbar is registered first. Delivery is unchanged; only the flag
+         carries more. ]]
     local block = false
     for _, component in ipairs(registry.all()) do
       if component.on_keyboard then
