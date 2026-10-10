@@ -565,7 +565,7 @@ local function new(deps)
     for name in pairs(openers) do
       add(groups, "Open", { label = name, record = { type = "open", action = name } })
     end
-    add(groups, "General", { label = "Job Change", children = job_change_menu() })
+    add(groups, "General", { label = "Job Change", icon = "targetnpc", children = job_change_menu() })
   end
 
   --- Every bindable action right now, grouped and ordered for the picker.
