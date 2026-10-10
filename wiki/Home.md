@@ -73,9 +73,10 @@ does not appear at all, type `//hud`: it reports what went wrong if the addon
 failed to load.
 
 Two components take over keys while a character is loaded. The crossbar
-claims `;` `'` `\` `` ` `` and `=`, and the hotbar the bare number row `1`
-to `0`. If you would rather keep those keys, switch the component off with
-`//hud hide crossbar` or `//hud hide hotbar`.
+claims `;` `'` `\` `` ` `` and `=`, and the hotbar the number row `1` to `0`
+under CTRL, ALT and SHIFT (the bare keys stay the game's). If you would
+rather keep those keys, switch the component off with `//hud hide crossbar`
+or `//hud hide hotbar`; a hotbar row you hide gives its chord back too.
 
 Components can also be switched from the console: `//hud hide giltracker`,
 `//hud show partylist alliance1`.

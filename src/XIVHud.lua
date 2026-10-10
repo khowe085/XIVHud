@@ -1133,9 +1133,9 @@ end)
      same client as the crossbar does, member for member, and the same
      action service. Registered AFTER the crossbar on purpose: the two own
      overlapping keys (the crossbar's slot keys are the number row while a
-     side is held, the hotbar's the bare row), and core's keyboard walk hands
-     a later component the block an earlier one took - so this order is the
-     whole of the arbitration between them. ]]
+     side is held, the hotbar's the same row under a modifier), and core's
+     keyboard walk hands a later component the block an earlier one took -
+     so this order is the whole of the arbitration between them. ]]
 step("building the hotbar component", function()
   if safe_mode then
     return
