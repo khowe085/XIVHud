@@ -32,6 +32,9 @@ party or the nearby mobs while choosing a target for a spell or ability.
   Shot band, blue inside the True Shot band.
 - A **cast bar** rises while the target winds up a spell or TP move, with the
   name of what is coming. It clears when the cast finishes or is interrupted.
+- The target's **Treasure Hunter level** follows its name (`Colibri - TH:4`)
+  once a Treasure Hunter proc lands on it, whoever's it was. It is forgotten
+  when the monster despawns or resets, and when you zone. There is no setting.
 - Long names are cut to fit.
 
 ## Configuration options
