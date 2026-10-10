@@ -120,7 +120,7 @@ anywhere: `//hud reset tb` is `//hud reset targetbar`.
 | `//hud copy <from> <to>` | replace character `<to>`'s configuration with character `<from>`'s |
 | `//hud buffs active` | list every buff on you right now, with ids |
 | `//hud buffs <component> ...` | a component's buff order and filter settings (see below) |
-| `//hud draw`, `mr`, `warp`, `sneak`, `invisible` | actions on the game itself (see Action commands below) |
+| `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise` | actions on the game itself (see Action commands below) |
 | `//hud retry`, `wsgate`, `delay` | settings shared by the crossbar and hotbar (see Action commands below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
 
@@ -174,7 +174,8 @@ or the console too, and their settings are shared by both bars.
 | `//hud draw` | sheathe or unsheathe, which also picks the set rotation the bars cycle through; dismounts if you are mounted |
 | `//hud mr` | mount roulette: summon a random mount you own, or dismount |
 | `//hud warp [all]` | warp home by the best means you have (a Warp spell, a Warp Ring, an Instant Warp, ...); `all` sends your other characters running XIVHud too |
-| `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage: the spell, then Spectral Jig, then the ninjutsu, then an oil or powder |
+| `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage: the spell, then Spectral Jig, then the ninjutsu, then an oil or powder. Silenced or muted, the spells and ninjutsu are passed over |
+| `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
 | `//hud retry [on\|off]` | re-send a spell, ability or weaponskill the game refused as "too soon"; off by default |
 | `//hud wsgate [on\|off]` | drop a weaponskill press the game would refuse (too little TP, not engaged, out of reach, or under a status that blocks weaponskills); off by default |
 | `//hud wsgate range <yalms>` / `pivot <yalms>` | tune the gate's idea of melee reach |

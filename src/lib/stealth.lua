@@ -48,10 +48,24 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      main/sub pair may use it - the same two questions catalog.lua asks of
      every other action, which is why a subjob change needs no notification
      here. A ninjutsu rung also wants its tool in the bag, since the press
-     would otherwise be spent on a message from the game.
+     would otherwise be spent on a message from the game - and every spell
+     rung, ninjutsu included, is passed by under silence or mute
+     (2026-10-09), so the press reaches the jig or the item the game would
+     accept instead. MP is deliberately NOT checked (Kevin): Penury and
+     Light Arts cut the cost, and a gate on the base cost would spend an
+     item where the spell would have gone.
+
+     `reraise` is a third ladder on the same machinery (Kevin, 2026-10-09):
+     the highest tier of the spell, then the four consumables, then the
+     enchanted gear. It is refused outright while Reraise is already on -
+     the buff is one id for every tier, so nothing can tell a weaker one
+     from a stronger one, and the items and gear charges are not worth
+     spending on a guess.
 
      Nothing here executes: plan() answers a command string for the widget
-     to send, so the ladder stays testable without a client. ]]
+     to send, or - for a gear rung - the enchanteditem plan for the widget's
+     equip -> wait -> use scheduler, so the ladder stays testable without a
+     client. ]]
 
 local counters = require("lib/actionbar/counters")
 
@@ -61,8 +75,15 @@ local counters = require("lib/actionbar/counters")
 local SNEAK, INVISIBLE = 137, 136
 local MONOMI_ICHI, TONKO_ICHI, TONKO_NI = 318, 353, 354
 local SPECTRAL_JIG = 196
+local RERAISE, RERAISE_II, RERAISE_III, RERAISE_IV = 135, 141, 142, 848
+-- Buff ids, off lib/buff_order: Reraise is one buff whatever the tier.
+local RERAISE_BUFF, ADDENDUM_WHITE, ENLIGHTENMENT = 113, 401, 416
+-- What stops every spell, ninjutsu included - the pair retry.lua blocks a
+-- spell retry on.
+local SILENCE, MUTE = 6, 29
 
---[[ Spell, jig, ninjutsu, item. `spell` and `ability` are resource
+--[[ Spell, jig, ninjutsu, item - and for reraise, gear, which
+     enchanteditem resolves by name. `spell` and `ability` are resource
      lookups; `item` is a name, because `/item` takes the name and the id
      only ever matters for the bag count - which is resolved by name too,
      the way the temporary bag and the resting status already are. Monomi
@@ -82,6 +103,29 @@ local LADDERS = {
     { kind = "spell", id = TONKO_ICHI },
     { kind = "item", name = "Prism Powder" },
   },
+  --[[ `Instant Reraise` is the consumable scroll (4182); the item called
+       `Reraise` (4743) is the scroll that TEACHES the spell. The ring heads
+       the gear because it recharges, where the others spend one of ten
+       charges (Kevin, 2026-10-09). ]]
+  reraise = {
+    { kind = "spell", id = RERAISE_IV },
+    { kind = "spell", id = RERAISE_III },
+    { kind = "spell", id = RERAISE_II },
+    { kind = "spell", id = RERAISE },
+    { kind = "item", name = "Super Reraiser" },
+    { kind = "item", name = "Hi-Reraiser" },
+    { kind = "item", name = "Reraiser" },
+    { kind = "item", name = "Instant Reraise" },
+    { kind = "gear", name = "Reraise Ring" },
+    { kind = "gear", name = "Reraise Earring" },
+    { kind = "gear", name = "Reraise Hairpin" },
+    { kind = "gear", name = "Reraise Gorget" },
+  },
+}
+
+-- What a ladder refuses outright, before any rung is walked.
+local REFUSED_UNDER = {
+  reraise = { buff = RERAISE_BUFF, hint = "Reraise is already active" },
 }
 
 -- FFXI's own cap, the same constant catalog.lua gates the merit exception
@@ -92,6 +136,16 @@ local LEVEL_CAP = 99
 -- The `targets` bitfield's Party bit. A rung without it is self-only -
 -- both ninjutsu and the jig are - and can never carry <t>.
 local PARTY_BIT = 4
+
+--[[ A spell's `requirements` bit that SCH must open with an Addendum. It
+     sits on exactly the Addendum spells - the -na family, Erase, Raise II
+     and III, Reraise I to III, and the tier IV/V nukes, Sleep, Break and
+     Dispel on the black side - and binds SCH alone: a WHM casts Reraise
+     without one. Enlightenment opens both addenda at once. Only the white
+     side is mapped, no ladder casting black magic. ]]
+local SCH = 20
+local ADDENDUM_BIT = 4
+local ADDENDUM_FOR = { WhiteMagic = ADDENDUM_WHITE }
 
 local function call(accessor, ...)
   if type(accessor) ~= "function" then
@@ -120,21 +174,86 @@ local function job_pair(player)
   return jobs
 end
 
+local function has_buff(player, id)
+  local buffs = type(player) == "table" and player.buffs or nil
+  if type(buffs) ~= "table" then
+    return false
+  end
+  for _, buff in ipairs(buffs) do
+    if buff == id then
+      return true
+    end
+  end
+  return false
+end
+
+--- The Addendum buff a SCH must have up to cast this spell, or nil.
+local function addendum_for(record)
+  local requirements = tonumber(record.requirements)
+  if requirements == nil or math.floor(requirements / ADDENDUM_BIT) % 2 ~= 1 then
+    return nil
+  end
+  return ADDENDUM_FOR[record.type]
+end
+
+--[[ Can the main job wear this piece? Gear is the main job's alone, and
+     enchanteditem asks no such question - a gorget a THF cannot put on
+     would otherwise hold the neck slot through a warm-up that never
+     starts. `jobs` is read as a bitfield (the raw data) or a set (what the
+     resources library may hand over) - a table is a set only when it holds
+     a `true`, since a list `{ 1, 5 }` read as one would refuse the WAR it
+     names. Any other shape, or no level, is a fact that cannot be read and
+     allows the piece. ]]
+local function is_set(value)
+  for _, member in pairs(value) do
+    if member == true then
+      return true
+    end
+  end
+  return false
+end
+
+local function wearable(item, player)
+  if type(item) ~= "table" or type(player) ~= "table" then
+    return true
+  end
+  local job = player.main_job_id
+  if type(job) == "number" then
+    if type(item.jobs) == "number" and math.floor(item.jobs / 2 ^ job) % 2 ~= 1 then
+      return false
+    end
+    if type(item.jobs) == "table" and is_set(item.jobs) and item.jobs[job] ~= true then
+      return false
+    end
+  end
+  local level = player.main_job_level
+  if type(item.level) == "number" and type(level) == "number" and item.level > level then
+    return false
+  end
+  return true
+end
+
 --- Can one of these jobs supply this action? A resource with no `levels`
 --- table is included - the client already vouched for it by listing it as
 --- known, and the job abilities carry no levels at all.
-local function available(record, jobs)
+local function available(record, jobs, player)
   local levels = type(record) == "table" and record.levels or nil
   if type(levels) ~= "table" then
     return true
   end
+  local addendum = addendum_for(record)
   for _, job in ipairs(jobs) do
     local required = levels[job.id]
-    if type(required) == "number" then
-      if required <= (type(job.level) == "number" and job.level or 0) then
+    local opened = job.id ~= SCH or addendum == nil or has_buff(player, addendum) or has_buff(player, ENLIGHTENMENT)
+    local level = type(job.level) == "number" and job.level or 0
+    if type(required) == "number" and opened then
+      if required <= level then
         return true
       end
-      if required > LEVEL_CAP and job.main then
+      --[[ A merit or job-point gift, which a main job spends - and only at
+           the cap: a gift is off while synced below it. catalog.lua offers
+           it regardless, a binding being for later; this ladder fires now. ]]
+      if required > LEVEL_CAP and job.main and level >= LEVEL_CAP then
         return true
       end
     end
@@ -195,7 +314,10 @@ local function new(deps)
     if type(entry) ~= "table" or type(entry.en) ~= "string" then
       return nil
     end
-    if not available(entry, jobs) or not has_tool(rung.id, player) then
+    if not available(entry, jobs, player) or not has_tool(rung.id, player) then
+      return nil
+    end
+    if has_buff(player, SILENCE) or has_buff(player, MUTE) then
       return nil
     end
     return line(entry.prefix or "/magic", entry.en, entry)
@@ -223,10 +345,10 @@ local function new(deps)
     return line(entry.prefix or "/jobability", entry.en, entry)
   end
 
-  --[[ The last rung, and the only one that works on every job. The count is
-       a courtesy: where the bag cannot be read at all the press still goes,
-       because the game's own "you do not have that item" beats refusing a
-       press that might have worked. ]]
+  --[[ The consumable, which works on every job. The count is a courtesy:
+       where the bag cannot be read at all the press still goes, because the
+       game's own "you do not have that item" beats refusing a press that
+       might have worked. ]]
   local function item_rung(rung)
     local count = call(deps.item_count, rung.name)
     if type(count) == "number" and count <= 0 then
@@ -235,8 +357,23 @@ local function new(deps)
     return line("/item", rung.name, nil)
   end
 
-  --- The command for the first rung this character can use, or nil plus a
-  --- hint naming what was asked for.
+  --[[ Enchanted gear is enchanteditem's to judge - which bag, which copy,
+       the charges, the recast, the warm-up - so a gear rung is that plan
+       verbatim, and passed over when it answers "none". ]]
+  local function gear_rung(rung, player)
+    if not wearable(call(deps.find_item, rung.name), player) then
+      return nil
+    end
+    local plan = call(deps.gear_plan, rung.name)
+    if type(plan) ~= "table" or plan.type == "none" then
+      return nil
+    end
+    return plan
+  end
+
+  --- The command (or, for a gear rung, the enchanteditem plan) for the
+  --- first rung this character can use, or nil plus a hint naming what was
+  --- asked for.
   function self.plan(which)
     local name = type(which) == "string" and which:lower() or which
     local ladder = LADDERS[name]
@@ -244,6 +381,10 @@ local function new(deps)
       return nil, "unknown stealth action: " .. tostring(which)
     end
     local player = call(deps.get_player)
+    local refused = REFUSED_UNDER[name]
+    if refused ~= nil and has_buff(player, refused.buff) then
+      return nil, refused.hint
+    end
     local jobs = job_pair(player)
     for _, rung in ipairs(ladder) do
       local command
@@ -251,6 +392,8 @@ local function new(deps)
         command = spell_rung(rung, jobs, player)
       elseif rung.kind == "ability" then
         command = ability_rung(rung, jobs)
+      elseif rung.kind == "gear" then
+        command = gear_rung(rung, player)
       else
         command = item_rung(rung)
       end
