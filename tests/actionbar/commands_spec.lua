@@ -432,6 +432,18 @@ describe("crossbar commands", function()
       assert.is_nil(stored(world, "SCH", 1, "left", 3))
     end)
 
+    it("binds reraise bare and refuses a target after it", function()
+      -- Reraise is self-only, so a target word is refused rather than stored
+      -- on a record that would never send it.
+      local commands, world = build()
+      commands.command({ "bind", "1L2", "reraise" })
+      assert.are.same({ type = "reraise" }, stored(world, "SCH", 1, "left", 2))
+      local reply, _, repaint = commands.command({ "bind", "1L3", "reraise", "me" })
+      assert.is_not_nil(tostring(reply):find("takes no action name or target", 1, true), tostring(reply))
+      assert.is_falsy(repaint)
+      assert.is_nil(stored(world, "SCH", 1, "left", 3))
+    end)
+
     it("unquotes a quoted ra target", function()
       local commands, world = build()
       commands.command({ "bind", "1L3", "ra", '"t"' })

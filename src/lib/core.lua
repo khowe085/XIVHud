@@ -98,6 +98,7 @@ local HELP = {
   "  //hud mr                   mount roulette, or dismount",
   "  //hud sneak                the sneak ladder, the same on every job",
   "  //hud invisible            the invisible ladder, likewise",
+  "  //hud reraise              the best reraise you have: spell, item, then gear",
   "  //hud draw                 toggle the weapon state every bar follows",
   "  //hud retry [on|off]       re-send an action the game refused as too soon",
   "  //hud wsgate [on|off]      drop a weaponskill press the game would refuse;",
@@ -1248,7 +1249,8 @@ local function new(deps)
 
        `//hud warp|mr|sneak|invisible|draw` are the framework's since the
        service took execution off the crossbar (2026-09-06): a warp is nobody's
-       bar's in particular, and the weapon state is the player's. ]]
+       bar's in particular, and the weapon state is the player's. `reraise`
+       joined them on 2026-10-09. ]]
 
   local function require_service()
     if deps.actions ~= nil then
