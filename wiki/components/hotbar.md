@@ -33,7 +33,7 @@ bind here, and the same layers, contexts, sets and rotations apply.
   while a chain is open.
 - **A mouse binder** (`//hud hotbar edit`): click a slot, pick a layer, pick an
   action from what your character knows. Menu entries - Stratagems, the Blood
-  Pacts, the DNC modes - open what is behind them rather than binding, exactly
+  Pacts, the DNC modes, Job Change - open what is behind them rather than binding, exactly
   as on the crossbar.
 - **Drag a slot onto the crossbar**, or a crossbar slot onto the hotbar: the
   two slots swap everything they hold, every layer of it. Edit mode covers
