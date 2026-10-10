@@ -166,6 +166,30 @@ describe("statusbar logic", function()
     end)
   end)
 
+  -- A drag-and-drop on a bar: one order for every bar, so every bar sees it.
+  describe("placing one buff on another", function()
+    it("moves the dragged buff to where the other stood, on every bar", function()
+      logic.set_buffs({ KO, WEAKNESS, DOOM, SLEEP })
+      assert.is_true(logic.place(SLEEP, KO))
+      assert.are.same({ SLEEP, KO, WEAKNESS, DOOM }, ids_of(logic.plan("bar1")))
+      assert.are.same({ SLEEP, KO, WEAKNESS, DOOM }, ids_of(logic.plan("bar2")))
+      assert.are.equal(1, config.priority[SLEEP])
+    end)
+
+    it("changes nothing for a drop on itself", function()
+      assert.is_false(logic.place(KO, KO))
+      assert.are.same({}, config.priority)
+    end)
+
+    it("repairs a priority that is not a table rather than indexing it", function()
+      config.priority = "nonsense"
+      logic.set_config(config)
+      logic.set_buffs({ KO, DOOM })
+      assert.is_true(logic.place(DOOM, KO))
+      assert.are.same({ DOOM, KO }, ids_of(logic.plan("bar1")))
+    end)
+  end)
+
   describe("timers", function()
     before_each(function()
       logic.set_buffs({ HASTE, SLEEP })

@@ -384,6 +384,43 @@ local function new(deps)
     return { ("%s moved to rank %d"):format(self.name(id), landed) }, true
   end
 
+  --[[ A drag-and-drop: `id` takes the rank `onto` holds, in front of it when
+       dragged up and behind it when dragged down, everything between shifting
+       one toward the gap. A buff the order does not rank comes from past the
+       end; one dropped on such a buff goes to the end.
+
+       Not set_rank: that pushes every override at or below the rank DOWN,
+       which on a downward drag leaves an override dropped on still in front
+       and the drop changing nothing on screen. An override lands at exactly
+       its rank while the ranks are distinct, so shifting those between the
+       two by one keeps everything else where it was. Returns whether the
+       order changed. ]]
+  function self.place(settings, id, onto)
+    if id == onto then
+      return false
+    end
+    local ranks, order = self.order(settings.priority)
+    local overrides = settings.priority
+    local from = ranks[id] or (#order + 1)
+    -- Past the last ranked buff: the end, which for a buff coming from past
+    -- the end too is one rank further on.
+    local to = ranks[onto] or (ranks[id] and #order or #order + 1)
+
+    for other, rank in pairs(overrides) do
+      if other ~= id and type(rank) == "number" then
+        if to < from and rank >= to and rank < from then
+          overrides[other] = rank + 1
+        elseif to > from and rank > from and rank <= to then
+          overrides[other] = rank - 1
+        end
+      end
+    end
+    overrides[id] = to
+
+    self.invalidate()
+    return true
+  end
+
   local function move_buff(settings, verb, words)
     local id, complaint = self.resolve(words)
     if not id then
