@@ -279,6 +279,11 @@ local function new(deps)
   -- nested, so coming back out to page 1 would only lose your place.
   local submenu = nil
   local submenu_page = 1
+  --[[ The menus a nested one was opened from, outermost first, each with the
+       page it was left on (General -> Job Change -> WAR). Reset whenever a
+       menu is opened from the catalog itself, so a trail left behind by any
+       of the routes that drop `submenu` is never climbed. ]]
+  local submenu_trail = {}
   -- The page the target step was reached from, restored when backing out of
   -- it: the list behind it has not moved, and on a 91-row blood pact submenu
   -- landing back at page 1 is six pages of finding your place again.
@@ -1447,6 +1452,9 @@ local function new(deps)
       -- Back to whichever list the action was picked from: the children where
       -- one was nested, the catalog where it was not.
       step, page, pending = submenu ~= nil and STEP_SUBMENU or STEP_CATALOG, target_page, nil
+    elseif step == STEP_SUBMENU and #submenu_trail > 0 then
+      local parent = table.remove(submenu_trail)
+      submenu, page = parent.entry, parent.page
     elseif step == STEP_SUBMENU then
       step, page, submenu = STEP_CATALOG, submenu_page, nil
     elseif step == STEP_CATALOG then
@@ -1492,7 +1500,12 @@ local function new(deps)
       if target.entry.children ~= nil then
         -- A menu, not an action: its children are the step, and binding the
         -- parent would write a command the game refuses.
-        submenu, submenu_page, step, page = target.entry, page, STEP_SUBMENU, 1
+        if step == STEP_SUBMENU then
+          submenu_trail[#submenu_trail + 1] = { entry = submenu, page = page }
+        else
+          submenu_trail, submenu_page = {}, page
+        end
+        submenu, step, page = target.entry, STEP_SUBMENU, 1
         details, hovered = nil, nil
       elseif type(record) ~= "table" then
         -- Neither a menu nor an action. Nothing here builds one, but this is a

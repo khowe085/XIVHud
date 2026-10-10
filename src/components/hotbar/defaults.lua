@@ -31,7 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      the hotbar's own is one shape per row (`bars.<anchor>.rows`, 10x1 out of
      the box) and eight anchors stacked down a column near the bottom of
      the screen, row 1 on and rows 2-8 off (Kevin, 2026-09-05). No keys here:
-     the hotbar's are the game's own number row and fixed. ]]
+     the hotbar's are the game's own number row under a modifier, fixed. ]]
 
 local shared = require("lib/actionbar/defaults")
 local new_render = require("components/hotbar/render")
