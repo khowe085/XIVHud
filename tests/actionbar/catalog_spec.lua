@@ -368,6 +368,15 @@ describe("crossbar catalog", function()
       assert.are.same({ type = "ra" }, seen["Ranged Attack"])
     end)
 
+    it("offers Reraise among the built-ins", function()
+      local general = category(build().build(), "General")
+      local seen = {}
+      for _, entry in ipairs(general.entries) do
+        seen[entry.label] = entry.record
+      end
+      assert.are.same({ type = "reraise" }, seen["Reraise"])
+    end)
+
     it("carries every open target as its own entry", function()
       local openers = require("lib/actionbar/openers")
       local built = build().build()

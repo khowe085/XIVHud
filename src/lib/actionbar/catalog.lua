@@ -160,6 +160,7 @@ local BUILTIN_ENTRIES = {
   { label = "Warp", type = "warp" },
   { label = "Sneak", type = "sneak" },
   { label = "Invisible", type = "invisible" },
+  { label = "Reraise", type = "reraise" },
   { label = "Ranged Attack", type = "ra" },
 }
 

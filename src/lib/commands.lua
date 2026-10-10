@@ -52,6 +52,7 @@ local RESERVED = {
   mr = true,
   sneak = true,
   invisible = true,
+  reraise = true,
   draw = true,
   retry = true,
   wsgate = true,
@@ -59,7 +60,7 @@ local RESERVED = {
 }
 
 -- Framework-level presses: run by the action service, never by a bar.
-local ACTION_VERBS = { mr = true, sneak = true, invisible = true, draw = true }
+local ACTION_VERBS = { mr = true, sneak = true, invisible = true, reraise = true, draw = true }
 -- The service's tuning: the words after the verb go through untouched, and
 -- core answers them over its own config.
 local TUNING_VERBS = { retry = true, wsgate = true, delay = true }

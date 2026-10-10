@@ -293,6 +293,12 @@ local GIVE_UP_BY_NAME = {
   -- Thirty seconds too (Kevin, 2026-08-23), and so the same headroom for
   -- the same slop - the bound is not the warm-up.
   ["treat staff ii"] = 40,
+  -- The reraise ladder's gear: thirty seconds each by the items resource's
+  -- `cast_delay` (read 2026-10-09, not yet watched in a client).
+  ["reraise ring"] = 40,
+  ["reraise earring"] = 40,
+  ["reraise hairpin"] = 40,
+  ["reraise gorget"] = 40,
 }
 
 --- The give-up bound for a named item: its own where it has one, the module

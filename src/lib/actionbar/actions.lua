@@ -87,6 +87,8 @@ local BUILTINS = {
   -- changed with your subjob would be a worse label than a fixed one.
   sneak = { icon = "spells/00137" },
   invisible = { icon = "spells/00136" },
+  -- The first tier's art, on the same rule: whichever rung fires.
+  reraise = { icon = "spells/00135" },
   open = {},
 }
 -- Derived, sorted: the name walk can never drift from the table, so the two
@@ -334,10 +336,15 @@ local function new(deps)
          depends on the job pair, the bag and the target, none of which hold
          still. A ladder that finds nothing answers its own hint rather than
          a bare nil, so the player is told why the press did nothing. ]]
-    if kind == "sneak" or kind == "invisible" then
+    if kind == "sneak" or kind == "invisible" or kind == "reraise" then
       local command, hint = deps.stealth.plan(kind)
       if command == nil then
         return nil, hint
+      end
+      -- A reraise gear rung answers enchanteditem's own plan, which runs
+      -- exactly as an `enchanteditem` slot's does.
+      if type(command) == "table" then
+        return { kind = "enchanted", plan = command }
       end
       return command_plan(command)
     end

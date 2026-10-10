@@ -44,7 +44,7 @@ end
 
 -- The shipped built-ins, spelled out. Two specs read it: one proves each
 -- name resolves, the other proves the table holds these and nothing else.
-local SHIPPED_BUILTINS = { "draw", "mr", "warp", "sneak", "invisible", "open" }
+local SHIPPED_BUILTINS = { "draw", "mr", "warp", "sneak", "invisible", "reraise", "open" }
 
 describe("crossbar actions", function()
   describe("game action commands", function()
@@ -219,6 +219,37 @@ describe("crossbar actions", function()
       local plan, hint = actions.resolve({ type = "sneak" })
       assert.is_nil(plan)
       assert.equal("no way to sneak right now", hint)
+    end)
+
+    it("asks the ladder for a reraise and fires the command it answers", function()
+      local actions, state = build()
+      state.stealth_command = 'input /magic "Reraise IV" <me>'
+      assert.equal('input /magic "Reraise IV" <me>', command_of(actions, { type = "reraise" }))
+      assert.equal("reraise", state.stealth_asked)
+    end)
+
+    it("hands a reraise gear rung to the enchanted scheduler", function()
+      -- The ladder answers enchanteditem's own plan for a gear rung, which
+      -- is the shape the scheduler runs for an `enchanteditem` slot.
+      local actions, state = build()
+      local gear = { type = "equip", name = "Reraise Earring", command = 'input /item "Reraise Earring" <me>' }
+      state.stealth_command = gear
+      local plan = actions.resolve({ type = "reraise" })
+      assert.equal("enchanted", plan.kind)
+      assert.equal(gear, plan.plan)
+    end)
+
+    it("passes the reraise refusal out as its hint", function()
+      local actions, state = build()
+      state.stealth_hint = "Reraise is already active"
+      local plan, hint = actions.resolve({ type = "reraise" })
+      assert.is_nil(plan)
+      assert.equal("Reraise is already active", hint)
+    end)
+
+    it("gives reraise the Reraise spell's icon", function()
+      local actions = build()
+      assert.equal("spells/00135", actions.icon_for({ type = "reraise" }))
     end)
 
     it("gives both stealth built-ins their White Magic icon", function()

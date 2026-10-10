@@ -26,13 +26,17 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ The hotbar's key machine: the DIK stream in, one intent out. The bare
-     number row `1234567890` fires slots 1-10 of `bar1`; the modifiers pick
-     the row - CTRL bar2, ALT bar3, SHIFT bar4, CTRL+SHIFT bar5, ALT+SHIFT
-     bar6, CTRL+ALT+SHIFT bar7 - matched EXACTLY, so CTRL+ALT alone is
-     nothing and reaches the game whole. bar8 has no keys (Kevin,
-     2026-09-06). The table is fixed rather than config: the hotbar's keys
-     ARE the game's row by design, so there is nothing to choose.
+--[[ The hotbar's key machine: the DIK stream in, one intent out. A
+     modifier picks the row and the number row `1234567890` picks slots 1-10
+     of it - CTRL bar1, ALT bar2, SHIFT bar3, CTRL+SHIFT bar4, ALT+SHIFT
+     bar5, CTRL+ALT+SHIFT bar6 - matched EXACTLY, so CTRL+ALT alone is
+     nothing and reaches the game whole. bar7 and bar8 have no keys. The
+     BARE number row is nobody's (Kevin, 2026-10-09): it fired bar1 until
+     then, and a controller mapped through Steam Input presses it by
+     accident, so every row moved down one chord and the bare row went back
+     to the game. The table is fixed rather than config: the rows are
+     XIV's own chords (CTRL, ALT, SHIFT over the number row), so there is
+     nothing to choose.
 
      Modifiers are tracked from their own down/up edges, the crossbar's and
      layout mode's technique, with the same caveat: one released while the
@@ -42,13 +46,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      down AND the matching up, so the game never sees half a key; that
      swallows the CTRL and ALT chords too, knowing it does nothing to the
      game's macro palette - `return true` swallows a bare key and does not
-     stop FFXI acting on a CTRL/ALT chord, so a user of rows 2, 3 and 5-7
+     stop FFXI acting on a CTRL/ALT chord, so a user of rows 1, 2 and 4-6
      keeps the matching in-game macros inert (Kevin's call, 2026-09-06).
      Under any guard - chat open, suppressed, layout mode, edit mode,
      disabled - or on a key a prior addon took, nothing fires and nothing is
      blocked: no key of the hotbar's is worth protecting through a cutscene
-     the way the crossbar's `;` is. The cycle keys - CTRL+Up the next set,
-     CTRL+Down the previous - are the one pair that claims NEITHER edge: a
+     the way the crossbar's `;` is. A row the user HID (`deps.row_hidden`,
+     the per-anchor switch) is the same: its chord goes back to the game
+     rather than firing a bar nobody can see (Kevin, 2026-10-09 - the rows
+     fired hidden until then, XIV's own rule, and it was a surprise). The
+     cycle keys - CTRL+Up the next set, CTRL+Down the previous - are the one
+     pair that claims NEITHER edge: a
      block cannot keep a CTRL chord from the game, and a swallowed up after
      CTRL lifted is a camera that keeps turning. The arrows' scan codes
      (200/208) are unverified in a client. No Windower globals. ]]
@@ -67,15 +75,15 @@ local MODIFIER_OF = {
   [56] = "alt",
   [184] = "alt",
 }
--- Which row each exact modifier set fires, keyed c/a/s in that order.
+-- Which row each exact modifier set fires, keyed c/a/s in that order; no
+-- entry for the empty set, so a bare number is never ours.
 local BAR_OF = {
-  [""] = "bar1",
-  c = "bar2",
-  a = "bar3",
-  s = "bar4",
-  cs = "bar5",
-  as = "bar6",
-  cas = "bar7",
+  c = "bar1",
+  a = "bar2",
+  s = "bar3",
+  cs = "bar4",
+  as = "bar5",
+  cas = "bar6",
 }
 
 -- Injected guard accessors default to false so a missing one reads as "off".
@@ -165,7 +173,7 @@ local function new(deps)
       return { cycle = cycle }, false
     end
     local bar = BAR_OF[held_set]
-    if bar == nil then
+    if bar == nil or (deps.row_hidden ~= nil and deps.row_hidden(bar) == true) then
       return nil, false
     end
     latched[dik] = true
