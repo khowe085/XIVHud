@@ -97,6 +97,7 @@ src/
       enchanted.lua enchanteditem.lua kebab.lua openers.lua retry.lua travel.lua
       weapon.lua wsgate.lua
                           --   the crossbar's former modules, moved whole
+      jobchange.lua       --   the `jc` bind type's job list and pair parser
   assets/                 -- ALL bundled art, grouped by where it came from
     own/                  -- XIVHud's own art (overlay.png among it), and xivcrossbar's chrome
     icons/                -- the ~1,300 action icons, plus jobs/: the party
@@ -510,6 +511,22 @@ label marked and quoted (`alias="Cure 4" icon="cure"`), so a listed row
 retyped binds the same thing whichever way the client splits it - bar a value
 carrying a quote OF ITS OWN, which nothing can quote back and which only a
 quote-passing client could have stored in the first place.
+
+**Job change** (`jc`, 2026-10-09) binds a main/sub pair - `bind 1L1 jc
+WAR/BLM`, either case, stored upper case - and the press sends `jc war/blm`
+to the Windower [JobChange](https://github.com/Windower/Lua/tree/live/addons/JobChange)
+addon, which does the change itself (finding a Moogle in range, poking the
+nomad ones, stepping through a temporary job on a conflict). Nothing is
+injected from here: without that addon loaded the press is a console "unknown
+command", the status bar's `cancel` posture. The slot wears the MAIN job's icon
+(`assets/icons/jobs/<job>.png`) and the SUB job as its alias, set at bind time
+(an `alias=` given wins; an empty one falls back to the sub). It takes no
+target. All 22 jobs are offered, unlocked or not (Kevin) - JobChange refuses a
+locked one at the press - in the game's order, and a pair naming one job twice
+is refused. In the binder it is General -> Job Change -> main -> sub, the
+submenu step nesting for it: Back climbs out one menu at a time.
+`lib/actionbar/jobchange.lua` is the one list and parser the catalog, the CLI
+and `actions` all read. **Unverified in a live client.**
 
 Quotes now do exactly one thing in the parser: a value that arrives wrapped in
 a MATCHED pair is unwrapped and trimmed (commands.lua's file-local

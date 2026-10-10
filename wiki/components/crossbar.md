@@ -186,6 +186,7 @@ rest of the line means:
 | `ct` | a chat command, without its slash | `bind 4L1 ct "sea all linkshell"` |
 | `ex` | a Windower command, run as typed | `bind 4L2 ex "exec pull.txt"` |
 | `open` | the name of a game screen | `bind 5L1 open map` |
+| `jc` | a main/sub job pair — needs the JobChange addon (see Built-ins) | `bind 5L2 jc WAR/BLM` |
 | `draw` | *nothing* — sheathe / unsheathe | `bind 1L5 draw` |
 | `mr` | *nothing* — mount roulette | `bind 3L2 mr` |
 | `warp` | *nothing* — best available warp | `bind 6L1 warp` |
@@ -649,8 +650,9 @@ Draw** on COR, **Waltzes**, **Sambas**, **Jigs**, **Steps** and **Flourishes
 I/II/III** on DNC, **Rune Enchantment**, **Ward** and **Effusion** on RUN,
 **Blood Pact: Rage** and **Blood Pact: Ward** on SMN, **Ready** on BST. Clicking
 one opens what is behind it, and you pick the real action there: Stratagems
-then Accession, Blood Pact: Rage then Volt Strike. `[ < back ]` steps back out
-of the list, and the categories down the left stay live — clicking one leaves
+then Accession, Blood Pact: Rage then Volt Strike. **Job Change** under General
+is a menu inside a menu: a main job, then a sub job. `[ < back ]` steps back out
+of the list one menu at a time, and the categories down the left stay live — clicking one leaves
 the menu.
 
 Before this the picker offered the menu itself, and binding that does nothing
@@ -839,6 +841,7 @@ These are the same actions as the `//hud` commands under
 | `sneak` / `invisible` | the sneak and invisible ladders described under [Built-in actions](#built-in-actions). Both take the White Magic icon whichever rung fires, so the slot's face does not change with your subjob. |
 | `reraise` | the reraise ladder described under [Built-in actions](#built-in-actions), with the Reraise icon whichever rung fires |
 | `open <name>` | opens a game screen |
+| `jc <MAIN>/<SUB>` | changes job to that pair through the Windower **JobChange** addon (`//jc war/blm`), which must be loaded — without it the press does nothing but print "unknown command" in the console. You still have to stand near a Moogle (or a Nomad Moogle), as JobChange requires. The slot shows the main job's icon and the sub job as its label. In the binder it is **General → Job Change**, then a main job, then a sub job. All 22 jobs are listed whether you have unlocked them or not; JobChange refuses a locked one when you press it. |
 
 `mr` and `warp` count down before they go, and so does the `mount` type
 above — see **Travel counts down** under Extras.
