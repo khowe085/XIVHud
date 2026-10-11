@@ -62,7 +62,8 @@ local TIMER_STROKE = { r = 0, g = 0, b = 0, a = 255, width = 2 }
 
 -- The tooltip: the buff's name and id, on a dark backing, under the cell.
 local TIP_BACKGROUND = { r = 0, g = 0, b = 0, a = 200 }
-local MOUSE_MOVE, MOUSE_RIGHT_DOWN, MOUSE_RIGHT_UP = 0, 4, 5
+local MOUSE_MOVE, MOUSE_LEFT_DOWN, MOUSE_LEFT_UP = 0, 1, 2
+local MOUSE_RIGHT_DOWN, MOUSE_RIGHT_UP = 4, 5
 
 local function new(ctx)
   local self = { name = ctx.name or "statusbar", alias = "sb" }
@@ -116,6 +117,13 @@ local function new(ctx)
   -- the game sees neither edge of a click that cancelled a buff. Reset with
   -- the moments the release could not have reached here.
   local swallow_right_up = false
+  -- The buff a left-press picked up, until its release: `{ anchor, id, size }`.
+  -- Dropped with the moments the release could not have reached here, as
+  -- the right-click's flag is.
+  local dragging = nil
+  -- The icon that follows the cursor while one is in hand, built on the
+  -- first drag and then kept, with what it last drew.
+  local ghost, ghost_id, ghost_size = nil, nil, nil
 
   --[[ Core fans a placement out over every anchor on every apply, and layout
        mode drags one of them -- so a name that is not ours has to cost
@@ -199,6 +207,32 @@ local function new(ctx)
     tip.size(cell.tip_size)
     tip.show()
     tip_showing = { anchor = anchor, text = text, x = cell.tip_x, y = cell.tip_y }
+  end
+
+  local function show_ghost(x, y)
+    if not ghost then
+      ghost = ctx.new_image()
+      ghost.draggable(false)
+      ghost.repeat_xy(1, 1)
+      ghost.fit(false)
+    end
+    if ghost_id ~= dragging.id then
+      ghost.path(ctx.asset(ICON_DIR .. tostring(dragging.id) .. ".png"))
+      ghost_id = dragging.id
+    end
+    if ghost_size ~= dragging.size then
+      ghost.size(dragging.size, dragging.size)
+      ghost_size = dragging.size
+    end
+    ghost.pos(x - dragging.size / 2, y - dragging.size / 2)
+    ghost.show()
+  end
+
+  local function drop_drag()
+    if dragging and ghost then
+      ghost.hide()
+    end
+    dragging = nil
   end
 
   -- Hide everything a bar drew and forget it, so the next paint pushes all.
@@ -387,6 +421,7 @@ local function new(ctx)
     expiries_of = nil
     hide_tip()
     swallow_right_up = false
+    drop_drag()
     logic.apply_durations({})
     logic.set_buffs(nil)
     for _, anchor in ipairs(ANCHORS) do
@@ -421,6 +456,7 @@ local function new(ctx)
     previewing = on and true or false
     hide_tip()
     swallow_right_up = false
+    drop_drag()
     logic.set_preview(on)
     paint_all()
   end
@@ -451,6 +487,7 @@ local function new(ctx)
     hide_tip()
     if anchor == nil then
       swallow_right_up = false
+      drop_drag()
     end
     if anchor ~= nil then
       local bar = bar_at(anchor)
@@ -487,7 +524,7 @@ local function new(ctx)
 
   -- The tip for the cell under the cursor as the bars stand now, or none.
   local function refresh_tip()
-    if previewing or mouse_x == nil or not logic.tooltips_on() then
+    if previewing or dragging or mouse_x == nil or not logic.tooltips_on() then
       hide_tip()
       return
     end
@@ -505,11 +542,20 @@ local function new(ctx)
        over an icon asks the cancel addon to drop the buff (`//cancel <id>`,
        the addon's own grammar) and is swallowed, both edges, so the game
        does not act on a click that was ours; a right-click anywhere else,
-       and every other button, is the game's. Layout mode owns the mouse
-       while it is on, so nothing arrives here then. ]]
+       and every other button, is the game's. A LEFT-DRAG from an icon onto
+       another on the same bar moves the first to where the second stands in
+       the order every bar shares, a ghost of it following the cursor; a
+       drop anywhere else changes nothing. The left-press on an icon is
+       swallowed, both edges, whether or not it went anywhere - the pixel is
+       the bar's - and a left-click anywhere else is the game's. Layout mode
+       owns the mouse while it is on, so nothing arrives here then. ]]
   function self.on_mouse(mouse_type, x, y)
     if mouse_type == MOUSE_MOVE then
       mouse_x, mouse_y = x, y
+      if dragging then
+        show_ghost(x, y)
+        return false
+      end
       -- Off means off: no hit-test per move either.
       if logic.tooltips_on() then
         refresh_tip()
@@ -533,6 +579,33 @@ local function new(ctx)
     end
     if mouse_type == MOUSE_RIGHT_UP and swallow_right_up then
       swallow_right_up = false
+      return true
+    end
+    if mouse_type == MOUSE_LEFT_DOWN then
+      -- A drag whose release never arrived is let go, not dropped here.
+      drop_drag()
+      if previewing then
+        return false
+      end
+      local anchor, cell = cell_under(x, y)
+      if not cell then
+        return false
+      end
+      hide_tip()
+      dragging = { anchor = anchor, id = cell.id, size = cell.size }
+      return true
+    end
+    if mouse_type == MOUSE_LEFT_UP and dragging then
+      local from = dragging
+      drop_drag()
+      local anchor, cell = cell_under(x, y)
+      if anchor == from.anchor and cell and logic.place(from.id, cell.id) then
+        if save then
+          save()
+        end
+        paint_all()
+      end
+      refresh_tip()
       return true
     end
     return false
@@ -605,6 +678,10 @@ local function new(ctx)
   end
 
   function self.destroy()
+    if ghost then
+      ghost.destroy()
+      ghost, ghost_id, ghost_size, dragging = nil, nil, nil, nil
+    end
     if tip then
       tip.destroy()
       tip, tip_showing = nil, nil

@@ -24,6 +24,9 @@ one for the rest.
 - **Hover** an icon to see the buff's name and id; **right-click** one to
   cancel it (this uses the Windower `cancel` addon, and does nothing if that
   addon is not loaded).
+- **Drag** an icon onto another on the same bar to move it there in the
+  priority order. The order is shared, so every bar follows it. A left-click
+  on an icon no longer reaches the game.
 - Timers can be switched off, leaving the icons alone.
 
 ## Configuration options

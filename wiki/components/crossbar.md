@@ -54,8 +54,8 @@ press them yourself.
   key) and Expanded Hold (eight more, both side keys at once).
 - **Bind anything**: spells, job abilities, weaponskills, items, enchanted
   gear, pet commands, mounts, ranged attack, chat lines, Windower commands,
-  and built-ins for drawing your weapon, mount roulette, warping home, sneak
-  and invisible.
+  and built-ins for drawing your weapon, mount roulette, warping home, sneak,
+  invisible and reraise.
 - **A mouse binder** (`//hud crossbar edit`): click a slot, pick a layer, pick
   an action from what your character actually knows.
 - **Layers**: a job's own base bindings, overrides for a particular subjob,
@@ -192,11 +192,13 @@ rest of the line means:
 | `ct` | a chat command, without its slash | `bind 4L1 ct "sea all linkshell"` |
 | `ex` | a Windower command, run as typed | `bind 4L2 ex "exec pull.txt"` |
 | `open` | the name of a game screen | `bind 5L1 open map` |
+| `jc` | a main/sub job pair — needs the JobChange addon (see Built-ins) | `bind 5L2 jc WAR/BLM` |
 | `draw` | *nothing* — sheathe / unsheathe | `bind 1L5 draw` |
 | `mr` | *nothing* — mount roulette | `bind 3L2 mr` |
 | `warp` | *nothing* — best available warp | `bind 6L1 warp` |
 | `sneak` | *nothing* — the sneak ladder (see Built-in actions) | `bind 6L2 sneak` |
 | `invisible` | *nothing* — the invisible ladder | `bind 6L3 invisible` |
+| `reraise` | *nothing* — the reraise ladder | `bind 6L4 reraise` |
 
 **`<target>`** is optional and takes the game's own target tokens. These are
 the ones that work:
@@ -387,8 +389,9 @@ commands, they work with `//bind` and in in-game macros too.
 | `//hud draw` | sheathe / unsheathe — or dismount, if mounted |
 | `//hud mr` | summon a random mount you own, or dismount if you are on one. Summoning counts down first — see **Travel counts down** below |
 | `//hud warp [all]` | warp home by the best means you have, after the same countdown; `all` warps your other characters running XIVHud, and sends them only when this character's own warp actually goes |
-| `//hud sneak` | picks the first way this character has to get the effect, cheapest first: the spell (Sneak / Invisible), then Spectral Jig, then the ninjutsu if you have the tool (Tonko: Ni over Tonko: Ichi; Monomi: Ichi), then a Silent Oil / Prism Powder. The order is the same on every job; what changes is which rungs you qualify for, read from the spells you know and the levels your main and sub have. Self-only rungs stay on you and so does the oil or powder; the spell goes to a targeted party member if you have one selected. |
+| `//hud sneak` | picks the first way this character has to get the effect, cheapest first: the spell (Sneak / Invisible), then Spectral Jig, then the ninjutsu if you have the tool (Tonko: Ni over Tonko: Ichi; Monomi: Ichi), then a Silent Oil / Prism Powder. Silenced or muted, the spell and the ninjutsu are passed over. The order is the same on every job; what changes is which rungs you qualify for, read from the spells you know and the levels your main and sub have. Self-only rungs stay on you and so does the oil or powder; the spell goes to a targeted party member if you have one selected. |
 | `//hud invisible` | the same ladder for invisible |
+| `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
 | `//hud crossbar open <name>` | open a game screen (`map`, `equipment`, …) |
 
 ---
@@ -653,8 +656,9 @@ Draw** on COR, **Waltzes**, **Sambas**, **Jigs**, **Steps** and **Flourishes
 I/II/III** on DNC, **Rune Enchantment**, **Ward** and **Effusion** on RUN,
 **Blood Pact: Rage** and **Blood Pact: Ward** on SMN, **Ready** on BST. Clicking
 one opens what is behind it, and you pick the real action there: Stratagems
-then Accession, Blood Pact: Rage then Volt Strike. `[ < back ]` steps back out
-of the list, and the categories down the left stay live — clicking one leaves
+then Accession, Blood Pact: Rage then Volt Strike. **Job Change** under General
+is a menu inside a menu: a main job, then a sub job. `[ < back ]` steps back out
+of the list one menu at a time, and the categories down the left stay live — clicking one leaves
 the menu.
 
 Before this the picker offered the menu itself, and binding that does nothing
@@ -841,7 +845,9 @@ These are the same actions as the `//hud` commands under
 | `mount <name>` | summons that mount, or dismounts if you are already up |
 | `warp` | picks the best warp you have, in order: the Warp or Warp II spell, then a Warp Ring, an Instant Warp, a Warp Cudgel, a Treat Staff II, and a Tavnazian Ring as the last resort. Equips the ring or cudgel for you and waits out the enchantment — though if it has more than about 30 seconds left to charge it gives up rather than waiting. The Tavnazian Ring is allowed longer, because its own warm-up is roughly that. A piece already on your finger is not assumed to be ready either: if its enchantment is still coming up, the crossbar waits it out for you, the same as it would for a ring it equipped itself. `warp all` sends your other characters running XIVHud home — when this character's warp actually fires, so calling the countdown off, or a ring warm-up that gets abandoned, leaves them where they are. |
 | `sneak` / `invisible` | the sneak and invisible ladders described under [Built-in actions](#built-in-actions). Both take the White Magic icon whichever rung fires, so the slot's face does not change with your subjob. |
+| `reraise` | the reraise ladder described under [Built-in actions](#built-in-actions), with the Reraise icon whichever rung fires |
 | `open <name>` | opens a game screen |
+| `jc <MAIN>/<SUB>` | changes job to that pair through the Windower **JobChange** addon (`//jc war/blm`), which must be loaded — without it the press does nothing but print "unknown command" in the console. You still have to stand near a Moogle (or a Nomad Moogle), as JobChange requires. The slot shows the main job's icon and the sub job as its label. In the binder it is **General → Job Change**, then a main job, then a sub job. All 22 jobs are listed whether you have unlocked them or not; JobChange refuses a locked one when you press it. |
 
 `mr` and `warp` count down before they go, and so does the `mount` type
 above — see **Travel counts down** under Extras.

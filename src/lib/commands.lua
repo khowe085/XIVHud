@@ -56,6 +56,7 @@ local RESERVED = {
   mr = true,
   sneak = true,
   invisible = true,
+  reraise = true,
   draw = true,
   retry = true,
   wsgate = true,
@@ -67,7 +68,7 @@ local RESERVED = {
 local GLOBAL_PANEL = "global"
 
 -- Framework-level presses: run by the action service, never by a bar.
-local ACTION_VERBS = { mr = true, sneak = true, invisible = true, draw = true }
+local ACTION_VERBS = { mr = true, sneak = true, invisible = true, reraise = true, draw = true }
 -- The options core.lua carries - the service's tuning and the framework's
 -- own: the words after the verb go through untouched, and core answers them
 -- over its own config.

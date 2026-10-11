@@ -20,10 +20,11 @@ bind here, and the same layers, contexts, sets and rotations apply.
 - **Four shapes per row**: 10x1, 5x2, 2x5 or 1x10. Slots are numbered left
   to right, top to bottom, so a binding stays on the same slot whatever the
   shape.
-- **Keyboard driven, no configuration**: the bare number row `1` to `0` fires
-  row 1, and the modifiers pick the row - CTRL for `bar2`, ALT for `bar3`,
-  SHIFT for `bar4`, CTRL+SHIFT for `bar5`, ALT+SHIFT for `bar6`,
-  CTRL+ALT+SHIFT for `bar7`. `bar8` has no keys and is mouse only.
+- **Keyboard driven, no configuration**: hold a modifier and press `1` to
+  `0` - CTRL for `bar1`, ALT for `bar2`, SHIFT for `bar3`, CTRL+SHIFT for
+  `bar4`, ALT+SHIFT for `bar5`, CTRL+ALT+SHIFT for `bar6`. `bar7` and `bar8`
+  have no keys and are mouse only. The bare number row is the game's: it
+  fires nothing, so a controller cannot set a row off by accident.
   **CTRL+Up** and **CTRL+Down** cycle the active set (the game's own macro set
   changes on the same chord).
 - **Left-click a slot** to fire it.
@@ -32,7 +33,7 @@ bind here, and the same layers, contexts, sets and rotations apply.
   while a chain is open.
 - **A mouse binder** (`//hud hotbar edit`): click a slot, pick a layer, pick an
   action from what your character knows. Menu entries - Stratagems, the Blood
-  Pacts, the DNC modes - open what is behind them rather than binding, exactly
+  Pacts, the DNC modes, Job Change - open what is behind them rather than binding, exactly
   as on the crossbar.
 - **Drag a slot onto the crossbar**, or a crossbar slot onto the hotbar: the
   two slots swap everything they hold, every layer of it. Edit mode covers
@@ -42,9 +43,11 @@ bind here, and the same layers, contexts, sets and rotations apply.
   sets per job, any of them shared across jobs, each in the drawn rotation,
   the sheathed one, both or neither.
 
-Keys fire a row whether or not it is on screen. The game's own CTRL and ALT
-macro palette still fires on those chords, so if you use rows 2, 3 and 5 to
-7, leave the matching in-game macros empty.
+A row you have hidden (`//hud hide hotbar bar2`, or SHIFT + right-click in
+layout mode) fires nothing: its chord goes to the game until you show it
+again. The game's own CTRL and ALT macro palette still fires on those
+chords, so if you use rows 1, 2 and 4 to 6, leave the matching in-game
+macros empty.
 
 ## Configuration options
 

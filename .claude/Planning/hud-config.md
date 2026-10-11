@@ -343,6 +343,15 @@ reply may run past the status line's right edge at 18pt (cosmetic, needs a live 
 targetbar copies its option list per call where the other panels hand out a module-level one
 (harmless - the window only reads them).
 
+**Merged with dev 2026-10-11** (#62-#66: the hotbar's chords, the reraise ladder, the job change
+bind type, status bar drag-to-reorder, the target bar's Treasure Hunter level). One conflict, the
+parser's verb tables, where `reraise` and `hidecutscene` landed on adjacent lines; both kept. One
+interaction left open for Kevin: #66 gave the status bar a left-drag, which layout mode lets go of
+through `set_preview(true)`. The settings window does not call `set_preview` (it would draw sample
+data), so a status-bar drag still held when `//hud config` runs keeps its ghost up until the window
+closes and the next click lets it go. Reaching it means holding the button on an icon while the
+command runs; fixing it properly wants a "let go of your gesture" member on the widget contract.
+
 **Independent verification of the panels** (one verifier per panel, on a frozen snapshot: the real
 window driven over the attached widget across stored states, a base-versus-new differential of
 each component's existing commands, and mutation testing). All eight came back sound for every

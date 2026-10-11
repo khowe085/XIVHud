@@ -368,6 +368,15 @@ describe("crossbar catalog", function()
       assert.are.same({ type = "ra" }, seen["Ranged Attack"])
     end)
 
+    it("offers Reraise among the built-ins", function()
+      local general = category(build().build(), "General")
+      local seen = {}
+      for _, entry in ipairs(general.entries) do
+        seen[entry.label] = entry.record
+      end
+      assert.are.same({ type = "reraise" }, seen["Reraise"])
+    end)
+
     it("carries every open target as its own entry", function()
       local openers = require("lib/actionbar/openers")
       local built = build().build()
@@ -382,12 +391,51 @@ describe("crossbar catalog", function()
 
     it("keeps ct and ex out of v1", function()
       local built = build().build()
-      for _, group in ipairs(built) do
-        for _, entry in ipairs(group.entries) do
-          assert.is_not_equal("ct", entry.record.type)
-          assert.is_not_equal("ex", entry.record.type)
+      local function walk(entries)
+        for _, entry in ipairs(entries) do
+          if entry.record ~= nil then
+            assert.is_not_equal("ct", entry.record.type)
+            assert.is_not_equal("ex", entry.record.type)
+          end
+          walk(entry.children or {})
         end
       end
+      for _, group in ipairs(built) do
+        walk(group.entries)
+      end
+    end)
+
+    describe("job change", function()
+      local function menu()
+        return entry_named(build().build(), "General", "Job Change")
+      end
+
+      it("is a menu of every main job, each wearing its icon", function()
+        local entry = menu()
+        assert.is_table(entry, "General carries Job Change")
+        assert.is_nil(entry.record, "the menu itself is not bindable")
+        assert.are.equal("targetnpc", entry.icon)
+        local file = io.open("src/assets/icons/targetnpc.png", "rb")
+        assert.is_not_nil(file, "the menu's icon must ship")
+        file:close()
+        assert.are.equal(22, #entry.children)
+        assert.are.equal("WAR", entry.children[1].label)
+        assert.are.equal("jobs/war", entry.children[1].icon)
+      end)
+
+      it("offers every sub job but the main, binding the pair labelled by the sub", function()
+        local war = menu().children[1]
+        assert.are.equal(21, #war.children)
+        for _, sub in ipairs(war.children) do
+          assert.is_not_equal("WAR", sub.label)
+        end
+        assert.are.equal("MNK", war.children[1].label)
+        assert.are.same({ type = "jc", action = "WAR/MNK", alias = "MNK" }, war.children[1].record)
+      end)
+
+      it("needs no client at all", function()
+        assert.is_table(entry_named(new_catalog({}).build(), "General", "Job Change"))
+      end)
     end)
   end)
 

@@ -23,6 +23,12 @@ local function resources()
     items = {
       [4181] = { id = 4181, en = "Instant Warp" },
       [26123] = { id = 26123, en = "Tavnazian Ring", slots = { [13] = true, [14] = true } },
+      -- The reraise ladder's consumables and one piece of its gear.
+      [5770] = { id = 5770, en = "Super Reraiser" },
+      [4173] = { id = 4173, en = "Hi-Reraiser" },
+      [4172] = { id = 4172, en = "Reraiser" },
+      [4182] = { id = 4182, en = "Instant Reraise" },
+      [14790] = { id = 14790, en = "Reraise Earring", slots = { [11] = true, [12] = true } },
     },
     mounts = { [1] = { name = "Chocobo" } },
     key_items = { [3000] = { category = "Mounts", name = "\226\153\170Chocobo" } },
@@ -166,6 +172,39 @@ local function ring_in_bag(env)
 end
 
 describe("the action service", function()
+  describe("the reraise ladder", function()
+    it("equips the earring once no spell or item can go, and waits out its warm-up", function()
+      --[[ None of the four consumables is in the bag, so the ladder reaches
+           the gear. The earring warms for thirty seconds and the scheduler
+           must not give up on it at the first poll. ]]
+      local service, env = world()
+      env.items[0] = { enabled = true, { id = 14790, slot = 4, status = 0, count = 1 } }
+      env.ext = {}
+      for key, value in pairs(RING_EXT_WARMING) do
+        env.ext[key] = value
+      end
+      service.builtin("reraise")
+      assert.are.same({ "gs disable ear1" }, env.commands)
+      assert.are.same({ { 4, 11, 0 } }, env.equips)
+      env.now = 1
+      service.tick()
+      assert.are.same({ "gs disable ear1" }, env.commands, "still warming, still held")
+      env.ext.usable = true
+      env.now = 2
+      service.tick()
+      assert.are.same({ "gs disable ear1", 'input /item "Reraise Earring" <me>', "gs enable ear1" }, env.commands)
+    end)
+
+    it("refuses while Reraise is already on and touches nothing", function()
+      local service, env = world()
+      env.items[0] = { enabled = true, { id = 14790, slot = 4, status = 0, count = 1 } }
+      env.player.buffs = { 113 }
+      assert.are.equal("Reraise is already active", service.builtin("reraise"))
+      assert.are.same({}, env.commands)
+      assert.are.same({}, env.equips)
+    end)
+  end)
+
   describe("weapon state", function()
     it("starts sheathed and flips on the draw built-in", function()
       local service, env = world()

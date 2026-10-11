@@ -2921,6 +2921,71 @@ describe("crossbar binder", function()
       assert.is_not_nil(shown_text(env, "pick an action"))
     end)
 
+    --[[ A menu inside a menu: General -> Job Change -> main -> sub. Each
+         level is the same step, and back climbs out one level at a time. ]]
+    describe("nested", function()
+      local function jobs()
+        return {
+          {
+            name = "General",
+            entries = {
+              {
+                label = "Job Change",
+                children = {
+                  {
+                    label = "WAR",
+                    children = {
+                      { label = "BLM", record = { type = "jc", action = "WAR/BLM", alias = "BLM" } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }
+      end
+
+      local function open_nested()
+        local binder, env = build({ catalog = jobs() })
+        open_stack(binder, env, "left", 3)
+        click(binder, centre(row_named(env, "base")))
+        click(binder, centre(entry_named(env, "Job Change")))
+        click(binder, centre(entry_named(env, "WAR")))
+        return binder, env
+      end
+
+      it("opens a child menu in place, naming it", function()
+        local binder, env = open_nested()
+        assert.are.equal("WAR", binder.catalog_view().submenu)
+        assert.is_not_nil(entry_named(env, "BLM"))
+        assert.is_not_nil(shown_text(env, "pick from WAR"))
+      end)
+
+      it("binds the innermost record where it stands", function()
+        local binder, env = open_nested()
+        click(binder, centre(entry_named(env, "BLM")))
+        assert.are.same({ type = "jc", action = "WAR/BLM", alias = "BLM" }, env.bindings.entry_at("1", "left", 3))
+      end)
+
+      it("climbs back out one level at a time", function()
+        local binder, env = open_nested()
+        back(binder, env)
+        assert.are.equal("Job Change", binder.catalog_view().submenu)
+        assert.is_not_nil(entry_named(env, "WAR"))
+        back(binder, env)
+        assert.is_nil(binder.catalog_view().submenu)
+        assert.is_not_nil(entry_named(env, "Job Change"))
+      end)
+
+      it("forgets the levels it climbed when a menu is opened afresh", function()
+        local binder, env = open_nested()
+        click(binder, centre(binder.catalog_view().categories[1]))
+        click(binder, centre(entry_named(env, "Job Change")))
+        back(binder, env)
+        assert.is_nil(binder.catalog_view().submenu, "one back from the first level is the catalog")
+      end)
+    end)
+
     it("pages a submenu longer than one page", function()
       local binder = open_submenu(40)
       local view = binder.catalog_view()

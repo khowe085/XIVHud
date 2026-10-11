@@ -298,6 +298,19 @@ local function new(deps)
     return plan
   end
 
+  -- A drag-and-drop: `id` to where `onto` stands in the one order every bar
+  -- shares. Returns whether it changed.
+  function self.place(id, onto)
+    local changed = engines.bar1.place({ priority = priority() }, id, onto)
+    -- One table under three engines, each memoizing it.
+    if changed then
+      for _, engine in pairs(engines) do
+        engine.invalidate()
+      end
+    end
+    return changed
+  end
+
   --[[ Geometry ------------------------------------------------------------ ]]
 
   -- The whole shape, full or empty, from the origin given: the origin never

@@ -4,6 +4,10 @@ local SNEAK, INVISIBLE = 137, 136
 local MONOMI, TONKO, TONKO_NI = 318, 353, 354
 local JIG = 196
 local SANJAKU, SHINOBI, SHIKANOFUDA = 2553, 1194, 2972
+local RERAISE, RERAISE_II, RERAISE_III, RERAISE_IV = 135, 141, 142, 848
+local RERAISE_BUFF, ADDENDUM_WHITE, ENLIGHTENMENT = 113, 401, 416
+local SILENCE, MUTE = 6, 29
+local WHM, SCH = 3, 20
 
 -- The resource fields the ladder actually reads, verbatim from Windower's
 -- own data: the prefix it fires with, the levels it gates on, and the
@@ -28,6 +32,43 @@ local function resources()
       [MONOMI] = { id = MONOMI, en = "Monomi: Ichi", prefix = "/ninjutsu", levels = { [13] = 25 }, targets = 1 },
       [TONKO] = { id = TONKO, en = "Tonko: Ichi", prefix = "/ninjutsu", levels = { [13] = 9 }, targets = 1 },
       [TONKO_NI] = { id = TONKO_NI, en = "Tonko: Ni", prefix = "/ninjutsu", levels = { [13] = 34 }, targets = 1 },
+      -- `requirements = 4` is the bit SCH opens with an Addendum.
+      [RERAISE] = {
+        id = RERAISE,
+        en = "Reraise",
+        prefix = "/magic",
+        levels = { [3] = 25, [20] = 35 },
+        requirements = 4,
+        targets = 1,
+        type = "WhiteMagic",
+      },
+      [RERAISE_II] = {
+        id = RERAISE_II,
+        en = "Reraise II",
+        prefix = "/magic",
+        levels = { [3] = 56, [20] = 70 },
+        requirements = 4,
+        targets = 1,
+        type = "WhiteMagic",
+      },
+      [RERAISE_III] = {
+        id = RERAISE_III,
+        en = "Reraise III",
+        prefix = "/magic",
+        levels = { [3] = 70, [20] = 91 },
+        requirements = 4,
+        targets = 1,
+        type = "WhiteMagic",
+      },
+      [RERAISE_IV] = {
+        id = RERAISE_IV,
+        en = "Reraise IV",
+        prefix = "/magic",
+        levels = { [3] = 100 },
+        requirements = 0,
+        targets = 1,
+        type = "WhiteMagic",
+      },
     },
     job_abilities = {
       [JIG] = { id = JIG, en = "Spectral Jig", prefix = "/jobability", targets = 1 },
@@ -44,6 +85,9 @@ local function build(overrides)
     tools = overrides.tools or {},
     items = overrides.items or {},
     target = overrides.target,
+    gear = overrides.gear or {},
+    gear_items = overrides.gear_items or {},
+    gear_asked = {},
   }
   local stealth = new_stealth({
     get_player = function()
@@ -63,6 +107,13 @@ local function build(overrides)
     end,
     get_target = function()
       return world.target
+    end,
+    find_item = function(name)
+      return world.gear_items[name]
+    end,
+    gear_plan = function(name)
+      world.gear_asked[#world.gear_asked + 1] = name
+      return world.gear[name] or { type = "none", notes = { "You don't have " .. name .. "." } }
     end,
     resources = overrides.resources == nil and resources() or overrides.resources,
   })
@@ -327,5 +378,378 @@ describe("crossbar stealth", function()
       end)
       assert.equal('input /item "Silent Oil" <me>', command)
     end)
+  end)
+end)
+
+describe("the reraise ladder", function()
+  -- Every reraise item known to be absent, so a test reaches the gear.
+  local NO_ITEMS = { ["Super Reraiser"] = 0, ["Hi-Reraiser"] = 0, ["Reraiser"] = 0, ["Instant Reraise"] = 0 }
+  local ALL_RERAISE = { [RERAISE] = true, [RERAISE_II] = true, [RERAISE_III] = true, [RERAISE_IV] = true }
+
+  local function equip_plan(name)
+    return { type = "equip", name = name, command = 'input /item "' .. name .. '" <me>', warmup = true, notes = {} }
+  end
+
+  describe("the spells", function()
+    it("casts the highest tier the character can use", function()
+      local stealth = build({
+        player = { main_job = "WHM", main_job_id = WHM, main_job_level = 99, buffs = {} },
+        spells = ALL_RERAISE,
+      })
+      assert.equal('input /magic "Reraise IV" <me>', stealth.plan("reraise"))
+    end)
+
+    it("walks down the tiers the character has learned", function()
+      local stealth = build({
+        player = { main_job = "WHM", main_job_id = WHM, main_job_level = 99, buffs = {} },
+        spells = { [RERAISE] = true, [RERAISE_II] = true },
+      })
+      assert.equal('input /magic "Reraise II" <me>', stealth.plan("reraise"))
+    end)
+
+    it("leaves Reraise IV to a WHM main and a subjob to the tiers its level reaches", function()
+      --[[ Reraise IV's requirement sits above the cap, so it is a main-job
+           gift; a WHM49 sub reaches Reraise (25) but not Reraise II (56). ]]
+      local stealth = build({
+        player = {
+          main_job = "WAR",
+          main_job_id = 1,
+          main_job_level = 99,
+          sub_job_id = WHM,
+          sub_job_level = 49,
+          buffs = {},
+        },
+        spells = ALL_RERAISE,
+      })
+      assert.equal('input /magic "Reraise" <me>', stealth.plan("reraise"))
+    end)
+
+    it("passes a job-point gift by while the main job is synced below the cap", function()
+      --[[ Reraise IV is a WHM job-point gift, and gifts are off below 99:
+           a WHM synced to 60 casts Reraise II rather than a Reraise IV the
+           game would refuse. ]]
+      local stealth = build({
+        player = { main_job = "WHM", main_job_id = WHM, main_job_level = 60, buffs = {} },
+        spells = ALL_RERAISE,
+      })
+      assert.equal('input /magic "Reraise II" <me>', stealth.plan("reraise"))
+    end)
+
+    it("keeps a reraise on you whatever is targeted", function()
+      local stealth = build({
+        player = { main_job = "WHM", main_job_id = WHM, main_job_level = 99, buffs = {} },
+        spells = { [RERAISE] = true },
+        target = { in_party = true, is_npc = false },
+      })
+      assert.equal('input /magic "Reraise" <me>', stealth.plan("reraise"))
+    end)
+  end)
+
+  describe("a scholar's Addendum: White", function()
+    it("passes a SCH-only spell by while Addendum: White is down", function()
+      -- SCH knows the spell and meets its level, but the game refuses the
+      -- cast without the Addendum, so the ladder carries on past it.
+      local stealth = build({
+        player = { main_job = "SCH", main_job_id = SCH, main_job_level = 99, buffs = {} },
+        spells = ALL_RERAISE,
+      })
+      assert.equal('input /item "Super Reraiser" <me>', stealth.plan("reraise"))
+    end)
+
+    it("casts it under Enlightenment, which opens both addenda", function()
+      local stealth = build({
+        player = { main_job = "SCH", main_job_id = SCH, main_job_level = 99, buffs = { ENLIGHTENMENT } },
+        spells = ALL_RERAISE,
+      })
+      assert.equal('input /magic "Reraise III" <me>', stealth.plan("reraise"))
+    end)
+
+    it("casts it once Addendum: White is up", function()
+      local stealth = build({
+        player = { main_job = "SCH", main_job_id = SCH, main_job_level = 99, buffs = { ADDENDUM_WHITE } },
+        spells = ALL_RERAISE,
+      })
+      assert.equal('input /magic "Reraise III" <me>', stealth.plan("reraise"))
+    end)
+
+    it("asks nothing of a WHM, main or sub, who carries the same spell", function()
+      local whm_main = build({
+        player = {
+          main_job = "WHM",
+          main_job_id = WHM,
+          main_job_level = 99,
+          sub_job_id = SCH,
+          sub_job_level = 49,
+          buffs = {},
+        },
+        spells = { [RERAISE_III] = true },
+      })
+      assert.equal('input /magic "Reraise III" <me>', whm_main.plan("reraise"))
+
+      --[[ A SCH/WHM without the Addendum: Reraise III and II are SCH's
+           alone at this sub level and are passed by, while Reraise comes
+           through the WHM sub, which needs none. ]]
+      local whm_sub = build({
+        player = {
+          main_job = "SCH",
+          main_job_id = SCH,
+          main_job_level = 99,
+          sub_job_id = WHM,
+          sub_job_level = 49,
+          buffs = {},
+        },
+        spells = ALL_RERAISE,
+      })
+      assert.equal('input /magic "Reraise" <me>', whm_sub.plan("reraise"))
+    end)
+
+    it("leaves a spell without the Addendum bit alone", function()
+      -- Sneak carries `requirements = 1`, not the Addendum bit.
+      local stealth = build({
+        player = { main_job = "SCH", main_job_id = SCH, main_job_level = 99, buffs = {} },
+        spells = { [SNEAK] = true },
+        resources = (function()
+          local res = resources()
+          res.spells[SNEAK].levels[SCH] = 20
+          res.spells[SNEAK].requirements = 1
+          return res
+        end)(),
+      })
+      assert.equal('input /magic "Sneak" <me>', stealth.plan("sneak"))
+    end)
+  end)
+
+  describe("the items", function()
+    it("reaches for the items in order once no spell can go", function()
+      local cases = {
+        { items = {}, expect = "Super Reraiser" },
+        { items = { ["Super Reraiser"] = 0 }, expect = "Hi-Reraiser" },
+        { items = { ["Super Reraiser"] = 0, ["Hi-Reraiser"] = 0 }, expect = "Reraiser" },
+        {
+          items = { ["Super Reraiser"] = 0, ["Hi-Reraiser"] = 0, ["Reraiser"] = 0 },
+          expect = "Instant Reraise",
+        },
+      }
+      for _, case in ipairs(cases) do
+        local stealth = build({
+          player = { main_job = "WAR", main_job_id = 1, main_job_level = 99, buffs = {} },
+          items = case.items,
+        })
+        assert.equal('input /item "' .. case.expect .. '" <me>', stealth.plan("reraise"))
+      end
+    end)
+
+    it("prefers any spell over an item", function()
+      local stealth = build({
+        player = { main_job = "WHM", main_job_id = WHM, main_job_level = 99, buffs = {} },
+        spells = { [RERAISE] = true },
+        items = { ["Super Reraiser"] = 12 },
+      })
+      assert.equal('input /magic "Reraise" <me>', stealth.plan("reraise"))
+    end)
+
+    it("asks nothing of the gear while an item can go", function()
+      local stealth, world = build({
+        player = { main_job = "WAR", main_job_id = 1, main_job_level = 99, buffs = {} },
+        items = { ["Instant Reraise"] = 1 },
+        gear = { ["Reraise Ring"] = equip_plan("Reraise Ring") },
+      })
+      stealth.plan("reraise")
+      assert.are.same({}, world.gear_asked)
+    end)
+  end)
+
+  describe("the gear", function()
+    it("walks the gear ring, earring, hairpin, gorget once the items are gone", function()
+      local order = { "Reraise Ring", "Reraise Earring", "Reraise Hairpin", "Reraise Gorget" }
+      for index, name in ipairs(order) do
+        local gear = {}
+        gear[name] = equip_plan(name)
+        local stealth, world = build({
+          player = { main_job = "WAR", main_job_id = 1, main_job_level = 99, buffs = {} },
+          items = NO_ITEMS,
+          gear = gear,
+        })
+        local plan = stealth.plan("reraise")
+        assert.equal(gear[name], plan, name .. " is the plan handed back, untouched")
+        assert.are.same({ unpack(order, 1, index) }, world.gear_asked, "asked in order, stopping at " .. name)
+      end
+    end)
+
+    it("passes over a piece that cannot go and takes the next", function()
+      local stealth = build({
+        player = { main_job = "WAR", main_job_id = 1, main_job_level = 99, buffs = {} },
+        items = NO_ITEMS,
+        gear = {
+          ["Reraise Ring"] = { type = "none", notes = { "Reraise Ring: 70000 sec recast." } },
+          ["Reraise Earring"] = equip_plan("Reraise Earring"),
+        },
+      })
+      assert.equal("Reraise Earring", stealth.plan("reraise").name)
+    end)
+
+    it("passes by a piece the main job cannot wear", function()
+      -- The gorget's own job mask (Windower's data): WAR RDM PLD DRK BST
+      -- RNG SAM DRG BLU RUN - no THF. The set shape is read as well.
+      for _, jobs in ipairs({ 4283298, { [1] = true, [5] = true } }) do
+        local stealth, world = build({
+          player = { main_job = "THF", main_job_id = 6, main_job_level = 99, buffs = {} },
+          items = NO_ITEMS,
+          gear = { ["Reraise Gorget"] = equip_plan("Reraise Gorget") },
+          gear_items = { ["Reraise Gorget"] = { en = "Reraise Gorget", jobs = jobs, level = 56 } },
+        })
+        local plan, hint = stealth.plan("reraise")
+        assert.is_nil(plan)
+        assert.equal("no way to reraise right now", hint)
+        assert.are.same({ "Reraise Ring", "Reraise Earring", "Reraise Hairpin" }, world.gear_asked)
+      end
+    end)
+
+    it("passes by a piece above the main job's level", function()
+      local stealth = build({
+        player = { main_job = "WAR", main_job_id = 1, main_job_level = 50, buffs = {} },
+        items = NO_ITEMS,
+        gear = {
+          ["Reraise Hairpin"] = equip_plan("Reraise Hairpin"),
+          ["Reraise Gorget"] = equip_plan("Reraise Gorget"),
+        },
+        gear_items = {
+          ["Reraise Hairpin"] = { en = "Reraise Hairpin", jobs = 8388606, level = 60 },
+          ["Reraise Gorget"] = { en = "Reraise Gorget", jobs = 4283298, level = 50 },
+        },
+      })
+      assert.equal("Reraise Gorget", stealth.plan("reraise").name)
+    end)
+
+    it("reads a job list as no answer rather than as a set", function()
+      -- `{ 1, 5 }` read as a set would refuse the WAR it names.
+      local stealth = build({
+        player = { main_job = "WAR", main_job_id = 1, main_job_level = 99, buffs = {} },
+        items = NO_ITEMS,
+        gear = { ["Reraise Ring"] = equip_plan("Reraise Ring") },
+        gear_items = { ["Reraise Ring"] = { en = "Reraise Ring", jobs = { 1, 5 } } },
+      })
+      assert.equal("Reraise Ring", stealth.plan("reraise").name)
+    end)
+
+    it("takes a piece whose jobs and level the resources do not give", function()
+      -- A fact that cannot be read allows the press.
+      local stealth = build({
+        player = { main_job = "THF", main_job_id = 6, main_job_level = 1, buffs = {} },
+        items = NO_ITEMS,
+        gear = { ["Reraise Earring"] = equip_plan("Reraise Earring") },
+        gear_items = { ["Reraise Earring"] = { en = "Reraise Earring" } },
+      })
+      assert.equal("Reraise Earring", stealth.plan("reraise").name)
+    end)
+
+    it("answers the bare hint when nothing at all can go", function()
+      local stealth = build({
+        player = { main_job = "WAR", main_job_id = 1, main_job_level = 99, buffs = {} },
+        items = NO_ITEMS,
+      })
+      local plan, hint = stealth.plan("reraise")
+      assert.is_nil(plan)
+      assert.equal("no way to reraise right now", hint)
+    end)
+
+    it("skips the gear rungs where no gear planner was given", function()
+      local stealth = new_stealth({
+        item_count = function()
+          return 0
+        end,
+      })
+      local plan, hint = stealth.plan("reraise")
+      assert.is_nil(plan)
+      assert.equal("no way to reraise right now", hint)
+    end)
+  end)
+
+  describe("a spell the game would refuse right now", function()
+    local function whm(buffs)
+      return { main_job = "WHM", main_job_id = WHM, main_job_level = 99, buffs = buffs }
+    end
+
+    it("reaches for an item while silenced or muted", function()
+      for _, buff in ipairs({ SILENCE, MUTE }) do
+        local stealth = build({
+          player = whm({ buff }),
+          spells = ALL_RERAISE,
+          items = { ["Super Reraiser"] = 0, ["Hi-Reraiser"] = 3 },
+        })
+        assert.equal('input /item "Hi-Reraiser" <me>', stealth.plan("reraise"), "buff " .. buff)
+      end
+    end)
+
+    it("leaves MP to the game", function()
+      -- Penury and Light Arts cut the cost, so a gate on the base cost would
+      -- spend an item where the spell would have gone (Kevin, 2026-10-09).
+      local player = whm({})
+      player.vitals = { mp = 10 }
+      local stealth = build({ player = player, spells = { [RERAISE] = true } })
+      assert.equal('input /magic "Reraise" <me>', stealth.plan("reraise"))
+    end)
+
+    it("passes the stealth spells and ninjutsu by while silenced, but not the jig", function()
+      local silenced = {
+        main_job = "WHM",
+        main_job_id = WHM,
+        main_job_level = 99,
+        sub_job_id = 13,
+        sub_job_level = 49,
+        buffs = { SILENCE },
+      }
+      local stealth = build({
+        player = silenced,
+        spells = { [SNEAK] = true, [MONOMI] = true },
+        tools = { [SANJAKU] = 5 },
+      })
+      assert.equal('input /item "Silent Oil" <me>', stealth.plan("sneak"))
+
+      local dancer = build({
+        player = { main_job = "DNC", main_job_id = 19, main_job_level = 99, buffs = { SILENCE } },
+        abilities = { job_abilities = { JIG } },
+      })
+      assert.equal('input /jobability "Spectral Jig" <me>', dancer.plan("sneak"), "a jig is no spell")
+    end)
+  end)
+
+  describe("a reraise already on", function()
+    it("refuses the press with a hint and walks no rung", function()
+      local stealth, world = build({
+        player = { main_job = "WHM", main_job_id = WHM, main_job_level = 99, buffs = { RERAISE_BUFF } },
+        spells = ALL_RERAISE,
+        items = NO_ITEMS,
+      })
+      local plan, hint = stealth.plan("reraise")
+      assert.is_nil(plan)
+      assert.equal("Reraise is already active", hint)
+      assert.are.same({}, world.gear_asked)
+    end)
+
+    it("leaves sneak and invisible alone under it", function()
+      local stealth = build({
+        player = { main_job = "WHM", main_job_id = WHM, main_job_level = 99, buffs = { RERAISE_BUFF } },
+        spells = { [SNEAK] = true },
+      })
+      assert.equal('input /magic "Sneak" <me>', stealth.plan("sneak"))
+    end)
+  end)
+
+  it("folds case", function()
+    local stealth = build({
+      player = { main_job = "WHM", main_job_id = WHM, main_job_level = 99, buffs = {} },
+      spells = { [RERAISE] = true },
+    })
+    assert.equal('input /magic "Reraise" <me>', stealth.plan("RERAISE"))
+  end)
+
+  it("survives a client that answers nothing", function()
+    local stealth = new_stealth({})
+    local command
+    assert.has_no.errors(function()
+      command = stealth.plan("reraise")
+    end)
+    assert.equal('input /item "Super Reraiser" <me>', command)
   end)
 end)

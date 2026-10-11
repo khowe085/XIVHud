@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
          anything. ]]
 
 local new_logic = require("components/targetbar/logic")
+local new_th = require("components/targetbar/th")
 local build_defaults = require("components/targetbar/defaults")
 
 local ASSET_DIR = "assets/xiv/wide/"
@@ -66,7 +67,7 @@ local TOKEN = { main = "t", subtarget = "st" }
 --[[ One bar: its own prims, its own logic, its own placement. The token is
      the only thing that tells the two apart - everything below draws whatever
      mob it is handed. ]]
-local function new_bar(ctx, variant, config)
+local function new_bar(ctx, variant, config, th)
   local bar = {}
   local token = TOKEN[variant]
 
@@ -74,7 +75,7 @@ local function new_bar(ctx, variant, config)
 
   -- Without the resources library there is no spell name or cast time to
   -- show, so logic quietly runs with the cast feature off.
-  local logic = new_logic(config, ctx.resources, variant)
+  local logic = new_logic(config, ctx.resources, variant, th.level)
 
   local attached = false
   local pos = nil
@@ -451,10 +452,12 @@ local function new(ctx)
        held here rather than in either bar: both want the same answer, and
        set_party walks eighteen member tables to reach it. ]]
   local last_generation = nil
+  -- One for both bars: a level belongs to the mob, whichever bar draws it.
+  local th = new_th()
 
   local bars = {}
   for _, anchor in ipairs(ANCHORS) do
-    bars[anchor] = new_bar(ctx, anchor, self.defaults.bars[anchor])
+    bars[anchor] = new_bar(ctx, anchor, self.defaults.bars[anchor], th)
   end
 
   local function each(method, ...)
@@ -537,6 +540,9 @@ local function new(ctx)
   function self.detach()
     attached = false
     save = nil
+    -- Mob ids repeat between zones, so a level must not outlive the
+    -- character that saw it proc.
+    th.clear()
     each("detach")
   end
 
@@ -592,23 +598,29 @@ local function new(ctx)
   end
 
   --[[ No arguments is the per-frame tick. Of the events the entry point
-       forwards to every component, exactly one is wanted: the action chunk,
-       which feeds both cast trackers and nothing else - no render, no client
+       forwards to every component, only chunks are wanted: the action chunk
+       feeds both cast trackers and the treasure hunter tracker, and the
+       tracker picks its own few ids out of the rest - no render, no client
        read. Everything else is ignored quietly, which is the contract:
        core.dispatch has no idea who wants what, and a handler that threw
        would be disabled for the rest of the session. ]]
-  function self.update(event, id, _original, parsed)
+  function self.update(event, id, original, parsed)
     if event == nil then
       refresh_client()
       each("render")
       return
     end
-    if event ~= "chunk" or id ~= ACTION_CHUNK or not attached then
+    if event ~= "chunk" or not attached then
+      return
+    end
+    if id ~= ACTION_CHUNK then
+      th.on_chunk(id, original)
       return
     end
     -- Already decoded, by the one dispatch that sees the packet: nil when the
     -- parse failed, which reads the same as nothing having happened.
     if parsed then
+      th.on_action(parsed)
       each("on_action", parsed, ctx.now())
     end
   end

@@ -805,8 +805,8 @@ local function new(ctx)
   --[[ A shortcut key's verb: a `//hud crossbar` line without the prefix, OR
        one of the framework's own verbs - `draw`, `mr`, `sneak`, `invisible`
        and `warp [all]` left the bar's dispatcher on 2026-09-06 and a pad
-       button bound to one must still fire it. ]]
-  local FRAMEWORK_VERBS = { draw = true, mr = true, sneak = true, invisible = true }
+       button bound to one must still fire it, as must `reraise`. ]]
+  local FRAMEWORK_VERBS = { draw = true, mr = true, sneak = true, invisible = true, reraise = true }
   local function run_shortcut(verb)
     if type(verb) ~= "string" then
       return

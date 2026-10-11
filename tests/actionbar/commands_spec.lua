@@ -369,6 +369,38 @@ describe("crossbar commands", function()
       assert.is_nil(stored(world, "SCH", 1, "right", 4))
     end)
 
+    describe("a job change", function()
+      it("stores the pair upper case, labelled by the sub job", function()
+        local commands, world = build()
+        local _, _, repaint = commands.command({ "bind", "1R3", "jc", "war/blm" })
+        assert.is_true(repaint)
+        assert.are.same({ type = "jc", action = "WAR/BLM", alias = "BLM" }, stored(world, "SCH", 1, "right", 3))
+      end)
+
+      it("keeps an alias and icon the user gave", function()
+        local commands, world = build()
+        commands.command({ "bind", "1R3", "jc", "WAR/BLM", "alias=Nuke" })
+        assert.are.same({ type = "jc", action = "WAR/BLM", alias = "Nuke" }, stored(world, "SCH", 1, "right", 3))
+      end)
+
+      it("refuses a missing, malformed or extra pair, and a target", function()
+        local commands, world = build()
+        local cases = {
+          { "bind", "1R3", "jc" },
+          { "bind", "1R3", "jc", "WAR" },
+          { "bind", "1R3", "jc", "WAR/XYZ" },
+          { "bind", "1R3", "jc", "WAR/BLM", "t" },
+          { "bind", "1R3", "jc", "WAR/BLM", "<t>" },
+        }
+        for _, args in ipairs(cases) do
+          local reply, _, repaint = commands.command(args)
+          assert.is_string(reply, table.concat(args, " "))
+          assert.is_falsy(repaint, table.concat(args, " "))
+        end
+        assert.is_nil(stored(world, "SCH", 1, "right", 3))
+      end)
+    end)
+
     it("rejects an unknown type, a bad side and a bad slot", function()
       local commands, world = build()
       local cases = {
@@ -428,6 +460,18 @@ describe("crossbar commands", function()
       end
       local reply, _, repaint = commands.command({ "bind", "1L3", "ra", "t", "please" })
       assert.is_string(reply)
+      assert.is_falsy(repaint)
+      assert.is_nil(stored(world, "SCH", 1, "left", 3))
+    end)
+
+    it("binds reraise bare and refuses a target after it", function()
+      -- Reraise is self-only, so a target word is refused rather than stored
+      -- on a record that would never send it.
+      local commands, world = build()
+      commands.command({ "bind", "1L2", "reraise" })
+      assert.are.same({ type = "reraise" }, stored(world, "SCH", 1, "left", 2))
+      local reply, _, repaint = commands.command({ "bind", "1L3", "reraise", "me" })
+      assert.is_not_nil(tostring(reply):find("takes no action name or target", 1, true), tostring(reply))
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3))
     end)

@@ -464,8 +464,7 @@ describe("statusbar widget", function()
       assert.are.equal(before, calls())
     end)
 
-    it("ignores clicks and the wheel", function()
-      assert.is_false(widget.on_mouse(1, 140, 60, 0))
+    it("ignores the wheel", function()
       assert.is_false(widget.on_mouse(10, 140, 60, 1))
       assert.is_nil(tip())
     end)
@@ -628,6 +627,146 @@ describe("statusbar widget", function()
       assert.is_false(widget.on_mouse(RIGHT_DOWN, 105, 60, 0))
       assert.are.same({}, env.commands)
     end)
+  end)
+
+  -- Left-dragging an icon onto another on the same bar moves it there in the
+  -- one order every bar shares. KO outranks haste, so haste starts second.
+  describe("dragging to reorder", function()
+    local MOVE, LEFT_DOWN, LEFT_UP = 0, 1, 2
+    local KO_AT, HASTE_AT = { 105, 60 }, { 140, 60 }
+
+    before_each(function()
+      attach()
+      env.player.buffs = { HASTE, KO }
+      widget.update()
+    end)
+
+    local function ids()
+      local list = {}
+      for index, icon in ipairs(icons_shown()) do
+        list[index] = icon.id
+      end
+      return list
+    end
+
+    local function drag(from, to)
+      local pressed = widget.on_mouse(LEFT_DOWN, from[1], from[2], 0)
+      widget.on_mouse(MOVE, to[1], to[2], 0)
+      local released = widget.on_mouse(LEFT_UP, to[1], to[2], 0)
+      return pressed, released
+    end
+
+    it("moves the dragged buff to where the other stood, and saves", function()
+      assert.are.same({ KO, HASTE }, ids())
+      assert.are.same({ true, true }, { drag(HASTE_AT, KO_AT) })
+      assert.are.same({ HASTE, KO }, ids())
+      assert.are.equal(1, config.priority[HASTE])
+      assert.are.equal(1, saves)
+    end)
+
+    it("swallows a click on an icon that goes nowhere, and changes nothing", function()
+      assert.are.same({ true, true }, { drag(HASTE_AT, HASTE_AT) })
+      assert.are.same({ KO, HASTE }, ids())
+      assert.are.equal(0, saves)
+    end)
+
+    it("leaves a left-click off the icons to the game", function()
+      assert.is_false(widget.on_mouse(LEFT_DOWN, 140, 400, 0))
+      assert.is_false(widget.on_mouse(LEFT_UP, 140, 400, 0))
+    end)
+
+    it("cancels a drop off every icon, still swallowing the release", function()
+      assert.are.same({ true, true }, { drag(HASTE_AT, { 500, 500 }) })
+      assert.are.same({ KO, HASTE }, ids())
+      assert.are.equal(0, saves)
+    end)
+
+    it("cancels a drop on another bar", function()
+      widget.show("bar2")
+      widget.handle_buffs({ "bar2", "filter", "all" })
+      widget.update()
+      saves = 0
+      assert.are.same({ true, true }, { drag(HASTE_AT, { 105, 160 }) })
+      assert.is_nil(config.priority[HASTE])
+      assert.are.equal(0, saves)
+    end)
+
+    it("drags a ghost of the icon under the cursor, and drops it with the release", function()
+      widget.on_mouse(LEFT_DOWN, HASTE_AT[1], HASTE_AT[2], 0)
+      assert.are.equal(2, #icons_shown(), "no ghost until the cursor moves")
+      assert.is_false(widget.on_mouse(MOVE, 300, 300, 0), "a move never blocks")
+      local ghost = icons_shown()[3]
+      assert.are.same({ id = HASTE, x = 284, y = 284, width = 32 }, ghost)
+      widget.on_mouse(MOVE, 310, 300, 0)
+      assert.are.equal(294, icons_shown()[3].x)
+      widget.on_mouse(LEFT_UP, 310, 300, 0)
+      assert.are.equal(2, #icons_shown())
+    end)
+
+    it("names nothing while a buff is in hand", function()
+      widget.on_mouse(MOVE, HASTE_AT[1], HASTE_AT[2], 0)
+      widget.on_mouse(LEFT_DOWN, HASTE_AT[1], HASTE_AT[2], 0)
+      widget.on_mouse(MOVE, KO_AT[1], KO_AT[2], 0)
+      -- A repaint re-reads the tip under a still cursor; not while dragging.
+      env.player.buffs = { HASTE, KO }
+      widget.update()
+      for _, prim in ipairs(prims.texts) do
+        assert.is_false(prim.visible and type(prim.last.text) == "string" and prim.last.text:find("(", 1, true) ~= nil)
+      end
+    end)
+
+    -- A release that never arrived: the next press starts afresh rather
+    -- than dropping the old buff wherever it lands.
+    it("lets a fresh press supersede a drag whose release never came", function()
+      widget.on_mouse(LEFT_DOWN, HASTE_AT[1], HASTE_AT[2], 0)
+      widget.on_mouse(MOVE, 300, 300, 0)
+      assert.is_true(widget.on_mouse(LEFT_DOWN, KO_AT[1], KO_AT[2], 0))
+      assert.are.equal(2, #icons_shown(), "the old ghost is down")
+      widget.on_mouse(MOVE, HASTE_AT[1], HASTE_AT[2], 0)
+      widget.on_mouse(LEFT_UP, HASTE_AT[1], HASTE_AT[2], 0)
+      assert.are.equal(1, saves)
+      assert.are.same({ HASTE, KO }, ids(), "KO was dropped behind haste")
+    end)
+
+    it("drags nothing in a preview", function()
+      widget.set_preview(true)
+      assert.is_false(widget.on_mouse(LEFT_DOWN, 105, 60, 0))
+    end)
+
+    -- Layout mode takes the mouse, a hide or a logout takes the bar: the
+    -- release cannot be ours after any of them.
+    for _, case in ipairs({
+      {
+        "the preview opening",
+        function()
+          widget.set_preview(true)
+          widget.set_preview(false)
+        end,
+      },
+      {
+        "a whole-widget hide",
+        function()
+          widget.hide()
+        end,
+      },
+      {
+        "a detach",
+        function()
+          widget.detach()
+        end,
+      },
+    }) do
+      it("drops a drag in flight on " .. case[1], function()
+        widget.on_mouse(LEFT_DOWN, HASTE_AT[1], HASTE_AT[2], 0)
+        widget.on_mouse(MOVE, 300, 300, 0)
+        case[2]()
+        for _, prim in ipairs(prims.images) do
+          assert.is_false(prim.visible and prim.x == 284, "the ghost is down")
+        end
+        assert.is_false(widget.on_mouse(LEFT_UP, KO_AT[1], KO_AT[2], 0))
+        assert.are.equal(0, saves)
+      end)
+    end
   end)
 
   describe("preview", function()

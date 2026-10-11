@@ -39,9 +39,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      per-job files, keyed one side, `row`), the job scoping, the counts, the
      binder and the authoring CLI; lib/actionbar/slot draws each cell;
      lib/actionbar/service executes every press. What is this file's own is
-     the geometry (render.lua), the keys (input.lua - the bare number row
-     and CTRL/ALT/SHIFT rows, nothing of the crossbar's), the prims, and the
-     framework contract routed by anchor the way partylist routes it.
+     the geometry (render.lua), the keys (input.lua - the number row under
+     a CTRL/ALT/SHIFT chord, one chord per row for rows 1-6, nothing of the
+     crossbar's), the prims, and the framework contract routed by anchor the
+     way partylist routes it.
 
      A row's prims are built the first time it is shown, not all 720 in the
      factory the way the crossbar builds its 365: seven of the eight rows
@@ -412,8 +413,8 @@ local function new(ctx)
 
   --[[ Fire one slot of one row, whatever pointed at it - a key or a click.
        Everything after the resolve is the bar's and then the service's. A
-       row need not be on screen to be fired: XIV's own rule, a hidden
-       hotbar's binds still work. ]]
+       row the user hid never reaches this: the key machine refuses its
+       chord (`row_hidden`, below) and an undrawn slot takes no click. ]]
   local function fire_at(anchor, slot)
     local set = set_of(anchor)
     if set == nil then
@@ -746,6 +747,11 @@ local function new(ctx)
           return ctx.component_visible() ~= true
         end
         return not visible
+      end,
+      -- The per-anchor switch (`//hud hide hotbar bar2`, SHIFT + right-click):
+      -- a row switched off fires nothing (Kevin, 2026-10-09).
+      row_hidden = function(anchor)
+        return hidden_anchors[anchor] == true
       end,
     })
     dress_all()

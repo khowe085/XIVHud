@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
 --[[ The action service: the ONE place a press is executed, shared by every
-     bar and by the framework's own `//hud warp|mr|sneak|invisible|draw`.
+     bar and by the framework's own `//hud warp|mr|sneak|invisible|reraise|draw`.
 
      It exists because the crossbar's execution glue held process-wide
      invariants - "only one wait of any kind is in flight", the GearSwap hold
@@ -35,7 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      player's weapon state - and a second bar with a scheduler of its own
      could issue a second `gs disable` over the same ring. So the scheduler,
      the travel countdown, the retry, the weaponskill gate, the skillchain
-     engine, mount roulette and the warp and stealth ladders all live here,
+     engine, mount roulette and the warp, stealth and reraise ladders all live here,
      built once in the entry point (lib/player's shape) and handed to each bar
      as `ctx.actions`.
 
@@ -338,6 +338,10 @@ local function new(deps)
     end,
     get_target = function()
       return deps.get_mob_by_target ~= nil and deps.get_mob_by_target("t") or nil
+    end,
+    find_item = find_item,
+    gear_plan = function(name)
+      return enchanteditem.plan(name)
     end,
   })
 
@@ -1045,8 +1049,9 @@ local function new(deps)
   end
 
   -- A built-in by name from the console (`draw`, `mr`, `sneak`, `invisible`,
-  -- `open <name>`). Answers a hint for a name or argument it cannot run, nil
-  -- when the press went - or was refused in words already said.
+  -- `reraise`, `open <name>`). Answers a hint for a name or argument it
+  -- cannot run, nil when the press went - or was refused in words already
+  -- said.
   function self.builtin(name, arg)
     local plan, hint = actions.resolve_builtin(name, arg, self.draw_state())
     if plan == nil then

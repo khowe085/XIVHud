@@ -294,6 +294,12 @@ describe("commands", function()
       end
     end)
 
+    it("reserves reraise and parses it as a built-in that takes no arguments", function()
+      assert.is_true(commands.reserved.reraise)
+      assert.are.same({ action = "action", verb = "reraise" }, parse("Reraise"))
+      assert_error(parse("reraise", "x"), "takes no arguments")
+    end)
+
     it("passes the tuning verbs through with their words", function()
       assert.are.same({ action = "tune", verb = "retry", words = {} }, parse("retry"))
       assert.are.same({ action = "tune", verb = "retry", words = { "on" } }, parse("Retry", "on"))
