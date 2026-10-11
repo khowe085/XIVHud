@@ -139,6 +139,14 @@ moves, read 2026-09-05:
     input designs died on), so a user of rows 2, 3 and 5-7 must keep the
     matching in-game macros inert. Kevin's call, made knowing that. Bare
     number keys and SHIFT chords are swallowed, both edges.
+    **Amended 2026-10-09 (Kevin).** The bare number row fires NOTHING: a
+    controller mapped through Steam Input pressed it by accident. Every row
+    moved down one chord - CTRL -> `bar1`, ALT -> `bar2`, SHIFT -> `bar3`,
+    CTRL+SHIFT -> `bar4`, ALT+SHIFT -> `bar5`, CTRL+ALT+SHIFT -> `bar6`;
+    `bar7` and `bar8` are mouse-only. And a row hidden per anchor fires
+    nothing (its chord goes to the game) where it used to fire regardless,
+    XIV's rule; the cycle keys still move the active set with `bar1`
+    hidden, as the CLI's `cycle` does - unasked, flagged to Kevin.
 14. **The skillchain indicator becomes a component of its own** (Kevin,
     2026-09-06), so the two bars do not each carry one. Both bars keep their
     per-slot chain borders; the bar that shows the window is one
@@ -203,8 +211,9 @@ Picked as the smallest option each time; say so and I change it.
   to choose. Making them config is a later verb if wanted.
 - **A modifier set matches exactly.** CTRL+ALT with no SHIFT is assigned to
   nothing, so it neither fires nor blocks and reaches the game whole.
-- **Keys fire a row whether or not its anchor is shown.** XIV's own rule: a
-  hidden hotbar's binds still work. Only the WIDGET's state gates them -
+- **Keys fire a row whether or not its anchor is shown.** (Reversed
+  2026-10-09 - see the amendment to decision 13: a row hidden per anchor
+  fires nothing now.) XIV's own rule: a hidden hotbar's binds still work. Only the WIDGET's state gates them -
   hidden by the user (`//hud hide hotbar`), suppressed, layout mode, edit mode
   or an open chat line, and every key falls through to the game unblocked. No
   key of the hotbar's is worth protecting during a cutscene the way the

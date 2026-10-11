@@ -147,6 +147,48 @@ describe("targetbar logic", function()
       assert.are.equal("", logic.texts().name.text)
     end)
 
+    describe("with a treasure hunter level", function()
+      local levels
+
+      before_each(function()
+        levels = {}
+        logic = new_logic(config, nil, "main", function(id)
+          return levels[id]
+        end)
+      end)
+
+      it("follows the name", function()
+        levels[100] = 4
+        logic.set_target(mob({ name = "Colibri" }))
+        assert.are.equal("Colibri - TH:4", logic.texts().name.text)
+      end)
+
+      it("is not part of the name's cap", function()
+        config.name_max_chars = 8
+        logic.set_config(config)
+        levels[100] = 12
+        logic.set_target(mob({ name = "Bugbear Strongman" }))
+        assert.are.equal("Bugbear  - TH:12", logic.texts().name.text)
+      end)
+
+      it("is absent for a mob without one", function()
+        levels[101] = 4
+        logic.set_target(mob({ name = "Colibri" }))
+        assert.are.equal("Colibri", logic.texts().name.text)
+      end)
+
+      it("is absent with nothing targeted", function()
+        levels[100] = 4
+        assert.are.equal("", logic.texts().name.text)
+      end)
+
+      -- Whether or not a level is showing, so the box never moves.
+      it("is reserved past the name's cap", function()
+        -- The 17-character cap plus " - TH:14", at 0.75 of the 14pt font.
+        assert.are.equal(263, logic.geometry(0, 0, 1).texts.name.width)
+      end)
+    end)
+
     it("formats the extremes of the hp range", function()
       logic.set_target(mob({ hpp = 0 }))
       assert.are.equal("0%", logic.texts().hp.text)
@@ -968,7 +1010,7 @@ describe("targetbar logic", function()
     end)
 
     it("sizes the row from the frame, which outgrows the default text", function()
-      -- The reserves come to 285 at 14pt; the 512px frame wins.
+      -- The reserves come to 369 at 14pt; the 512px frame wins.
       local _, _, width = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
       assert.are.equal(512, width)
     end)
@@ -976,10 +1018,11 @@ describe("targetbar logic", function()
     it("sizes the row from the reserves once the text outgrows the frame", function()
       config.font_size = 28
       logic.set_config(config)
-      -- 21 of leading inset, then 105 + 105 + 357 at 28pt: past the frame's
-      -- 512, so the inset counts toward the box too.
+      -- 21 of leading inset, then 105 + 105 + 525 at 28pt (the name's cap and
+      -- the treasure hunter suffix): past the frame's 512, so the inset
+      -- counts toward the box too.
       local _, _, width = logic.bounds(ORIGIN_X, ORIGIN_Y, 1)
-      assert.are.equal(588, width)
+      assert.are.equal(756, width)
     end)
 
     it("lays the row out left to right: hp, distance, then name", function()

@@ -124,9 +124,10 @@ unverified is the **wired component** behaving the same way.
 | 7.2 | `//hud draw` from the console, then engage a mob, then `//hud draw` again | The crossbar's sword and BOTH bars' rotations follow one state: drawn lights the sword and lands each bar on its first drawn set; the second `draw` sends `/attack off` | Weapon state is the service's; a bar reads it back each tick (`bar.sync_weapon`) |
 | 7.3 | `//hud retry`, `//hud retry on`, `//hud wsgate`, `//hud wsgate range 30`, `//hud delay 2`, then `//hud copy` this character onto another and read them there | Each reports and writes `data/<Character>/core.lua` at once; `//hud slot` does NOT switch them; the copy carries them | They live in core.lua beside `snap` and `hideCutscene`, outside every slot |
 | 7.4 | `//hud warp all` between two clients on THIS build | Both warp; the receiver does not re-broadcast | The IPC string is `xivhud warp` now; an alt on the older build hears nothing |
-| 7.5 | Hold `;` and press `1` with the hotbar on; release; press bare `1`; press CTRL+`1` | The crossbar fires alone on the chord and the hotbar's row 1 alone on the bare key; CTRL+`1` fires row 2 AND the game's macro (expected - keep those macros inert) | Core hands a later component the block an earlier one took; the crossbar is registered first |
-| 7.6 | ALT+`1`, SHIFT+`1`, CTRL+ALT+`1` | Row 3, row 4, and nothing at all (CTRL+ALT is assigned to no row) | Whether ALT chords reach the addon is unobserved - the crossbar never used ALT |
-| 7.7 | The bare number row with the chat box open, in layout mode, in edit mode, and with `//hud hide hotbar` | Every key reaches the game; nothing fires | Guards in `components/hotbar/input.lua` |
+| 7.5 | Hold `;` and press `1` with the hotbar on; release; press bare `1`; press CTRL+`1` | The crossbar fires alone on the chord; the bare key fires nothing and reaches the game (2026-10-09: the bare row is nobody's); CTRL+`1` fires row 1 AND the game's macro (expected - keep those macros inert) | Core hands a later component the block an earlier one took; the crossbar is registered first |
+| 7.6 | ALT+`1`, SHIFT+`1`, CTRL+ALT+`1` | Row 2, row 3, and nothing at all (CTRL+ALT is assigned to no row) | Whether ALT chords reach the addon is unobserved - the crossbar never used ALT |
+| 7.7 | CTRL+`1` with the chat box open, in layout mode, in edit mode, and with `//hud hide hotbar` | Every key reaches the game; nothing fires | Guards in `components/hotbar/input.lua` |
+| 7.7b | `//hud hide hotbar bar1`, then CTRL+`1`; `//hud show hotbar bar1`, then CTRL+`1` again | Hidden, nothing fires and the chord reaches the game (the game's macro, if any); shown, row 1 fires again. The same with `bar2` under ALT | `row_hidden` in `components/hotbar/input.lua`, over the per-anchor switch (2026-10-09) |
 | 7.8 | `//hud show hotbar bar2` ... `bar8`; `//hud hotbar bar3 rows 2`, `rows 5`, `rows 10` | Rows appear where the defaults stack them; a reshape re-lays the same row in place; `//hud list` shows the new footprint next time it is asked; a row reshaped at the screen edge can hang off it until dragged (the statusbar's limitation) | ~90 prims per row, 720 with all eight on; whether that is felt is the resting-cost question |
 | 7.9 | `//hud hotbar bind 3:7 ma Cure <t>`, `//hud hotbar list 3`, `//hud hotbar bar2 bind 3:8 ...` | The bind lands in `hotbar/<JOB>.lua` under `sets[3].row[7]`; the listing prints `3:7`; the row word in front of `bind` is refused | The hotbar's files are its own; a crossbar set and a hotbar set are different things |
 | 7.10 | Open a skillchain window with the crossbar hidden | The `skillchain` component's bar tracks it on its own anchor; `//hud hide skillchain` takes it down; `//hud list` shows five crossbar anchors and one `skillchain` placement | The crossbar's `layout.lua` may still carry a `skillchain_indicator` entry - dead weight, expected |
@@ -155,6 +156,24 @@ answer it.
 | 8.6b | Press a bound maneuver or blood pact the moment it is still on recast, with the cast retry ON | It re-sends once the recast clears, exactly as a job ability does | **A reversal (Kevin, 2026-09-07).** `pet` was deliberately unwatched - nobody had seen which message refuses one, and guessing the ability's 71 was the one thing the retry must not do. The picker's move to prefix-derived types moved thirty abilities that DID have coverage off `ja`, which changed the cost of leaving it out. Both halves are still guesses: message 71, and whether AMNESIA blocks a `/pet`. If it never re-sends, 71 is wrong |
 | 8.6c | On SMN, bind a blood pact and watch the slot's recast arc, then press one while the 1-hour is down | The arc follows the PACT's recast, and a refused pact still re-sends | `render.lua` records that pacts share recast id **0** with the level-1 SP abilities. If that holds, a pact slot dims on the SP timer and `guards_pass` drops every retry while the 1-hour is down - so the retry 8.6b buys would be inert for pacts and real only for the flat pet commands. Raised in review, ~50%: nobody has read `ability_recasts[0]` for a pact in a client |
 | 8.7 | Open a submenu, then change job or SUBJOB without closing the binder | The window drops back out of the submenu, and the listing behind it is the new pair's | Three review rounds found strands here. The catalog is scoped to the job PAIR, so the rebuild compares both halves now (2026-09-07); comparing the main job alone left a departed subjob's spells and abilities in the picker - a pre-existing bug the submenu inherited |
+
+## 9. The reraise ladder (2026-10-09)
+
+`//hud reraise` (and a slot bound `reraise`): spell, then consumable, then
+gear. Everything below was read off Windower's resource data; none of it has
+been watched in a client.
+
+| # | Do this | Expect | Notes |
+| --- | --- | --- | --- |
+| 9.1 | WHM99 with Reraise IV learned: `//hud reraise` | `/magic "Reraise IV" <me>` | Reraise IV is a job-point gift (`levels = {[3]=100}`); whether `get_spells` lists a gift as known is unverified. If it never casts IV, that is why |
+| 9.2 | The same WHM level-synced below 99 | Reraise III (or the highest tier the synced level reaches), never IV | Assumes `main_job_level` reports the synced level and gifts are off below 99 |
+| 9.3 | SCH with Reraise III known: Light Arts only, then Addendum: White, then Enlightenment | An item (or `no way to reraise right now`), then Reraise III, then Reraise III | The gate is `requirements` bit 4 on the spell resource, read as "SCH needs an Addendum" |
+| 9.4 | SCH/WHM with no Addendum up | Reraise (I), through the WHM sub | A WHM main or sub needs no Addendum |
+| 9.5 | WHM silenced (or muted) with a Hi-Reraiser in the inventory | `/item "Hi-Reraiser" <me>` | Every ladder now passes spells by under silence/mute - sneak and invisible too (expect the jig or the oil) |
+| 9.6 | No spell, no consumable, a Reraise Earring in a wardrobe | `gs disable ear1`, the earring goes on, about 30s later `/item "Reraise Earring" <me>`, then `gs enable ear1` | The 30s warm-up is the resource's `cast_delay`; the give-up bound is 40s, the Tavnazian Ring's. If it says it took too long, the warm-up is longer than that |
+| 9.7 | Own a Reraise Ring with its 20h recast clear AND an earring | The ring goes first | Kevin's order: the ring recharges, the others spend a charge |
+| 9.8 | THF (not on the Reraise Gorget's job list) whose only reraise is the gorget | `no way to reraise right now`, the neck slot untouched | Reads the item's `jobs` as a bitfield or a set; if the gorget is equipped anyway, the shape is neither |
+| 9.9 | Press `//hud reraise` again once Reraise is on | `Reraise is already active`, nothing sent | Buff 113, one id for every tier |
 
 ---
 

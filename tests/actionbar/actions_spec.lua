@@ -44,7 +44,7 @@ end
 
 -- The shipped built-ins, spelled out. Two specs read it: one proves each
 -- name resolves, the other proves the table holds these and nothing else.
-local SHIPPED_BUILTINS = { "draw", "mr", "warp", "sneak", "invisible", "open" }
+local SHIPPED_BUILTINS = { "draw", "mr", "warp", "sneak", "invisible", "reraise", "open" }
 
 describe("crossbar actions", function()
   describe("game action commands", function()
@@ -219,6 +219,37 @@ describe("crossbar actions", function()
       local plan, hint = actions.resolve({ type = "sneak" })
       assert.is_nil(plan)
       assert.equal("no way to sneak right now", hint)
+    end)
+
+    it("asks the ladder for a reraise and fires the command it answers", function()
+      local actions, state = build()
+      state.stealth_command = 'input /magic "Reraise IV" <me>'
+      assert.equal('input /magic "Reraise IV" <me>', command_of(actions, { type = "reraise" }))
+      assert.equal("reraise", state.stealth_asked)
+    end)
+
+    it("hands a reraise gear rung to the enchanted scheduler", function()
+      -- The ladder answers enchanteditem's own plan for a gear rung, which
+      -- is the shape the scheduler runs for an `enchanteditem` slot.
+      local actions, state = build()
+      local gear = { type = "equip", name = "Reraise Earring", command = 'input /item "Reraise Earring" <me>' }
+      state.stealth_command = gear
+      local plan = actions.resolve({ type = "reraise" })
+      assert.equal("enchanted", plan.kind)
+      assert.equal(gear, plan.plan)
+    end)
+
+    it("passes the reraise refusal out as its hint", function()
+      local actions, state = build()
+      state.stealth_hint = "Reraise is already active"
+      local plan, hint = actions.resolve({ type = "reraise" })
+      assert.is_nil(plan)
+      assert.equal("Reraise is already active", hint)
+    end)
+
+    it("gives reraise the Reraise spell's icon", function()
+      local actions = build()
+      assert.equal("spells/00135", actions.icon_for({ type = "reraise" }))
     end)
 
     it("gives both stealth built-ins their White Magic icon", function()
@@ -418,6 +449,31 @@ describe("crossbar actions", function()
       local ok, complaint = actions.validate({ type = "enchanteditem" })
       assert.is_nil(ok)
       assert.equal("enchanteditem needs an item name", complaint)
+    end)
+  end)
+
+  describe("job change", function()
+    it("hands the pair to the JobChange addon's own command", function()
+      assert.equal("jc war/blm", command_of(build(), { type = "jc", action = "WAR/BLM" }))
+    end)
+
+    it("refuses a malformed pair at the press", function()
+      local plan, hint = build().resolve({ type = "jc", action = "WAR/WAR" })
+      assert.is_nil(plan)
+      assert.is_string(hint)
+    end)
+
+    it("validates the pair and refuses a target", function()
+      local actions = build()
+      assert.is_true(actions.validate({ type = "jc", action = "WAR/BLM" }))
+      assert.is_nil((actions.validate({ type = "jc" })))
+      assert.is_nil((actions.validate({ type = "jc", action = "WAR/XYZ" })))
+      assert.is_nil((actions.validate({ type = "jc", action = "WAR/BLM", target = "t" })))
+    end)
+
+    it("wears the main job's icon", function()
+      assert.equal("jobs/war", build().icon_for({ type = "jc", action = "WAR/BLM" }))
+      assert.is_nil(build().icon_for({ type = "jc", action = "junk" }))
     end)
   end)
 

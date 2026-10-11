@@ -104,6 +104,68 @@ describe("lib/buffs", function()
     end)
   end)
 
+  -- A drag-and-drop: the dragged buff lands where the one it was dropped on
+  -- stood, everything between shifting one toward the gap it left.
+  describe("placing one buff on another", function()
+    local A, B, C, D, E, LOOSE = 10, 20, 30, 40, 50, 99
+    local custom
+
+    before_each(function()
+      custom = new_buffs({ name = "x", resources = RESOURCES, shipped = { A, B, C, D, E } })
+    end)
+
+    local function placed(id, onto)
+      local changed = custom.place(settings, id, onto)
+      local _, ordered = custom.order(settings.priority)
+      return ordered, changed
+    end
+
+    it("lands a buff dragged up in front of the one it was dropped on", function()
+      assert.are.same({ { A, E, B, C, D }, true }, { placed(E, B) })
+    end)
+
+    it("lands a buff dragged down behind the one it was dropped on", function()
+      assert.are.same({ { A, C, D, B, E }, true }, { placed(B, D) })
+    end)
+
+    -- An override's rank is where it lands, so the ones between have to move
+    -- with the gap or a drop onto one changes nothing on screen.
+    it("moves the overrides in between, dropped on one or not", function()
+      settings.priority = { [D] = 2 }
+      assert.are.same({ A, D, B, C, E }, (placed(E, E)))
+      assert.are.same({ D, B, C, A, E }, (placed(A, C)))
+      assert.are.same({ D, A, B, C, E }, (placed(A, B)))
+      settings.priority = { [D] = 2 }
+      assert.are.same({ A, B, C, D, E }, (placed(D, C)))
+      settings.priority = { [D] = 2 }
+      assert.are.same({ E, A, D, B, C }, (placed(E, A)))
+    end)
+
+    it("pulls a buff the order does not rank in front of the one it was dropped on", function()
+      assert.are.same({ A, LOOSE, B, C, D, E }, (placed(LOOSE, B)))
+    end)
+
+    it("sends a buff dropped on an unranked one to the end of the order", function()
+      assert.are.same({ A, C, D, E, B }, (placed(B, LOOSE)))
+    end)
+
+    it("ranks an unranked buff dropped on another unranked one last", function()
+      assert.are.same({ A, B, C, D, E, LOOSE }, (placed(LOOSE, 98)))
+    end)
+
+    it("changes nothing for a drop on itself", function()
+      assert.are.same({ { A, B, C, D, E }, false }, { placed(C, C) })
+      assert.are.same({}, settings.priority)
+    end)
+
+    it("is seen by the next order without an explicit invalidate", function()
+      custom.order(settings.priority)
+      custom.place(settings, E, A)
+      local ranks = custom.order(settings.priority)
+      assert.are.equal(1, ranks[E])
+    end)
+  end)
+
   describe("the plan", function()
     local function shown(ids, opts)
       return engine.plan(ids, settings, opts)
