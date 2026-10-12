@@ -110,6 +110,7 @@ local function world(opts)
       return env.layout
     end,
     resources = resources(),
+    master_level = opts.master_level,
   }
   env.service_config = {
     retry = require("lib/actionbar/retry")({}).defaults(),
@@ -540,6 +541,48 @@ describe("one bar's state", function()
       assert.are.equal("Divine Seal", bar.bindings().resolve(1, "row", 3).action, "through a re-attach")
       bar.command({ "edit" })
       assert.are.equal("Cure", bar.bindings().resolve(1, "row", 3).action, "the worn subjob again")
+    end)
+
+    --[[ A subjob layer's catalog is capped by the master level (Kevin,
+         2026-10-12): at ML0 a WHM subjob tops out at 49, where an unwired
+         reader is taken as ML50 and reaches 59. ]]
+    it("hands the binder's catalog the master level", function()
+      local function categories(master_level)
+        local bar, env, ctx, store = world({ master_level = master_level })
+        ctx.resources.jobs = { [3] = { id = 3, ens = "WHM" } }
+        ctx.resources.spells[1].levels = { [3] = 55 }
+        bar.attach(store)
+        bar.try_scope()
+        on_screen(env)
+        bar.command({ "edit" })
+        local binder = bar.binder()
+        binder.mouse(LEFT_DOWN, 120, 120, 0)
+        binder.mouse(LEFT_UP, 120, 120, 0)
+        local function click_row(wanted)
+          for _, row in ipairs(binder.layer_view().rows) do
+            if wanted(row) then
+              binder.mouse(LEFT_DOWN, row.x + 5, row.y + 5, 0)
+              binder.mouse(LEFT_UP, row.x + 5, row.y + 5, 0)
+              return
+            end
+          end
+        end
+        click_row(function(row)
+          return row.menu == "subjob"
+        end)
+        click_row(function(row)
+          return row.source == "sub:WHM"
+        end)
+        local names = {}
+        for _, category in ipairs(binder.catalog_view().categories) do
+          names[category.name] = true
+        end
+        return names
+      end
+      assert.is_true(categories(nil)["White Magic"], "Cure is WHM 55")
+      assert.is_nil(categories(function()
+        return 0
+      end)["White Magic"])
     end)
 
     it("repaints when another bar's binder opens and when it closes", function()

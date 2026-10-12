@@ -873,6 +873,9 @@ local function new(deps)
       return bindings ~= nil and bindings.weapon_type() or nil
     end,
     get_items = ctx.get_items,
+    -- Nil where the entry point has not wired it: the catalog then assumes
+    -- master level 50.
+    master_level = ctx.master_level,
     owned_mounts = roulette ~= nil and roulette.owned or nil,
     mount_display = roulette ~= nil and roulette.display or nil,
     resources = resources,

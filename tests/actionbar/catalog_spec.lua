@@ -85,6 +85,7 @@ local function build(overrides)
       return world.weapon_class
     end,
     resources = overrides.resources == nil and resources() or overrides.resources,
+    master_level = overrides.master_level,
     bags = overrides.bags,
     extdata_decode = overrides.extdata_decode,
   })
@@ -853,14 +854,23 @@ describe("crossbar catalog", function()
   --[[ The binder edits a subjob you are not on and a class you are not
        holding (Kevin, 2026-10-12), so the listing follows the LAYER, handed
        to build: the class it names filters the weaponskills, and a subjob
-       other than the worn one takes the sub's place, gated at the level it
-       would have - its own, capped at half the main's. The client lists no
-       abilities for a job pair you are not on, and the resource cannot say
-       whose an ability is, so that listing goes. ]]
+       layer - the worn one included - takes the sub's place at the highest
+       level a support job can reach, its spells off what the character has
+       learned and its abilities off `lib/actionbar/job_abilities`. ]]
   describe("for a layer the player is not using", function()
     local function with_jobs()
       local res = resources()
-      res.jobs = { [3] = { id = 3, ens = "WHM" }, [4] = { id = 4, ens = "BLM" }, [20] = { id = 20, ens = "SCH" } }
+      res.jobs = {
+        [1] = { id = 1, ens = "WAR" },
+        [3] = { id = 3, ens = "WHM" },
+        [4] = { id = 4, ens = "BLM" },
+        [5] = { id = 5, ens = "RDM" },
+        [9] = { id = 9, ens = "BST" },
+        [11] = { id = 11, ens = "RNG" },
+        [13] = { id = 13, ens = "NIN" },
+        [17] = { id = 17, ens = "COR" },
+        [20] = { id = 20, ens = "SCH" },
+      }
       res.spells[2] = { id = 2, en = "Cure II", type = "WhiteMagic", levels = { [3] = 11 } }
       res.spells[3] = { id = 3, en = "Cure III", type = "WhiteMagic", levels = { [3] = 21 } }
       res.spells[4] = { id = 4, en = "Cure IV", type = "WhiteMagic", levels = { [3] = 41 } }
@@ -872,6 +882,17 @@ describe("crossbar catalog", function()
       return { [1] = true, [2] = true, [3] = true, [4] = true, [5] = true, [144] = true }
     end
 
+    local function pair(main, main_id, sub, sub_id)
+      return {
+        main_job = main,
+        main_job_id = main_id,
+        main_job_level = 99,
+        sub_job = sub,
+        sub_job_id = sub_id,
+        sub_job_level = 49,
+      }
+    end
+
     it("filters the weaponskills by the class the layer names", function()
       local catalog = build({
         weapon_class = "Club",
@@ -881,34 +902,248 @@ describe("crossbar catalog", function()
       assert.same({ "Skullbreaker" }, labels(catalog.build(), "Weapon Skills"), "and the hand without one")
     end)
 
-    it("lists a subjob's spells up to half the main job's level", function()
-      local p = player()
-      p.jobs = { SCH = 99, WHM = 99, BLM = 49 }
-      local catalog = build({ player = p, resources = with_jobs(), spells = spells_known() })
-      local white = labels(catalog.build({ sub = "WHM" }), "White Magic")
-      assert.same({ "Cure", "Cure II", "Cure III", "Cure IV" }, white)
-      assert.same({}, labels(catalog.build({ sub = "WHM" }), "Black Magic"), "and not the worn sub's")
+    describe("spells", function()
+      -- WHM-only spells either side of every cap a master level can set.
+      local function capped(master_level)
+        local res = with_jobs()
+        local known = {}
+        for _, level in ipairs({ 49, 50, 54, 55, 59, 60 }) do
+          local id = 300 + level
+          res.spells[id] = { id = id, en = "WHM " .. level, type = "WhiteMagic", levels = { [3] = level } }
+          known[id] = true
+        end
+        return build({
+          resources = res,
+          spells = known,
+          master_level = master_level,
+        })
+      end
+
+      local function at(value)
+        return function()
+          return value
+        end
+      end
+
+      --[[ BG Wiki, Master Levels: at 99 a support job's cap is 49, plus one
+           level for every five master levels, to 59 at ML50. ]]
+      it("caps a subjob at 49 plus a level for every five master levels", function()
+        assert.same({ "WHM 49" }, labels(capped(at(0)).build({ sub = "WHM" }), "White Magic"))
+        assert.same({ "WHM 49", "WHM 50", "WHM 54" }, labels(capped(at(25)).build({ sub = "WHM" }), "White Magic"))
+        assert.same(
+          { "WHM 49", "WHM 50", "WHM 54", "WHM 55", "WHM 59" },
+          labels(capped(at(50)).build({ sub = "WHM" }), "White Magic")
+        )
+      end)
+
+      -- Kevin's call, 2026-10-12: no 0x061 seen yet reads as ML50.
+      it("assumes master level 50 until the client has said", function()
+        local full = { "WHM 49", "WHM 50", "WHM 54", "WHM 55", "WHM 59" }
+        assert.same(full, labels(capped(at(nil)).build({ sub = "WHM" }), "White Magic"))
+        assert.same(full, labels(capped(nil).build({ sub = "WHM" }), "White Magic"), "and with nothing wired")
+      end)
+
+      it("caps a subjob at half the main job's level below 99", function()
+        local p = player()
+        p.main_job_level = 60
+        local catalog = build({
+          player = p,
+          resources = with_jobs(),
+          spells = spells_known(),
+          master_level = at(50),
+        })
+        local white = labels(catalog.build({ sub = "WHM" }), "White Magic")
+        assert.same({ "Cure", "Cure II", "Cure III" }, white, "30, whatever the master level says")
+        assert.same({}, labels(catalog.build({ sub = "WHM" }), "Black Magic"), "and not the worn sub's")
+      end)
+
+      it("lists the worn subjob at the cap too, not at the level it is at", function()
+        local res = with_jobs()
+        res.spells[355] = { id = 355, en = "BLM 55", type = "BlackMagic", levels = { [4] = 55 } }
+        local catalog = build({ resources = res, spells = { [355] = true }, master_level = at(50) })
+        assert.is_false(has(catalog.build(), "Black Magic", "BLM 55"), "the live listing is the worn 49")
+        assert.is_true(has(catalog.build({ sub = "BLM" }), "Black Magic", "BLM 55"))
+      end)
+
+      it("lists only the spells the character has learned", function()
+        local catalog = build({
+          resources = with_jobs(),
+          spells = { [2] = true, [3] = false },
+          master_level = at(50),
+        })
+        assert.same({ "Cure II" }, labels(catalog.build({ sub = "WHM" }), "White Magic"))
+      end)
     end)
 
-    it("caps a subjob at its own level where that is lower", function()
-      local p = player()
-      p.jobs = { SCH = 99, WHM = 25, BLM = 49 }
-      local catalog = build({ player = p, resources = with_jobs(), spells = spells_known() })
-      assert.same({ "Cure", "Cure II", "Cure III" }, labels(catalog.build({ sub = "WHM" }), "White Magic"))
-    end)
+    describe("job abilities", function()
+      -- The ids and names are the resource's, as `job_abilities.lua` holds them.
+      local function with_abilities()
+        local res = with_jobs()
+        local function add(id, en, kind, prefix)
+          res.job_abilities[id] = { id = id, en = en, type = kind or "JobAbility", prefix = prefix or "/jobability" }
+        end
+        add(35, "Provoke")
+        add(31, "Berserk")
+        add(33, "Defender")
+        add(32, "Warcry")
+        add(74, "Divine Seal")
+        add(75, "Elemental Seal")
+        add(173, "Hasso")
+        add(174, "Seigan")
+        add(59, "Sharpshot")
+        add(86, "Unlimited Shot")
+        add(97, "Phantom Roll")
+        add(114, "Corsair's Roll", "CorsairRoll")
+        add(110, "Ninja Roll", "CorsairRoll")
+        add(101, "Wizard's Roll", "CorsairRoll")
+        add(223, "Stratagems")
+        add(218, "Accession", "Scholar")
+        add(234, "Addendum: White", "Scholar")
+        add(221, "Ebullience", "Scholar")
+        add(251, "Ready", "PetCommand", "/pet")
+        add(672, "Foot Kick", "Monster", "/pet")
+        return res
+      end
 
-    it("lists no job abilities for a subjob not worn", function()
-      local p = player()
-      p.jobs = { SCH = 99, WHM = 99, BLM = 49 }
-      local catalog = build({ player = p, resources = with_jobs() })
-      assert.is_nil(category(catalog.build({ sub = "WHM" }), "Job Abilities"))
-    end)
+      local function abilities_build(overrides)
+        return build({
+          player = overrides.player,
+          resources = overrides.resources or with_abilities(),
+          spells = {},
+          abilities = { job_abilities = overrides.listed or {}, weapon_skills = {} },
+          master_level = function()
+            return overrides.master_level
+          end,
+        })
+      end
 
-    it("reads the worn subjob as the live listing", function()
-      local p = player()
-      p.jobs = { SCH = 99, WHM = 99, BLM = 49 }
-      local catalog = build({ player = p, resources = with_jobs() })
-      assert.same(labels(catalog.build(), "Job Abilities"), labels(catalog.build({ sub = "BLM" }), "Job Abilities"))
+      local function child_labels(list, parent)
+        local found = entry_named(list, "Job Abilities", parent)
+        local out = {}
+        for _, child in ipairs(found and found.children or {}) do
+          out[#out + 1] = child.label
+        end
+        return out
+      end
+
+      it("offers a subjob's abilities off the table, up to the cap", function()
+        local p = player()
+        p.main_job_level = 60
+        local list = abilities_build({ player = p }).build({ sub = "WAR" })
+        assert.same({ "Berserk", "Defender", "Provoke" }, labels(list, "Job Abilities"), "30 is the cap")
+        assert.same({ type = "ja", action = "Provoke" }, entry_named(list, "Job Abilities", "Provoke").record)
+      end)
+
+      it("offers the worn subjob's off the table too, past the level it is at", function()
+        -- RNG worn at 49: Unlimited Shot is 51, and the client does not list it.
+        local list = abilities_build({
+          player = pair("SCH", 20, "RNG", 11),
+          listed = { 59 },
+          master_level = 50,
+        }).build({ sub = "RNG" })
+        assert.same({ "Sharpshot", "Unlimited Shot" }, labels(list, "Job Abilities"), "and Sharpshot once")
+      end)
+
+      --[[ The client lists the abilities of the pair WORN: on WAR/SAM a
+           sub:WHM layer would otherwise offer Hasso. ]]
+      it("drops the worn subjob's abilities from the main job's list", function()
+        local catalog = abilities_build({
+          player = pair("WAR", 1, "SAM", 12),
+          listed = { 35, 31, 173, 174 },
+        })
+        assert.same({ "Berserk", "Divine Seal", "Provoke" }, labels(catalog.build({ sub = "WHM" }), "Job Abilities"))
+        assert.same(
+          { "Berserk", "Hasso", "Provoke", "Seigan" },
+          labels(catalog.build(), "Job Abilities"),
+          "a layer with no sub keeps the live listing"
+        )
+      end)
+
+      it("keeps one the main job's own table lists as well", function()
+        local war = require("lib/actionbar/job_abilities").WAR
+        war[#war + 1] = { id = 173, name = "Hasso", level = 25 }
+        finally(function()
+          war[#war] = nil
+        end)
+        local catalog = abilities_build({
+          player = pair("WAR", 1, "SAM", 12),
+          listed = { 35, 173 },
+        })
+        assert.is_true(has(catalog.build({ sub = "WHM" }), "Job Abilities", "Hasso"))
+      end)
+
+      --[[ No shipped subjob reaches a menu whose children the table leaves out
+           (BST's Ready is main-job only), so the two cases below stand one up
+           for the length of the test. ]]
+      local function with_ready()
+        local bst = require("lib/actionbar/job_abilities").BST
+        bst[#bst + 1] = { id = 251, name = "Ready", level = 25 }
+        finally(function()
+          bst[#bst] = nil
+        end)
+      end
+
+      --[[ The table lists a family's children but not always its menu - SCH's
+           Stratagems, the DNC and RUN menus - and a menu left on the list
+           would offer its whole family on every other layer. ]]
+      it("drops a worn subjob's menu with its children", function()
+        local list = abilities_build({
+          player = pair("RDM", 5, "SCH", 20),
+          listed = { 223, 218 },
+        }).build({ sub = "WHM" })
+        assert.is_nil(entry_named(list, "Job Abilities", "Stratagems"))
+        assert.is_false(has(list, "Job Abilities", "Accession"))
+      end)
+
+      it("drops what the client lists under a worn subjob's menu", function()
+        -- Ready is BST's in the table; a move under it is not listed there.
+        with_ready()
+        local list = abilities_build({
+          player = pair("WAR", 1, "BST", 9),
+          listed = { 35, 251, 672 },
+        }).build({ sub = "WHM" })
+        assert.same({ "Divine Seal", "Provoke" }, labels(list, "Job Abilities"))
+      end)
+
+      it("skips a table entry whose id no longer names it", function()
+        local res = with_abilities()
+        res.job_abilities[31] = nil
+        res.job_abilities[35].en = "Shield Bash"
+        local list = abilities_build({ resources = res }).build({ sub = "WAR" })
+        assert.is_true(has(list, "Job Abilities", "Defender"))
+        assert.is_false(has(list, "Job Abilities", "Provoke"))
+        assert.is_false(has(list, "Job Abilities", "Shield Bash"), "a drifted id is not offered as something else")
+        assert.is_false(has(list, "Job Abilities", "Berserk"))
+      end)
+
+      it("builds the menus from the main job's list and the subjob's table together", function()
+        local list = abilities_build({
+          listed = { 223, 218 },
+          master_level = 0,
+        }).build({ sub = "COR" })
+        assert.same({ "Accession" }, child_labels(list, "Stratagems"), "the main job's, as the client lists it")
+        assert.same({ "Corsair's Roll", "Ninja Roll" }, child_labels(list, "Phantom Roll"), "Wizard's Roll is 58")
+      end)
+
+      it("opens a subjob's family whose menu the table leaves out", function()
+        local list = abilities_build({
+          player = pair("RDM", 5, "WHM", 3),
+          master_level = 0,
+        }).build({ sub = "SCH" })
+        assert.same({ "Accession", "Addendum: White" }, child_labels(list, "Stratagems"), "Ebullience is 55")
+        assert.is_false(has(list, "Job Abilities", "Accession"), "offered once, inside the menu")
+      end)
+
+      it("falls back to the whole family where the table names none of it", function()
+        -- Ready's moves are the pet's, so the table would list Ready alone.
+        with_ready()
+        local list = abilities_build({ player = pair("WAR", 1, "NIN", 13) }).build({ sub = "BST" })
+        assert.same({ "Foot Kick" }, child_labels(list, "Ready"))
+        assert.same(
+          { type = "pet", action = "Foot Kick" },
+          entry_named(list, "Job Abilities", "Ready").children[1].record
+        )
+      end)
     end)
   end)
 end)

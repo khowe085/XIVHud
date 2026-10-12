@@ -188,6 +188,9 @@ end)
 local new_action_service = step("loading lib/actionbar/service", function()
   return require("lib/actionbar/service")
 end)
+local new_char_stats = step("loading lib/char_stats", function()
+  return require("lib/char_stats")
+end)
 local new_parambar = step("loading the parambar component", function()
   return require("components/parambar/parambar")
 end)
@@ -731,6 +734,37 @@ local function last_incoming(id)
   return ok and data or nil
 end
 
+--[[ The last 0x061 per character and main job, kept beside the client's own
+     (Kevin, 2026-10-12): the client re-sends it on a zone and never on
+     request, so after a login or a reload its readers had nothing until the
+     player zoned. Fed by every live one, in the chunk handler below. ]]
+local CHAR_STATS_CHUNK = 0x061
+local char_stats = step("building the 0x061 cache", function()
+  return new_char_stats({ read = read_file, write = write_file })
+end)
+
+--- last_incoming with the cache standing in for 0x061: the client's own
+--- packet where it is for the job on, else the cached one for that job.
+local function cached_last_incoming(id)
+  local live = last_incoming(id)
+  if id ~= CHAR_STATS_CHUNK or char_stats == nil or read_player == nil then
+    return live
+  end
+  local player = read_player()
+  if type(player) ~= "table" or type(player.name) ~= "string" or type(player.main_job) ~= "string" then
+    return live
+  end
+  return char_stats.current(player.name, player.main_job, live)
+end
+
+--- The master level off that packet, for the binder's subjob cap; nil
+--- until there is one to read.
+local function master_level()
+  local bytes = cached_last_incoming(CHAR_STATS_CHUNK)
+  local packet = bytes ~= nil and parse_packet(bytes) or nil
+  return type(packet) == "table" and tonumber(packet["Master Level"]) or nil
+end
+
 -- Whether the chat box has focus, for the crossbar's chat guard. Runs on
 -- every key event inside a guarded handler, so it must be nil-tolerant by
 -- construction - an input spike once died on exactly this call unguarded.
@@ -1052,7 +1086,7 @@ step("building the statusbar component", function()
     time = os.time,
     -- The seed at attach: the last 0x063 the client sent, parsed the same
     -- way the chunk handler parses it - timers after a reload.
-    last_incoming = last_incoming,
+    last_incoming = cached_last_incoming,
     parse_packet = parse_packet,
     -- A right-click on an icon asks the cancel addon to drop the buff.
     send_command = function(command)
@@ -1073,6 +1107,7 @@ step("building the crossbar component", function()
   core.register(new_crossbar({
     -- Execution: the shared action service, never a scheduler of its own.
     actions = action_service,
+    master_level = master_level,
     new_text = wrap_text,
     new_image = wrap_image,
     screen = screen,
@@ -1142,6 +1177,7 @@ step("building the hotbar component", function()
   end
   core.register(new_hotbar({
     actions = action_service,
+    master_level = master_level,
     new_text = wrap_text,
     new_image = wrap_image,
     screen = screen,
@@ -1210,7 +1246,7 @@ step("building the expbar component", function()
     now = os.clock,
     get_player = read_player,
     parse_packet = parse_packet,
-    last_incoming = last_incoming,
+    last_incoming = cached_last_incoming,
   }))
 end)
 
@@ -1574,6 +1610,16 @@ if not safe_mode and not libraries_error then
         -- nil `parsed` with the bytes still dispatched, never a handler
         -- failure that guard would count towards disabling the whole thing.
         parsed = parse_packet(original)
+      end
+      if id == CHAR_STATS_CHUNK and char_stats ~= nil and read_player ~= nil then
+        -- pcall'd: it writes to disk, and a throw here would count towards
+        -- guard disabling this whole handler.
+        pcall(function()
+          local player = read_player()
+          if type(player) == "table" then
+            char_stats.store(player.name, original)
+          end
+        end)
       end
       -- The service first, with the same parse: the skillchain engine, the
       -- retry's refusal branch and roulette read from here and nowhere else.

@@ -664,9 +664,14 @@ rest of the HUD is - and walks you through:
    that weapon held, that buff up. A `>` marks a menu; a `*` on one means the
    layer showing on the bar is inside it. `[ < back ]` climbs out of a menu.
    The actions offered next follow the layer: a weapon's own weaponskills,
-   and for a subjob you aren't wearing, its spells up to its subjob level
-   but no job abilities - the game only lists the ones for the subjob you
-   have on.
+   and for a subjob - the one you have on included - what that job can do
+   as your subjob at the highest level your master level allows (59 at
+   master level 50, 49 at 0, half your main job's level below 99), whatever
+   level that job itself is: the spells you have learned up to that level,
+   and its job abilities up to that level. A master level the addon has not
+   read yet counts as 50. Your main job's own abilities are offered as
+   always, minus the ones that belong to the subjob you are actually
+   wearing - a WHM layer on WAR/SAM does not offer Hasso.
 2. **Pick an action** — categories down the left, one page of actions on the
    right, the wheel to page through them.
 3. **Pick a target** — the common target tokens, with `(no target)` first (`stal`, `lastst`, `scan` and `r` are `bind`-command only). Actions

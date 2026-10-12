@@ -179,6 +179,77 @@ describe("entry point", function()
     end)
   end)
 
+  --[[ The 0x061 cache (Kevin, 2026-10-12): the client sends character stats
+       on a zone and never on request, so the last one per character and main
+       job is kept in memory and under cache/packets/, and stands in for a
+       live one wherever the entry point hands out `last_incoming(0x061)`. ]]
+  describe("the 0x061 cache", function()
+    local CHAR_STATS = 0x061
+    local FILE = "addons/XIVHud/cache/packets/Tester/0x061_WAR.txt"
+
+    -- A 0x061 whose Main Job byte (offset 0x0C) is `job_id`.
+    local function stats(job_id)
+      return string.rep(string.char(0), 12) .. string.char(job_id, 99, 4, 49) .. "rest"
+    end
+
+    it("files a live 0x061 under the player and the job it names", function()
+      boot.chunk(CHAR_STATS, stats(1))
+      assert.is_string(boot.files[FILE])
+      assert.is_nil(boot.files[FILE]:find("[^%x]"), "as hex")
+    end)
+
+    it("answers the exp bar's seed from it when the client has none", function()
+      boot.player.main_job = "WAR"
+      boot.chunk(CHAR_STATS, stats(1))
+      boot.last_incoming[CHAR_STATS] = nil
+      assert.equal(stats(1), boot.ctxs.expbar.last_incoming(CHAR_STATS))
+    end)
+
+    it("reads it back from disk after a reload", function()
+      boot.chunk(CHAR_STATS, stats(1))
+      local reloaded = harness.boot()
+      reloaded.files[FILE] = boot.files[FILE]
+      reloaded.player.main_job = "WAR"
+      assert.equal(stats(1), reloaded.ctxs.expbar.last_incoming(CHAR_STATS))
+    end)
+
+    it("answers nothing for a job it has no packet for", function()
+      boot.player.main_job = "WHM"
+      boot.chunk(CHAR_STATS, stats(1))
+      boot.last_incoming[CHAR_STATS] = stats(1)
+      assert.is_nil(boot.ctxs.expbar.last_incoming(CHAR_STATS), "the live packet is the old job's")
+    end)
+
+    -- The binder's subjob cap: 49 + one level per five master levels.
+    it("hands both bars the master level, read from the same packet", function()
+      boot.player.main_job = "WAR"
+      boot.chunk(CHAR_STATS, stats(1))
+      assert.is_function(boot.ctxs.crossbar.master_level)
+      assert.equal(boot.ctxs.crossbar.master_level, boot.ctxs.hotbar.master_level)
+      boot.parsed_packets = {}
+      boot.parse_answer = { ["Master Level"] = 10 }
+      assert.equal(10, boot.ctxs.crossbar.master_level())
+      assert.equal(stats(1), boot.parsed_packets[#boot.parsed_packets].data)
+    end)
+
+    -- On the inbound-packet path, where a throw counts towards guard
+    -- disabling the whole chunk handler. The entry point's own pcall around
+    -- the store is a second layer this harness cannot reach: the player
+    -- service hands out a copy, so nothing ahead of the cache can be made
+    -- to throw from here.
+    it("keeps dispatching when the cache cannot write", function()
+      local dispatches, chatted = #boot.dispatches, #boot.chat
+      boot.files = setmetatable({}, {
+        __newindex = function()
+          error("disk full")
+        end,
+      })
+      boot.chunk(CHAR_STATS, stats(1))
+      assert.is_true(#boot.dispatches > dispatches, "the packet still reached the components")
+      assert.equal(chatted, #boot.chat, "and nothing was reported as a handler failure")
+    end)
+  end)
+
   --[[ The player service. Which client reads reach the client, and how the
        vitals events reconcile against them, is a decision made here and nowhere
        else -- a component is handed a getter and cannot tell what is behind it. ]]

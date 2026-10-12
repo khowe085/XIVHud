@@ -43,8 +43,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local jobchange = require("lib/actionbar/jobchange")
 local openers = require("lib/actionbar/openers")
 local enchanted = require("lib/actionbar/enchanted")
+local support_abilities = require("lib/actionbar/job_abilities")
 
 local LEVEL_CAP = 99
+local MAX_MASTER_LEVEL = 50
 local INVENTORY_BAG = 0
 
 --[[ The parent-menu families. `res.job_abilities` carries a MENU entry whose
@@ -122,6 +124,12 @@ local FAMILIES = {
      Sic into a submenu of their own and break the invariant above. ]]
 local MENUS = { [55] = "JobAbility" }
 
+-- A child type's family parent, for telling whose a menu is.
+local PARENT_OF = {}
+for _, family in ipairs(FAMILIES) do
+  PARENT_OF[family.children] = family.parent
+end
+
 --[[ The command word an ability is fired with, taken from the resource's own
      `prefix` rather than written down per family, so a family cannot be given
      the wrong one. `ja` is the fallback: it is what every ability bound before
@@ -191,52 +199,52 @@ local function new(deps)
   deps = deps or {}
   local self = {}
 
-  --[[ A subjob the binder is editing but the player is not wearing (Kevin,
-       2026-10-12), as the listing's sub half: its id off `res.jobs`, at the
-       level it would have - its own (`get_player().jobs`, keyed by the short
-       name, which is how the SpellBook addon reads it), capped at half the
-       main job's. Nil where it is the worn one or cannot be resolved, which
-       leaves the live pair standing. ]]
-  local function previewed_sub(player, short)
-    if type(short) ~= "string" then
-      return nil
+  --[[ The highest level a support job reaches (BG Wiki, Master Levels):
+       half the main job's below 99, and at 99 one level past 49 for every
+       five master levels. A master level the client has not reported - no
+       0x061 seen yet, or no reader wired - is taken as 50 (Kevin,
+       2026-10-12). ]]
+  local function support_cap(player)
+    local main = tonumber(player.main_job_level) or 0
+    if main < LEVEL_CAP then
+      return math.floor(main / 2)
     end
-    local resources = table_or_empty(deps.resources)
-    local id = nil
-    for job_id, job in pairs(table_or_empty(resources.jobs)) do
-      if type(job) == "table" and job.ens == short then
-        id = job_id
-      end
-    end
-    if id == nil or id == player.sub_job_id then
-      return nil
-    end
-    local cap = math.floor((tonumber(player.main_job_level) or 0) / 2)
-    local own = type(player.jobs) == "table" and tonumber(player.jobs[short]) or nil
-    return { id = id, level = own ~= nil and math.min(own, cap) or cap, main = false }
+    local master = call(deps.master_level)
+    return 49 + math.floor((type(master) == "number" and master or MAX_MASTER_LEVEL) / 5)
   end
 
-  -- The jobs a merged listing draws from: the main job, and the sub only
-  -- when the client has named one. `main` decides the merit exception.
-  -- The second answer says the sub is a previewed one, not the worn one.
-  local function job_pair(view)
-    local player = call(deps.get_player)
-    if type(player) ~= "table" then
-      return {}, false
+  local function job_id(short)
+    for id, job in pairs(table_or_empty(table_or_empty(deps.resources).jobs)) do
+      if type(job) == "table" and job.ens == short then
+        return id
+      end
+    end
+    return nil
+  end
+
+  --[[ The jobs a merged listing draws from: the main job, and a sub. `main`
+       decides the merit exception. The sub is the worn one at its own level,
+       or on a subjob layer - the worn one included - the job the layer names
+       at the support cap, so a job's whole bar can be set up without
+       changing subjob (Kevin, 2026-10-12). A layer naming a job the jobs
+       resource cannot resolve has no levels to read, and the worn sub's are
+       not that layer's, so it draws on the main job alone. ]]
+  local function job_pair(player, sub)
+    if player == nil then
+      return {}
     end
     local jobs = {}
     if type(player.main_job_id) == "number" then
       jobs[#jobs + 1] = { id = player.main_job_id, level = player.main_job_level or 0, main = true }
     end
-    local previewed = previewed_sub(player, view.sub)
-    if previewed ~= nil then
-      jobs[#jobs + 1] = previewed
-      return jobs, true
-    end
-    if type(player.sub_job_id) == "number" then
+    if sub ~= nil then
+      if sub.id ~= nil then
+        jobs[#jobs + 1] = { id = sub.id, level = sub.cap, main = false }
+      end
+    elseif type(player.sub_job_id) == "number" then
       jobs[#jobs + 1] = { id = player.sub_job_id, level = player.sub_job_level or 0, main = false }
     end
-    return jobs, false
+    return jobs
   end
 
   --[[ Can one of these jobs supply this action? A resource with no `levels`
@@ -307,10 +315,12 @@ local function new(deps)
        WHERE CHILDREN COME FROM, one rule for all sixteen families: a child the
        client's own list names is offered, and if the client names NONE of a
        family's children while naming its parent, the whole family is offered
-       unfiltered. That is self-configuring - upstream reads phantom rolls and
-       quick draw shots off the client but supplies stratagems from a static
-       table, so the answer demonstrably differs by family, and this needs to
-       know which is which.
+       unfiltered. On a subjob layer "the client's list" is the set
+       `abilities` builds, the main job's half of the client's list with the
+       layer's sub off the table beside it. That is self-configuring -
+       upstream reads phantom rolls and quick draw shots off the client but
+       supplies stratagems from a static table, so the answer demonstrably
+       differs by family, and this needs to know which is which.
 
        The cost, accepted: on a family the client does not enumerate, a
        level-10 SCH is offered all sixteen stratagems rather than the two they
@@ -410,7 +420,34 @@ local function new(deps)
     return submenus, spoken_for, parents, icons
   end
 
-  local function abilities(groups, jobs, view, previewed)
+  --[[ A job's abilities off `lib/actionbar/job_abilities`, as a set: each
+       entry whose id still names it in the resource (a drifted id is skipped
+       rather than offered as something else), at `cap` or below where one is
+       given - and the menu of any family one of them belongs to. The table
+       lists a family's children but not always its menu (SCH's Stratagems,
+       the DNC and RUN menus), and the menu is what `families` opens them
+       from. ]]
+  local function table_set(short, cap, job_abilities)
+    local set = {}
+    for _, entry in ipairs(table_or_empty(support_abilities[short])) do
+      local ability = job_abilities[entry.id]
+      if (cap == nil or entry.level <= cap) and type(ability) == "table" and ability.en == entry.name then
+        set[entry.id] = true
+        local parent = PARENT_OF[ability.type]
+        if parent ~= nil then
+          set[parent] = true
+        end
+      end
+    end
+    return set
+  end
+
+  -- In the set itself, or under one of its menus.
+  local function claims(set, id, ability)
+    return set[id] == true or (type(ability) == "table" and set[PARENT_OF[ability.type]] == true)
+  end
+
+  local function abilities(groups, jobs, view, player, sub)
     local listed = table_or_empty(call(deps.get_abilities))
     local resources = table_or_empty(deps.resources)
     local job_abilities = table_or_empty(resources.job_abilities)
@@ -418,10 +455,29 @@ local function new(deps)
     for _, id in ipairs(table_or_empty(listed.job_abilities)) do
       listed_ids[id] = true
     end
+    --[[ On a subjob layer the main job's half is still the client's list,
+         but that list is the pair WORN: an ability the worn sub's table
+         claims and the main job's does not is the worn sub's, and on WAR/SAM
+         a sub:WHM layer would otherwise offer Hasso. The layer's own sub
+         comes off the table instead, worn or not. ]]
+    if sub ~= nil then
+      local worn = table_set(player.sub_job, nil, job_abilities)
+      local main = table_set(player.main_job, nil, job_abilities)
+      local kept = {}
+      for id in pairs(listed_ids) do
+        local ability = job_abilities[id]
+        if not claims(worn, id, ability) or claims(main, id, ability) then
+          kept[id] = true
+        end
+      end
+      for id in pairs(table_set(sub.short, sub.cap, job_abilities)) do
+        kept[id] = true
+      end
+      listed_ids = kept
+    end
     local submenus, spoken_for, parents, icons = families(listed_ids, job_abilities)
-    -- The client lists the abilities of the pair WORN, and the resource
-    -- cannot say whose an ability is: none can be offered for another sub.
-    for _, id in ipairs(previewed and {} or table_or_empty(listed.job_abilities)) do
+    -- Every group sorts its own entries, so the set's order is no loss.
+    for id in pairs(listed_ids) do
       local ability = job_abilities[id]
       if type(ability) == "table" and type(ability.en) == "string" then
         --[[ A family is governed by the client's list ALONE - `available` is
@@ -611,10 +667,16 @@ local function new(deps)
   --- either or neither: the listing is what can be bound THERE.
   function self.build(view)
     view = type(view) == "table" and view or {}
-    local jobs, previewed = job_pair(view)
+    local player = call(deps.get_player)
+    player = type(player) == "table" and player or nil
+    local sub = nil
+    if player ~= nil and type(view.sub) == "string" then
+      sub = { short = view.sub, id = job_id(view.sub), cap = support_cap(player) }
+    end
+    local jobs = job_pair(player, sub)
     local groups = {}
     spells(groups, jobs)
-    abilities(groups, jobs, view, previewed)
+    abilities(groups, jobs, view, player, sub)
     items(groups)
     enchanted_gear(groups)
     mounts(groups)

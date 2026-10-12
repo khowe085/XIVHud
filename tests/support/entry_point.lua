@@ -74,7 +74,7 @@ local function build_stubs(boot, options)
         if boot.parse_raises then
           error("cannot parse " .. tostring(data))
         end
-        return { packet = data }
+        return boot.parse_answer or { packet = data }
       end,
     },
     extdata = {
@@ -343,6 +343,8 @@ function M.boot(options)
     action = { category = 8, param = 0, targets = {} },
     action_raises = false,
     parse_raises = false,
+    -- What the fake packets.parse answers with in place of its marker table.
+    parse_answer = nil,
     -- What the fake windower.packets.last_incoming answers with, per id.
     last_incoming = {},
     last_incoming_asked = {},
