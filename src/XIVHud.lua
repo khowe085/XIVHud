@@ -740,11 +740,20 @@ end
      player zoned. Fed by every live one, in the chunk handler below. ]]
 local CHAR_STATS_CHUNK = 0x061
 local char_stats = step("building the 0x061 cache", function()
-  return new_char_stats({ read = read_file, write = write_file })
+  -- Logged in at load, the client's own last 0x061 is that character's; at the
+  -- character screen it may be whoever played last.
+  local ok, info = pcall(function()
+    return windower.ffxi.get_info()
+  end)
+  return new_char_stats({
+    read = read_file,
+    write = write_file,
+    trust_leftover = ok and type(info) == "table" and info.logged_in == true,
+  })
 end)
 
---- last_incoming with the cache standing in for 0x061: the client's own
---- packet where it is for the job on, else the cached one for that job.
+--- last_incoming with the cache standing in for 0x061: the packet filed for
+--- the character and job on, the client's own only where the cache trusts it.
 local function cached_last_incoming(id)
   local live = last_incoming(id)
   if id ~= CHAR_STATS_CHUNK or char_stats == nil or read_player == nil then
@@ -903,8 +912,13 @@ step("building the framework", function()
          between the two, the outgoing character's components are still attached
          and still reading, and they refill the cache. This drops it at the
          moment the scope actually moves. ]]
-    on_scope_change = function()
+    on_scope_change = function(name)
       player_service.invalidate()
+      -- Whose a 0x061 is comes from when it arrived, so the cache hears every
+      -- change of character, a logout's nil included.
+      if char_stats ~= nil then
+        pcall(char_stats.scope, name)
+      end
     end,
     --[[ The raw read, deliberately not the service's. Core re-reads the player
          every 0.05s while a login is under way, and that retry is the visible
@@ -1616,9 +1630,7 @@ if not safe_mode and not libraries_error then
         -- guard disabling this whole handler.
         pcall(function()
           local player = read_player()
-          if type(player) == "table" then
-            char_stats.store(player.name, original)
-          end
+          char_stats.arrived(original, type(player) == "table" and player.name or nil)
         end)
       end
       -- The service first, with the same parse: the skillchain engine, the

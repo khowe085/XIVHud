@@ -93,6 +93,23 @@ local function new(deps)
   local known = {}
   -- character -> job -> the significant fields last put on disk.
   local written = {}
+  --[[ A packet names no character, so whose it is comes from WHEN it arrived
+       (Kevin, 2026-10-12): `scoped` is who core has scoped, `pending` a packet
+       that arrived with nobody to name, for the next character scoped. The
+       client's own leftover packet is trusted only for the character logged
+       in when the addon loaded (`trust_leftover`), and only until the first
+       change of character after that - by then it may be the outgoing one's. ]]
+  local scoped, pending, scopes, first_scoped = nil, nil, 0, nil
+  local trust_leftover = deps.trust_leftover ~= false
+
+  -- Before core has scoped anyone there is no name to hold it to; after,
+  -- only the first character scoped, and only until the next change.
+  local function trusted(character)
+    if not trust_leftover then
+      return false
+    end
+    return scopes == 0 or (scopes == 1 and character == first_scoped)
+  end
 
   local function path(character, job)
     return ROOT .. character .. "/0x061_" .. job .. ".txt"
@@ -128,14 +145,41 @@ local function new(deps)
     remember(character, job, bytes)
   end
 
-  --- The packet for a character's job: `live` (the client's own last one)
-  --- where it is for that job, else what was stored, else nil.
-  function self.current(character, job, live)
-    -- No key to file it under: the live packet is still the best answer.
-    if not plain(character) or type(job) ~= "string" then
-      return live
+  --- A live 0x061, as it arrives: filed under `observed` (the name the
+  --- client reports right now) or the scoped character, else held.
+  function self.arrived(bytes, observed)
+    local owner = plain(observed) and observed or scoped
+    if owner ~= nil then
+      self.store(owner, bytes)
+    elseif job_of(bytes) ~= nil then
+      pending = bytes
     end
-    if live ~= nil and job_of(live) == job then
+  end
+
+  --- Who core has scoped, nil at a logout: a held packet is the incoming
+  --- character's, and a logout drops it.
+  function self.scope(name)
+    scopes = scopes + 1
+    scoped = plain(name) and name or nil
+    if scopes == 1 then
+      first_scoped = scoped
+    end
+    if scoped ~= nil and pending ~= nil then
+      self.store(scoped, pending)
+    end
+    pending = nil
+  end
+
+  --- The packet for a character's job: `live` (the client's own last one)
+  --- where it is for that job and can still be trusted, else what was
+  --- stored, else nil.
+  function self.current(character, job, live)
+    -- No key to file it under: the live packet is still the best answer,
+    -- where it can be trusted at all.
+    if not plain(character) or type(job) ~= "string" then
+      return trusted(character) and live or nil
+    end
+    if live ~= nil and trusted(character) and job_of(live) == job then
       remember(character, job, live)
       return live
     end

@@ -220,6 +220,36 @@ describe("entry point", function()
       assert.is_nil(boot.ctxs.expbar.last_incoming(CHAR_STATS), "the live packet is the old job's")
     end)
 
+    -- A packet names no character: one that arrives with the client naming
+    -- nobody is held for whoever core scopes next (Kevin, 2026-10-12).
+    it("holds a packet that arrives with nobody named, for the character scoped next", function()
+      boot.player = nil
+      boot.core_deps.on_scope_change(nil)
+      boot.chunk(CHAR_STATS, stats(1))
+      assert.is_nil(boot.files[FILE])
+      boot.core_deps.on_scope_change("Tester")
+      assert.is_string(boot.files[FILE])
+    end)
+
+    it("trusts the client's own last packet only until the character changes", function()
+      boot.player.main_job = "WAR"
+      boot.last_incoming[CHAR_STATS] = stats(1)
+      boot.core_deps.on_scope_change("Tester")
+      assert.equal(stats(1), boot.ctxs.expbar.last_incoming(CHAR_STATS))
+      boot.core_deps.on_scope_change(nil)
+      boot.core_deps.on_scope_change("Tester")
+      boot.last_incoming[CHAR_STATS] = stats(1) .. "someone else's"
+      assert.equal(stats(1), boot.ctxs.expbar.last_incoming(CHAR_STATS), "what was filed, not the leftover")
+    end)
+
+    it("never trusts the client's last packet when it loaded at the character screen", function()
+      local logged_out = harness.boot({ logged_out = true })
+      logged_out.player.main_job = "WAR"
+      logged_out.last_incoming[CHAR_STATS] = stats(1)
+      logged_out.core_deps.on_scope_change("Tester")
+      assert.is_nil(logged_out.ctxs.expbar.last_incoming(CHAR_STATS))
+    end)
+
     -- The binder's subjob cap: 49 + one level per five master levels.
     it("hands both bars the master level, read from the same packet", function()
       boot.player.main_job = "WAR"

@@ -188,4 +188,89 @@ describe("char stats cache", function()
     cache.store("Tester", "short")
     assert.same({}, fs.writes)
   end)
+  --[[ A packet names no character, so whose it is comes from WHEN it arrived
+       (Kevin, 2026-10-12): the name the client reports then, else the
+       character core has scoped, else the next one scoped. The client's own
+       leftover packet is trusted only for the character logged in when the
+       addon loaded, and only until the character changes. ]]
+  describe("filed by arrival", function()
+    local function live_build(trust)
+      local fs = disk()
+      return new_char_stats({ read = fs.read, write = fs.write, trust_leftover = trust }), fs
+    end
+
+    it("files a packet under the name the client reports as it arrives", function()
+      local cache = live_build(true)
+      cache.scope("Alpha")
+      cache.arrived(packet(1), "Bravo")
+      assert.equal(packet(1), cache.current("Bravo", "WAR"))
+      assert.is_nil(cache.current("Alpha", "WAR"))
+    end)
+
+    it("files it under the scoped character when the client names nobody", function()
+      local cache = live_build(true)
+      cache.scope("Alpha")
+      cache.arrived(packet(1), nil)
+      assert.equal(packet(1), cache.current("Alpha", "WAR"))
+    end)
+
+    it("holds one that arrives with nobody to name, for the next character scoped", function()
+      local cache = live_build(true)
+      cache.scope("Alpha")
+      cache.scope(nil)
+      cache.arrived(packet(1), nil)
+      assert.is_nil(cache.current("Bravo", "WAR"))
+      cache.scope("Bravo")
+      assert.equal(packet(1), cache.current("Bravo", "WAR"))
+      assert.is_nil(cache.current("Alpha", "WAR"))
+    end)
+
+    it("drops a held packet at a logout", function()
+      local cache = live_build(true)
+      cache.arrived(packet(1), nil)
+      cache.scope(nil)
+      cache.scope("Bravo")
+      assert.is_nil(cache.current("Bravo", "WAR"))
+    end)
+
+    it("trusts the client's leftover only until the character changes", function()
+      local cache = live_build(true)
+      cache.scope("Alpha")
+      assert.equal(packet(1), cache.current("Alpha", "WAR", packet(1)))
+      cache.scope(nil)
+      cache.scope("Bravo")
+      assert.is_nil(cache.current("Bravo", "WAR", packet(1, { [0x10] = 5 })), "Alpha's, still in the client")
+    end)
+
+    -- Not merely the first scope: the character it was trusted for, so a
+    -- read under another name before core re-scopes cannot take it.
+    it("trusts the leftover for the character scoped first and nobody else", function()
+      local cache = live_build(true)
+      cache.scope("Alpha")
+      assert.is_nil(cache.current("Bravo", "WAR", packet(1)))
+      assert.equal(packet(1), cache.current("Alpha", "WAR", packet(1)))
+    end)
+
+    it("hands no untrusted leftover to a read with no name to file it under", function()
+      local cache = live_build(true)
+      cache.scope("Alpha")
+      cache.scope(nil)
+      cache.scope("Bravo")
+      assert.is_nil(cache.current("", "WAR", packet(1)))
+    end)
+
+    -- Around a zone-in the client can report an empty name.
+    it("files a packet that arrives under an empty name with the scoped character", function()
+      local cache = live_build(true)
+      cache.scope("Alpha")
+      cache.arrived(packet(1), "")
+      assert.equal(packet(1), cache.current("Alpha", "WAR"))
+    end)
+
+    it("never trusts the leftover when the addon loaded logged out", function()
+      local cache = live_build(false)
+      cache.scope("Bravo")
+      assert.is_nil(cache.current("Bravo", "WAR", packet(1)))
+    end)
+  end)
 end)
