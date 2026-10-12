@@ -4,6 +4,7 @@ local build_defaults = require("components/expbar/defaults")
 local CHAR_STATS = 0x061
 local CHAR_UPDATE = 0x063
 local ACTION_MESSAGE = 0x02D
+local ABYSSEA_MESSAGE = 0x029
 
 describe("expbar logic", function()
   local logic, config
@@ -123,10 +124,11 @@ describe("expbar logic", function()
       assert.is_false(logic.on_packet(0x00A, char_stats()))
     end)
 
-    it("wants only the three ids it reads", function()
+    it("wants only the four ids it reads", function()
       assert.is_true(logic.wants_chunk(CHAR_STATS))
       assert.is_true(logic.wants_chunk(CHAR_UPDATE))
       assert.is_true(logic.wants_chunk(ACTION_MESSAGE))
+      assert.is_true(logic.wants_chunk(ABYSSEA_MESSAGE))
       assert.is_false(logic.wants_chunk(0x00A))
     end)
   end)
@@ -180,21 +182,35 @@ describe("expbar logic", function()
       assert.are.equal(1250, (logic.progress()))
     end)
 
-    it("takes the amount from the second parameter where the message does", function()
-      -- Message 105 renders as "${actor} gains ${number2} experience points",
-      -- so the points are Param 2 - both reference addons read Param 1 here.
-      assert.is_true(gained(105, 3, 250))
+    it("reads every amount from the first parameter, as pointwatch does", function()
+      assert.is_true(gained(105, 250, 3))
       assert.are.equal(1250, (logic.progress()))
     end)
 
-    it("counts an experience chain, which pointwatch never did", function()
-      assert.is_true(gained(253, 250, 4))
+    it("does not count message 253, which pointwatch does not", function()
+      assert.is_false(gained(253, 250, 4))
+      assert.are.equal(1000, (logic.progress()))
+    end)
+
+    it("reads a gain off 0x029 too, which is how Abyssea sends one", function()
+      assert.is_true(logic.on_packet(ABYSSEA_MESSAGE, { Message = 8, ["Param 1"] = 250, ["Param 2"] = 0 }, 0))
       assert.are.equal(1250, (logic.progress()))
     end)
 
-    it("wraps at the level up and waits for the packet to correct it", function()
+    it("wraps past the level up and waits for the packet to correct it", function()
       assert.is_true(gained(8, 4500, 0))
       assert.are.equal(500, (logic.progress()))
+    end)
+
+    it("does not wrap a bar that is exactly full, as pointwatch does not", function()
+      assert.is_true(gained(8, 4000, 0))
+      assert.are.equal(5000, (logic.progress()))
+    end)
+
+    it("never holds more experience than the last level takes", function()
+      logic.on_packet(CHAR_STATS, char_stats({ ["Current EXP"] = 55000, ["Required EXP"] = 56000 }), 0)
+      assert.is_true(gained(8, 5000, 0))
+      assert.are.equal(55999, (logic.progress()))
     end)
 
     it("adds limit points to the limit bar", function()
@@ -240,7 +256,7 @@ describe("expbar logic", function()
       assert.are.equal(30, logic.merits())
     end)
 
-    it("adds exemplar points to the exemplar bar", function()
+    it("leaves the exemplar bar to the packet, as pointwatch does", function()
       logic.set_player(player(99, 49))
       logic.on_packet(
         CHAR_STATS,
@@ -251,21 +267,8 @@ describe("expbar logic", function()
         })
       )
       assert.is_true(gained(809, 250, 0))
-      assert.are.equal(1250, (logic.progress()))
-    end)
-
-    it("wraps the exemplar bar at the master level", function()
-      logic.set_player(player(99, 49))
-      logic.on_packet(
-        CHAR_STATS,
-        char_stats({
-          ["Master Breaker"] = true,
-          ["Current Exemplar Points"] = 5500,
-          ["Required Exemplar Points"] = 5550,
-        })
-      )
-      assert.is_true(gained(810, 4, 100))
-      assert.are.equal(50, (logic.progress()))
+      assert.is_true(gained(810, 500, 4))
+      assert.are.equal(1000, (logic.progress()))
     end)
 
     it("ignores a message it does not track", function()
@@ -333,12 +336,9 @@ describe("expbar logic", function()
       assert.are.equal(60000, rate_at(60))
     end)
 
-    it("takes a capacity chain's points from the second parameter", function()
-      -- 735 renders as "Capacity chain #${number}! ... gains ${number2}
-      -- capacity points", so Param 1 is the chain number - which is what
-      -- pointwatch's rate counts.
+    it("takes a capacity chain's points from the first parameter", function()
       logic.set_player(player(99, 49))
-      logic.on_packet(ACTION_MESSAGE, { Message = 735, ["Param 1"] = 3, ["Param 2"] = 540 }, 0)
+      logic.on_packet(ACTION_MESSAGE, { Message = 735, ["Param 1"] = 540, ["Param 2"] = 3 }, 0)
       assert.are.equal(32400, rate_at(60))
     end)
 
@@ -363,6 +363,13 @@ describe("expbar logic", function()
       logic.on_packet(CHAR_STATS, char_stats({ ["Master Breaker"] = true }), 0)
       gain(809, 1000, 0)
       assert.are.equal(60000, rate_at(60))
+    end)
+
+    it("takes an exemplar chain's points from the first parameter", function()
+      logic.set_player(player(99, 49))
+      logic.on_packet(CHAR_STATS, char_stats({ ["Master Breaker"] = true }), 0)
+      logic.on_packet(ACTION_MESSAGE, { Message = 810, ["Param 1"] = 500, ["Param 2"] = 4 }, 0)
+      assert.are.equal(30000, rate_at(60))
     end)
 
     it("keeps the three streams apart", function()

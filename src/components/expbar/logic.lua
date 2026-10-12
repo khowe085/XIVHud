@@ -37,17 +37,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      The client answers almost none of this: `get_player()` carries no
      experience and no master level, so everything but the job pair and the job
      points arrives as packets - 0x061 for experience and exemplar points,
-     0x063 order 2 for limit points and merits, and 0x02D for every gain in
-     between. ]]
+     0x063 order 2 for limit points and merits, and 0x02D (0x029 in Abyssea)
+     for every gain in between. ]]
 
 local CHAR_STATS = 0x061
 local CHAR_UPDATE = 0x063
 local ACTION_MESSAGE = 0x02D
+local ABYSSEA_MESSAGE = 0x029
 
 local HANDLED_CHUNKS = {
   [CHAR_STATS] = true,
   [CHAR_UPDATE] = true,
   [ACTION_MESSAGE] = true,
+  [ABYSSEA_MESSAGE] = true,
 }
 
 local LEVEL_CAP = 99
@@ -105,26 +107,24 @@ local SAMPLE_JOB = "WAR"
 local LIMIT_PER_MERIT = 10000
 local LIMIT_POINT_ORDER = 2
 
---[[ Every point gain arrives as a 0x02D action message, and WHICH parameter
-     carries the amount is not uniform: the `action_messages` resource renders
-     105 and 735 with `${number2}`, so their points are in Param 2. Both
-     reference addons read Param 1 for all of them, which makes pointwatch's
-     capacity rate count chain numbers instead of points. 253 (the experience
-     chain) is barfiller's - pointwatch has no entry for it at all, so it misses
-     most of the experience earned in a party. ]]
+--[[ pointwatch's message table and its read, exactly: the amount is Param 1
+     for every one of them (Kevin, 2026-10-12). This replaced a Param 2 read
+     for 105/735/810 and an entry for 253, both taken from the
+     `action_messages` resource's wording; the 810 read made a chained EP/hr
+     count chain numbers in a live client. ]]
 local GAINS = {
-  [8] = { kind = "exp", param = 1 },
-  [105] = { kind = "exp", param = 2 },
-  [253] = { kind = "exp", param = 1 },
-  [371] = { kind = "limit", param = 1 },
-  [372] = { kind = "limit", param = 1 },
-  [718] = { kind = "cp", param = 1 },
-  [735] = { kind = "cp", param = 2 },
-  -- 809/810 are pointwatch's; they are past the end of the resource file, so
-  -- nothing but that addon vouches for them (see the plan's unverified list).
-  [809] = { kind = "ep", param = 1 },
-  [810] = { kind = "ep", param = 2 },
+  [8] = "exp",
+  [105] = "exp",
+  [371] = "limit",
+  [372] = "limit",
+  [718] = "cp",
+  [735] = "cp",
+  [809] = "ep",
+  [810] = "ep",
 }
+
+-- 98 to 99 is 56000 experience, so a bar can never hold more than this.
+local MAX_EXP = 55999
 
 local function new_registry()
   local samples = {}
@@ -349,20 +349,14 @@ local function new(config)
     return true
   end
 
-  --[[ pointwatch's own wrapping rules, with its exemplar branch fixed: it
-       registers an exemplar gain for the rate and then never adds it, so its EP
-       figure moves only when a 0x061 arrives. Every wrap here is provisional -
-       the server's own packet corrects it moments later. ]]
+  --[[ pointwatch's own wrapping rules. Every wrap here is provisional - the
+       server's own packet corrects it moments later. An exemplar gain feeds
+       the rate alone, as it does there: the EP bar moves only on a 0x061. ]]
   local function add_points(kind, amount)
     if kind == "exp" then
-      exp.current = exp.current + amount
-      if exp.required > 0 and exp.current >= exp.required then
+      exp.current = math.min(exp.current + amount, MAX_EXP)
+      if exp.required > 0 and exp.current > exp.required then
         exp.current = exp.current - exp.required
-      end
-    elseif kind == "ep" then
-      ep.current = ep.current + amount
-      if ep.required > 0 and ep.current >= ep.required then
-        ep.current = ep.current - ep.required
       end
     elseif kind == "limit" then
       limit.current = limit.current + amount
@@ -387,15 +381,15 @@ local function new(config)
   end
 
   local function on_action_message(packet, now)
-    local gain = GAINS[whole(packet.Message)]
-    if not gain then
+    local kind = GAINS[whole(packet.Message)]
+    if not kind then
       return false
     end
-    local amount = whole(packet["Param " .. gain.param])
-    add_points(gain.kind, amount)
+    local amount = whole(packet["Param 1"])
+    add_points(kind, amount)
     -- Limit points feed the merit count and the bar, but no rate: neither
     -- header line quotes LP/hr.
-    local registry = registries[gain.kind]
+    local registry = registries[kind]
     if registry then
       registry.add(now, amount)
     end
