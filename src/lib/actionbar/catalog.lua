@@ -191,21 +191,52 @@ local function new(deps)
   deps = deps or {}
   local self = {}
 
+  --[[ A subjob the binder is editing but the player is not wearing (Kevin,
+       2026-10-12), as the listing's sub half: its id off `res.jobs`, at the
+       level it would have - its own (`get_player().jobs`, keyed by the short
+       name, which is how the SpellBook addon reads it), capped at half the
+       main job's. Nil where it is the worn one or cannot be resolved, which
+       leaves the live pair standing. ]]
+  local function previewed_sub(player, short)
+    if type(short) ~= "string" then
+      return nil
+    end
+    local resources = table_or_empty(deps.resources)
+    local id = nil
+    for job_id, job in pairs(table_or_empty(resources.jobs)) do
+      if type(job) == "table" and job.ens == short then
+        id = job_id
+      end
+    end
+    if id == nil or id == player.sub_job_id then
+      return nil
+    end
+    local cap = math.floor((tonumber(player.main_job_level) or 0) / 2)
+    local own = type(player.jobs) == "table" and tonumber(player.jobs[short]) or nil
+    return { id = id, level = own ~= nil and math.min(own, cap) or cap, main = false }
+  end
+
   -- The jobs a merged listing draws from: the main job, and the sub only
   -- when the client has named one. `main` decides the merit exception.
-  local function job_pair()
+  -- The second answer says the sub is a previewed one, not the worn one.
+  local function job_pair(view)
     local player = call(deps.get_player)
     if type(player) ~= "table" then
-      return {}
+      return {}, false
     end
     local jobs = {}
     if type(player.main_job_id) == "number" then
       jobs[#jobs + 1] = { id = player.main_job_id, level = player.main_job_level or 0, main = true }
     end
+    local previewed = previewed_sub(player, view.sub)
+    if previewed ~= nil then
+      jobs[#jobs + 1] = previewed
+      return jobs, true
+    end
     if type(player.sub_job_id) == "number" then
       jobs[#jobs + 1] = { id = player.sub_job_id, level = player.sub_job_level or 0, main = false }
     end
-    return jobs
+    return jobs, false
   end
 
   --[[ Can one of these jobs supply this action? A resource with no `levels`
@@ -379,7 +410,7 @@ local function new(deps)
     return submenus, spoken_for, parents, icons
   end
 
-  local function abilities(groups, jobs)
+  local function abilities(groups, jobs, view, previewed)
     local listed = table_or_empty(call(deps.get_abilities))
     local resources = table_or_empty(deps.resources)
     local job_abilities = table_or_empty(resources.job_abilities)
@@ -388,7 +419,9 @@ local function new(deps)
       listed_ids[id] = true
     end
     local submenus, spoken_for, parents, icons = families(listed_ids, job_abilities)
-    for _, id in ipairs(table_or_empty(listed.job_abilities)) do
+    -- The client lists the abilities of the pair WORN, and the resource
+    -- cannot say whose an ability is: none can be offered for another sub.
+    for _, id in ipairs(previewed and {} or table_or_empty(listed.job_abilities)) do
       local ability = job_abilities[id]
       if type(ability) == "table" and type(ability.en) == "string" then
         --[[ A family is governed by the client's list ALONE - `available` is
@@ -425,7 +458,8 @@ local function new(deps)
          is a worse answer than a long one. ]]
     local weapon_skills = table_or_empty(resources.weapon_skills)
     local skills = table_or_empty(resources.skills)
-    local held = call(deps.weapon_class)
+    -- The class the layer names, before the one in hand.
+    local held = view.weapon or call(deps.weapon_class)
     for _, id in ipairs(table_or_empty(listed.weapon_skills)) do
       local ws = weapon_skills[id]
       if type(ws) == "table" and type(ws.en) == "string" then
@@ -573,11 +607,14 @@ local function new(deps)
   --- inventory, the known spells and the job pair all move in play.
   --- `ct` and `ex` are deliberately absent - they need text entry, which
   --- the mouse binder has no way to take.
-  function self.build()
-    local jobs = job_pair()
+  --- `view` names the layer being edited, `{ sub = "WHM", weapon = "Club" }`,
+  --- either or neither: the listing is what can be bound THERE.
+  function self.build(view)
+    view = type(view) == "table" and view or {}
+    local jobs, previewed = job_pair(view)
     local groups = {}
     spells(groups, jobs)
-    abilities(groups, jobs)
+    abilities(groups, jobs, view, previewed)
     items(groups)
     enchanted_gear(groups)
     mounts(groups)

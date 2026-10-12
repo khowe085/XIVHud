@@ -6048,6 +6048,7 @@ describe("crossbar live widget", function()
       widget.handle_command({ "edit" })
       click(slot_point("left", 1))
       -- Step one is the layer; the catalog's categories are step two.
+      click_line("weapon >")
       click_line("wpn:Club")
       click_line("Weapon Skills")
       assert.is_not_nil(binder_line("Skullbreaker"), "the club weaponskill is offered")
@@ -6205,6 +6206,8 @@ describe("crossbar live widget", function()
       build_world()
       widget.handle_command({ "edit" })
       click(slot_point("left", 2))
+      click_line("job specific >")
+      click_line("SCH >")
       click_line("light%-arts:")
       assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text, "the bar is that layer's world")
       widget.handle_command({ "edit" })
@@ -6218,6 +6221,8 @@ describe("crossbar live widget", function()
       build_world()
       widget.handle_command({ "edit" })
       click(slot_point("left", 2))
+      click_line("job specific >")
+      click_line("SCH >")
       click_line("light%-arts:")
       assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text)
       env.player.buffs = { 359 }
@@ -6236,6 +6241,8 @@ describe("crossbar live widget", function()
       build_world({ store_files = files })
       widget.handle_command({ "edit" })
       click(slot_point("left", 2))
+      click_line("job specific >")
+      click_line("SCH >")
       click_line("light%-arts:")
       env.player.buffs = { 359 }
       push(widget, "gain buff", 359)
@@ -6441,6 +6448,8 @@ describe("crossbar live widget", function()
       build_world({ store_files = files })
       widget.handle_command({ "edit" })
       click(slot_point("left", 2))
+      click_line("job specific >")
+      click_line("SCH >")
       click_line("light%-arts:")
       assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text)
       -- The model reloads and clears its active contexts, so the preview
@@ -6454,21 +6463,22 @@ describe("crossbar live widget", function()
       assert.are.equal("", text_of("xhb_left", 2, "name").last.text, "and the client's own state comes back")
     end)
 
-    --[[ The other half of the same rule, and the one the job gate creates:
-         a change that takes the previewed context OUT of reach must bring
-         the preview and the header down with it. Leaving them up shows the
-         layer's world under a header naming it, on a job where the write
-         would be refused. ]]
-    it("drops a previewed context the new job cannot reach", function()
+    --[[ The other half of the same rule: every job's contexts are listed and
+         bindable, and the preview lights one off its job (Kevin,
+         2026-10-12), so a change that takes the previewed context out of
+         the job's reach leaves the preview and the header up. ]]
+    it("keeps previewing a context through a job change that cannot reach it", function()
       build_world()
       widget.handle_command({ "edit" })
       click(slot_point("left", 2))
+      click_line("job specific >")
+      click_line("SCH >")
       click_line("light%-arts:")
       assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text)
       env.player.sub_job, env.player.sub_job_id = "WAR", 2
       push(widget, "job change", 1, 99, 2, 49)
-      assert.are.equal("", text_of("xhb_left", 2, "name").last.text, "the preview came down with the layer")
-      assert.is_nil(binder_line("viewing: LIGHT ARTS"), "and the header stopped claiming it")
+      assert.are.equal("* Penury", text_of("xhb_left", 2, "name").last.text, "the preview stayed up")
+      assert.is_not_nil(binder_line("viewing: LIGHT ARTS"), "and so did the header")
     end)
 
     it("shows every empty slot while the binder is up, whatever the config says", function()

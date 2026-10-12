@@ -470,13 +470,23 @@ describe("one bar's state", function()
       -- space clears.
       binder.mouse(LEFT_DOWN, 120, 120, 0)
       binder.mouse(LEFT_UP, 120, 120, 0)
-      for _, row in ipairs(binder.layer_view().rows) do
-        if row.source == "sub" then
-          binder.mouse(LEFT_DOWN, row.x + 5, row.y + 5, 0)
-          binder.mouse(LEFT_UP, row.x + 5, row.y + 5, 0)
+      -- The layer step is a tree: the Subjob menu, then the worn one.
+      local function click_row(wanted)
+        for _, row in ipairs(binder.layer_view().rows) do
+          if wanted(row) then
+            binder.mouse(LEFT_DOWN, row.x + 5, row.y + 5, 0)
+            binder.mouse(LEFT_UP, row.x + 5, row.y + 5, 0)
+            return
+          end
         end
       end
-      assert.are.equal("sub", binder.layer())
+      click_row(function(row)
+        return row.menu == "subjob"
+      end)
+      click_row(function(row)
+        return row.source == "sub:NIN"
+      end)
+      assert.are.equal("sub:NIN", binder.layer())
       local said = #env.chat
       binder.mouse(LEFT_DOWN, 120, 120, 0)
       binder.mouse(MOVE, 200, 145, 0)
@@ -487,6 +497,49 @@ describe("one bar's state", function()
       binder.mouse(MOVE, 4, 4, 0)
       binder.mouse(LEFT_UP, 4, 4, 0)
       assert.is_nil(env.store_files.WAR.sub.NIN, "clear of the bar still clears the layer")
+    end)
+
+    --[[ The binder previews a subjob you are not on (Kevin, 2026-10-12):
+         the bar's own model reads it in place of the worn one until the
+         row is let go. ]]
+    it("previews a subjob picked in the binder through its own model", function()
+      local files = {
+        WAR = {
+          sets = { [1] = { row = { [3] = { type = "ma", action = "Cure", target = "t" } } } },
+          sub = { WHM = { [1] = { row = { [3] = { type = "ja", action = "Divine Seal" } } } } },
+        },
+      }
+      local bar, env, _, store = world({ store_files = files })
+      bar.attach(store)
+      bar.try_scope()
+      on_screen(env)
+      bar.command({ "edit" })
+      local binder = bar.binder()
+      binder.mouse(LEFT_DOWN, 120, 120, 0)
+      binder.mouse(LEFT_UP, 120, 120, 0)
+      local function click_row(wanted)
+        for _, row in ipairs(binder.layer_view().rows) do
+          if wanted(row) then
+            binder.mouse(LEFT_DOWN, row.x + 5, row.y + 5, 0)
+            binder.mouse(LEFT_UP, row.x + 5, row.y + 5, 0)
+            return
+          end
+        end
+      end
+      click_row(function(row)
+        return row.menu == "subjob"
+      end)
+      click_row(function(row)
+        return row.source == "sub:WHM"
+      end)
+      assert.are.equal("Divine Seal", bar.bindings().resolve(1, "row", 3).action)
+      -- A re-attach (`//hud slot`, `//hud reset`) builds a new model under
+      -- the open binder: the preview has to survive it, as a context's does.
+      bar.attach(store)
+      bar.try_scope()
+      assert.are.equal("Divine Seal", bar.bindings().resolve(1, "row", 3).action, "through a re-attach")
+      bar.command({ "edit" })
+      assert.are.equal("Cure", bar.bindings().resolve(1, "row", 3).action, "the worn subjob again")
     end)
 
     it("repaints when another bar's binder opens and when it closes", function()

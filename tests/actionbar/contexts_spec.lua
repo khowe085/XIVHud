@@ -104,6 +104,19 @@ describe("crossbar contexts", function()
     end
   end)
 
+  --[[ The binder's Job Specific menu folds a group into one submenu (Kevin,
+       2026-10-12): SCH reads Klimaform, Storms >, then the arts and
+       addenda flat. ]]
+  it("groups the eight storms, and nothing else", function()
+    for _, context in ipairs(contexts) do
+      local storm = false
+      for _, entry in ipairs(STORMS) do
+        storm = storm or entry.name == context.name
+      end
+      assert.equal(storm and "Storms" or nil, context.group, context.name)
+    end
+  end)
+
   it("activates klimaform on its own buff", function()
     assert.same({ 407 }, find("klimaform").any_of)
   end)

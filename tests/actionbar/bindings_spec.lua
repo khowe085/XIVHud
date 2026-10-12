@@ -602,6 +602,147 @@ describe("crossbar bindings", function()
     end)
   end)
 
+  --[[ Named layers (Kevin, 2026-10-12): `sub:<JOB>:<set>` and
+       `wpn:<class>:<set>` address ANY subjob's or class's overrides, so the
+       binder's Subjob and Weapon menus can write a layer that is not worn or
+       held. The bare `sub:` and `wpn:` still mean what is worn and held. ]]
+  describe("named subjob and weapon layers", function()
+    local function sources(bindings, set, side, slot)
+      local out = {}
+      for _, layer in ipairs(bindings.layers_at(set, side, slot)) do
+        out[#out + 1] = layer.source
+      end
+      return out
+    end
+
+    it("binds into a subjob that is not worn, in any case", function()
+      local bindings, world = build()
+      bindings.set_job("WAR", "NIN")
+      assert.is_true(bindings.bind("sub:whm:1", "left", 3, ja("Provoke")))
+      assert.equal("Provoke", world.files.WAR.sub.WHM[1].left[3].action)
+      assert.same({ "sub:WHM" }, sources(bindings, 1, "left", 3))
+    end)
+
+    it("binds into a class that is not held, by its kebab name", function()
+      local bindings, world = build()
+      bindings.set_job("WAR", "NIN")
+      assert.is_true(bindings.bind("wpn:Great-Katana:1", "left", 3, record("Tachi: Fudo")))
+      assert.equal("Tachi: Fudo", world.files.WAR.weapons["Great Katana"][1].left[3].action)
+      assert.is_true(bindings.bind("wpn:hand-to-hand:1", "left", 4, record("Asuran Fists")))
+      assert.same({ "wpn:Hand-to-Hand" }, sources(bindings, 1, "left", 4))
+    end)
+
+    it("needs nothing worn or held to address one", function()
+      local bindings = build()
+      bindings.set_job("WAR", nil)
+      assert.is_true(bindings.bind("sub:nin:2", "right", 1, ja("Provoke")))
+      assert.is_true(bindings.bind("wpn:sword:2", "right", 2, record("Savage Blade")))
+    end)
+
+    it("unbinds a named layer and leaves the worn one alone", function()
+      local bindings, world = build()
+      bindings.set_job("WAR", "NIN")
+      bindings.bind("sub:1", "left", 3, ja("Provoke"))
+      bindings.bind("sub:whm:1", "left", 3, ja("Warcry"))
+      assert.is_true(bindings.unbind("sub:whm:1", "left", 3))
+      assert.is_nil(world.files.WAR.sub.WHM)
+      assert.equal("Provoke", world.files.WAR.sub.NIN[1].left[3].action)
+    end)
+
+    it("refuses a job that does not exist", function()
+      local bindings = build()
+      bindings.set_job("WAR", "NIN")
+      local ok, err = bindings.bind("sub:xyz:1", "left", 3, ja("Provoke"))
+      assert.is_nil(ok)
+      assert.matches("xyz is not a job", err)
+    end)
+
+    -- A digit in the name is still a name gone wrong, not a set.
+    it("names the word it could not read as a job or a class", function()
+      local bindings = build()
+      bindings.set_job("WAR", "NIN")
+      local _, err = bindings.bind("sub:wh1:1", "left", 3, ja("Provoke"))
+      assert.matches("wh1 is not a job", err)
+      _, err = bindings.bind("wpn:h2h:1", "left", 3, ja("Provoke"))
+      assert.matches("h2h is not a class a main hand can hold", err)
+    end)
+
+    it("refuses the main job as its own subjob", function()
+      local bindings = build()
+      bindings.set_job("WAR", "NIN")
+      local ok, err = bindings.bind("sub:war:1", "left", 3, ja("Provoke"))
+      assert.is_nil(ok)
+      assert.matches("own sub job", err)
+    end)
+
+    it("refuses a class a main hand cannot hold", function()
+      local bindings = build()
+      bindings.set_job("WAR", "NIN")
+      local ok, err = bindings.bind("wpn:archery:1", "left", 3, record("Flaming Arrow"))
+      assert.is_nil(ok)
+      assert.matches("archery is not a class a main hand can hold", err)
+    end)
+  end)
+
+  --[[ The binder previews a subjob or class you are not using as if you
+       were (Kevin, 2026-10-12), the way it already previews a context as if
+       its buff were up. It is an override on the read side alone: nothing
+       written, and the live subjob still gates the contexts. ]]
+  describe("previewing a subjob or a class", function()
+    local function stacked()
+      return build({
+        files = {
+          WAR = {
+            sets = { [1] = { left = { [1] = record("Base WS") } } },
+            sub = {
+              NIN = { [1] = { left = { [1] = ja("Provoke") } } },
+              WHM = { [1] = { left = { [1] = ja("Warcry") } } },
+            },
+            weapons = { ["Great Axe"] = { [1] = { left = { [1] = record("Upheaval") } } } },
+          },
+        },
+      })
+    end
+
+    it("resolves through the previewed subjob in place of the worn one", function()
+      local bindings = stacked()
+      bindings.set_job("WAR", "NIN")
+      bindings.preview_layers({ sub = "WHM" })
+      local entry, source = bindings.resolve(1, "left", 1)
+      assert.equal("Warcry", entry.action)
+      assert.equal("sub", source)
+      bindings.preview_layers(nil)
+      assert.equal("Provoke", bindings.resolve(1, "left", 1).action)
+    end)
+
+    it("resolves through the previewed class in place of the held one", function()
+      local bindings = stacked()
+      bindings.set_job("WAR", "NIN")
+      bindings.set_weapon_type("Sword")
+      bindings.preview_layers({ weapon = "Great Axe" })
+      assert.equal("Upheaval", bindings.resolve(1, "left", 1).action)
+      bindings.preview_layers(nil)
+      assert.equal("Provoke", bindings.resolve(1, "left", 1).action)
+    end)
+
+    it("marks the previewed layer as the winner", function()
+      local bindings = stacked()
+      bindings.set_job("WAR", "NIN")
+      bindings.preview_layers({ sub = "WHM" })
+      for _, layer in ipairs(bindings.layers_at(1, "left", 1)) do
+        assert.equal(layer.source == "sub:WHM", layer.active == true, layer.source)
+      end
+    end)
+
+    it("leaves the worn subjob gating the contexts", function()
+      local bindings = stacked()
+      bindings.set_job("WAR", "NIN")
+      bindings.preview_layers({ sub = "SCH" })
+      assert.same({}, bindings.available_contexts())
+      assert.same({ "WAR", "NIN" }, { bindings.job() })
+    end)
+  end)
+
   describe("context layers", function()
     -- Kevin's SCH file: a WS in the base; Light Arts swaps it for the
     -- Addendum; the arts fight over a stratagem slot; Addendum: White fills
@@ -929,20 +1070,10 @@ describe("crossbar bindings", function()
       assert.same({ "empty-list", "no-list" }, fresh.active_contexts())
     end)
 
-    it("refuses a BIND into a context this job cannot reach, naming the job", function()
-      local bindings, world = build()
-      bindings.set_job("WAR", "NIN")
-      local ok, err = bindings.bind("ctx:light-arts:1", "l", 1, ja("Penury"))
-      assert.is_nil(ok)
-      assert.matches("SCH", err)
-      assert.is_nil(world.files.WAR)
-    end)
-
-    --[[ The gate is on the WRITE alone. Context overrides live in the MAIN
-         job's file, so a subjob change can put an entry that already exists
-         out of reach - and an entry `//hud crossbar list` still prints must
-         never be one nothing can remove. "It could not fire here" is an
-         argument against creating a binding, not against deleting one. ]]
+    --[[ Context overrides live in the MAIN job's file, so a subjob change can
+         put an entry that already exists out of reach - and an entry
+         `//hud crossbar list` still prints must never be one nothing can
+         remove or rename. ]]
     it("still removes and reads an entry a context out of reach already holds", function()
       local bindings, world = build({
         files = { WAR = { contexts = { ["light-arts"] = { [1] = { left = { [1] = ja("Penury") } } } } } },
@@ -965,19 +1096,34 @@ describe("crossbar bindings", function()
       entry.alias = "Pen"
       assert.is_true(bindings.bind("ctx:light-arts:1", "l", 1, entry))
       assert.equal("Pen", world.files.WAR.contexts["light-arts"][1].left[1].alias)
-      -- And an address it does NOT hold is still refused: that would be a
-      -- new binding on a layer this job can never raise.
-      local ok, err = bindings.bind("ctx:light-arts:1", "l", 2, ja("Accession"))
-      assert.is_nil(ok)
-      assert.matches("SCH", err)
     end)
 
-    it("says a main-only context is main-only when it refuses one", function()
-      local bindings = build()
-      bindings.set_job("WAR", "BLU")
-      local ok, err = bindings.bind("ctx:unbridled:1", "l", 1, ja("Sudden Lunge"))
-      assert.is_nil(ok)
-      assert.matches("main job", err)
+    --[[ The binder lists every job's contexts (Kevin, 2026-10-12), so the
+         gate is on ACTIVATION alone: a layer bound on a job that cannot
+         raise it waits in that job's file until the job can. ]]
+    it("binds into a context this job cannot reach, which fires only once it can", function()
+      local bindings, world = build()
+      bindings.set_job("WAR", "NIN")
+      assert.is_true(bindings.bind("ctx:light-arts:1", "l", 1, ja("Penury")))
+      assert.equal("Penury", world.files.WAR.contexts["light-arts"][1].left[1].action)
+      bindings.update_buffs({ 358 })
+      assert.is_nil(bindings.resolve(1, "left", 1), "WAR/NIN cannot raise Light Arts")
+      bindings.set_job("WAR", "SCH")
+      bindings.update_buffs({ 358 })
+      assert.equal("Penury", bindings.resolve(1, "left", 1).action)
+    end)
+
+    -- The binder's preview (Kevin, 2026-10-12): it shows what a context off
+    -- its job holds, and the live list stays gated.
+    it("lights a context off its job only when told to skip the gate", function()
+      local bindings = build({
+        files = { WAR = { contexts = { ["light-arts"] = { [1] = { left = { [1] = ja("Penury") } } } } } },
+      })
+      bindings.set_job("WAR", "NIN")
+      bindings.update_buffs({ 358 }, true)
+      assert.equal("Penury", bindings.resolve(1, "left", 1).action)
+      bindings.update_buffs({ 358 })
+      assert.is_nil(bindings.resolve(1, "left", 1))
     end)
 
     it("still writes a context the job can reach", function()

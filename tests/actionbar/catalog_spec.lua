@@ -850,4 +850,65 @@ describe("crossbar catalog", function()
       assert.is_true(has(list, "Job Abilities", "Curing Waltz"))
     end)
   end)
+  --[[ The binder edits a subjob you are not on and a class you are not
+       holding (Kevin, 2026-10-12), so the listing follows the LAYER, handed
+       to build: the class it names filters the weaponskills, and a subjob
+       other than the worn one takes the sub's place, gated at the level it
+       would have - its own, capped at half the main's. The client lists no
+       abilities for a job pair you are not on, and the resource cannot say
+       whose an ability is, so that listing goes. ]]
+  describe("for a layer the player is not using", function()
+    local function with_jobs()
+      local res = resources()
+      res.jobs = { [3] = { id = 3, ens = "WHM" }, [4] = { id = 4, ens = "BLM" }, [20] = { id = 20, ens = "SCH" } }
+      res.spells[2] = { id = 2, en = "Cure II", type = "WhiteMagic", levels = { [3] = 11 } }
+      res.spells[3] = { id = 3, en = "Cure III", type = "WhiteMagic", levels = { [3] = 21 } }
+      res.spells[4] = { id = 4, en = "Cure IV", type = "WhiteMagic", levels = { [3] = 41 } }
+      res.spells[5] = { id = 5, en = "Cure V", type = "WhiteMagic", levels = { [3] = 61 } }
+      return res
+    end
+
+    local function spells_known()
+      return { [1] = true, [2] = true, [3] = true, [4] = true, [5] = true, [144] = true }
+    end
+
+    it("filters the weaponskills by the class the layer names", function()
+      local catalog = build({
+        weapon_class = "Club",
+        abilities = { job_abilities = {}, weapon_skills = { 42, 3 } },
+      })
+      assert.same({ "Savage Blade" }, labels(catalog.build({ weapon = "Sword" }), "Weapon Skills"))
+      assert.same({ "Skullbreaker" }, labels(catalog.build(), "Weapon Skills"), "and the hand without one")
+    end)
+
+    it("lists a subjob's spells up to half the main job's level", function()
+      local p = player()
+      p.jobs = { SCH = 99, WHM = 99, BLM = 49 }
+      local catalog = build({ player = p, resources = with_jobs(), spells = spells_known() })
+      local white = labels(catalog.build({ sub = "WHM" }), "White Magic")
+      assert.same({ "Cure", "Cure II", "Cure III", "Cure IV" }, white)
+      assert.same({}, labels(catalog.build({ sub = "WHM" }), "Black Magic"), "and not the worn sub's")
+    end)
+
+    it("caps a subjob at its own level where that is lower", function()
+      local p = player()
+      p.jobs = { SCH = 99, WHM = 25, BLM = 49 }
+      local catalog = build({ player = p, resources = with_jobs(), spells = spells_known() })
+      assert.same({ "Cure", "Cure II", "Cure III" }, labels(catalog.build({ sub = "WHM" }), "White Magic"))
+    end)
+
+    it("lists no job abilities for a subjob not worn", function()
+      local p = player()
+      p.jobs = { SCH = 99, WHM = 99, BLM = 49 }
+      local catalog = build({ player = p, resources = with_jobs() })
+      assert.is_nil(category(catalog.build({ sub = "WHM" }), "Job Abilities"))
+    end)
+
+    it("reads the worn subjob as the live listing", function()
+      local p = player()
+      p.jobs = { SCH = 99, WHM = 99, BLM = 49 }
+      local catalog = build({ player = p, resources = with_jobs() })
+      assert.same(labels(catalog.build(), "Job Abilities"), labels(catalog.build({ sub = "BLM" }), "Job Abilities"))
+    end)
+  end)
 end)

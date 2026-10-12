@@ -186,10 +186,12 @@ describe("crossbar commands", function()
       assert.equal("Pen", world.files.WAR.contexts["light-arts"][1].left[3].alias)
     end)
 
-    it("refuses a context this job cannot reach, naming the job that can", function()
-      local commands = build({ job = "WAR", sub = "NIN" })
-      local reply = commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Penury" })
-      assert.is_not_nil(text_of(reply):find("SCH", 1, true), text_of(reply))
+    -- Every job's contexts are bindable (Kevin, 2026-10-12): the layer waits
+    -- in this job's file until the job can raise it.
+    it("binds a context this job cannot reach into this job's file", function()
+      local commands, world = build({ job = "WAR", sub = "NIN" })
+      commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Penury" })
+      assert.equal("Penury", world.files.WAR.contexts["light-arts"][1].left[3].action)
     end)
 
     it("rejects an unknown context and an unparseable set", function()
@@ -1784,6 +1786,30 @@ describe("crossbar commands", function()
     end)
   end)
 
+  --[[ Named layers (Kevin, 2026-10-12): a subjob by its job, a class by its
+       kebab name, either case - one word each, so the address survives the
+       split at its last colon. ]]
+  describe("named subjob and weapon layers", function()
+    it("binds into a subjob that is not worn", function()
+      local commands, world = build({ sub = "RDM" })
+      commands.command({ "bind", "sub:WHM:1L3", "ja", "Provoke" })
+      assert.equal("Provoke", world.files.SCH.sub.WHM[1].left[3].action)
+    end)
+
+    it("binds into a class that is not held", function()
+      local commands, world = build()
+      commands.command({ "bind", "wpn:great-katana:1L3", "ja", "Provoke" })
+      assert.equal("Provoke", world.files.SCH.weapons["Great Katana"][1].left[3].action)
+    end)
+
+    it("names the two forms in the address hint", function()
+      local commands = build()
+      local reply = text_of(commands.command({ "bind", "nope", "ja", "Provoke" }))
+      assert.is_not_nil(reply:find("sub:WHM:1L6", 1, true), reply)
+      assert.is_not_nil(reply:find("wpn:great-katana:1L6", 1, true), reply)
+    end)
+  end)
+
   describe("built-in name collisions", function()
     it("names its verbs for the load-time collision check", function()
       local commands = build()
@@ -2065,6 +2091,12 @@ describe("crossbar commands", function()
       commands.command({ "swap", "3:7", "3:10" })
       assert.are.same({ type = "ma", action = "Cure", target = "t" }, stored(world, "SCH", 3, "row", 10))
       assert.is_nil(stored(world, "SCH", 3, "row", 7))
+    end)
+
+    it("binds into a named subjob by <set>:<slot>", function()
+      local commands, world = hotbar({ known = { Cure = true } })
+      commands.command({ "bind", "sub:whm:3:7", "ma", "Cure", "t" })
+      assert.equal("Cure", world.files.SCH.sub.WHM[3].row[7].action)
     end)
 
     it("refuses the crossbar's shape and an eleventh slot, naming its own form", function()

@@ -56,8 +56,9 @@ local ASSETS = "assets/"
 -- (the component's own slot map). Nobody should have to memorise the indices.
 --[[ An address is ONE word: `<set><L|R><slot>` - `1L1`, `2R8` - and may
      carry a layer prefix, `sub:1L1`, `wpn:1L1` or `ctx:light-arts:1L1`.
-     Neither `sub:` nor `wpn:` names its layer: each addresses what is worn
-     or held right now, which is the only one the bar is showing.
+     The bare `sub:` and `wpn:` address what is worn or held right now;
+     `sub:WHM:1L1` and `wpn:great-katana:1L1` name a subjob or a class that
+     is not (Kevin, 2026-10-12), which is what the binder's menus write to.
 
      It was three words (`1 l 1`) until 2026-08-22. The side was the
      problem: a lower-case `l` beside digits is indistinguishable from a

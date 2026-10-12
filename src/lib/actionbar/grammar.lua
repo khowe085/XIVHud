@@ -55,7 +55,7 @@ function M.crossbar()
     slot_count = 8,
     sides = sides,
     side_order = { "left", "right" },
-    form = "<set><L|R><slot> - 1L1, 2R8, sub:1L6, wpn:1L6, ctx:<name>:1L3",
+    form = "<set><L|R><slot> - 1L1, 2R8, sub:1L6, sub:WHM:1L6, wpn:1L6, wpn:great-katana:1L6, ctx:<name>:1L3",
     split = function(word)
       if type(word) ~= "string" then
         return nil
@@ -88,7 +88,7 @@ function M.hotbar()
     slot_count = 10,
     sides = { row = "row" },
     side_order = { "row" },
-    form = "<set>:<slot> - 3:7, 3:10, sub:3:7, wpn:3:7, ctx:<name>:3:7",
+    form = "<set>:<slot> - 3:7, 3:10, sub:3:7, sub:WHM:3:7, wpn:3:7, wpn:great-katana:3:7, ctx:<name>:3:7",
     split = function(word)
       if type(word) ~= "string" then
         return nil

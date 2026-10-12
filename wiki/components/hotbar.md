@@ -93,7 +93,7 @@ one on, or SHIFT + right-click it in layout mode.
 All commands are `//hud hotbar ...` (`hb` for short). **An address is one
 word**, `<set>:<slot>` - `3:7` is set 3, slot 7, and `3:10` its last slot -
 and the layer prefixes go in front as on the crossbar: `sub:3:7`, `wpn:3:7`,
-`ctx:light-arts:3:7`.
+`sub:WHM:3:7`, `wpn:great-katana:3:7`, `ctx:light-arts:3:7`.
 
 | Command | What it does |
 | --- | --- |

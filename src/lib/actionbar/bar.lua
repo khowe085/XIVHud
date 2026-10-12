@@ -330,10 +330,17 @@ local function new(deps)
        view. The handover (preview(nil)) re-reads the client here, so nothing
        stale can survive the preview coming down. ]]
   local previewing = nil
+  -- The subjob or class previewed, held HERE for the same reason: a
+  -- re-attach builds a new model under the open binder, and this re-asserts
+  -- it on the model that replaced it.
+  local previewing_layers = nil
 
   local function apply_buffs()
+    bindings.preview_layers(previewing_layers)
     if previewing ~= nil then
-      return bindings.update_buffs(previewing)
+      -- Ungated: the binder lists every job's contexts, and one picked off
+      -- its job should still show what it holds.
+      return bindings.update_buffs(previewing, true)
     end
     local player = get_player()
     if player == nil then
@@ -940,8 +947,8 @@ local function new(deps)
     --[[ Preview = a SIMULATED buff list through the live resolver, never a
          hand-toggled layer, so the bar always shows the true stacked
          result. nil hands the live buff list back. ]]
-    preview = function(buffs)
-      previewing = buffs
+    preview = function(buffs, layers)
+      previewing, previewing_layers = buffs, layers
       apply_buffs()
       deps.repaint()
     end,

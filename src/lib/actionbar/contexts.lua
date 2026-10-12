@@ -57,7 +57,10 @@ local contexts = {
 
        The icons are the art the bar draws for the spell itself: the pack has
        no by-name art for these, so a bound slot falls to the spell sheet,
-       keyed by recast id. ]]
+       keyed by recast id.
+
+       `group` folds the eight into ONE submenu of the binder's Job Specific
+       menu (Kevin, 2026-10-12); an entry with none is a row of its own. ]]
   {
     name = "klimaform",
     label = "Klimaform",
@@ -67,6 +70,7 @@ local contexts = {
   },
   {
     name = "sandstorm",
+    group = "Storms",
     label = "Sandstorm",
     any_of = { 181, 592 },
     icon = "spells/00099",
@@ -74,6 +78,7 @@ local contexts = {
   },
   {
     name = "rainstorm",
+    group = "Storms",
     label = "Rainstorm",
     any_of = { 183, 594 },
     icon = "spells/00113",
@@ -81,6 +86,7 @@ local contexts = {
   },
   {
     name = "windstorm",
+    group = "Storms",
     label = "Windstorm",
     any_of = { 180, 591 },
     icon = "spells/00114",
@@ -88,6 +94,7 @@ local contexts = {
   },
   {
     name = "firestorm",
+    group = "Storms",
     label = "Firestorm",
     any_of = { 178, 589 },
     icon = "spells/00115",
@@ -95,6 +102,7 @@ local contexts = {
   },
   {
     name = "hailstorm",
+    group = "Storms",
     label = "Hailstorm",
     any_of = { 179, 590 },
     icon = "spells/00116",
@@ -102,6 +110,7 @@ local contexts = {
   },
   {
     name = "thunderstorm",
+    group = "Storms",
     label = "Thunderstorm",
     any_of = { 182, 593 },
     icon = "spells/00117",
@@ -109,6 +118,7 @@ local contexts = {
   },
   {
     name = "voidstorm",
+    group = "Storms",
     label = "Voidstorm",
     any_of = { 185, 596 },
     icon = "spells/00118",
@@ -116,6 +126,7 @@ local contexts = {
   },
   {
     name = "aurorastorm",
+    group = "Storms",
     label = "Aurorastorm",
     any_of = { 184, 595 },
     icon = "spells/00119",

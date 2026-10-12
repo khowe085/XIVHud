@@ -140,7 +140,7 @@ taken: `//hud cb set 3`, `//hud show cb`, `//hud reset cb`.
 **An address is one word**: `<set><L|R><slot>`, so `1L1` is set 1, left side,
 slot 1, and `2R8` is set 2, right side, slot 8. Four verbs — `bind`, `unbind`,
 `alias` and `icon` — also take a layer prefix in front: `sub:1L6`,
-`wpn:1L6`, `ctx:light-arts:1L3`.
+`sub:WHM:1L6`, `wpn:1L6`, `wpn:great-katana:1L6`, `ctx:light-arts:1L3`.
 
 You may type the side in either case.
 
@@ -339,7 +339,10 @@ name is looked for there. `icon 6L1 items/warp-ring` checks
 
 `bind`, `unbind`, `alias` and `icon` take an optional layer prefix on the set
 number — `sub:<set>` for the current subjob, `wpn:<set>` for the weapon class
-in your main hand, `ctx:<name>:<set>` for a buff context. With no prefix you
+in your main hand, `ctx:<name>:<set>` for a buff context. To edit a subjob you
+are not on or a class you are not holding, name it: `sub:WHM:<set>`, or
+`wpn:<class>:<set>` with the class in lower case and dashes for spaces
+(`wpn:great-katana:1L1`, `wpn:hand-to-hand:1L1`). With no prefix you
 are editing the job's base layer. See
 [Layers](#layers-how-a-slot-decides-what-to-show).
 
@@ -347,6 +350,7 @@ are editing the job's base layer. See
 //hud crossbar bind 1L3 ma "Cure IV" t
 //hud crossbar bind sub:1L4 ja "Utsusemi: Ichi"
 //hud crossbar bind wpn:1R1 ws "Savage Blade" t
+//hud crossbar bind sub:WHM:1L4 ma Cure t
 //hud crossbar bind ctx:light-arts:1L3 ja "Addendum: White"
 ```
 
@@ -580,9 +584,14 @@ wins):
 - Blue Mage's `unbridled` (Unbridled Learning or Unbridled Wisdom)
 
 `//hud crossbar context list` shows them and which are live. A context only
-exists on the job it belongs to: the Scholar contexts appear on SCH main or
-sub, `composure` on RDM main, `unbridled` on BLU main, and on any other job
-they are neither listed nor active.
+fires on the job it belongs to: the Scholar contexts on SCH main or sub,
+`composure` on RDM main, `unbridled` on BLU main; on any other job `context
+list` leaves them out and they never turn on. You can still bind one there -
+the edit window lists every job's contexts - and it is kept with this main
+job's bindings: on WAR/NIN you can set up the Scholar slots you want for
+when you switch to /SCH. `composure` and `unbridled` only ever turn on with
+RDM or BLU as the main job, so binding one on any other main job does
+nothing.
 
 ### Editing without guessing
 
@@ -643,10 +652,21 @@ on the window is always the window's, whatever slot of the other bar is
 under it.
 
 **One window, three steps.** Edit mode draws nothing until you click a slot.
-Then a single window opens dead centre and walks you through:
+Then a single window opens dead centre - sized to your screen, the way the
+rest of the HUD is - and walks you through:
 
-1. **Pick a layer** — base (or shared), your worn subjob, the weapon in your main hand (once one has been read), and every context.
-   Picking a context previews the bar as if that buff were up.
+1. **Pick a layer** — base (or shared) at the top, then three menus:
+   **subjob** (every job but your main one), **weapon** (every main-hand
+   weapon type) and **job specific** (RDM's Composure, BLU's Unbridled
+   Learning, and SCH's Klimaform, a **Storms** menu, and the arts and
+   addenda). The subjob or weapon doesn't have to be the one you have on.
+   Picking a layer previews the bar as if it were in use - that subjob worn,
+   that weapon held, that buff up. A `>` marks a menu; a `*` on one means the
+   layer showing on the bar is inside it. `[ < back ]` climbs out of a menu.
+   The actions offered next follow the layer: a weapon's own weaponskills,
+   and for a subjob you aren't wearing, its spells up to its subjob level
+   but no job abilities - the game only lists the ones for the subjob you
+   have on.
 2. **Pick an action** — categories down the left, one page of actions on the
    right, the wheel to page through them.
 3. **Pick a target** — the common target tokens, with `(no target)` first (`stal`, `lastst`, `scan` and `r` are `bind`-command only). Actions

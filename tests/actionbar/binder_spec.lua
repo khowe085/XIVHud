@@ -81,6 +81,9 @@ local function build(opts)
       return "addon/" .. path
     end,
     screen = function()
+      if opts.screen ~= nil then
+        return opts.screen[1], opts.screen[2]
+      end
       return 1920, 1080
     end,
     text_style = function()
@@ -141,10 +144,10 @@ local function build(opts)
     changed = function()
       env.repaints = (env.repaints or 0) + 1
     end,
-    preview = function(buffs)
+    preview = function(buffs, layers)
       -- Wrapped: a preview of nil (the live buff list) is a call, not an
       -- absence, and the specs below tell the two apart.
-      env.previews[#env.previews + 1] = { buffs = buffs }
+      env.previews[#env.previews + 1] = { buffs = buffs, layers = layers }
     end,
     window_pos = function()
       return env.window_pos
@@ -241,6 +244,62 @@ local function close_button(binder, env)
   click(binder, centre(env.binder.window().close))
 end
 
+--- A MENU row at the layer step, by its key.
+local function menu_named(env, key)
+  for _, row in ipairs(env.binder.layer_view().rows) do
+    if row.menu == key then
+      return row
+    end
+  end
+  return nil
+end
+
+--[[ The layer step is a tree (Kevin, 2026-10-12): base at the top, then the
+     Subjob, Weapon and Job Specific menus. Walks it to the row for `source`,
+     depth first, backing out of each menu that does not hold it, and
+     answers that row on screen - or nil. ]]
+local function find_layer(binder, env, source)
+  local found = row_named(env, source)
+  if found ~= nil then
+    return found
+  end
+  local keys = {}
+  for _, row in ipairs(binder.layer_view().rows) do
+    if row.menu ~= nil then
+      keys[#keys + 1] = row.menu
+    end
+  end
+  for _, key in ipairs(keys) do
+    click(binder, centre(menu_named(env, key)))
+    found = find_layer(binder, env, source)
+    if found ~= nil then
+      return found
+    end
+    back(binder, env)
+  end
+  return nil
+end
+
+--- From any step: the row where it already shows, else from the top.
+local function layer_row(binder, env, source)
+  if binder.layer_view() ~= nil and row_named(env, source) ~= nil then
+    return row_named(env, source)
+  end
+  while binder.window() ~= nil and binder.window().back ~= nil do
+    back(binder, env)
+  end
+  return find_layer(binder, env, source)
+end
+
+--- What the layer step shows: a leaf's source, or `>` and a menu's key.
+local function layer_items(env)
+  local out = {}
+  for _, row in ipairs(env.binder.layer_view().rows) do
+    out[#out + 1] = row.menu ~= nil and (">" .. row.menu) or row.source
+  end
+  return out
+end
+
 --- The one visible text prim carrying `label`, or nil where none is drawn.
 --- Destroyed prims are skipped: the fake keeps them in the list with their
 --- last state, so a binder that has been closed and reopened would otherwise
@@ -308,7 +367,7 @@ describe("crossbar binder", function()
     it("clears the preview when it closes", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
       env.previews = {}
       binder.close()
       assert.are.equal(1, #env.previews, "the preview is handed back")
@@ -341,118 +400,86 @@ describe("crossbar binder", function()
   end)
 
   describe("the stack panel", function()
-    it("opens on a slot click, listing the whole stack", function()
+    it("opens on a slot click, listing the base and the three menus", function()
       local binder, env = build({ weapon = "Great Axe" })
       open_stack(binder, env, "left", 3)
-      local panel = binder.layer_view()
-      assert.is_not_nil(panel, "the clicked slot opened its stack")
-      local sources = {}
-      for _, row in ipairs(panel.rows) do
-        sources[#sources + 1] = row.source
-      end
-      assert.are.same({
-        "base",
-        "sub",
-        "wpn",
-        "ctx:klimaform",
-        "ctx:sandstorm",
-        "ctx:rainstorm",
-        "ctx:windstorm",
-        "ctx:firestorm",
-        "ctx:hailstorm",
-        "ctx:thunderstorm",
-        "ctx:voidstorm",
-        "ctx:aurorastorm",
-        "ctx:light-arts",
-        "ctx:dark-arts",
-        "ctx:addendum-white",
-        "ctx:addendum-black",
-      }, sources, "shared/base, the worn subjob, the weapon in hand, then the contexts this job reaches")
+      assert.is_not_nil(binder.layer_view(), "the clicked slot opened its stack")
+      assert.are.same({ "base", ">subjob", ">weapon", ">job" }, layer_items(env))
     end)
 
-    -- The weapon row is the class in HAND, so there is nothing to offer
-    -- until the client has answered with one.
-    it("leaves the weapon row out while nothing is equipped", function()
+    --[[ A weapon layer is NAMED now (Kevin, 2026-10-12), so the Weapon menu
+         does not wait for the client to say what is in your hand. ]]
+    it("offers every class while nothing is equipped", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      assert.is_nil(row_named(env, "wpn"))
+      assert.is_not_nil(layer_row(binder, env, "wpn:Great Axe"))
     end)
 
-    it("names the weapon row for the class in hand", function()
+    it("names each weapon row for its class", function()
       local binder, env = build({ weapon = "Great Axe" })
       open_stack(binder, env, "left", 3)
-      assert.are.equal("wpn:Great Axe", row_named(env, "wpn").label)
+      assert.are.equal("wpn:Great Axe", layer_row(binder, env, "wpn:Great Axe").label)
     end)
 
-    --[[ Hidden AND inert (Kevin, 2026-09-04): a context that cannot fire on
-         this job is not a layer the player has any business binding into. ]]
     --[[ A cursor outlives a bind by design, so it can outlive the LAYER
-         it points at: a subjob change can take a context out of reach, and
-         unequipping takes the weapon row away. The cursor, the preview and
-         the header all have to come down with the row, or the bar shows a
-         layer's world under a header naming it while the write is refused. ]]
-    it("drops a cursor whose layer the job no longer reaches", function()
+         it points at. Every context is listed whatever the job (Kevin,
+         2026-10-12), so what is left to vanish is a subjob: the main job
+         becoming it takes it out of the Subjob menu. The cursor, the preview
+         and the header all have to come down with the row, or the bar shows
+         a layer's world under a header naming it while the write is
+         refused. ]]
+    it("drops a cursor whose layer the job no longer offers", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
-      assert.are.equal("ctx:light-arts", binder.layer())
-      env.bindings.set_job("WAR", "NIN")
+      click(binder, centre(layer_row(binder, env, "sub:WHM")))
+      assert.are.equal("sub:WHM", binder.layer())
+      env.bindings.set_job("WHM", "SCH")
       binder.refresh()
       assert.is_nil(binder.layer(), "the cursor went with the row")
-      assert.is_nil(last_preview(env), "and so did the preview")
-      assert.are.equal("LIVE", binder.window().viewing, "the header no longer claims a context")
+      assert.is_nil(env.previews[#env.previews].layers, "and so did the preview")
+      assert.are.equal("LIVE", binder.window().viewing, "the header no longer claims a subjob")
     end)
 
-    it("drops a cursor on the weapon row when the hand empties", function()
+    --[[ A named class does not follow the hand (Kevin, 2026-10-12): the
+         cursor, the write and what it says stay on the class you picked,
+         whatever GearSwap does while the window is open. ]]
+    it("keeps a cursor on a class when the hand empties", function()
       local binder, env = build({ weapon = "Great Axe" })
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "wpn")))
-      assert.are.equal("wpn", binder.layer())
+      click(binder, centre(layer_row(binder, env, "wpn:Great Axe")))
+      assert.are.equal("wpn:Great Axe", binder.layer())
       env.bindings.set_weapon_type(nil)
       binder.refresh()
-      assert.is_nil(binder.layer())
+      assert.are.equal("wpn:Great Axe", binder.layer())
     end)
 
-    --[[ `wpn:` addresses whatever is in your hand, so the class under the
-         cursor can change while the panel is open - GearSwap or a game
-         macro is enough. The write follows the hand, which is the point of
-         the layer; what must not happen is the header and the confirmation
-         going on naming the class you were holding when you clicked. ]]
-    it("renames the cursor when the class in hand changes under it", function()
+    it("keeps a cursor on its class when the class in hand changes", function()
       local binder, env = build({ weapon = "Great Axe" })
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "wpn")))
+      click(binder, centre(layer_row(binder, env, "wpn:Great Axe")))
       env.bindings.set_weapon_type("Sword")
       binder.refresh()
       pick(binder, env, "Berserk")
-      assert.are.same({ type = "ja", action = "Berserk" }, env.files.WAR.weapons.Sword[1].left[3])
-      assert.is_nil(env.files.WAR.weapons["Great Axe"], "the write followed the hand")
+      assert.are.same({ type = "ja", action = "Berserk" }, env.files.WAR.weapons["Great Axe"][1].left[3])
+      assert.is_nil(env.files.WAR.weapons.Sword, "the write stayed on the class picked")
       local said = env.said[#env.said]
-      assert.is_not_nil(said:find("wpn:Sword", 1, true), "and so did what it said: " .. said)
+      assert.is_not_nil(said:find("wpn:Great Axe", 1, true), "and so did what it said: " .. said)
     end)
 
     it("keeps a cursor whose layer is still offered", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
       env.bindings.set_job("WHM", "SCH")
       binder.refresh()
       assert.are.equal("ctx:light-arts", binder.layer(), "SCH is still within reach")
-    end)
-
-    it("lists no context the scoped job cannot reach", function()
-      local binder, env = build({ sub = "NIN" })
-      open_stack(binder, env, "left", 3)
-      for _, row in ipairs(binder.layer_view().rows) do
-        assert.is_nil(row.source:match("^ctx:"), row.source .. " is offered on WAR/NIN")
-      end
     end)
 
     it("shows each row's own entry, or a dash", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
       assert.are.equal("ja Provoke", row_named(env, "base").entry)
-      assert.are.equal("-", row_named(env, "sub").entry, "ASCII only - the chat and prims are not UTF-8")
+      assert.are.equal("-", layer_row(binder, env, "sub:SCH").entry, "ASCII only - the chat and prims are not UTF-8")
     end)
 
     it("marks the winning row and nothing else", function()
@@ -466,10 +493,10 @@ describe("crossbar binder", function()
       env.bindings.update_buffs({ 358 })
       open_stack(binder, env, "left", 3)
       assert.is_false(row_named(env, "base").winner)
-      assert.is_true(row_named(env, "ctx:light-arts").winner, "the live context outranks the base")
+      assert.is_true(layer_row(binder, env, "ctx:light-arts").winner, "the live context outranks the base")
       env.bindings.update_buffs({})
       binder.refresh()
-      assert.is_true(row_named(env, "base").winner, "and the base wins again when the buff drops")
+      assert.is_true(layer_row(binder, env, "base").winner, "and the base wins again when the buff drops")
     end)
 
     it("reports the address it is editing", function()
@@ -491,12 +518,232 @@ describe("crossbar binder", function()
     it("clears the cursor when another slot is clicked", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
       assert.are.equal("ctx:light-arts", binder.layer())
       local x, y = slot_point(env, "left", 4)
       click(binder, x, y)
       assert.is_nil(binder.layer(), "a new slot is a new decision")
       assert.are.same({ set = 1, side = "left", slot = 4 }, binder.window().address)
+    end)
+  end)
+
+  --[[ The layer step is a tree (Kevin, 2026-10-12): base, then a Subjob
+       menu of every job, a Weapon menu of every main-hand class, and a Job
+       Specific menu of the jobs whose contexts this job reaches - SCH's
+       folding its storms into one more menu. ]]
+  describe("the layer menus", function()
+    local JOBS = require("lib/actionbar/jobchange").JOBS
+    local CLASSES = require("lib/actionbar/weapon_classes")
+
+    it("lists every job but the main one under Subjob, in the game's order", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(menu_named(env, "subjob")))
+      local want = {}
+      for _, job in ipairs(JOBS) do
+        if job ~= "WAR" then
+          want[#want + 1] = "sub:" .. job
+        end
+      end
+      assert.same(want, layer_items(env))
+    end)
+
+    it("lists all twelve classes under Weapon, whether or not one is held", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(menu_named(env, "weapon")))
+      local want = {}
+      for _, class in ipairs(CLASSES) do
+        want[#want + 1] = "wpn:" .. class
+      end
+      assert.same(want, layer_items(env))
+    end)
+
+    it("puts Composure under RDM", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(menu_named(env, "job")))
+      click(binder, centre(menu_named(env, "RDM")))
+      assert.same({ "ctx:composure" }, layer_items(env))
+    end)
+
+    -- Not filtered by the job in use (Kevin, 2026-10-12): every job's own.
+    it("offers every job's contexts whatever the job", function()
+      local binder, env = build({ sub = "NIN" })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(menu_named(env, "job")))
+      assert.same({ ">RDM", ">BLU", ">SCH" }, layer_items(env))
+    end)
+
+    it("puts Unbridled Learning under BLU", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(menu_named(env, "job")))
+      click(binder, centre(menu_named(env, "BLU")))
+      assert.same({ "ctx:unbridled" }, layer_items(env))
+    end)
+
+    it("reads Klimaform, the Storms menu, then the arts and addenda on SCH", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(menu_named(env, "job")))
+      click(binder, centre(menu_named(env, "SCH")))
+      assert.same({
+        "ctx:klimaform",
+        ">Storms",
+        "ctx:light-arts",
+        "ctx:dark-arts",
+        "ctx:addendum-white",
+        "ctx:addendum-black",
+      }, layer_items(env))
+      click(binder, centre(menu_named(env, "Storms")))
+      assert.same({
+        "ctx:sandstorm",
+        "ctx:rainstorm",
+        "ctx:windstorm",
+        "ctx:firestorm",
+        "ctx:hailstorm",
+        "ctx:thunderstorm",
+        "ctx:voidstorm",
+        "ctx:aurorastorm",
+      }, layer_items(env))
+    end)
+
+    it("climbs one menu at a time with back, and draws none at the top", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      assert.is_nil(binder.window().back, "nothing to climb out of")
+      click(binder, centre(menu_named(env, "job")))
+      click(binder, centre(menu_named(env, "SCH")))
+      click(binder, centre(menu_named(env, "Storms")))
+      back(binder, env)
+      assert.is_not_nil(menu_named(env, "Storms"), "back in SCH's menu")
+      back(binder, env)
+      back(binder, env)
+      assert.same({ "base", ">subjob", ">weapon", ">job" }, layer_items(env))
+      assert.is_nil(binder.window().back)
+    end)
+
+    it("names the menu it is in", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(menu_named(env, "job")))
+      click(binder, centre(menu_named(env, "SCH")))
+      click(binder, centre(menu_named(env, "Storms")))
+      assert.is_not_nil(shown_text(env, "1L3   in: job specific > SCH > Storms"))
+    end)
+
+    it("binds into the subjob picked, worn or not", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(layer_row(binder, env, "sub:WHM")))
+      pick(binder, env, "Berserk")
+      assert.equal("Berserk", env.files.WAR.sub.WHM[1].left[3].action)
+      assert.is_nil(env.files.WAR.sub.SCH, "and not the one worn")
+    end)
+
+    it("binds into the class picked, held or not", function()
+      local binder, env = build({ weapon = "Sword" })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(layer_row(binder, env, "wpn:Great Katana")))
+      pick(binder, env, "Berserk")
+      assert.equal("Berserk", env.files.WAR.weapons["Great Katana"][1].left[3].action)
+    end)
+
+    it("previews a subjob or a class as if it were the one in use", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(layer_row(binder, env, "sub:WHM")))
+      assert.same({ sub = "WHM" }, env.previews[#env.previews].layers)
+      assert.is_nil(last_preview(env), "no buff is simulated for a subjob")
+      back(binder, env)
+      assert.is_nil(env.previews[#env.previews].layers, "back at the menu, the live stack again")
+      click(binder, centre(layer_row(binder, env, "wpn:Club")))
+      assert.same({ weapon = "Club" }, env.previews[#env.previews].layers)
+    end)
+
+    it("says which subjob or class the bar is showing", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(layer_row(binder, env, "wpn:Great Katana")))
+      assert.equal("WPN:GREAT KATANA", binder.window().viewing)
+    end)
+
+    it("goes back from the catalog to the menu the layer came from", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(layer_row(binder, env, "ctx:firestorm")))
+      back(binder, env)
+      assert.is_not_nil(row_named(env, "ctx:firestorm"), "the Storms menu, not the top")
+    end)
+
+    it("marks a menu holding the winning layer, and the one holding the cursor", function()
+      local binder, env = build({
+        files = {
+          WAR = { sets = {}, sub = { SCH = { [1] = { left = { [3] = { type = "ja", action = "Provoke" } } } } } },
+        },
+      })
+      open_stack(binder, env, "left", 3)
+      assert.is_true(menu_named(env, "subjob").winner, "SCH is worn and holds the slot")
+      assert.is_falsy(menu_named(env, "weapon").winner)
+      -- A bind keeps the cursor and lands back in the menu it came from.
+      click(binder, centre(layer_row(binder, env, "wpn:Club")))
+      pick(binder, env, "Berserk")
+      back(binder, env)
+      assert.is_true(menu_named(env, "weapon").selected)
+    end)
+
+    --[[ What can be bound depends on the layer (review, 2026-10-12): the
+         weaponskills of the class picked, a subjob's own spells. The catalog
+         is asked for the layer's listing, and asked again only when a pick
+         changes which subjob or class that is - keeping the category. ]]
+    it("asks the catalog for the listing of the layer picked", function()
+      local asked = {}
+      local binder, env = build({
+        catalog_factory = function()
+          return {
+            build = function(view)
+              asked[#asked + 1] = view or {}
+              return {
+                {
+                  name = "Job Abilities",
+                  entries = { { label = "Berserk", record = { type = "ja", action = "Berserk" } } },
+                },
+                {
+                  name = "Weapon Skills",
+                  entries = { { label = "Raging Axe", record = { type = "ws", action = "Raging Axe" } } },
+                },
+              }
+            end,
+          }
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local opened = #asked
+      assert.same({}, asked[opened], "the base layer reads the live listing")
+      local weapon_skills = binder.catalog_view().categories[2]
+      click(binder, centre(weapon_skills))
+      click(binder, centre(layer_row(binder, env, "wpn:Club")))
+      assert.same({ weapon = "Club" }, asked[#asked])
+      assert.equal("Weapon Skills", binder.catalog_view().category, "the category survived the new listing")
+      local count = #asked
+      back(binder, env)
+      click(binder, centre(row_named(env, "wpn:Club")))
+      assert.equal(count, #asked, "the same class again needs no new listing")
+      click(binder, centre(layer_row(binder, env, "sub:WHM")))
+      assert.same({ sub = "WHM" }, asked[#asked])
+    end)
+
+    -- Without a pager the layer step must never hold more rows than it draws.
+    it("fits its longest menu in the rows the window draws", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(menu_named(env, "subjob")))
+      local rows = binder.layer_view().rows
+      local last = rows[#rows]
+      local list = binder.window().list
+      assert.is_true(last.y + last.height <= list.y + list.height, "21 jobs inside the list")
     end)
   end)
 
@@ -515,12 +762,12 @@ describe("crossbar binder", function()
     it("previews a context row as a simulated buff list", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:dark-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:dark-arts")))
       assert.are.same({ 359 }, last_preview(env), "dark arts alone - light arts drops out")
       -- Picking a layer moves the window on to the catalog, so choosing a
       -- different one means stepping back to the layer list first.
       back(binder, env)
-      click(binder, centre(row_named(env, "ctx:addendum-white")))
+      click(binder, centre(layer_row(binder, env, "ctx:addendum-white")))
       assert.are.same({ 401 }, last_preview(env), "which lights light-arts too, through any_of")
     end)
 
@@ -531,14 +778,14 @@ describe("crossbar binder", function()
       assert.is_nil(last_preview(env), "the live buff list")
       assert.are.equal("LIVE", binder.window().viewing)
       back(binder, env)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
       assert.are.equal("LIGHT ARTS", binder.window().viewing, "the simulated state is unmissable")
     end)
 
     it("binds a clicked catalog entry into the cursor's layer, and says so", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
       pick(binder, env, "Berserk")
       assert.are.same(
         { type = "ja", action = "Berserk" },
@@ -558,6 +805,48 @@ describe("crossbar binder", function()
       assert.is_nil(binder.catalog_view(), "the catalog closes behind the bind")
       assert.is_not_nil(binder.window(), "the stack panel stays for the next edit")
       assert.are.equal("ja Berserk", row_named(env, "base").entry, "refreshed in place")
+    end)
+
+    -- Kevin, 2026-10-12: the window grew from nineteen list rows to 25.
+    it("lists 25 entries to a page", function()
+      local long = {}
+      for index = 1, 26 do
+        long[index] = { label = ("Spell %02d"):format(index), record = { type = "ma", action = "Spell" } }
+      end
+      local binder, env = build({ catalog = { { name = "White Magic", entries = long } } })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local view = binder.catalog_view()
+      assert.are.equal(25, #view.entries)
+      assert.are.equal(2, view.pages)
+    end)
+
+    --[[ The window scales with the screen as the HUD does (Kevin,
+         2026-10-12): its 1080-line size times height / 1080, the font, the
+         rows and the click areas together - so it is 25 rows on any screen. ]]
+    it("scales the whole window with the screen's height", function()
+      local long = {}
+      for index = 1, 26 do
+        long[index] = { label = ("Spell %02d"):format(index), record = { type = "ma", action = "Spell" } }
+      end
+      for _, case in ipairs({ { 720, 2 / 3, 12 }, { 2160, 2, 36 } }) do
+        local height, scale, font = case[1], case[2], case[3]
+        local binder, env = build({
+          screen = { height * 16 / 9, height },
+          catalog = { { name = "White Magic", entries = long } },
+        })
+        binder.open()
+        local x, y = slot_point(env, "left", 3)
+        click(binder, x, y)
+        local window = binder.window()
+        assert.near(920 * scale, window.width, 0.01, height .. "p width")
+        assert.near(748 * scale, window.height, 0.01, height .. "p height")
+        assert.is_true(window.y >= 0 and window.y + window.height <= height, "and it fits")
+        click(binder, centre(row_named(env, "base")))
+        assert.are.equal(25, #binder.catalog_view().entries, "still 25 rows")
+        assert.is_not_nil(shown_text(env, "Spell 01"))
+        assert.are.equal(font, shown_text(env, "Spell 01").font_size, height .. "p font")
+      end
     end)
 
     it("pages a catalog longer than one page and switches category", function()
@@ -649,7 +938,7 @@ describe("crossbar binder", function()
     it("keeps a layer-row click through a pixel of drift", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      local x, y = centre(row_named(env, "ctx:light-arts"))
+      local x, y = centre(layer_row(binder, env, "ctx:light-arts"))
       binder.mouse(LEFT_DOWN, x, y, 0)
       binder.mouse(MOVE, x + 1, y + 1, 0)
       binder.mouse(LEFT_UP, x + 1, y + 1, 0)
@@ -684,7 +973,7 @@ describe("crossbar binder", function()
 
     it("wraps the pager round the end rather than sticking on the last page", function()
       local long = {}
-      for index = 1, 20 do
+      for index = 1, 30 do
         long[index] = { label = ("Spell %02d"):format(index), record = { type = "ma", action = "Spell" } }
       end
       local binder, env = build({ catalog = { { name = "White Magic", entries = long } } })
@@ -816,7 +1105,7 @@ describe("crossbar binder", function()
     it("echoes the bind in the plan's own shape, with no type token", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
       pick(binder, env, "Berserk")
       assert.is_not_nil(
         env.said[1]:find("bound Berserk -> light-arts / set 1 / left / slot 3", 1, true),
@@ -886,7 +1175,7 @@ describe("crossbar binder", function()
     it("binds through the weapon row into the class in hand", function()
       local binder, env = build({ weapon = "Great Axe" })
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "wpn")))
+      click(binder, centre(layer_row(binder, env, "wpn:Great Axe")))
       pick(binder, env, "Berserk")
       assert.are.same({ type = "ja", action = "Berserk" }, env.files.WAR.weapons["Great Axe"][1].left[3])
       -- And the base it covers is untouched underneath.
@@ -926,7 +1215,7 @@ describe("crossbar binder", function()
       }
       local binder, env = build({ files = files, sub = "NIN" })
       open_stack(binder, env, "left", 3)
-      local row = row_named(env, "sub")
+      local row = layer_row(binder, env, "sub:NIN")
       assert.are.equal("sub:NIN", row.label, "the worn subjob names the row")
       assert.are.equal("ma Utsusemi: Ichi", row.entry, "and a stale subjob's entry is not shown under it")
       click(binder, centre(row))
@@ -965,7 +1254,7 @@ describe("crossbar binder", function()
            the wizard has no equivalent for either. ]]
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
       local from_x, from_y = centre(entry_named(env, "Berserk"))
       local to_x, to_y = slot_point(env, "right", 2)
       drag(binder, from_x, from_y, to_x, to_y)
@@ -1018,7 +1307,7 @@ describe("crossbar binder", function()
       }
       local binder, env = build({ files = files })
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
       local from_x, from_y = slot_point(env, "left", 3)
       drag(binder, from_x, from_y, 4, 4)
       assert.is_nil(env.bindings.entry_at("ctx:light-arts:1", "left", 3), "the cursor's layer is cleared")
@@ -1149,7 +1438,7 @@ describe("crossbar binder", function()
       -- A layer is selected, which is what made this drop a DELETE before
       -- the other bar could answer for its own slots.
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
       env.said, env.repaints = {}, 0
       local x, y = slot_point(env, "left", 3)
       assert.is_true(drag(binder, x, y, centre(FOREIGN)), "the release is ours")
@@ -1280,7 +1569,7 @@ describe("crossbar binder", function()
       drag(binder, x, y, 700, 150)
       assert.are.same({ type = "ja", action = "Provoke" }, env.bindings.entry_at("1", "left", 3))
       assert.are.same({}, env.said, "and quietly - a cancel says nothing")
-      drag(binder, x, y, 700, 170)
+      drag(binder, x, y, 700, 90)
       assert.is_nil(env.bindings.entry_at("1", "left", 3), "clear of every bar still clears the cursor's layer")
     end)
 
@@ -1382,7 +1671,7 @@ describe("crossbar binder", function()
         end,
       })
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
       assert.is_not_nil(last_preview(env), "a context is being previewed")
       -- A press armed on its own window, as one that superseded a drag
       -- whose release never arrived would be.
@@ -2246,7 +2535,7 @@ describe("crossbar binder", function()
       -- had the bar previewing - go with it.
       local binder, env = build()
       open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "ctx:light-arts")))
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
       binder.mouse(MOVE, centre(entry_named(env, "Berserk")))
       assert.is_not_nil(binder.details(), "the column is describing a row")
       assert.is_not_nil(last_preview(env), "and the bar is previewing the layer")
@@ -2781,33 +3070,6 @@ describe("crossbar binder", function()
       assert.is_not_nil(entry_named(env, "Stratagems"))
     end)
 
-    --[[ Stranding the wizard WITHOUT a catalog rebuild: unequipping takes the
-         `wpn` row away and the job pair has not moved, so `rebuild_catalog`
-         does not fire. Driven by the weapon rather than a subjob for exactly
-         that reason - a job-pair change rebuilds first and would prove nothing
-         about this path.
-
-         What this pins is that a nested wizard comes back to the LAYER STEP.
-         It cannot isolate `refresh`'s own `submenu = nil`: the only way
-         forward from the layer step is clicking a row, and that clears the
-         submenu too, so the clear there is deliberate redundancy in the
-         "every route out is covered" rule rather than a reachable behaviour -
-         removing it passes this test and every other (checked). ]]
-    it("returns a nested wizard to the layer step when its layer goes out of reach", function()
-      local binder, env = build({ catalog = stratagems(), weapon = "Great Axe" })
-      open_stack(binder, env, "left", 3)
-      click(binder, centre(row_named(env, "wpn")))
-      click(binder, centre(entry_named(env, "Stratagems")))
-      assert.are.equal("Stratagems", binder.catalog_view().submenu)
-      env.bindings.set_weapon_type(nil)
-      binder.refresh()
-      assert.is_nil(binder.layer(), "the cursor went with the row")
-      assert.is_nil(binder.catalog_view(), "stranded, so back at the layer step")
-      click(binder, centre(row_named(env, "base")))
-      assert.is_nil(binder.catalog_view().submenu, "the catalog reopens at the top")
-      assert.is_not_nil(entry_named(env, "Berserk"))
-    end)
-
     --[[ "pick from Stratagems", not "pick a stratagems": the menu names are
          plural, possessive and colon-bearing (`Blood Pact: Rage`, `Flourishes
          I`), so no article fits all sixteen. ]]
@@ -2828,7 +3090,7 @@ describe("crossbar binder", function()
         long[index] = { label = ("Spell %02d"):format(index), record = { type = "ma", action = "Spell" } }
       end
       -- On page 2, so the menu is reached from a page that is not the top.
-      table.insert(long, 25, {
+      table.insert(long, 30, {
         label = "Stratagems",
         children = { { label = "Accession", record = { type = "ja", action = "Accession" } } },
       })
@@ -2875,7 +3137,7 @@ describe("crossbar binder", function()
       click(binder, centre(entry_named(env, "Blood Pact: Rage")))
       click(binder, centre(binder.catalog_view().pager))
       assert.are.equal(2, binder.catalog_view().page)
-      click(binder, centre(entry_named(env, "Pact 25")))
+      click(binder, centre(entry_named(env, "Pact 30")))
       assert.is_not_nil(binder.target_view(), "a pact takes a target")
       back(binder, env)
       assert.are.equal("Blood Pact: Rage", binder.catalog_view().submenu)
