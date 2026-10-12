@@ -19,13 +19,10 @@ Source transcribed into this component's Lua
                      pair 809/810, which no resource file vouches for
     logic.lua        the bar itself, from the BarFiller addon, BSD (c) 2015
                      Morath86: the 472x5 frame with its fill inset two
-                     pixels, the exponential ease toward the target width,
-                     and the experience-chain message (253) PointWatch has
-                     no entry for
+                     pixels, and the exponential ease toward the target width
 
 Neither addon's code is copied verbatim; both are re-implemented against this
-framework's contracts, and the defects listed in .claude/Planning/expbar.md
-are deliberately not reproduced.
+framework's contracts. Point gains are read exactly as PointWatch reads them.
 
 PointWatch
 --------------------------------------------------------------------------------
