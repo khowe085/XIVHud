@@ -299,12 +299,12 @@ local function new(ctx)
     return logic.bounds(pos.x, pos.y, scale)
   end
 
-  --[[ The per-frame tick draws; a chunk is read only for the three ids the
+  --[[ The per-frame tick draws; a chunk is read only for the four ids the
        logic asks for. Packets are ignored while detached: nothing is on screen
        then, and the points they carry belong to whoever logs in next. 0x063
        arrives already parsed - three components read it, so the entry point
-       decodes it once and hands the table over as `third`; the other two ids
-       are this widget's alone and are parsed here. ]]
+       decodes it once and hands the table over as `third`; the other three
+       ids are parsed here. ]]
   function self.update(event, first, second, third)
     if not attached then
       return
