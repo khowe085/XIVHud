@@ -1029,10 +1029,38 @@ describe("crossbar catalog", function()
         })
         assert.same({ "Berserk", "Divine Seal", "Provoke" }, labels(catalog.build({ sub = "WHM" }), "Job Abilities"))
         assert.same(
-          { "Berserk", "Hasso", "Provoke", "Seigan" },
+          { "Berserk", "Provoke" },
           labels(catalog.build(), "Job Abilities"),
-          "a layer with no sub keeps the live listing"
+          "and so does the base, a subjob's ability being bound through its menu"
         )
+      end)
+
+      --[[ A subjob's ability is bound through the subjob menu or under a
+           buff context (Kevin, 2026-10-13), never on the base or a weapon
+           layer: those drop what the worn sub's table claims. ]]
+      it("keeps the worn subjob's abilities off the base and weapon layers", function()
+        local catalog = abilities_build({
+          player = pair("WAR", 1, "SAM", 12),
+          listed = { 35, 31, 173, 174 },
+        })
+        assert.same({ "Berserk", "Provoke" }, labels(catalog.build(), "Job Abilities"))
+        assert.same({ "Berserk", "Provoke" }, labels(catalog.build({ weapon = "Sword" }), "Job Abilities"))
+      end)
+
+      it("keeps them under a buff context", function()
+        local catalog = abilities_build({
+          player = pair("WAR", 1, "SAM", 12),
+          listed = { 35, 31, 173, 174 },
+        })
+        assert.same(
+          { "Berserk", "Hasso", "Provoke", "Seigan" },
+          labels(catalog.build({ context = "light-arts" }), "Job Abilities")
+        )
+      end)
+
+      it("lists the client's abilities as they are with no player to read", function()
+        local list = abilities_build({ listed = { 35, 173 } }).build()
+        assert.same({ "Hasso", "Provoke" }, labels(list, "Job Abilities"))
       end)
 
       it("keeps one the main job's own table lists as well", function()

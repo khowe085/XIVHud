@@ -423,8 +423,9 @@ local function new(deps)
   local catalog_job, catalog_sub = nil, nil
 
   --[[ The layer the listing is for (review, 2026-10-12): a weapon layer's
-       weaponskills are its class's, a subjob's spells that job's, and the
-       base and the contexts read the live listing. ]]
+       weaponskills are its class's, a subjob's spells that job's, a buff
+       context the live listing, and the base that listing without the worn
+       subjob's abilities (Kevin, 2026-10-13). ]]
   local function layer_view_for(source)
     local job = source ~= nil and source:match("^sub:(.+)$") or nil
     if job ~= nil then
@@ -433,6 +434,12 @@ local function new(deps)
     local class = source ~= nil and source:match("^wpn:(.+)$") or nil
     if class ~= nil then
       return { weapon = class }, "wpn:" .. class
+    end
+    -- One listing for every buff context: it keeps the worn subjob's
+    -- abilities, which the base and a weapon layer drop.
+    local context = source ~= nil and source:match("^ctx:(.+)$") or nil
+    if context ~= nil then
+      return { context = context }, "ctx"
     end
     return {}, ""
   end
@@ -755,7 +762,10 @@ local function new(deps)
        addenda.
 
        A leaf is `{ source, label }`, a menu `{ menu, label, children }`;
-       `menu` is the key the path walks by. ]]
+       `menu` is the key the path walks by. A leaf may carry `text`, what its
+       row draws where that is not its label: inside the subjob and weapon
+       menus the row needs no `sub:` or `wpn:` (Kevin, 2026-10-13), while
+       the header and what is said, read outside them, keep the label. ]]
   local function layer_tree(bindings)
     local main = bindings.job()
     -- The SET's own flag, never whether a layer happens to hold an entry:
@@ -765,16 +775,16 @@ local function new(deps)
     local subs = {}
     for _, job in ipairs(JOBS) do
       if job ~= main then
-        subs[#subs + 1] = { source = "sub:" .. job, label = "sub:" .. job }
+        subs[#subs + 1] = { source = "sub:" .. job, label = "sub:" .. job, text = job }
       end
     end
     items[#items + 1] = { menu = "subjob", label = "subjob", children = subs }
     local classes = {}
     for _, class in ipairs(CLASSES.main) do
-      classes[#classes + 1] = { source = "wpn:" .. class, label = "wpn:" .. class }
+      classes[#classes + 1] = { source = "wpn:" .. class, label = "wpn:" .. class, text = class }
     end
     for _, class in ipairs(CLASSES.ranged) do
-      classes[#classes + 1] = { source = "wpn:" .. class, label = "wpn:" .. class }
+      classes[#classes + 1] = { source = "wpn:" .. class, label = "wpn:" .. class, text = class }
     end
     items[#items + 1] = { menu = "weapon", label = "weapon", children = classes }
     local by_job = {}
@@ -880,6 +890,7 @@ local function new(deps)
         rows[#rows + 1] = {
           source = item.source,
           label = item.label,
+          text = item.text,
           entry = layer ~= nil and label_of(layer.entry) or "-",
           record = layer ~= nil and layer.entry or nil,
           winner = layer ~= nil and layer.active == true,
@@ -1250,7 +1261,7 @@ local function new(deps)
       for index, row in ipairs(layer_view.rows) do
         local tail = row.menu ~= nil and " >" or (": " .. row.entry)
         rows[index] = {
-          text = (row.winner and "* " or "  ") .. (row.selected and "> " or "") .. row.label .. tail,
+          text = (row.winner and "* " or "  ") .. (row.selected and "> " or "") .. (row.text or row.label) .. tail,
           x = row.x,
           y = row.y,
         }

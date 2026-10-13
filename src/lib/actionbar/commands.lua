@@ -46,6 +46,7 @@ local roster = require("lib/actionbar/contexts")
 local grammars = require("lib/actionbar/grammar")
 local jobchange = require("lib/actionbar/jobchange")
 local kebab = require("lib/actionbar/kebab")
+local support_abilities = require("lib/actionbar/job_abilities")
 
 -- The component's own asset root, for the shipped half of an icon name.
 -- The asset ROOT, not one folder in it: what hangs off this is `own/` for
@@ -524,6 +525,23 @@ local function extract_context(words, from)
     index = index + 1
   end
   return kept, found, value, repeated
+end
+
+--[[ The jobs whose subjob table claims an ability, by name. No ability is
+     in two (checked against the shipped table, 2026-10-13), but a list
+     keeps the refusal honest if one ever is. ]]
+local function ability_jobs(name)
+  local jobs, wanted = {}, tostring(name):lower()
+  for job, entries in pairs(support_abilities) do
+    for _, entry in ipairs(entries) do
+      if type(entry.name) == "string" and entry.name:lower() == wanted then
+        jobs[#jobs + 1] = job
+        break
+      end
+    end
+  end
+  table.sort(jobs)
+  return jobs
 end
 
 --[[ The action name and its target, over the words in FRONT of the labels.
@@ -1032,6 +1050,38 @@ local function new(deps)
     -- With no context=, its own type's layer.
     if kind == "ws" and layer == nil then
       layer = own_layer
+    end
+    --[[ A subjob's job ability (Kevin, 2026-10-13) binds through the
+         subjob menu or under a buff context, never on the base or a weapon
+         layer: with no context= it goes to the subjob layer of the job
+         whose table claims it, worn or not. One the main job's own table
+         claims is the main job's, and one no table claims (a main-only
+         ability) goes where it is put. ]]
+    if (kind == "ja" or kind == "pet") and record.action ~= nil then
+      local main = bindings().job()
+      local owners, own_sub, mains = ability_jobs(record.action), {}, false
+      for _, job in ipairs(owners) do
+        own_sub["sub:" .. job:lower()] = true
+        mains = mains or job == main
+      end
+      if main ~= nil and #owners > 0 and not mains then
+        if layer == nil and #owners == 1 then
+          layer = "sub:" .. owners[1]:lower()
+        elseif layer == nil or not (own_sub[layer] or layer:match("^ctx:")) then
+          local forms = {}
+          for index, job in ipairs(owners) do
+            forms[index] = "context=sub:" .. job:lower()
+          end
+          return hint(
+            record.action
+              .. " belongs to "
+              .. table.concat(owners, " and ")
+              .. " - "
+              .. table.concat(forms, " or ")
+              .. " or context=buf:<buff context>"
+          )
+        end
+      end
     end
     local wrote, err = bindings().bind(set_arg(address, layer), side, slot, record)
     if wrote == nil then

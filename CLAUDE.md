@@ -464,8 +464,16 @@ pointing at `context=`. **A weaponskill with no `context=` goes to its OWN
 weapon type's layer**, named off the resources (`weapon_class_of`, the bar's
 dep) - never the one in hand; one the resources cannot place needs
 `context=wpn:<weapon type>`, and one naming another weapon type, or a layer
-that is no weapon's, is refused with the form that works. `list` and every
-reply print a layer as the `context=` that reaches it. It was three words (`1 l 1`) until 2026-08-22: a lower-case `l`
+that is no weapon's, is refused with the form that works. **A subjob's job
+ability goes the same way** (Kevin, 2026-10-13): one another job's table in
+`lib/actionbar/job_abilities` claims and the main job's does not is bound on
+that job's subjob layer - inferred with no `context=`, worn or not - or under a
+buff context, and the base or a weapon layer is refused, naming the form. `pet`
+commands count (Fight is BST's); an ability no table claims (a main-only one)
+goes where it is put. The binder keeps to the same rule: the base and weapon
+layers drop the worn subjob's abilities from the client's list, and a buff
+context keeps them. `list` and every reply print a layer as the `context=`
+that reaches it. It was three words (`1 l 1`) until 2026-08-22: a lower-case `l`
 beside digits is indistinguishable from a `1` in the game's font, so the side
 is written upper case (either case parses) and the three words are one, which
 cannot be miscounted either. The slots' controller names went at the same time

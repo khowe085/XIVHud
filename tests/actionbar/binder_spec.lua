@@ -415,6 +415,21 @@ describe("crossbar binder", function()
       assert.is_not_nil(layer_row(binder, env, "wpn:Great Axe"))
     end)
 
+    --[[ The menu a row sits in already says what kind of layer it is
+         (Kevin, 2026-10-13), so the row drops its sub: or wpn: - which the
+         header and what the binder says keep, being read outside it. ]]
+    it("draws a subjob or weapon row without its prefix", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(menu_named(env, "subjob")))
+      assert.is_not_nil(shown_text(env, "  WHM: -"))
+      assert.is_nil(shown_text(env, "  sub:WHM: -"))
+      back(binder, env)
+      click(binder, centre(menu_named(env, "weapon")))
+      assert.is_not_nil(shown_text(env, "  Great Axe: -"))
+      assert.is_nil(shown_text(env, "  wpn:Great Axe: -"))
+    end)
+
     it("names each weapon row for its class", function()
       local binder, env = build({ weapon = "Great Axe" })
       open_stack(binder, env, "left", 3)
@@ -760,6 +775,30 @@ describe("crossbar binder", function()
       assert.equal(count, #asked, "the same class again needs no new listing")
       click(binder, centre(layer_row(binder, env, "sub:WHM")))
       assert.same({ sub = "WHM" }, asked[#asked])
+    end)
+
+    -- A buff context keeps the worn subjob's abilities, which the base and
+    -- a weapon layer drop (Kevin, 2026-10-13), so it says it is one.
+    it("asks the catalog for a buff context's listing as one", function()
+      local asked = {}
+      local binder, env = build({
+        catalog_factory = function()
+          return {
+            build = function(view)
+              asked[#asked + 1] = view or {}
+              return {
+                {
+                  name = "Job Abilities",
+                  entries = { { label = "Berserk", record = { type = "ja", action = "Berserk" } } },
+                },
+              }
+            end,
+          }
+        end,
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(layer_row(binder, env, "ctx:light-arts")))
+      assert.same({ context = "light-arts" }, asked[#asked])
     end)
 
     -- Without a pager the layer step must never hold more rows than it draws.

@@ -458,8 +458,11 @@ local function new(deps)
          but that list is the pair WORN: an ability the worn sub's table
          claims and the main job's does not is the worn sub's, and on WAR/SAM
          a sub:WHM layer would otherwise offer Hasso. The layer's own sub
-         comes off the table instead, worn or not. ]]
-    if sub ~= nil then
+         comes off the table instead, worn or not. The base and a weapon
+         layer drop the worn sub's too, a subjob's ability being bound
+         through the subjob menu or under a buff context (Kevin,
+         2026-10-13); a buff context keeps the live listing. ]]
+    if player ~= nil and (sub ~= nil or view.context == nil) then
       local worn = table_set(player.sub_job, nil, job_abilities)
       local main = table_set(player.main_job, nil, job_abilities)
       local kept = {}
@@ -469,7 +472,7 @@ local function new(deps)
           kept[id] = true
         end
       end
-      for id in pairs(table_set(sub.short, sub.cap, job_abilities)) do
+      for id in pairs(sub ~= nil and table_set(sub.short, sub.cap, job_abilities) or {}) do
         kept[id] = true
       end
       listed_ids = kept
@@ -651,8 +654,9 @@ local function new(deps)
   --- inventory, the known spells and the job pair all move in play.
   --- `ct` and `ex` are deliberately absent - they need text entry, which
   --- the mouse binder has no way to take.
-  --- `view` names the layer being edited, `{ sub = "WHM", weapon = "Club" }`,
-  --- either or neither: the listing is what can be bound THERE.
+  --- `view` names the layer being edited, `{ sub = "WHM" }`,
+  --- `{ weapon = "Club" }`, `{ context = "light-arts" }` or neither (the
+  --- base): the listing is what can be bound THERE.
   function self.build(view)
     view = type(view) == "table" and view or {}
     local player = call(deps.get_player)

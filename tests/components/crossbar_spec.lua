@@ -6074,7 +6074,7 @@ describe("crossbar live widget", function()
       click(slot_point("left", 1))
       -- Step one is the layer; the catalog's categories are step two.
       click_line("weapon >")
-      click_line("wpn:Club")
+      click_line("Club:")
       click_line("Weapon Skills")
       assert.is_not_nil(binder_line("Skullbreaker"), "the club weaponskill is offered")
       assert.is_nil(binder_line("Savage Blade"), "and the sword one is not")

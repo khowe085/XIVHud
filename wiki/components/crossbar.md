@@ -177,7 +177,7 @@ rest of the line means:
 | `<type>` | `<action>` is | Example |
 | --- | --- | --- |
 | `ma` | a spell — including trusts and blue magic | `bind 1L1 ma "Cure IV" t` |
-| `ja` | a job ability | `bind 1L2 ja "Divine Seal"` |
+| `ja` | a job ability — a subjob's on its subjob layer or under a buff context (below) | `bind 1L2 ja "Divine Seal"` |
 | `ws` | a weaponskill — on a weapon layer only (below) | `bind 1R1 ws "Savage Blade" t` |
 | `item` | a usable item | `bind 2L1 item "Echo Drops" me` |
 | `enchanteditem` | enchanted gear — equips it, waits out the warmup, uses it | `bind 2L2 enchanteditem "Vocation Ring"` |
@@ -347,7 +347,11 @@ for the ranged slot `context=wpn:marksmanship`), and `context=buf:<name>` for a
 buff context (`context=buf:light-arts`). It can go anywhere among the labels.
 With none you are editing the job's base layer — except that `bind` puts a
 weaponskill on its own weapon type: `bind 1R1 ws "Leaden Salute" t` lands on
-the Marksmanship layer whatever you are holding. `unbind`, `alias` and `icon`
+the Marksmanship layer whatever you are holding. A job ability that belongs to
+a subjob goes to that subjob's layer the same way: on DNC, `bind 1L2 ja
+Provoke` lands on `context=sub:war`, worn or not. A subjob's ability can also
+go under a buff context (`context=buf:light-arts`), but never on the base or a
+weapon layer. `unbind`, `alias` and `icon`
 never guess, so name that layer to edit it afterwards (`alias 1R1 LS
 context=wpn:marksmanship`); without it they say which layers the slot holds. See
 [Layers](#layers-how-a-slot-decides-what-to-show).
@@ -686,7 +690,11 @@ rest of the HUD is - and walks you through:
    and its job abilities up to that level. A master level the addon has not
    read yet counts as 50. Your main job's own abilities are offered as
    always, minus the ones that belong to the subjob you are actually
-   wearing - a WHM layer on WAR/SAM does not offer Hasso.
+   wearing - a WHM layer on WAR/SAM does not offer Hasso. The base and
+   weapon layers leave the worn subjob's abilities out too: those are bound
+   through the subjob menu, or under a buff context, which offers them.
+   Inside the subjob and weapon menus the rows read just the job or the
+   weapon type (`WHM`, `Great Axe`).
 2. **Pick an action** — categories down the left, one page of actions on the
    right, the wheel to page through them.
 3. **Pick a target** — the common target tokens, with `(no target)` first (`stal`, `lastst`, `scan` and `r` are `bind`-command only). Actions
