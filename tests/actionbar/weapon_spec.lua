@@ -146,4 +146,49 @@ describe("crossbar weapon", function()
     assert.is_nil(name)
     assert.is_false(known)
   end)
+  --[[ The ranged slot keys a weapon layer of its own (Kevin, 2026-10-12):
+       Archery, Marksmanship or Throwing, by the item's own skill. ]]
+  describe("the ranged slot", function()
+    local function ranged(overrides)
+      local base = {
+        equipment = { main = 3, main_bag = 0, range = 5, range_bag = 0 },
+        items = { [0] = { [3] = { id = 17040 }, [5] = { id = 21267 } } },
+        resources = {
+          items = { [17040] = { skill = 4 }, [21267] = { skill = 26 }, [17800] = { skill = 41 } },
+          skills = { [4] = { en = "Sword" }, [26] = { en = "Marksmanship" }, [41] = { en = "Stringed Instrument" } },
+        },
+      }
+      for key, value in pairs(overrides or {}) do
+        base[key] = value
+      end
+      return new_weapon(deps(base))
+    end
+
+    it("names the ranged weapon's class", function()
+      local name, known = ranged().resolve_ranged()
+      assert.equal("Marksmanship", name)
+      assert.is_true(known)
+    end)
+
+    it("answers no layer for an empty ranged slot", function()
+      local name, known = ranged({ equipment = { main = 3, main_bag = 0, range = 0 } }).resolve_ranged()
+      assert.is_nil(name)
+      assert.is_true(known)
+    end)
+
+    -- An instrument sits in the ranged slot and is no weaponskill's class.
+    it("answers no layer for a ranged item that is not a ranged weapon", function()
+      local name, known = ranged({
+        items = { [0] = { [3] = { id = 17040 }, [5] = { id = 17800 } } },
+      }).resolve_ranged()
+      assert.is_nil(name)
+      assert.is_true(known)
+    end)
+
+    it("leaves the layer alone while the client cannot say", function()
+      local name, known = ranged({ equipment = {} }).resolve_ranged()
+      assert.is_nil(name)
+      assert.is_false(known)
+    end)
+  end)
 end)

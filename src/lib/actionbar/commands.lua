@@ -700,6 +700,26 @@ local function new(deps)
       return side
     end
     local kind = args[3]:lower()
+    --[[ A weaponskill binds on a weapon layer alone (Kevin, 2026-10-12;
+         bindings.bind refuses it elsewhere). Said FIRST, before the
+         swallowed-word check can advise a retry on this same address that
+         would only be refused again for the layer - unless the slot already
+         holds a weaponskill, which may be a listed row retyped over itself. ]]
+    if kind == "ws" and not tostring(address):match("^wpn:") then
+      local held, unreadable = bindings().entry_at(address, side, slot)
+      -- An address the model cannot read (no job, a bad prefix) says so
+      -- itself, further on; the layer is not the problem to name first.
+      if unreadable == nil then
+        local typed = join(slice(args, 4)):lower()
+        local same = type(held) == "table"
+          and held.type == "ws"
+          and type(held.action) == "string"
+          and typed:sub(1, #held.action) == held.action:lower()
+        if not same then
+          return hint("a weaponskill binds on a weapon layer - put wpn: in front of the address")
+        end
+      end
+    end
     local rest = slice(args, 4)
     local record = { type = kind }
     local absorbed = nil

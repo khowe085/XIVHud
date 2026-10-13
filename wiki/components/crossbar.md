@@ -177,7 +177,7 @@ rest of the line means:
 | --- | --- | --- |
 | `ma` | a spell — including trusts and blue magic | `bind 1L1 ma "Cure IV" t` |
 | `ja` | a job ability | `bind 1L2 ja "Divine Seal"` |
-| `ws` | a weaponskill | `bind 1R1 ws "Savage Blade" t` |
+| `ws` | a weaponskill — on a weapon layer only (below) | `bind wpn:sword:1R1 ws "Savage Blade" t` |
 | `item` | a usable item | `bind 2L1 item "Echo Drops" me` |
 | `enchanteditem` | enchanted gear — equips it, waits out the warmup, uses it | `bind 2L2 enchanteditem "Vocation Ring"` |
 | `pet` | a pet command | `bind 2R1 pet "Fight" t` |
@@ -342,7 +342,8 @@ number — `sub:<set>` for the current subjob, `wpn:<set>` for the weapon class
 in your main hand, `ctx:<name>:<set>` for a buff context. To edit a subjob you
 are not on or a class you are not holding, name it: `sub:WHM:<set>`, or
 `wpn:<class>:<set>` with the class in lower case and dashes for spaces
-(`wpn:great-katana:1L1`, `wpn:hand-to-hand:1L1`). With no prefix you
+(`wpn:great-katana:1L1`, `wpn:hand-to-hand:1L1`, and for the ranged slot
+`wpn:marksmanship:1L1`). With no prefix you
 are editing the job's base layer. See
 [Layers](#layers-how-a-slot-decides-what-to-show).
 
@@ -541,6 +542,7 @@ with something in it wins:
 ```
 buff contexts    ← Light Arts, Addendum: White, …   (only while the buff is up)
 weapon overrides ← just while a sword is in your main hand, say
+ranged overrides ← just while a gun is in your ranged slot, say
 subjob overrides ← just for RDM/NIN, say
 job base         ← every subjob shares this — or the shared copy, for a set
                    marked shared (the same on every job)
@@ -549,7 +551,9 @@ job base         ← every subjob shares this — or the shared copy, for a set
 **Weapon overrides** are keyed by the class of weapon in your main hand —
 Sword, Great Katana, Hand-to-Hand when unarmed — and are the place for
 weaponskills, so swapping weapons swaps the slots with them. They sit above
-subjob overrides where both hold the same slot.
+subjob overrides where both hold the same slot. **Ranged overrides** work the
+same way for the weapon in your ranged slot - Archery, Marksmanship or
+Throwing - and sit just below the main hand's.
 
 The point is that **you only say a thing once**. A slot that should be the
 same on RDM/NIN and RDM/WHM is set on the job base and left alone. Only the
@@ -657,14 +661,20 @@ rest of the HUD is - and walks you through:
 
 1. **Pick a layer** — base (or shared) at the top, then three menus:
    **subjob** (every job but your main one), **weapon** (every main-hand
-   weapon type) and **job specific** (RDM's Composure, BLU's Unbridled
+   weapon type, then Archery, Marksmanship and Throwing for your ranged
+   slot - a ranged layer is live while that kind of ranged weapon is on, and
+   where it and your main hand's layer both bind a slot the main hand wins)
+   and **job specific** (RDM's Composure, BLU's Unbridled
    Learning, and SCH's Klimaform, a **Storms** menu, and the arts and
    addenda). The subjob or weapon doesn't have to be the one you have on.
    Picking a layer previews the bar as if it were in use - that subjob worn,
    that weapon held, that buff up. A `>` marks a menu; a `*` on one means the
    layer showing on the bar is inside it. `[ < back ]` climbs out of a menu.
-   The actions offered next follow the layer: a weapon's own weaponskills,
-   and for a subjob - the one you have on included - what that job can do
+   The actions offered next follow the layer. A weapon layer offers every
+   weaponskill of that weapon type, as if you were holding it, and is the
+   only layer that offers weaponskills at all - nor can `bind` put one
+   anywhere else (a weaponskill you already have elsewhere keeps working).
+   A subjob layer - the one you have on included - offers what that job can do
    as your subjob at the highest level your master level allows (59 at
    master level 50, 49 at 0, half your main job's level below 99), whatever
    level that job itself is: the spells you have learned up to that level,

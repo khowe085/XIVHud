@@ -26,13 +26,13 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ The classes a MAIN hand can hold: skills 1-12 of Windower's skills
-     resource, by the names `res.skills` gives them, which are the names the
-     weapon layer is keyed by (weapon.lua resolves the hand to one). The
-     binder offers each as a layer and the bindings model refuses any other.
-     Archery, Marksmanship and Throwing are ranged-slot skills and can never
-     be in the main hand. ]]
-return {
+--[[ The classes a weapon layer can be keyed by, by the names `res.skills`
+     gives them (weapon.lua resolves the slots to one): `main`, skills 1-12,
+     what a MAIN hand can hold; `ranged`, skills 25-27, what the RANGED slot
+     can (Kevin, 2026-10-12 - a ranged weaponskill needs a layer of its own,
+     the main hand never holding a bow). The binder offers each as a layer
+     and the bindings model refuses any other. ]]
+local main = {
   "Hand-to-Hand",
   "Dagger",
   "Sword",
@@ -45,4 +45,9 @@ return {
   "Great Katana",
   "Club",
   "Staff",
+}
+
+return {
+  main = main,
+  ranged = { "Archery", "Marksmanship", "Throwing" },
 }

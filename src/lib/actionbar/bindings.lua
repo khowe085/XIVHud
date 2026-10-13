@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
        context layers   buff-conditioned, roster order -- later wins  (sparse)
        weapon layer     overrides for the equipped main-hand class    (sparse)
+       ranged layer     overrides for the ranged slot's class         (sparse)
        subjob layer     overrides for the current MAIN/SUB pair       (sparse)
        job base         the MAIN job's sets, shared by every subjob
                         -- OR the shared store, per the set's flag
@@ -68,8 +69,14 @@ for _, job in ipairs(require("lib/actionbar/jobchange").JOBS) do
 end
 local kebab = require("lib/actionbar/kebab")
 local CLASS_BY_WORD = {}
-for _, class in ipairs(require("lib/actionbar/weapon_classes")) do
+local CLASSES = require("lib/actionbar/weapon_classes")
+local RANGED = {}
+for _, class in ipairs(CLASSES.main) do
   CLASS_BY_WORD[kebab(class)] = class
+end
+for _, class in ipairs(CLASSES.ranged) do
+  CLASS_BY_WORD[kebab(class)] = class
+  RANGED[class] = true
 end
 
 --[[ How deep a copy will go before it gives up on a branch. A `.lua`
@@ -196,7 +203,7 @@ local function parse_address(set_arg)
     elseif wpn_word then
       name = CLASS_BY_WORD[wpn_word:lower()]
       if name == nil then
-        return nil, wpn_word .. " is not a class a main hand can hold"
+        return nil, wpn_word .. " is not a weapon class"
       end
       layer, set = "wpn", tonumber(named_wpn_set)
     elseif ctx_name then
@@ -286,7 +293,11 @@ local function new(deps)
        mark, and by nothing else: the worn subjob still gates the contexts,
        and job() still answers the client. The binder owns it, setting it
        with a row and clearing it with nil. ]]
-  local preview_sub, preview_weapon = nil, nil
+  local preview_sub, preview_weapon, preview_ranged = nil, nil, nil
+  --[[ The class in the RANGED slot (Archery, Marksmanship or Throwing), a
+       weapon layer of its own beside the main hand's (Kevin, 2026-10-12) and
+       read after it: where both bind one slot, the main hand wins. ]]
+  local ranged_equipped = nil
 
   --[[ The job gate (Kevin, 2026-09-04). A context watches a buff only one
        job can raise, so off that job it is hidden AND inert: never listed by
@@ -430,6 +441,7 @@ local function new(deps)
     -- incoming job's file must not be read through the outgoing job's weapon
     -- for the frames before the widget can re-read the client.
     equipped = nil
+    ranged_equipped = nil
     landed_blind = true
     --[[ The line above SHEATHES you without entering the state, so nothing
          reconciled the set the store just handed back: on a config whose
@@ -529,6 +541,17 @@ local function new(deps)
     end
   end
 
+  --- The class in the ranged slot, or nil for none.
+  function self.ranged_type()
+    return ranged_equipped
+  end
+
+  --- What `weapon.lua` resolved off the ranged slot; nil drops the layer.
+  --- It does not re-land the bar - the main hand's first class does that.
+  function self.set_ranged_type(name)
+    ranged_equipped = type(name) == "string" and name or nil
+  end
+
   --[[ The set follows the weapon state (Kevin, 2026-08-24): entering a mode
        lands you on the FIRST set of it - the lowest-numbered non-empty one
        flagged for that rotation - rather than advancing from wherever you
@@ -577,6 +600,13 @@ local function new(deps)
     local held = preview_weapon or equipped
     if held then
       local entry = slot_in(job_data.weapons[held] or {}, set, side, slot)
+      if entry then
+        return entry, "wpn"
+      end
+    end
+    local shot = preview_ranged or ranged_equipped
+    if shot then
+      local entry = slot_in(job_data.weapons[shot] or {}, set, side, slot)
       if entry then
         return entry, "wpn"
       end
@@ -633,15 +663,22 @@ local function new(deps)
     end
     -- The weapon classes read the same way, and sit above the subjob rows
     -- because that is the order resolve() applies them in.
-    local weapons = {}
+    -- The ranged classes first: the list is in stack order, and resolve
+    -- reads the main hand's before the ranged slot's.
+    local ranged, main = {}, {}
     for name in pairs(job_data.weapons) do
-      weapons[#weapons + 1] = name
+      local into = RANGED[name] and ranged or main
+      into[#into + 1] = name
     end
-    table.sort(weapons)
-    for _, name in ipairs(weapons) do
-      local entry = slot_in(job_data.weapons[name], set, side, slot)
-      if entry then
-        layers[#layers + 1] = { source = "wpn:" .. name, entry = entry, worn = name == (preview_weapon or equipped) }
+    table.sort(ranged)
+    table.sort(main)
+    for _, group in ipairs({ ranged, main }) do
+      for _, name in ipairs(group) do
+        local entry = slot_in(job_data.weapons[name], set, side, slot)
+        if entry then
+          local worn = name == (preview_weapon or equipped) or name == (preview_ranged or ranged_equipped)
+          layers[#layers + 1] = { source = "wpn:" .. name, entry = entry, worn = worn }
+        end
       end
     end
     for _, context in ipairs(roster) do
@@ -669,12 +706,14 @@ local function new(deps)
     return job_data.active_set
   end
 
-  --- Read the stack as if `layers.sub` were worn and `layers.weapon` held;
-  --- nil (or an empty table) hands both back to the client.
+  --- Read the stack as if `layers.sub` were worn, `layers.weapon` held and
+  --- `layers.ranged` in the ranged slot; nil (or an empty table) hands all
+  --- three back to the client.
   function self.preview_layers(layers)
     layers = type(layers) == "table" and layers or {}
     preview_sub = type(layers.sub) == "string" and layers.sub or nil
     preview_weapon = type(layers.weapon) == "string" and layers.weapon or nil
+    preview_ranged = type(layers.ranged) == "string" and layers.ranged or nil
   end
 
   --- Jump reaches ANY set, empty and non-rotation ones included.
@@ -786,7 +825,7 @@ local function new(deps)
     if not valid_slot(slot, SLOT_COUNT) then
       return nil, "no such slot: " .. tostring(slot) .. " (1-" .. SLOT_COUNT .. ")"
     end
-    local target = { set = address.set, side = side, slot = slot, save = save_job }
+    local target = { set = address.set, side = side, slot = slot, save = save_job, layer = address.layer }
     if address.layer == "sub" then
       local sub = address.name or sub_name
       if sub == nil then
@@ -890,6 +929,21 @@ local function new(deps)
     local target, target_err = write_target(set_arg, side, slot)
     if target == nil then
       return nil, target_err
+    end
+    --[[ A weaponskill binds on a WEAPON layer alone (Kevin, 2026-10-12): what
+         a slot can fire with is the weapon in hand's. Only a NEW one is
+         refused - the same weaponskill written back over itself is the alias
+         and icon verbs at work on one a layer already holds. ]]
+    if type(entry) == "table" and entry.type == "ws" and target.layer ~= "wpn" then
+      local held = slot_in(target.sets or {}, target.set, target.side, target.slot)
+      local same = type(held) == "table"
+        and held.type == "ws"
+        and type(held.action) == "string"
+        and type(entry.action) == "string"
+        and held.action:lower() == entry.action:lower()
+      if not same then
+        return nil, "a weaponskill binds on a weapon layer - wpn: in front of the address"
+      end
     end
     local sets = target.sets or target.materialize()
     write_slot(sets, target.set, target.side, target.slot, entry)

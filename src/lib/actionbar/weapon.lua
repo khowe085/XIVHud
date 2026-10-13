@@ -54,6 +54,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 -- answer, and the two can never key different layers.
 local UNARMED_SKILL = 1
 
+local RANGED = {}
+for _, class in ipairs(require("lib/actionbar/weapon_classes").ranged) do
+  RANGED[class] = true
+end
+
 local function skill_of(resources, item)
   local items = type(resources.items) == "table" and resources.items or nil
   local entry = items ~= nil and items[tonumber(item.id)] or nil
@@ -114,6 +119,29 @@ local function new(deps)
       return nil, true
     end
     return name_of(resources, skill), true
+  end
+
+  --[[ The class in the RANGED slot, for the weapon layer it keys beside the
+       main hand's (Kevin, 2026-10-12), with the same two nils. Only a
+       ranged class answers: an empty slot, an instrument or anything else
+       there is no layer. ]]
+  function self.resolve_ranged()
+    local resources = deps.resources
+    if type(resources) ~= "table" or type(deps.get_equipment) ~= "function" or type(deps.get_items) ~= "function" then
+      return nil, false
+    end
+    local equipment = deps.get_equipment()
+    if type(equipment) ~= "table" or next(equipment) == nil then
+      return nil, false
+    end
+    local index, bag = tonumber(equipment.range), tonumber(equipment.range_bag)
+    if index == nil or index == 0 or bag == nil then
+      return nil, true
+    end
+    local item = deps.get_items(bag, index)
+    local skill = type(item) == "table" and skill_of(resources, item) or nil
+    local class = skill ~= nil and name_of(resources, skill) or nil
+    return RANGED[class] and class or nil, true
   end
 
   return self

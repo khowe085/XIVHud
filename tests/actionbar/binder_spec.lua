@@ -548,15 +548,42 @@ describe("crossbar binder", function()
       assert.same(want, layer_items(env))
     end)
 
-    it("lists all twelve classes under Weapon, whether or not one is held", function()
+    -- The twelve main-hand classes, then the ranged slot's three (Kevin,
+    -- 2026-10-12), whether or not one is held.
+    it("lists every main-hand class and the ranged classes under Weapon", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
       click(binder, centre(menu_named(env, "weapon")))
       local want = {}
-      for _, class in ipairs(CLASSES) do
+      for _, class in ipairs(CLASSES.main) do
+        want[#want + 1] = "wpn:" .. class
+      end
+      for _, class in ipairs(CLASSES.ranged) do
         want[#want + 1] = "wpn:" .. class
       end
       assert.same(want, layer_items(env))
+    end)
+
+    it("previews a ranged class in the ranged slot, not the main hand", function()
+      local binder, env = build()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(layer_row(binder, env, "wpn:Marksmanship")))
+      assert.same({ ranged = "Marksmanship" }, env.previews[#env.previews].layers)
+    end)
+
+    it("binds a ranged weaponskill on its ranged layer", function()
+      local binder, env = build({
+        catalog = {
+          {
+            name = "Weapon Skills",
+            entries = { { label = "Hot Shot", record = { type = "ws", action = "Hot Shot" } } },
+          },
+        },
+      })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(layer_row(binder, env, "wpn:Marksmanship")))
+      pick(binder, env, "Hot Shot")
+      assert.equal("Hot Shot", env.files.WAR.weapons.Marksmanship[1].left[3].action)
     end)
 
     it("puts Composure under RDM", function()

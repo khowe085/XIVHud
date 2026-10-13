@@ -63,7 +63,7 @@ These bindings are used by every later section — leave them in place.
 | C4 | Look at slot 1's corner | Cure's MP cost is written there | [x] | [ ] |  |
 | C5 | Let your MP drop below that cost | The slot dims | [x] | [ ] |  |
 | C6 | `//hud crossbar bind 1L2 ja "Provoke" t` | Bound, and it fires on a target | [x] | [ ] |  |
-| C7 | `//hud crossbar bind 1L3 ws "Savage Blade" t` | Bound; fires with TP and a target | [x] | [ ] |  |
+| C7 | `//hud crossbar bind wpn:sword:1L3 ws "Savage Blade" t` (with a sword in hand), then `//hud crossbar bind 1L3 ws "Savage Blade" t` | The first binds and fires with TP and a target; the second is refused - a weaponskill binds on a weapon layer only | [ ] | [ ] | Re-test: the base-layer form passed before 2026-10-12, when weaponskills moved to weapon layers |
 | C8 | `//hud crossbar bind 1L4 item "Echo Drops" me` | Bound, and the corner shows how many you carry | [x] | [ ] |  |
 | C9 | Use Echo Drops until you have none | The count reaches 0, a red X covers the slot, it dims | [x] | [ ] | Initially failed - count only moved when the stack emptied; fixed by refreshing off the 0x01E inventory packet (a40952f) |
 | C10 | `//hud crossbar bind 1R1 ra t` | Bound; fires a ranged attack | [x] | [ ] |  |

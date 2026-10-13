@@ -67,6 +67,10 @@ local contexts = require("lib/actionbar/contexts")
 local grammars = require("lib/actionbar/grammar")
 local JOBS = require("lib/actionbar/jobchange").JOBS
 local CLASSES = require("lib/actionbar/weapon_classes")
+local RANGED = {}
+for _, class in ipairs(CLASSES.ranged) do
+  RANGED[class] = true
+end
 local kebab = require("lib/actionbar/kebab")
 
 -- Windower's mouse types, as layout_mode names them.
@@ -766,7 +770,10 @@ local function new(deps)
     end
     items[#items + 1] = { menu = "subjob", label = "subjob", children = subs }
     local classes = {}
-    for _, class in ipairs(CLASSES) do
+    for _, class in ipairs(CLASSES.main) do
+      classes[#classes + 1] = { source = "wpn:" .. class, label = "wpn:" .. class }
+    end
+    for _, class in ipairs(CLASSES.ranged) do
       classes[#classes + 1] = { source = "wpn:" .. class, label = "wpn:" .. class }
     end
     items[#items + 1] = { menu = "weapon", label = "weapon", children = classes }
@@ -1471,7 +1478,8 @@ local function new(deps)
     end
     local class = source:match("^wpn:(.+)$")
     if class ~= nil then
-      return nil, { weapon = class }
+      -- A ranged class previews in the ranged slot, the main hand untouched.
+      return nil, RANGED[class] and { ranged = class } or { weapon = class }
     end
     local name = source:match("^ctx:(.+)$")
     local context = name ~= nil and context_named(name) or nil

@@ -485,7 +485,17 @@ local function new(deps)
       return
     end
     weapon_dirty = false
+    -- The ranged slot's class too, its own layer beside the main hand's
+    -- (Kevin, 2026-10-12); a slot the client cannot read leaves it alone.
+    local shot, shot_known = weapon_layer.resolve_ranged()
+    local shot_moved = shot_known and shot ~= bindings.ranged_type()
+    if shot_moved then
+      bindings.set_ranged_type(shot)
+    end
     if class == bindings.weapon_type() then
+      if shot_moved then
+        deps.repaint()
+      end
       return
     end
     local set_before = bindings.active_set()
@@ -866,12 +876,6 @@ local function new(deps)
     get_player = get_player,
     get_spells = ctx.get_spells,
     get_abilities = ctx.get_abilities,
-    -- What the weapon in hand can perform: the client's weaponskill list is
-    -- the JOB's. Read through the model rather than resolved again here,
-    -- so the picker and the `wpn:` layer can never name different classes.
-    weapon_class = function()
-      return bindings ~= nil and bindings.weapon_type() or nil
-    end,
     get_items = ctx.get_items,
     -- Nil where the entry point has not wired it: the catalog then assumes
     -- master level 50.
@@ -1106,10 +1110,11 @@ local function new(deps)
       head = head .. "/" .. scoped_sub
     end
     local lines = { head .. " - set " .. bindings.active_set() .. " (" .. bindings.weapon_state() .. ")" }
-    -- The class the weapon layer is keyed to, which nothing else reports.
-    local class = bindings.weapon_type()
-    if class ~= nil then
-      lines[1] = lines[1] .. " - " .. class
+    -- The classes the weapon layers are keyed to, which nothing else
+    -- reports: the main hand's, then the ranged slot's.
+    local class, shot = bindings.weapon_type(), bindings.ranged_type()
+    if class ~= nil or shot ~= nil then
+      lines[1] = lines[1] .. " - " .. (class or "-") .. (shot ~= nil and (" + " .. shot) or "")
     end
     if deps.views ~= false then
       -- The CLI owns the view map: it is the spelling the user types.

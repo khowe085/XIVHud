@@ -19,6 +19,13 @@ describe("weapon classes", function()
       "Great Katana",
       "Club",
       "Staff",
-    }, classes)
+    }, classes.main)
+  end)
+
+  --[[ Skills 25-27: the classes of the RANGED slot, each a weapon layer of
+       its own beside the main hand's (Kevin, 2026-10-12), so a ranged
+       weaponskill has somewhere to be bound. ]]
+  it("lists the three ranged classes in the resource's own order", function()
+    assert.same({ "Archery", "Marksmanship", "Throwing" }, classes.ranged)
   end)
 end)

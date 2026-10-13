@@ -109,7 +109,7 @@ local function world(opts)
     layout_active = function()
       return env.layout
     end,
-    resources = resources(),
+    resources = opts.resources or resources(),
     master_level = opts.master_level,
   }
   env.service_config = {
@@ -211,6 +211,63 @@ describe("one bar's state", function()
       bar.try_scope()
       bar.detach()
       assert.is_nil(bar.scoped())
+    end)
+  end)
+
+  --[[ The ranged slot keys a weapon layer of its own beside the main hand's
+       (Kevin, 2026-10-12), read whenever the main hand is. ]]
+  describe("the weapon layers", function()
+    it("reads the ranged slot's class with the main hand's", function()
+      local res = resources()
+      res.items[21267] = { id = 21267, en = "Gun", skill = 26 }
+      res.skills[26] = { id = 26, en = "Marksmanship" }
+      local bar, env, _, store = world({ resources = res })
+      env.items[0][4] = { id = 16535 }
+      env.items[0][5] = { id = 21267 }
+      env.equipment = { main = 4, main_bag = 0, range = 5, range_bag = 0 }
+      bar.attach(store)
+      bar.try_scope()
+      bar.mark_weapon_dirty()
+      bar.refresh_reads(1)
+      assert.equal("Sword", bar.bindings().weapon_type())
+      assert.equal("Marksmanship", bar.bindings().ranged_type())
+      -- Reported, since nothing else on screen says what the ranged slot read.
+      assert.is_not_nil(bar.status_lines()[1]:find("Sword + Marksmanship", 1, true), bar.status_lines()[1])
+    end)
+
+    -- The main hand untouched: the ranged layer still has to follow the
+    -- ranged slot, and the bar has to redraw for it.
+    it("follows a ranged swap that leaves the main hand alone", function()
+      local res = resources()
+      res.items[21267] = { id = 21267, en = "Gun", skill = 26 }
+      res.items[21210] = { id = 21210, en = "Bow", skill = 25 }
+      res.skills[25] = { id = 25, en = "Archery" }
+      res.skills[26] = { id = 26, en = "Marksmanship" }
+      local files = {
+        WAR = {
+          weapons = {
+            Archery = { [1] = { row = { [3] = { type = "ws", action = "Empyreal Arrow" } } } },
+            Marksmanship = { [1] = { row = { [3] = { type = "ws", action = "Hot Shot" } } } },
+          },
+        },
+      }
+      local bar, env, _, store = world({ resources = res, store_files = files })
+      env.items[0][4] = { id = 16535 }
+      env.items[0][5] = { id = 21267 }
+      env.items[0][6] = { id = 21210 }
+      env.equipment = { main = 4, main_bag = 0, range = 5, range_bag = 0 }
+      bar.attach(store)
+      bar.try_scope()
+      bar.mark_weapon_dirty()
+      bar.refresh_reads(1)
+      assert.equal("Hot Shot", bar.bindings().resolve(1, "row", 3).action)
+      local repaints = env.repaints
+      env.equipment = { main = 4, main_bag = 0, range = 6, range_bag = 0 }
+      bar.mark_weapon_dirty()
+      bar.refresh_reads(2)
+      assert.equal("Archery", bar.bindings().ranged_type())
+      assert.equal("Empyreal Arrow", bar.bindings().resolve(1, "row", 3).action)
+      assert.is_true(env.repaints > repaints, "and the bar redrew")
     end)
   end)
 

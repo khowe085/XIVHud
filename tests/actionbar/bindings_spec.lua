@@ -8,6 +8,10 @@ local function ja(name)
   return { type = "ja", action = name, target = "me" }
 end
 
+local function ma(name)
+  return { type = "ma", action = name, target = "t" }
+end
+
 -- Default flags: unshared, cycled in both states -- an untouched install.
 local function default_flags()
   local flags = {}
@@ -664,7 +668,7 @@ describe("crossbar bindings", function()
       local _, err = bindings.bind("sub:wh1:1", "left", 3, ja("Provoke"))
       assert.matches("wh1 is not a job", err)
       _, err = bindings.bind("wpn:h2h:1", "left", 3, ja("Provoke"))
-      assert.matches("h2h is not a class a main hand can hold", err)
+      assert.matches("h2h is not a weapon class", err)
     end)
 
     it("refuses the main job as its own subjob", function()
@@ -675,12 +679,12 @@ describe("crossbar bindings", function()
       assert.matches("own sub job", err)
     end)
 
-    it("refuses a class a main hand cannot hold", function()
+    it("refuses a word that names no weapon class", function()
       local bindings = build()
       bindings.set_job("WAR", "NIN")
-      local ok, err = bindings.bind("wpn:archery:1", "left", 3, record("Flaming Arrow"))
+      local ok, err = bindings.bind("wpn:instrument:1", "left", 3, record("Flaming Arrow"))
       assert.is_nil(ok)
-      assert.matches("archery is not a class a main hand can hold", err)
+      assert.matches("instrument is not a weapon class", err)
     end)
   end)
 
@@ -740,6 +744,121 @@ describe("crossbar bindings", function()
       bindings.preview_layers({ sub = "SCH" })
       assert.same({}, bindings.available_contexts())
       assert.same({ "WAR", "NIN" }, { bindings.job() })
+    end)
+  end)
+
+  --[[ The RANGED slot keys a weapon layer of its own (Kevin, 2026-10-12):
+       Archery, Marksmanship or Throwing, live while that kind of ranged
+       weapon is equipped, beside the main hand's - and where both bind one
+       slot the main hand wins. ]]
+  describe("the ranged weapon layer", function()
+    local function both()
+      return build({
+        files = {
+          WAR = {
+            sets = { [1] = { left = { [1] = ja("Base JA"), [2] = ja("Base JA 2") } } },
+            weapons = {
+              Sword = { [1] = { left = { [1] = record("Savage Blade") } } },
+              Marksmanship = { [1] = { left = { [1] = record("Hot Shot"), [2] = record("Leaden Salute") } } },
+            },
+          },
+        },
+      })
+    end
+
+    it("binds a ranged weaponskill on its own layer", function()
+      local bindings, world = build()
+      bindings.set_job("WAR", "NIN")
+      assert.is_true(bindings.bind("wpn:marksmanship:1", "left", 1, record("Leaden Salute")))
+      assert.equal("Leaden Salute", world.files.WAR.weapons.Marksmanship[1].left[1].action)
+    end)
+
+    it("resolves through the class in the ranged slot", function()
+      local bindings = both()
+      bindings.set_job("WAR", "NIN")
+      bindings.set_ranged_type("Marksmanship")
+      local entry, source = bindings.resolve(1, "left", 2)
+      assert.equal("Leaden Salute", entry.action)
+      assert.equal("wpn", source)
+      assert.equal("Marksmanship", bindings.ranged_type())
+    end)
+
+    it("lets the main hand win where both bind a slot", function()
+      local bindings = both()
+      bindings.set_job("WAR", "NIN")
+      bindings.set_weapon_type("Sword")
+      bindings.set_ranged_type("Marksmanship")
+      assert.equal("Savage Blade", bindings.resolve(1, "left", 1).action)
+      assert.equal("Leaden Salute", bindings.resolve(1, "left", 2).action, "and the ranged one fills the rest")
+      for _, layer in ipairs(bindings.layers_at(1, "left", 1)) do
+        assert.equal(layer.source == "wpn:Sword", layer.active == true, layer.source)
+      end
+    end)
+
+    it("drops the ranged class at a job change, which re-equips", function()
+      local bindings = both()
+      bindings.set_job("WAR", "NIN")
+      bindings.set_ranged_type("Marksmanship")
+      bindings.set_job("WAR", "NIN")
+      assert.is_nil(bindings.ranged_type())
+      assert.equal("Base JA 2", bindings.resolve(1, "left", 2).action)
+    end)
+
+    it("previews a ranged class in place of the one equipped", function()
+      local bindings = both()
+      bindings.set_job("WAR", "NIN")
+      bindings.preview_layers({ ranged = "Marksmanship" })
+      assert.equal("Leaden Salute", bindings.resolve(1, "left", 2).action)
+      bindings.preview_layers(nil)
+      assert.equal("Base JA 2", bindings.resolve(1, "left", 2).action)
+    end)
+  end)
+
+  --[[ A weaponskill binds on a WEAPON layer and nowhere else (Kevin,
+       2026-10-12): what a slot can fire with depends on the weapon in hand,
+       and that is the layer keyed by it. Only a NEW one is refused - a
+       weaponskill a layer already holds still loads, fires and takes a new
+       alias or icon, which is a bind of the same entry over itself. ]]
+  describe("weaponskills off a weapon layer", function()
+    it("refuses a new one on the base, a subjob or a context", function()
+      local bindings, world = build()
+      bindings.set_job("WAR", "SCH")
+      for _, address in ipairs({ "1", "sub:1", "sub:whm:1", "ctx:light-arts:1" }) do
+        local ok, err = bindings.bind(address, "left", 1, record("Savage Blade"))
+        assert.is_nil(ok, address)
+        assert.matches("weapon layer", err, nil, true)
+      end
+      assert.is_nil(world.files.WAR)
+    end)
+
+    it("binds one on a weapon layer, named or held", function()
+      local bindings = build()
+      bindings.set_job("WAR", "SCH")
+      assert.is_true(bindings.bind("wpn:sword:1", "left", 1, record("Savage Blade")))
+      bindings.set_weapon_type("Great Axe")
+      assert.is_true(bindings.bind("wpn:1", "left", 2, record("Upheaval")))
+    end)
+
+    it("still rewrites one a layer already holds", function()
+      local bindings, world = build({
+        files = { WAR = { sets = { [1] = { left = { [1] = record("Savage Blade") } } } } },
+      })
+      bindings.set_job("WAR", "SCH")
+      local entry = bindings.entry_at("1", "left", 1)
+      entry.alias = "SB"
+      assert.is_true(bindings.bind("1", "left", 1, entry))
+      assert.equal("SB", world.files.WAR.sets[1].left[1].alias)
+    end)
+
+    it("refuses one over another action, or another weaponskill", function()
+      local bindings = build({
+        files = {
+          WAR = { sets = { [1] = { left = { [1] = ja("Provoke"), [2] = record("Savage Blade") } } } },
+        },
+      })
+      bindings.set_job("WAR", "SCH")
+      assert.is_nil((bindings.bind("1", "left", 1, record("Savage Blade"))))
+      assert.is_nil((bindings.bind("1", "left", 2, record("Requiescat"))))
     end)
   end)
 
@@ -1494,9 +1613,9 @@ describe("crossbar bindings", function()
     it("writes the job base and persists only the job file", function()
       local bindings, world = build()
       bindings.set_job("WAR", "NIN")
-      assert.is_true(bindings.bind(2, "l", 4, record("Upheaval")))
-      assert.equal("Upheaval", world.files.WAR.sets[2].left[4].action)
-      assert.equal("Upheaval", bindings.resolve(2, "left", 4).action)
+      assert.is_true(bindings.bind(2, "l", 4, ja("Berserk")))
+      assert.equal("Berserk", world.files.WAR.sets[2].left[4].action)
+      assert.equal("Berserk", bindings.resolve(2, "left", 4).action)
       assert.is_nil(world.saved.SHARED)
     end)
 
@@ -1505,8 +1624,8 @@ describe("crossbar bindings", function()
       flags[6].shared = true
       local bindings, world = build({ set_flags = flags })
       bindings.set_job("WAR")
-      assert.is_true(bindings.bind(6, "r", 1, record("Shared WS")))
-      assert.equal("Shared WS", world.files.SHARED.sets[6].right[1].action)
+      assert.is_true(bindings.bind(6, "r", 1, ja("Shared JA")))
+      assert.equal("Shared JA", world.files.SHARED.sets[6].right[1].action)
       assert.is_nil(world.saved.WAR)
     end)
 
@@ -1541,8 +1660,8 @@ describe("crossbar bindings", function()
     it("accepts a numeric string set the way the CLI sends it", function()
       local bindings = build()
       bindings.set_job("WAR")
-      assert.is_true(bindings.bind("3", "r", 8, record("Full Break")))
-      assert.equal("Full Break", bindings.resolve(3, "right", 8).action)
+      assert.is_true(bindings.bind("3", "r", 8, ja("Warcry")))
+      assert.equal("Warcry", bindings.resolve(3, "right", 8).action)
     end)
 
     it("rejects unknown layers, contexts, sides and out-of-range addresses", function()
@@ -1578,7 +1697,7 @@ describe("crossbar bindings", function()
         files = { WAR = { active_set = 2, sets = {}, custom_note = "keep me" } },
       })
       bindings.set_job("WAR")
-      bindings.bind(1, "l", 1, record("Upheaval"))
+      assert.is_true(bindings.bind(1, "l", 1, ja("Berserk")))
       assert.equal("keep me", world.files.WAR.custom_note)
     end)
 
@@ -1590,7 +1709,7 @@ describe("crossbar bindings", function()
         set_flags = flags,
       })
       bindings.set_job("WAR")
-      bindings.bind(6, "l", 1, record("Shared WS"))
+      assert.is_true(bindings.bind(6, "l", 1, ja("Shared JA")))
       assert.equal("keep me", world.files.SHARED.custom_note)
     end)
 
@@ -1652,7 +1771,7 @@ describe("crossbar bindings", function()
     it("reports every stored layer in stack order, base first", function()
       local bindings = build()
       bindings.set_job("SCH", "NIN")
-      bindings.bind(1, "l", 3, record("Savage Blade"))
+      bindings.bind(1, "l", 3, ja("Sublimation"))
       bindings.bind("sub:1", "l", 3, ja("Provoke"))
       bindings.bind("ctx:light-arts:1", "l", 3, ja("Penury"))
       bindings.bind("ctx:addendum-white:1", "l", 3, ja("Addendum: White"))
@@ -1664,7 +1783,7 @@ describe("crossbar bindings", function()
         layers[3].source,
         layers[4].source,
       })
-      assert.equal("Savage Blade", layers[1].entry.action)
+      assert.equal("Sublimation", layers[1].entry.action)
       assert.equal("Addendum: White", layers[4].entry.action)
     end)
 
@@ -1672,7 +1791,7 @@ describe("crossbar bindings", function()
       local bindings = build()
       bindings.set_job("WAR", "NIN")
       bindings.set_weapon_type("Sword")
-      bindings.bind(1, "l", 3, record("Base WS"))
+      bindings.bind(1, "l", 3, ja("Base JA"))
       bindings.bind("sub:1", "l", 3, ja("Provoke"))
       bindings.bind("wpn:1", "l", 3, record("Savage Blade"))
       bindings.set_weapon_type("Great Axe")
@@ -1693,7 +1812,7 @@ describe("crossbar bindings", function()
     it("marks the layer that is currently winning, and none when none is", function()
       local bindings = build()
       bindings.set_job("SCH", "NIN")
-      bindings.bind(1, "l", 3, record("Savage Blade"))
+      bindings.bind(1, "l", 3, ja("Sublimation"))
       bindings.bind("ctx:light-arts:1", "l", 3, ja("Penury"))
       local layers = bindings.layers_at(1, "left", 3)
       assert.is_true(layers[1].active, "with no buffs up the base wins")
@@ -1743,7 +1862,7 @@ describe("crossbar bindings", function()
       flags[6].shared = true
       local bindings = build({ set_flags = flags })
       bindings.set_job("SCH")
-      bindings.bind(6, "r", 1, record("Shared WS"))
+      bindings.bind(6, "r", 1, ja("Shared JA"))
       local layers = bindings.layers_at(6, "right", 1)
       assert.equal("shared", layers[1].source)
       assert.is_true(layers[1].active)
@@ -1764,9 +1883,9 @@ describe("crossbar bindings", function()
     it("reads the addressed layer, ignoring the layers above it", function()
       local bindings = build()
       bindings.set_job("WAR", "NIN")
-      bindings.bind(1, "l", 2, record("Base WS"))
+      bindings.bind(1, "l", 2, ja("Base JA"))
       bindings.bind("sub:1", "l", 2, ja("Provoke"))
-      assert.equal("Base WS", bindings.entry_at(1, "l", 2).action)
+      assert.equal("Base JA", bindings.entry_at(1, "l", 2).action)
       assert.equal("Provoke", bindings.entry_at("sub:1", "l", 2).action)
       assert.equal("Provoke", bindings.resolve(1, "left", 2).action, "the stack still answers the subjob layer")
     end)
@@ -1777,9 +1896,9 @@ describe("crossbar bindings", function()
       local bindings = build({ set_flags = flags })
       bindings.set_job("SCH")
       bindings.bind("ctx:light-arts:1", "r", 3, ja("Addendum: White"))
-      bindings.bind(6, "r", 1, record("Shared WS"))
+      bindings.bind(6, "r", 1, ja("Shared JA"))
       assert.equal("Addendum: White", bindings.entry_at("ctx:light-arts:1", "r", 3).action)
-      assert.equal("Shared WS", bindings.entry_at(6, "r", 1).action)
+      assert.equal("Shared JA", bindings.entry_at(6, "r", 1).action)
     end)
 
     it("answers nil for an empty address and never materializes it", function()
@@ -1788,7 +1907,7 @@ describe("crossbar bindings", function()
       assert.is_nil(bindings.entry_at(1, "l", 1))
       assert.is_nil(bindings.entry_at("sub:1", "l", 1))
       assert.same({}, world.saved, "a read writes nothing")
-      bindings.bind(2, "l", 1, record("Upheaval"))
+      bindings.bind(2, "l", 1, ja("Berserk"))
       assert.is_nil(world.files.WAR.sets[1], "no husk set was built by the read")
     end)
 
@@ -1968,7 +2087,7 @@ describe("crossbar bindings", function()
       assert.equal(1, bindings.active_set())
       assert.equal("War WS", world.files.DRK.sets[1].left[1].action)
       -- The copy is by value: editing DRK afterwards must not touch WAR.
-      bindings.bind(1, "l", 1, record("Torcleaver"))
+      assert.is_true(bindings.bind(1, "l", 1, ja("Last Resort")))
       assert.equal("War WS", world.files.WAR.sets[1].left[1].action)
     end)
 
@@ -1986,7 +2105,7 @@ describe("crossbar bindings", function()
       })
       bindings.set_job("DRK")
       bindings.copy_from("WAR")
-      bindings.bind(2, "l", 1, record("Torcleaver"))
+      assert.is_true(bindings.bind(2, "l", 1, ja("Last Resort")))
       bindings.jump(3)
       assert.is_nil(world.saved.WAR)
       assert.is_number(world.saved.DRK)
@@ -2133,14 +2252,14 @@ describe("crossbar bindings", function()
     it("keys one side of ten slots and refuses the crossbar's sides", function()
       local bindings, world = build({ geometry = grammar.hotbar() })
       bindings.set_job("SCH")
-      assert.is_true(bindings.bind("3", "row", 10, record("Cure")))
-      assert.are.same(record("Cure"), world.files.SCH.sets[3].row[10])
-      assert.are.same(record("Cure"), (bindings.resolve(3, "row", 10)))
+      assert.is_true(bindings.bind("3", "row", 10, ma("Cure")))
+      assert.are.same(ma("Cure"), world.files.SCH.sets[3].row[10])
+      assert.are.same(ma("Cure"), (bindings.resolve(3, "row", 10)))
       assert.is_nil(bindings.resolve(3, "left", 1))
-      local ok, err = bindings.bind("3", "row", 11, record("Cure"))
+      local ok, err = bindings.bind("3", "row", 11, ma("Cure"))
       assert.is_nil(ok)
       assert.is_not_nil(err:find("10", 1, true), err)
-      ok, err = bindings.bind("3", "left", 1, record("Cure"))
+      ok, err = bindings.bind("3", "left", 1, ma("Cure"))
       assert.is_nil(ok)
       assert.is_not_nil(err, "a side this geometry does not have")
     end)
@@ -2148,7 +2267,7 @@ describe("crossbar bindings", function()
     it("lands and cycles over the row", function()
       local bindings = build({ geometry = grammar.hotbar() })
       bindings.set_job("SCH")
-      bindings.bind("2", "row", 4, record("Cure"))
+      bindings.bind("2", "row", 4, ma("Cure"))
       assert.are.equal(2, bindings.cycle(), "the only non-empty set")
     end)
   end)

@@ -324,10 +324,9 @@ local function new(deps)
 
        The cost, accepted: on a family the client does not enumerate, a
        level-10 SCH is offered all sixteen stratagems rather than the two they
-       have, and binding one gives a slot the game refuses. It is the rule the
-       weaponskill branch below already takes - ignorance rather than
-       knowledge, and an empty picker is a worse answer than a long one - and
-       it corrects itself as the character levels.
+       have, and binding one gives a slot the game refuses. Ignorance rather
+       than knowledge - an empty picker is a worse answer than a long one -
+       and it corrects itself as the character levels.
 
        NOTHING GATES A CHILD ON LEVEL, deliberately: `res.job_abilities`
        carries no `levels` table at all (verified against the resource data,
@@ -498,30 +497,19 @@ local function new(deps)
         end
       end
     end
-    --[[ Weaponskills carry no per-job levels, so the client's list is the
-         whole of what this JOB knows - but not of what it can perform right
-         now: the list is job-wide, and a club in hand was offering sword
-         weaponskills (Kevin, live client, 2026-09-05). What the weapon can
-         actually do is the resources' own `skill` on each weaponskill,
-         named through `skills` - the same vocabulary the weapon binding
-         layer keys on, so the two can never disagree about what a class is
-         called.
-
-         Two things are deliberately NOT filtered out: a weaponskill whose
-         skill the resources cannot name, and the whole list when no class
-         has been resolved (no resources, or a client that has not answered
-         yet). Both are ignorance rather than knowledge, and an empty picker
-         is a worse answer than a long one. ]]
-    local weapon_skills = table_or_empty(resources.weapon_skills)
-    local skills = table_or_empty(resources.skills)
-    -- The class the layer names, before the one in hand.
-    local held = view.weapon or call(deps.weapon_class)
-    for _, id in ipairs(table_or_empty(listed.weapon_skills)) do
-      local ws = weapon_skills[id]
-      if type(ws) == "table" and type(ws.en) == "string" then
-        local skill = skills[ws.skill]
-        local weapon = type(skill) == "table" and skill.en or nil
-        if held == nil or weapon == nil or weapon == held then
+    --[[ A weaponskill is bound on a WEAPON layer and nowhere else (Kevin,
+         2026-10-12), and there the listing behaves as if that weapon were in
+         hand: every weaponskill of the class the resources carry, by their
+         own `skill` named through `skills` - the vocabulary the weapon layer
+         keys on - and not only the client's list, which is the JOB's and need
+         not cover a weapon you are not holding. One whose skill the
+         resources cannot name cannot be said to be the class's, so it is
+         left out. ]]
+    if view.weapon ~= nil then
+      local skills = table_or_empty(resources.skills)
+      for _, ws in pairs(table_or_empty(resources.weapon_skills)) do
+        local skill = type(ws) == "table" and skills[ws.skill] or nil
+        if type(skill) == "table" and skill.en == view.weapon and type(ws.en) == "string" then
           add(groups, "Weapon Skills", { label = ws.en, record = { type = "ws", action = ws.en } })
         end
       end
