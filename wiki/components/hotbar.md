@@ -92,8 +92,8 @@ one on, or SHIFT + right-click it in layout mode.
 
 All commands are `//hud hotbar ...` (`hb` for short). **An address is one
 word**, `<set>:<slot>` - `3:7` is set 3, slot 7, and `3:10` its last slot -
-and the layer prefixes go in front as on the crossbar: `sub:3:7`, `wpn:3:7`,
-`sub:WHM:3:7`, `wpn:great-katana:3:7`, `ctx:light-arts:3:7`.
+and a layer is named with `context=` as on the crossbar: `bind 3:7 ma Cure
+context=sub:whm`, `context=wpn:great-katana`, `context=buf:light-arts`.
 
 | Command | What it does |
 | --- | --- |
@@ -107,10 +107,10 @@ and the layer prefixes go in front as on the crossbar: `sub:3:7`, `wpn:3:7`,
 | `//hud hotbar set <1-8>` | switch the active set (and so row 1) |
 | `//hud hotbar cycle` / `cycle back` | move to the next or previous set in the rotation |
 | `//hud hotbar list [<set>]` | list what is bound on this job, layer by layer |
-| `//hud hotbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>]` | bind a slot |
-| `//hud hotbar unbind <address>` | clear a slot in one layer |
-| `//hud hotbar alias <address> [<name>]` | change the label under a slot; omit the name to clear it |
-| `//hud hotbar icon <address> [<icon>]` | change a slot's icon; omit it to clear |
+| `//hud hotbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>]` | bind a slot |
+| `//hud hotbar unbind <address> [context=<layer>]` | clear a slot in one layer — the one `context=` names, or the job base without it |
+| `//hud hotbar alias <address> [<name>] [context=<layer>]` | change the label under a slot; omit the name to clear it |
+| `//hud hotbar icon <address> [<icon>] [context=<layer>]` | change a slot's icon; omit it to clear |
 | `//hud hotbar swap <address> <address>` | swap two slots, every layer at once |
 | `//hud hotbar share <set> on\|off` | share a set across every job, or keep it to this one |
 | `//hud hotbar cycle <set> drawn\|sheathed\|both\|none` | choose which rotations a set belongs to |

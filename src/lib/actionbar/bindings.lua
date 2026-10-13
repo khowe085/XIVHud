@@ -942,7 +942,7 @@ local function new(deps)
         and type(entry.action) == "string"
         and held.action:lower() == entry.action:lower()
       if not same then
-        return nil, "a weaponskill binds on a weapon layer - wpn: in front of the address"
+        return nil, "a weaponskill binds on a weapon layer"
       end
     end
     local sets = target.sets or target.materialize()

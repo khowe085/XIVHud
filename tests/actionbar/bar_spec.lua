@@ -271,6 +271,18 @@ describe("one bar's state", function()
     end)
   end)
 
+  -- The CLI files a weaponskill with no context= under its own weapon type,
+  -- named off the bar's resources (Kevin, 2026-10-13).
+  describe("the CLI's weaponskill placement", function()
+    it("files a weaponskill under the weapon type its resource names", function()
+      local bar, env, _, store = world()
+      bar.attach(store)
+      bar.try_scope()
+      bar.command({ "bind", "1:3", "ws", "Savage", "Blade" })
+      assert.equal("Savage Blade", env.store_files.WAR.weapons.Sword[1].row[3].action)
+    end)
+  end)
+
   describe("a press", function()
     it("resolves the slot through its bindings and fires it through the service", function()
       local bar, env, _, store = world()

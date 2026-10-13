@@ -138,9 +138,10 @@ All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
 taken: `//hud cb set 3`, `//hud show cb`, `//hud reset cb`.
 
 **An address is one word**: `<set><L|R><slot>`, so `1L1` is set 1, left side,
-slot 1, and `2R8` is set 2, right side, slot 8. Four verbs — `bind`, `unbind`,
-`alias` and `icon` — also take a layer prefix in front: `sub:1L6`,
-`sub:WHM:1L6`, `wpn:1L6`, `wpn:great-katana:1L6`, `ctx:light-arts:1L3`.
+slot 1, and `2R8` is set 2, right side, slot 8. To work on a layer other than
+the job base, four verbs — `bind`, `unbind`, `alias` and `icon` — take
+`context=`: `context=sub:whm`, `context=wpn:great-katana`,
+`context=buf:light-arts` (below).
 
 You may type the side in either case.
 
@@ -163,11 +164,11 @@ right-hand cross is slots 1–4 and the left-hand cross 5–8.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>]` | bind a slot, labelling it in the same command if you want |
-| `//hud crossbar unbind <address>` | clear a slot in one layer — the one you addressed |
-| `//hud crossbar alias <address> [<name>]` | change the label under a slot — omit `<name>` to clear it |
-| `//hud crossbar icon <address> [<icon>]` | change a slot's icon — omit `<icon>` to clear it |
-| `//hud crossbar swap <address> <address>` | swap two slots, everything about them — every layer at once, so no layer prefix applies |
+| `//hud crossbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>]` | bind a slot, labelling it in the same command if you want |
+| `//hud crossbar unbind <address> [context=<layer>]` | clear a slot in one layer — the one `context=` names, or the job base without it |
+| `//hud crossbar alias <address> [<name>] [context=<layer>]` | change the label under a slot — omit `<name>` to clear it |
+| `//hud crossbar icon <address> [<icon>] [context=<layer>]` | change a slot's icon — omit `<icon>` to clear it |
+| `//hud crossbar swap <address> <address>` | swap two slots, everything about them — every layer at once, so it takes no `context=` |
 | `//hud crossbar copy <JOB>` | replace this job's bindings with another job's |
 
 **`<type>`** says what kind of thing you are binding, and decides what the
@@ -177,7 +178,7 @@ rest of the line means:
 | --- | --- | --- |
 | `ma` | a spell — including trusts and blue magic | `bind 1L1 ma "Cure IV" t` |
 | `ja` | a job ability | `bind 1L2 ja "Divine Seal"` |
-| `ws` | a weaponskill — on a weapon layer only (below) | `bind wpn:sword:1R1 ws "Savage Blade" t` |
+| `ws` | a weaponskill — on a weapon layer only (below) | `bind 1R1 ws "Savage Blade" t` |
 | `item` | a usable item | `bind 2L1 item "Echo Drops" me` |
 | `enchanteditem` | enchanted gear — equips it, waits out the warmup, uses it | `bind 2L2 enchanteditem "Vocation Ring"` |
 | `pet` | a pet command | `bind 2R1 pet "Fight" t` |
@@ -294,8 +295,9 @@ from that:
 - An icon the addon cannot find **refuses the whole bind**, rather than
   binding the action and dropping the art quietly.
 
-The `alias` and `icon` verbs follow the same layer prefixes as `bind`, so aliasing
-`ctx:light-arts:1L3` relabels only what that context puts in the slot. Both need
+The `alias` and `icon` verbs take the same `context=` as `bind`, so
+`alias 1L3 Penury context=buf:light-arts` relabels only what that context puts
+in the slot. Both need
 something in the slot to act on — on an empty one they report an error rather
 than doing nothing quietly, and `icon` says so too if it cannot find the name
 you gave it.
@@ -337,22 +339,25 @@ name is looked for there. `icon 6L1 items/warp-ring` checks
 `icons/custom/warp-ring.png` first and the addon's own `items/warp-ring` after
 — you never make an `items` folder of your own.
 
-`bind`, `unbind`, `alias` and `icon` take an optional layer prefix on the set
-number — `sub:<set>` for the current subjob, `wpn:<set>` for the weapon class
-in your main hand, `ctx:<name>:<set>` for a buff context. To edit a subjob you
-are not on or a class you are not holding, name it: `sub:WHM:<set>`, or
-`wpn:<class>:<set>` with the class in lower case and dashes for spaces
-(`wpn:great-katana:1L1`, `wpn:hand-to-hand:1L1`, and for the ranged slot
-`wpn:marksmanship:1L1`). With no prefix you
-are editing the job's base layer. See
+`bind`, `unbind`, `alias` and `icon` take an optional `context=` naming the
+layer — `context=sub:<job>` for a subjob (`context=sub:whm`, worn or not),
+`context=wpn:<weapon type>` for a weapon type, written in lower case with
+dashes for spaces (`context=wpn:great-katana`, `context=wpn:hand-to-hand`, and
+for the ranged slot `context=wpn:marksmanship`), and `context=buf:<name>` for a
+buff context (`context=buf:light-arts`). It can go anywhere among the labels.
+With none you are editing the job's base layer — except that `bind` puts a
+weaponskill on its own weapon type: `bind 1R1 ws "Leaden Salute" t` lands on
+the Marksmanship layer whatever you are holding. `unbind`, `alias` and `icon`
+never guess, so name that layer to edit it afterwards (`alias 1R1 LS
+context=wpn:marksmanship`); without it they say which layers the slot holds. See
 [Layers](#layers-how-a-slot-decides-what-to-show).
 
 ```
 //hud crossbar bind 1L3 ma "Cure IV" t
-//hud crossbar bind sub:1L4 ja "Utsusemi: Ichi"
-//hud crossbar bind wpn:1R1 ws "Savage Blade" t
-//hud crossbar bind sub:WHM:1L4 ma Cure t
-//hud crossbar bind ctx:light-arts:1L3 ja "Addendum: White"
+//hud crossbar bind 1L4 ja "Utsusemi: Ichi" context=sub:nin
+//hud crossbar bind 1R1 ws "Savage Blade" t
+//hud crossbar bind 1L4 ma Cure t context=sub:whm
+//hud crossbar bind 1L3 ja "Addendum: White" context=buf:light-arts
 ```
 
 Most of this is also bindable by mouse in `//hud crossbar edit`, which is

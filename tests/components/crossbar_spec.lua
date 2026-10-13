@@ -5941,15 +5941,15 @@ describe("crossbar live widget", function()
     it("checks a swallowed trailing word against the client's own resources", function()
       -- The CLI's second-guess runs on the live resource tables: "Savage
       -- Blade" is a weaponskill, "Savage Blade Kevin" is not, so the bind is
-      -- refused rather than stored as a command that can never fire. On a
-      -- weapon layer, the only place a weaponskill binds.
+      -- refused rather than stored as a command that can never fire. On its
+      -- own weapon type's layer, named, so the layer is not what refuses it.
       build_world()
-      local reply = widget.handle_command({ "bind", "wpn:sword:1L1", "ws", "Savage", "Blade", "Kevin" })
+      local reply = widget.handle_command({ "bind", "1L1", "ws", "Savage", "Blade", "Kevin", "context=wpn:sword" })
       assert.is_string(reply)
       assert.is_not_nil(reply:find("Kevin", 1, true), reply)
       assert.is_nil((env.store_files.WAR.weapons or {}).Sword)
       -- And a name it does know binds with no caution at all.
-      reply = widget.handle_command({ "bind", "wpn:sword:1L1", "ws", "Savage", "Blade" })
+      reply = widget.handle_command({ "bind", "1L1", "ws", "Savage", "Blade", "context=wpn:sword" })
       assert.is_string(reply, "a known name needs no second line")
       assert.equal("Savage Blade", env.store_files.WAR.weapons.Sword[1].left[1].action)
     end)

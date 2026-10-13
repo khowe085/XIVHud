@@ -94,6 +94,18 @@ local function build(opts)
     get_config = function()
       return world.config
     end,
+    -- The weapon type a weaponskill belongs to, off the resources: where a
+    -- weaponskill with no context= is filed.
+    weapon_class_of = function(name)
+      local classes = opts.classes
+        or {
+          ["Savage Blade"] = "Sword",
+          Requiescat = "Sword",
+          ["Leaden Salute"] = "Marksmanship",
+          ["Hot Shot"] = "Marksmanship",
+        }
+      return classes[name]
+    end,
     file_exists = function(path)
       world.stats[#world.stats + 1] = path
       return world.icons[path] == true
@@ -146,30 +158,23 @@ describe("crossbar commands", function()
       assert.equal("Berserk", world.files.SCH.sets[1].right[8].action)
     end)
 
-    it("targets the subjob layer with sub:", function()
+    it("targets the subjob layer with context=sub:", function()
       local commands, world = build({ sub = "NIN" })
-      commands.command({ "bind", "sub:2L4", "ja", "Utsusemi" })
+      commands.command({ "bind", "2L4", "ja", "Utsusemi", "context=sub:nin" })
       assert.equal("Utsusemi", world.files.SCH.sub.NIN[2].left[4].action)
       assert.is_nil(stored(world, "SCH", 2, "left", 4))
     end)
 
-    it("targets a context layer with ctx:", function()
+    it("targets a context layer with context=buf:", function()
       local commands, world = build()
-      commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Addendum:", "White" })
+      commands.command({ "bind", "1L3", "ja", "Addendum:", "White", "context=buf:light-arts" })
       assert.equal("Addendum: White", world.files.SCH.contexts["light-arts"][1].left[3].action)
     end)
 
-    it("targets the equipped weapon class with wpn:", function()
-      local commands, world = build({ weapon = "Great Katana" })
-      commands.command({ "bind", "wpn:1L3", "ws", "Tachi:", "Fudo" })
+    it("targets a weapon type's layer with context=wpn:", function()
+      local commands, world = build({ weapon = "Great Katana", classes = { ["Tachi: Fudo"] = "Great Katana" } })
+      commands.command({ "bind", "1L3", "ws", "Tachi:", "Fudo", "context=wpn:great-katana" })
       assert.equal("Tachi: Fudo", world.files.SCH.weapons["Great Katana"][1].left[3].action)
-    end)
-
-    it("refuses a wpn: address with nothing in hand, and says why", function()
-      local commands, world = build()
-      local reply = commands.command({ "bind", "wpn:1L3", "ws", "Savage", "Blade" })
-      assert.is_not_nil(text_of(reply):find("weapon", 1, true), text_of(reply))
-      assert.is_nil(world.files.SCH)
     end)
 
     -- The other side of the same rule: an entry the player can SEE in
@@ -182,7 +187,7 @@ describe("crossbar commands", function()
           WAR = { contexts = { ["light-arts"] = { [1] = { left = { [3] = { type = "ja", action = "Penury" } } } } } },
         },
       })
-      commands.command({ "alias", "ctx:light-arts:1L3", "Pen" })
+      commands.command({ "alias", "1L3", "Pen", "context=buf:light-arts" })
       assert.equal("Pen", world.files.WAR.contexts["light-arts"][1].left[3].alias)
     end)
 
@@ -190,7 +195,7 @@ describe("crossbar commands", function()
     -- in this job's file until the job can raise it.
     it("binds a context this job cannot reach into this job's file", function()
       local commands, world = build({ job = "WAR", sub = "NIN" })
-      commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Penury" })
+      commands.command({ "bind", "1L3", "ja", "Penury", "context=buf:light-arts" })
       assert.equal("Penury", world.files.WAR.contexts["light-arts"][1].left[3].action)
     end)
 
@@ -961,8 +966,10 @@ describe("crossbar commands", function()
     -- one outcome worth refusing over.
     it("refuses when the shorter reading is a real action and the longer is not", function()
       local commands, world = build({ known = { ["Savage Blade"] = true } })
-      -- On a weapon layer, the one place a weaponskill binds (2026-10-12).
-      local reply, _, repaint = commands.command({ "bind", "wpn:sword:1L3", "ws", "Savage", "Blade", "Kevin" })
+      -- On its own weapon type's layer, named, so the layer is not what
+      -- refuses it.
+      local reply, _, repaint =
+        commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "Kevin", "context=wpn:sword" })
       assert.is_string(reply)
       assert.is_not_nil(reply:find("Savage Blade", 1, true), reply)
       assert.is_not_nil(reply:find("Kevin", 1, true), reply)
@@ -976,7 +983,7 @@ describe("crossbar commands", function()
       -- at all. Both messages must be terminal: they say what is not
       -- supported and name only readings that work.
       local commands = build({ known = { ["Savage Blade"] = true } })
-      local refusal = commands.command({ "bind", "wpn:sword:1L3", "ws", "Savage", "Blade", "Kevin" })
+      local refusal = commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "Kevin", "context=wpn:sword" })
       assert.is_string(refusal)
       assert.is_not_nil(refusal:find("not supported yet", 1, true), refusal)
       assert.is_nil(refusal:find("aimed at", 1, true), "it must not send them back to the refused form: " .. refusal)
@@ -1037,8 +1044,8 @@ describe("crossbar commands", function()
     it("clears the addressed layer only", function()
       local commands, world = build({ sub = "NIN" })
       commands.command({ "bind", "1L3", "ja", "Shield", "Bash" })
-      commands.command({ "bind", "sub:1L3", "ja", "Provoke" })
-      local reply, save_config, repaint = commands.command({ "unbind", "sub:1L3" })
+      commands.command({ "bind", "1L3", "ja", "Provoke", "context=sub:nin" })
+      local reply, save_config, repaint = commands.command({ "unbind", "1L3", "context=sub:nin" })
       assert.is_string(reply)
       assert.is_falsy(save_config)
       assert.is_true(repaint)
@@ -1104,11 +1111,11 @@ describe("crossbar commands", function()
       assert.are.same({ type = "ja", action = "Shield Bash" }, stored(world, "SCH", 1, "left", 3))
     end)
 
-    it("follows the layer prefixes", function()
+    it("follows the context= layer", function()
       local commands, world = build()
       commands.command({ "bind", "1L3", "ja", "Shield", "Bash" })
-      commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Addendum:", "White" })
-      commands.command({ "alias", "ctx:light-arts:1L3", "AW" })
+      commands.command({ "bind", "1L3", "ja", "Addendum:", "White", "context=buf:light-arts" })
+      commands.command({ "alias", "1L3", "AW", "context=buf:light-arts" })
       assert.equal("AW", world.files.SCH.contexts["light-arts"][1].left[3].alias)
       assert.is_nil(stored(world, "SCH", 1, "left", 3).alias, "the base entry is untouched")
     end)
@@ -1233,7 +1240,7 @@ describe("crossbar commands", function()
     it("exchanges two addresses' entire stacks", function()
       local commands, world = build({ sub = "NIN" })
       commands.command({ "bind", "1L3", "ja", "Shield", "Bash" })
-      commands.command({ "bind", "sub:1L3", "ja", "Provoke" })
+      commands.command({ "bind", "1L3", "ja", "Provoke", "context=sub:nin" })
       commands.command({ "bind", "2R5", "ma", "Cure" })
       local reply, save_config, repaint = commands.command({ "swap", "1L3", "2R5" })
       assert.is_string(reply)
@@ -1297,7 +1304,7 @@ describe("crossbar commands", function()
     it("lists what each set holds, with its layer and the active marker", function()
       local commands, world = build({ sub = "NIN" })
       commands.command({ "bind", "1L3", "ja", "Shield", "Bash", "t" })
-      commands.command({ "bind", "sub:1R1", "ja", "Provoke" })
+      commands.command({ "bind", "1R1", "ja", "Provoke", "context=sub:nin" })
       commands.command({ "bind", "5L8", "ma", "Cure", "IV", "p1" })
       local reply, save_config, repaint = commands.command({ "list" })
       assert.is_table(reply)
@@ -1307,7 +1314,7 @@ describe("crossbar commands", function()
       assert.is_not_nil(text:find("SCH/NIN", 1, true), text)
       assert.is_not_nil(text:find("Shield Bash", 1, true), text)
       assert.is_not_nil(text:find("Cure IV", 1, true), text)
-      assert.is_not_nil(text:find("sub", 1, true), "the subjob layer is tagged: " .. text)
+      assert.is_not_nil(text:find("context=sub:nin", 1, true), "the subjob layer is tagged: " .. text)
       assert.is_not_nil(text:find("set 1", 1, true), text)
       assert.is_not_nil(text:find("set 5", 1, true), text)
       assert.is_not_nil(text:find("active", 1, true), "the active set is marked: " .. text)
@@ -1319,25 +1326,25 @@ describe("crossbar commands", function()
       -- no-op: an unbuffed context layer is stored, tagged, and simply not
       -- winning.
       local commands = build()
-      commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Penury" })
+      commands.command({ "bind", "1L3", "ja", "Penury", "context=buf:light-arts" })
       local text = text_of(commands.command({ "list" }))
       assert.is_not_nil(text:find("Penury", 1, true), text)
-      assert.is_not_nil(text:find("[ctx:light-arts]", 1, true), text)
+      assert.is_not_nil(text:find("context=buf:light-arts", 1, true), text)
     end)
 
     it("shows a subjob layer belonging to a subjob that is not worn", function()
       local commands, world = build({ sub = "NIN" })
-      commands.command({ "bind", "sub:1L4", "ja", "Utsusemi" })
+      commands.command({ "bind", "1L4", "ja", "Utsusemi", "context=sub:nin" })
       world.bindings.set_job("SCH", "WHM")
       local text = text_of(commands.command({ "list" }))
       assert.is_not_nil(text:find("Utsusemi", 1, true), text)
-      assert.is_not_nil(text:find("[sub:NIN]", 1, true), text)
+      assert.is_not_nil(text:find("context=sub:nin", 1, true), text)
     end)
 
     it("marks which layer is live when an address has more than one", function()
       local commands, world = build()
       commands.command({ "bind", "1L3", "ja", "Shield", "Bash" })
-      commands.command({ "bind", "ctx:light-arts:1L3", "ja", "Penury" })
+      commands.command({ "bind", "1L3", "ja", "Penury", "context=buf:light-arts" })
       local lines = commands.command({ "list", "1" })
       local base_row, ctx_row
       for _, line in ipairs(lines) do
@@ -1780,84 +1787,347 @@ describe("crossbar commands", function()
     end)
   end)
 
-  describe("the subjob layer with no subjob", function()
-    it("hints rather than writing a nil-named layer", function()
-      local commands, world = build()
-      local reply, _, repaint = commands.command({ "bind", "sub:1L3", "ja", "Provoke" })
-      assert.is_string(reply)
-      assert.is_falsy(repaint)
-      assert.are.same({}, world.saved)
-    end)
-  end)
-
   --[[ Named layers (Kevin, 2026-10-12): a subjob by its job, a class by its
-       kebab name, either case - one word each, so the address survives the
-       split at its last colon. ]]
+       kebab name, either case. Named through context= since 2026-10-13,
+       which is the only way to name one: the address carries no layer. ]]
   describe("named subjob and weapon layers", function()
     it("binds into a subjob that is not worn", function()
       local commands, world = build({ sub = "RDM" })
-      commands.command({ "bind", "sub:WHM:1L3", "ja", "Provoke" })
+      commands.command({ "bind", "1L3", "ja", "Provoke", "context=sub:WHM" })
       assert.equal("Provoke", world.files.SCH.sub.WHM[1].left[3].action)
     end)
 
     it("binds into a class that is not held", function()
       local commands, world = build()
-      commands.command({ "bind", "wpn:great-katana:1L3", "ja", "Provoke" })
+      commands.command({ "bind", "1L3", "ja", "Provoke", "context=wpn:great-katana" })
       assert.equal("Provoke", world.files.SCH.weapons["Great Katana"][1].left[3].action)
     end)
 
-    it("names the two forms in the address hint", function()
+    -- The address hint no longer teaches a layer; the refusal of a prefixed
+    -- address is where the forms are named.
+    it("names the layer forms when an address carries a prefix", function()
       local commands = build()
-      local reply = text_of(commands.command({ "bind", "nope", "ja", "Provoke" }))
-      assert.is_not_nil(reply:find("sub:WHM:1L6", 1, true), reply)
-      assert.is_not_nil(reply:find("wpn:great-katana:1L6", 1, true), reply)
+      for _, address in ipairs({ "sub:WHM:1L6", "wpn:great-katana:1L6", "ctx:light-arts:1L3" }) do
+        local reply = text_of(commands.command({ "bind", address, "ja", "Provoke" }))
+        assert.is_not_nil(reply:find("context=sub:<job>", 1, true), address .. ": " .. reply)
+        assert.is_not_nil(reply:find("context=wpn:<weapon type>", 1, true), address .. ": " .. reply)
+        assert.is_not_nil(reply:find("context=buf:<buff context>", 1, true), address .. ": " .. reply)
+      end
     end)
   end)
 
-  -- A weaponskill binds on a weapon layer alone (Kevin, 2026-10-12): said
-  -- before the swallowed-word check can advise a retry on the same address
-  -- that would only be refused again for the layer.
-  describe("a weaponskill off a weapon layer", function()
-    it("is refused for the layer before its name is second-guessed", function()
+  --[[ A weaponskill binds on its own weapon type's layer (Kevin,
+       2026-10-13): with no context= it is filed there, so the swallowed-word
+       check is the first thing a mistyped name meets, and the advice it gives
+       is one that then binds. ]]
+  describe("a weaponskill on its weapon type's layer", function()
+    it("gets swallowed-word advice that then binds, on its own weapon type", function()
       local commands, world = build({ known = { ["Savage Blade"] = true } })
       local text = text_of(commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "Kevin" }))
-      assert.is_not_nil(text:find("weapon layer", 1, true), text)
-      assert.is_nil(text:find("alias", 1, true), text)
+      assert.is_nil(text:find("weapon layer", 1, true), text)
+      assert.is_not_nil(text:find('alias="Kevin"', 1, true), text)
+      assert.is_nil(world.files.SCH)
+      local _, _, repaint = commands.command({ "bind", "1L3", "ws", "Savage", "Blade", 'alias="Kevin"' })
+      assert.is_true(repaint)
+      assert.are.same(
+        { type = "ws", action = "Savage Blade", alias = "Kevin" },
+        world.files.SCH.weapons.Sword[1].left[3]
+      )
       assert.is_nil(stored(world, "SCH", 1, "left", 3))
     end)
 
-    it("refuses a different weaponskill over the one a slot holds, before its name is second-guessed", function()
+    it("leaves a weaponskill already on the job base alone, filing one typed over it on its own type", function()
       local commands, world = build({
         known = { Requiescat = true },
         files = { SCH = { sets = { [1] = { left = { [3] = { type = "ws", action = "Savage Blade" } } } } } },
       })
       local text = text_of(commands.command({ "bind", "1L3", "ws", "Requiescat", "Kevin" }))
-      assert.is_not_nil(text:find("weapon layer", 1, true), text)
-      assert.is_nil(text:find("alias", 1, true), text)
+      assert.is_nil(text:find("weapon layer", 1, true), text)
+      assert.is_not_nil(text:find('alias="Kevin"', 1, true), text)
+      commands.command({ "bind", "1L3", "ws", "Requiescat", 'alias="Kevin"' })
+      assert.equal("Requiescat", world.files.SCH.weapons.Sword[1].left[3].action)
       assert.equal("Savage Blade", stored(world, "SCH", 1, "left", 3).action)
     end)
 
-    it("lets an address the model cannot read say so first", function()
+    it("lets a job or layer the model cannot read say so itself", function()
       local text = text_of(build({ job = false }).command({ "bind", "1L3", "ws", "Savage", "Blade" }))
       assert.is_nil(text:find("weapon layer", 1, true), text)
-      text = text_of(build().command({ "bind", "sub:xyz:1L3", "ws", "Savage", "Blade" }))
-      assert.is_not_nil(text:find("xyz is not a job", 1, true), text)
+      assert.is_not_nil(text:find("job", 1, true), text)
+      -- A weaponskill whose type nobody can name, so context= decides alone.
+      text = text_of(build().command({ "bind", "1L3", "ws", "Mystery", "Blow", "context=wpn:xyz" }))
+      assert.is_not_nil(text:find("xyz is not a weapon class", 1, true), text)
     end)
 
-    it("matches the weaponskill a slot holds in any case", function()
-      local commands, world = build({
-        files = { SCH = { sets = { [1] = { left = { [3] = { type = "ws", action = "Savage Blade" } } } } } },
-      })
-      commands.command({ "bind", "1L3", "ws", "savage", "blade", "alias=SB" })
-      assert.equal("SB", stored(world, "SCH", 1, "left", 3).alias)
+    it("matches its own weapon type in any case", function()
+      local commands, world = build({ classes = { ["Savage Blade"] = "Sword", ["Tachi: Fudo"] = "Great Katana" } })
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "context=wpn:SWORD", "alias=SB" })
+      assert.equal("SB", world.files.SCH.weapons.Sword[1].left[3].alias)
+      commands.command({ "bind", "1L4", "ws", "Tachi:", "Fudo", "context=wpn:Great-Katana" })
+      assert.equal("Tachi: Fudo", world.files.SCH.weapons["Great Katana"][1].left[4].action)
     end)
 
-    it("still takes a listed row retyped over the weaponskill it already holds", function()
-      local commands, world = build({
-        files = { SCH = { sets = { [1] = { left = { [3] = { type = "ws", action = "Savage Blade" } } } } } },
-      })
-      commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "alias=SB" })
-      assert.equal("SB", stored(world, "SCH", 1, "left", 3).alias)
+    it("takes a listed weaponskill row retyped over itself, on the layer it lists", function()
+      local commands, world = build()
+      commands.command({ "bind", "1L3", "ws", "Savage", "Blade" })
+      local listed = text_of(commands.command({ "list", "1" }))
+      local row = listed:match("1L3%s+([^\n]+)")
+      assert.is_not_nil(row, listed)
+      assert.is_not_nil(row:find("context=wpn:sword", 1, true), row)
+      local words = { "bind", "1L3" }
+      for word in row:gmatch("%S+") do
+        words[#words + 1] = word
+      end
+      words[#words + 1] = "alias=SB"
+      commands.command(words)
+      assert.are.same(
+        { type = "ws", action = "Savage Blade", alias = "SB" },
+        world.files.SCH.weapons.Sword[1].left[3],
+        table.concat(words, " ")
+      )
+      assert.is_nil(stored(world, "SCH", 1, "left", 3))
+    end)
+  end)
+
+  --[[ The layer is a MARKER, `context=`, beside alias= and icon= (Kevin,
+       2026-10-13) - the address is plain `1L3` and carries no prefix:
+       context=sub:<job>, context=wpn:<weapon type>, context=buf:<buff context>.
+       A weaponskill with none goes to its own weapon type's layer. ]]
+  describe("the context= marker", function()
+    local function weapons(world)
+      return (world.files.SCH or {}).weapons or {}
+    end
+
+    it("binds into the layer it names", function()
+      local commands, world = build()
+      commands.command({ "bind", "1L3", "ja", "Provoke", "context=sub:whm" })
+      commands.command({ "bind", "1L4", "ma", "Cure", "context=buf:light-arts" })
+      commands.command({ "bind", "1L5", "ws", "Savage", "Blade", "context=wpn:sword" })
+      assert.equal("Provoke", world.files.SCH.sub.WHM[1].left[3].action)
+      assert.equal("Cure", world.files.SCH.contexts["light-arts"][1].left[4].action)
+      assert.equal("Savage Blade", weapons(world).Sword[1].left[5].action)
+    end)
+
+    it("takes it in either case and in any order with the labels", function()
+      local commands, world = build()
+      commands.command({ "bind", "1L3", "ja", "Provoke", "CONTEXT=sub:WHM", "alias=Pro" })
+      assert.equal("Pro", world.files.SCH.sub.WHM[1].left[3].alias)
+    end)
+
+    it("refuses a layer prefix on the address, pointing at context=", function()
+      local commands, world = build()
+      local text = text_of(commands.command({ "bind", "sub:1L3", "ja", "Provoke" }))
+      assert.is_not_nil(text:find("context=", 1, true), text)
+      assert.is_nil(world.files.SCH)
+    end)
+
+    it("files a weaponskill with no context= under its own weapon type", function()
+      local commands, world = build({ weapon = "Sword" })
+      local text = text_of(commands.command({ "bind", "1L3", "ws", "Leaden", "Salute" }))
+      assert.equal("Leaden Salute", weapons(world).Marksmanship[1].left[3].action)
+      assert.is_nil(weapons(world).Sword, "never the hand's")
+      assert.is_not_nil(text:find("context=wpn:marksmanship", 1, true), text)
+    end)
+
+    it("refuses a weaponskill it cannot place, naming the form", function()
+      local commands, world = build()
+      local text = text_of(commands.command({ "bind", "1L3", "ws", "Mystery", "Blow" }))
+      assert.is_not_nil(text:find("context=wpn:", 1, true), text)
+      assert.is_nil(world.files.SCH)
+    end)
+
+    it("refuses a weaponskill aimed at another weapon type's layer", function()
+      local commands, world = build()
+      local text = text_of(commands.command({ "bind", "1L3", "ws", "Leaden", "Salute", "context=wpn:sword" }))
+      assert.is_not_nil(text:find("context=wpn:marksmanship", 1, true), text)
+      assert.is_nil(world.files.SCH)
+    end)
+
+    it("refuses a weaponskill on a layer that is not a weapon's, naming its own", function()
+      local commands, world = build()
+      local text = text_of(commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "context=sub:whm" }))
+      assert.is_not_nil(text:find("Savage Blade is a Sword weaponskill - context=wpn:sword", 1, true), text)
+      assert.is_nil(world.files.SCH)
+    end)
+
+    it("refuses one off a weapon layer whose type it cannot tell, naming the form", function()
+      local commands, world = build()
+      local text = text_of(commands.command({ "bind", "1L3", "ws", "Mystery", "Blow", "context=buf:light-arts" }))
+      assert.is_not_nil(text:find("a weaponskill binds on a weapon layer - context=wpn:<weapon type>", 1, true), text)
+      assert.is_nil(world.files.SCH)
+    end)
+
+    -- The labels are read before the layer, so a target typed after
+    -- context= gets the advice every marker gives it, on every layer.
+    it("tells a target after context= to go in front, whatever the layer", function()
+      local commands, world = build()
+      for _, line in ipairs({
+        { "bind", "1L3", "ws", "Savage", "Blade", "context=wpn:sword", "t" },
+        { "bind", "1L3", "ma", "Cure", "context=sub:whm", "t" },
+        { "bind", "1L3", "ma", "Cure", "context=buf:light-arts", "t" },
+      }) do
+        local text = text_of(commands.command(line))
+        assert.is_not_nil(text:find("a target goes before the labels - move t in front of context=", 1, true), text)
+      end
+      assert.is_nil(world.files.SCH)
+    end)
+
+    it("refuses a second context= on a weaponskill as one context= only", function()
+      local commands, world = build()
+      local text =
+        text_of(commands.command({ "bind", "1L3", "ws", "Savage", "Blade", "context=sub:whm", "context=wpn:sword" }))
+      assert.is_not_nil(text:find("one context= only", 1, true), text)
+      assert.is_nil(world.files.SCH)
+    end)
+
+    it("names a weapon type with the article it takes", function()
+      local commands = build({ classes = { ["Flaming Arrow"] = "Archery" } })
+      local text = text_of(commands.command({ "bind", "1L3", "ws", "Flaming", "Arrow", "context=sub:whm" }))
+      assert.is_not_nil(text:find("Flaming Arrow is an Archery weaponskill", 1, true), text)
+    end)
+
+    it("asks for the name a layer kind is missing, with or without its colon", function()
+      local commands = build()
+      for word, wanted in pairs({
+        ["context=wpn"] = "name the weapon type",
+        ["context=wpn:"] = "name the weapon type",
+        ["context=sub"] = "name the subjob",
+        ["context=sub:"] = "name the subjob",
+        ["context=buf"] = "name the buff context",
+        ["context=buf: "] = "name the buff context",
+      }) do
+        local text = text_of(commands.command({ "unbind", "1L3", word }))
+        assert.is_not_nil(text:find(wanted, 1, true), word .. ": " .. text)
+      end
+    end)
+
+    it("says a weaponskill that does not exist does not, rather than asking its type", function()
+      local commands, world = build({ known = { ["Savage Blade"] = true } })
+      local text = text_of(commands.command({ "bind", "1L3", "ws", "Savage", "Blad" }))
+      assert.is_not_nil(text:find("no weaponskill named Savage Blad", 1, true), text)
+      assert.is_nil(world.files.SCH)
+    end)
+
+    -- A layer that cannot be read must never fall back to the job base: on
+    -- unbind that would delete the base binding.
+    it("refuses an unreadable context= on unbind, alias and icon, writing nothing", function()
+      local commands, world = build({ icons = { ["icons/custom/heal.png"] = true } })
+      commands.command({ "bind", "1L3", "ja", "Provoke" })
+      local saves = world.saved.SCH
+      for _, word in ipairs({ "context=wpn", "context=sub", "context=buf", "context=bogus:x", "context=" }) do
+        for _, line in ipairs({
+          { "unbind", "1L3", word },
+          { "alias", "1L3", "Pro", word },
+          { "icon", "1L3", "heal", word },
+        }) do
+          local text = text_of(commands.command(line))
+          assert.is_not_nil(text:find("context=", 1, true), line[1] .. " " .. word .. ": " .. text)
+        end
+      end
+      assert.equal(saves, world.saved.SCH)
+      assert.same({ type = "ja", action = "Provoke" }, stored(world, "SCH", 1, "left", 3))
+    end)
+
+    it("takes one context= on unbind, alias and icon, as bind does", function()
+      local commands, world = build({ icons = { ["icons/custom/heal.png"] = true } })
+      commands.command({ "bind", "1L3", "ja", "Provoke", "context=sub:whm" })
+      for _, line in ipairs({
+        { "unbind", "1L3", "context=sub:whm", "context=sub:whm" },
+        { "alias", "1L3", "Pro", "context=sub:whm", "context=buf:light-arts" },
+        { "icon", "1L3", "heal", "context=sub:whm", "context=sub:whm" },
+      }) do
+        local text = text_of(commands.command(line))
+        assert.is_not_nil(text:find("one context= only", 1, true), line[1] .. ": " .. text)
+      end
+      assert.same({ type = "ja", action = "Provoke" }, world.files.SCH.sub.WHM[1].left[3])
+    end)
+
+    -- What the player typed comes back in the CLI's terms - never the
+    -- model's `ctx:` or a set number glued onto a mangled layer.
+    it("refuses a layer name that is not one word, in the CLI's own terms", function()
+      local commands, world = build()
+      for _, words in ipairs({
+        { "context=buf:light arts" },
+        { "context=buf:light-arts", "live" },
+        { "context=sub:whm:1" },
+      }) do
+        local line = { "bind", "1L3", "ja", "Provoke" }
+        for _, word in ipairs(words) do
+          line[#line + 1] = word
+        end
+        local text = text_of(commands.command(line))
+        assert.is_not_nil(text:find("context=", 1, true), text)
+        assert.is_nil(text:find("ctx:", 1, true), text)
+        assert.is_nil(text:find("unknown layer", 1, true), text)
+      end
+      assert.is_nil(world.files.SCH)
+    end)
+
+    it("trims a weapon type before reading it", function()
+      local commands, world = build()
+      commands.command({ "bind", "1L3", "ja", "Provoke", "context=wpn:", "sword" })
+      assert.equal("Provoke", weapons(world).Sword[1].left[3].action)
+    end)
+
+    -- A swap moves every layer at once and takes no context=, so its
+    -- refusal must not point at a form it would refuse in turn.
+    it("refuses a layer on swap without pointing at context=", function()
+      local commands = build()
+      local text = text_of(commands.command({ "swap", "sub:1L3", "2R5" }))
+      assert.is_nil(text:find("context=", 1, true), text)
+      assert.is_not_nil(text:find("every layer", 1, true), text)
+    end)
+
+    -- Only bind infers a weaponskill's layer; an edit with no context= is
+    -- the job base, so an empty one names the layers the address holds.
+    it("points an edit of an empty layer at the layers the address does hold", function()
+      local commands = build()
+      commands.command({ "bind", "1R1", "ws", "Savage", "Blade" })
+      local text = text_of(commands.command({ "alias", "1R1", "SB" }))
+      assert.is_not_nil(text:find("try it with context=wpn:sword", 1, true), text)
+      commands.command({ "bind", "1R2", "ja", "Provoke" })
+      text = text_of(commands.command({ "unbind", "1R2", "context=sub:whm" }))
+      assert.is_not_nil(text:find("try it without context=", 1, true), text)
+    end)
+
+    it("refuses a context that names nothing, or no layer", function()
+      local commands = build()
+      for _, word in ipairs({ "context=wpn", "context=sub", "context=buf", "context=bogus:x", "context=" }) do
+        local text = text_of(commands.command({ "bind", "1L3", "ja", "Provoke", word }))
+        assert.is_not_nil(text:find("context=", 1, true), word .. ": " .. text)
+      end
+    end)
+
+    it("unbinds, relabels and re-icons the layer context= names", function()
+      local commands, world = build({ icons = { ["icons/custom/heal.png"] = true } })
+      commands.command({ "bind", "1L3", "ja", "Provoke", "context=sub:whm" })
+      commands.command({ "alias", "1L3", "Heal", "Me", "context=sub:whm" })
+      assert.equal("Heal Me", world.files.SCH.sub.WHM[1].left[3].alias)
+      commands.command({ "icon", "1L3", "heal", "context=sub:whm" })
+      assert.equal("heal", world.files.SCH.sub.WHM[1].left[3].icon)
+      commands.command({ "unbind", "1L3", "context=sub:whm" })
+      assert.is_nil(world.files.SCH.sub.WHM)
+    end)
+
+    it("lists each layer as the context= that reaches it", function()
+      local commands = build()
+      commands.command({ "bind", "1L3", "ja", "Provoke", "context=sub:whm" })
+      commands.command({ "bind", "1L4", "ws", "Savage", "Blade", "context=wpn:sword" })
+      commands.command({ "bind", "1L5", "ma", "Cure", "context=buf:light-arts" })
+      local text = text_of(commands.command({ "list", "1" }))
+      assert.is_not_nil(text:find("context=sub:whm", 1, true), text)
+      assert.is_not_nil(text:find("context=wpn:sword", 1, true), text)
+      assert.is_not_nil(text:find("context=buf:light-arts", 1, true), text)
+    end)
+
+    -- A buff context is `buf:` (Kevin, 2026-10-13), in what is typed and in
+    -- what is said back.
+    it("names a buff context buf:, and says it back that way", function()
+      local commands, world = build()
+      local text = text_of(commands.command({ "bind", "1L3", "ma", "Cure", "context=buf:light-arts" }))
+      assert.is_not_nil(text:find("context=buf:light-arts", 1, true), text)
+      text = text_of(commands.command({ "bind", "1L4", "ma", "Cure", "context=ctx:light-arts" }))
+      assert.is_not_nil(text:find("context=buf:", 1, true), text)
+      assert.is_nil(world.files.SCH.contexts["light-arts"][1].left[4])
     end)
   end)
 
@@ -1913,16 +2183,19 @@ describe("crossbar commands", function()
   end)
 
   describe("case folding", function()
-    it("takes an upper-case layer prefix", function()
+    it("takes an upper-case context marker and layer", function()
       local commands, world = build({ sub = "NIN" })
-      assert.is_true(select(3, commands.command({ "bind", "SUB:1L3", "ja", "Utsusemi" })), "sub:")
+      assert.is_true(select(3, commands.command({ "bind", "1L3", "ja", "Utsusemi", "CONTEXT=SUB:NIN" })), "sub:")
       assert.equal("Utsusemi", world.files.SCH.sub.NIN[1].left[3].action)
-      assert.is_true(select(3, commands.command({ "bind", "CTX:Light-Arts:1L3", "ja", "Addendum:", "White" })), "ctx:")
+      assert.is_true(
+        select(3, commands.command({ "bind", "1L3", "ja", "Addendum:", "White", "CONTEXT=BUF:Light-Arts" })),
+        "buf:"
+      )
       assert.equal("Addendum: White", world.files.SCH.contexts["light-arts"][1].left[3].action)
-      commands.command({ "bind", "SUB:1L3", "ja", "Utsusemi" })
-      assert.is_true(select(3, commands.command({ "alias", "SUB:1L3", "Shadows" })), "alias")
+      commands.command({ "bind", "1L3", "ja", "Utsusemi", "CONTEXT=SUB:NIN" })
+      assert.is_true(select(3, commands.command({ "alias", "1L3", "Shadows", "CONTEXT=SUB:NIN" })), "alias")
       assert.equal("Shadows", world.files.SCH.sub.NIN[1].left[3].alias)
-      assert.is_true(select(3, commands.command({ "unbind", "SUB:1L3" })), "unbind")
+      assert.is_true(select(3, commands.command({ "unbind", "1L3", "CONTEXT=SUB:NIN" })), "unbind")
     end)
 
     -- The framework folds verbs and names everywhere; the side argument is
@@ -2063,11 +2336,11 @@ describe("crossbar commands", function()
       end
     end)
 
-    it("names every layer prefix an address can carry", function()
+    it("names every layer form context= can carry", function()
       local commands = build()
       local text = text_of(commands.command({ "help" }))
-      for _, prefix in ipairs({ "sub:", "wpn:", "ctx:" }) do
-        assert.is_not_nil(text:find(prefix, 1, true), prefix .. " missing from help: " .. text)
+      for _, form in ipairs({ "context=sub:", "context=wpn:", "context=buf:" }) do
+        assert.is_not_nil(text:find(form, 1, true), form .. " missing from help: " .. text)
       end
     end)
 
@@ -2146,8 +2419,14 @@ describe("crossbar commands", function()
 
     it("binds into a named subjob by <set>:<slot>", function()
       local commands, world = hotbar({ known = { Cure = true } })
-      commands.command({ "bind", "sub:whm:3:7", "ma", "Cure", "t" })
+      commands.command({ "bind", "3:7", "ma", "Cure", "t", "context=sub:whm" })
       assert.equal("Cure", world.files.SCH.sub.WHM[3].row[7].action)
+    end)
+
+    it("files a weaponskill under its own weapon type by <set>:<slot>", function()
+      local commands, world = hotbar({ known = { Cure = true } })
+      commands.command({ "bind", "3:7", "ws", "Savage", "Blade" })
+      assert.equal("Savage Blade", world.files.SCH.weapons.Sword[3].row[7].action)
     end)
 
     it("refuses the crossbar's shape and an eleventh slot, naming its own form", function()

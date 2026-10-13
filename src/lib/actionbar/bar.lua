@@ -200,6 +200,12 @@ local function new(deps)
     return index[key:lower()]
   end
 
+  -- The weapon type a weaponskill resource belongs to, by its own `skill`.
+  local function weapon_type_of(ws)
+    local skill = resources ~= nil and resources.skills ~= nil and resources.skills[ws.skill] or nil
+    return type(skill) == "table" and skill.en or nil
+  end
+
   local function display_category(resource_type)
     if type(resource_type) ~= "string" then
       return nil
@@ -244,8 +250,7 @@ local function new(deps)
     elseif record.type == "ws" then
       local ws = resource_by_name("weapon_skills", record.action)
       if ws ~= nil then
-        local skill = resources ~= nil and resources.skills and resources.skills[ws.skill] or nil
-        return { kind = "ws", ws_id = ws.id, weapon = skill and skill.en or nil, tp_cost = 1000 }
+        return { kind = "ws", ws_id = ws.id, weapon = weapon_type_of(ws), tp_cost = 1000 }
       end
     elseif record.type == "item" or record.type == "enchanteditem" then
       local item = resource_by_name("items", record.action)
@@ -298,6 +303,12 @@ local function new(deps)
         return nil
       end
       return resource_by_name(table_name, action) ~= nil
+    end,
+    -- The weapon type a weaponskill belongs to, by the resources' own
+    -- `skill`: where the CLI files one bound with no context=.
+    weapon_class_of = function(action)
+      local ws = resource_by_name("weapon_skills", action)
+      return ws ~= nil and weapon_type_of(ws) or nil
     end,
   })
   self.authoring = authoring
