@@ -362,7 +362,7 @@ local function take_labels(words, from, targetable, targeted)
       -- Unreachable from `bind`, which starts at a marker and lets every
       -- value run to the next one. Answering rather than assuming keeps a
       -- later caller from dropping words in silence.
-      return nil, "a label starts at alias= or icon= - drop " .. join(words, index)
+      return nil, "a label starts at alias=, icon= or context= - drop " .. join(words, index)
     end
     local stop = index
     while stop < #words and label_marker(words[stop + 1]) == nil do
@@ -441,7 +441,11 @@ local function layer_of(value)
        `unknown layer: ctx:light arts:1`, which names neither what was typed
        nor the form that works. ]]
   if kind == "wpn" then
-    return "wpn:" .. kebab(name)
+    local word = kebab(name)
+    if not word:match("^[%w%-]+$") or not word:match("%w") then
+      return nil, "no such weapon type: " .. name .. " - context=wpn:<weapon type>, like context=wpn:sword"
+    end
+    return "wpn:" .. word
   elseif kind == "sub" then
     if not name:match("^%a+$") then
       return nil, "no such subjob: " .. name .. " - context=sub:<job>, like context=sub:whm"
@@ -493,14 +497,22 @@ end
 --[[ The `context=` word out of a line that takes no other marker - unbind,
      alias, icon - wherever it stands, and the words left without it. One
      word: a layer has no spaces, and one the client handed over quoted
-     arrives as a single word. A second marker is the fourth answer, so it
-     is refused as bind refuses it rather than kept as a word of an alias. ]]
+     arrives as a single word. The one exception is a value split where
+     bind would read it whole - `context=wpn: sword`, `context= wpn:sword` -
+     which takes the next word too; anything later stays an alias's. A
+     second marker is the fourth answer, so it is refused as bind refuses
+     it rather than kept as a word of an alias. ]]
 local function extract_context(words, from)
   local kept, found, value, repeated = {}, false, nil, nil
-  for index = from, #words do
+  local index = from
+  while index <= #words do
     local word = words[index]
     local field, rest = word:match("^(%a+)=(.*)$")
     if field ~= nil and field:lower() == "context" then
+      local following = words[index + 1]
+      if (trim(rest) == "" or rest:match(":%s*$")) and following ~= nil and not following:match("^%a+=") then
+        rest, word, index = rest .. " " .. following, word .. " " .. following, index + 1
+      end
       if found then
         repeated = word
       else
@@ -509,6 +521,7 @@ local function extract_context(words, from)
     else
       kept[#kept + 1] = word
     end
+    index = index + 1
   end
   return kept, found, value, repeated
 end
@@ -887,7 +900,9 @@ local function new(deps)
         end
         if #head > 1 then
           local extra = join(head, 2)
-          return hint("ra takes a target, then alias= and icon= - drop " .. extra .. label_hint(extra, labelled))
+          return hint(
+            "ra takes a target, then alias=, icon= and context= - drop " .. extra .. label_hint(extra, labelled)
+          )
         end
       elseif kind ~= "ra" and #head > 0 then
         local extra = join(head)
@@ -923,7 +938,7 @@ local function new(deps)
         -- the screen names are what the user is missing.
         local extra = join(head, 2)
         return hint(
-          "open takes one screen name, then alias= and icon= - "
+          "open takes one screen name, then alias=, icon= and context= - "
             .. extra
             .. " is neither; drop it"
             .. label_hint(extra, labelled)
@@ -935,7 +950,7 @@ local function new(deps)
       record.action = undelimit(head[1]):lower()
     elseif kind == "jc" then
       if #head ~= 1 then
-        return hint("jc takes one main/sub pair, like WAR/BLM, then alias= and icon=")
+        return hint("jc takes one main/sub pair, like WAR/BLM, then alias=, icon= and context=")
       end
       local main, sub = jobchange.parse(undelimit(head[1]))
       if main == nil then
@@ -960,33 +975,28 @@ local function new(deps)
     --[[ A weaponskill belongs to ONE weapon type, the resources' own, and
          is filed there (Kevin, 2026-10-13) - never the one in hand, since a
          gun's weaponskill on the sword's layer is a slot that empties the
-         moment the sword does. A context= naming any other layer is refused
-         here, BEFORE the swallowed-word check, which would otherwise advise
-         a retry only to have it refused for the layer - and after the
-         labels, whose refusal of a target typed behind context= is the one
-         every marker gives. A name that swallowed a word has no type to
-         name, so that refusal names the form. ]]
+         moment the sword does. A context= naming another layer is refused
+         here, after the labels (whose refusal of a target typed behind
+         context= is the one every marker gives) and BEFORE the
+         swallowed-word check, which would otherwise advise a retry only to
+         have it refused for the layer. Only where the type is KNOWN, which
+         a name that swallowed a word never is: those wait for that check,
+         below. ]]
     local layer, layer_complaint = resolve_layer(context_marker(rest, labels_at))
     if layer == false then
       return hint(layer_complaint)
     end
     local weapon_class = kind == "ws" and deps.weapon_class_of ~= nil and deps.weapon_class_of(record.action) or nil
     local own_layer = weapon_class ~= nil and ("wpn:" .. kebab(weapon_class)) or nil
-    if kind == "ws" and layer ~= nil and layer ~= own_layer then
-      if own_layer ~= nil then
-        return hint(
-          record.action
-            .. (weapon_class:match("^[AEIOUaeiou]") and " is an " or " is a ")
-            .. weapon_class
-            .. " weaponskill - context="
-            .. own_layer
-            .. ", or leave context= off"
-        )
-      elseif not layer:match("^wpn:") then
-        return hint(
-          "a weaponskill binds on a weapon layer - context=wpn:<weapon type>, or leave context= off for its own"
-        )
-      end
+    if kind == "ws" and own_layer ~= nil and layer ~= nil and layer ~= own_layer then
+      return hint(
+        record.action
+          .. (weapon_class:match("^[AEIOUaeiou]") and " is an " or " is a ")
+          .. weapon_class
+          .. " weaponskill - context="
+          .. own_layer
+          .. ", or leave context= off"
+      )
     end
     local ok, complaint_text = deps.validate(record)
     if ok == nil then
@@ -1002,18 +1012,25 @@ local function new(deps)
     if refusal ~= nil then
       return hint(refusal)
     end
-    -- With no context=, its own type's layer - inferred only now, past the
-    -- swallowed-word check, which has the better answer for a name that
-    -- took in a target.
-    if kind == "ws" and layer == nil then
-      if own_layer == nil then
-        if known_action("ws", record.action) == false then
-          return hint("no weaponskill named " .. record.action)
-        end
+    --[[ A weaponskill whose type is not known, past the swallowed-word
+         check, which has the better answer for a name that took in a
+         target. One the resources do not have is refused whatever layer it
+         names - a weapon layer would only store the typo - and the form is
+         named only where it can work: with no type to infer, leaving
+         context= off would be refused in turn. ]]
+    if kind == "ws" and own_layer == nil then
+      if known_action("ws", record.action) == false then
+        return hint("no weaponskill named " .. record.action)
+      elseif layer == nil then
         return hint(
           "cannot tell which weapon type " .. record.action .. " belongs to - give it as context=wpn:<weapon type>"
         )
+      elseif not layer:match("^wpn:") then
+        return hint("a weaponskill binds on a weapon layer - context=wpn:<weapon type>")
       end
+    end
+    -- With no context=, its own type's layer.
+    if kind == "ws" and layer == nil then
       layer = own_layer
     end
     local wrote, err = bindings().bind(set_arg(address, layer), side, slot, record)

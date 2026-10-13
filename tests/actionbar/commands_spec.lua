@@ -2000,6 +2000,74 @@ describe("crossbar commands", function()
       end
     end)
 
+    -- The edit verbs read a context= split over two words the way bind
+    -- does - at the colon, or after the marker - without taking in the
+    -- words of an alias that follows a whole one.
+    it("reads a context= split over two words on unbind, alias and icon", function()
+      local commands, world = build({ icons = { ["icons/custom/heal.png"] = true } })
+      commands.command({ "bind", "1L3", "ja", "Provoke", "context=wpn:sword" })
+      commands.command({ "alias", "1L3", "Pro", "context=wpn:", "sword" })
+      assert.equal("Pro", weapons(world).Sword[1].left[3].alias)
+      commands.command({ "icon", "1L3", "heal", "context=", "wpn:sword" })
+      assert.equal("heal", weapons(world).Sword[1].left[3].icon)
+      commands.command({ "alias", "1L3", "context=wpn:sword", "Heal", "Me" })
+      assert.equal("Heal Me", weapons(world).Sword[1].left[3].alias)
+      local text = text_of(commands.command({ "unbind", "1L3", "context=wpn:", "sword" }))
+      assert.is_not_nil(text:find("unbound 1L3 context=wpn:sword", 1, true), text)
+    end)
+
+    -- With no type to infer, leaving context= off would be refused in turn.
+    it("does not advise leaving context= off for a weaponskill whose type it cannot tell", function()
+      local commands = build()
+      local text = text_of(commands.command({ "bind", "1L6", "ws", "Mystery", "context=sub:whm" }))
+      assert.is_nil(text:find("leave context= off", 1, true), text)
+      assert.is_not_nil(text:find("context=wpn:<weapon type>", 1, true), text)
+    end)
+
+    it("names context= among the labels in every type's own hint", function()
+      local commands = build()
+      for _, line in ipairs({
+        { "bind", "1L3", "ra", "t", "extra" },
+        { "bind", "1L3", "open", "equipment", "extra" },
+        { "bind", "1L3", "jc", "WAR/BLM", "extra" },
+      }) do
+        local text = text_of(commands.command(line))
+        assert.is_not_nil(text:find("context=", 1, true), line[3] .. ": " .. text)
+      end
+    end)
+
+    it("refuses a weapon type with no letters in the CLI's own terms", function()
+      local commands, world = build()
+      local text = text_of(commands.command({ "bind", "1L3", "ja", "Provoke", "context=wpn:." }))
+      assert.is_nil(text:find("unknown layer", 1, true), text)
+      assert.is_not_nil(text:find("context=wpn:", 1, true), text)
+      assert.is_nil(world.files.SCH)
+    end)
+
+    it("says a weaponskill that does not exist does not, whatever layer it names", function()
+      local commands, world = build({ known = { ["Savage Blade"] = true } })
+      for _, word in ipairs({ "context=sub:whm", "context=wpn:sword" }) do
+        local text = text_of(commands.command({ "bind", "1L4", "ws", "Mystery", word }))
+        assert.is_not_nil(text:find("no weaponskill named Mystery", 1, true), word .. ": " .. text)
+      end
+      assert.is_nil(world.files.SCH)
+    end)
+
+    it("names the whole of a second, split context= in its refusal", function()
+      local commands = build()
+      commands.command({ "bind", "1L3", "ja", "Provoke", "context=wpn:sword" })
+      local text = text_of(commands.command({ "alias", "1L3", "Pro", "context=wpn:sword", "context=sub:", "whm" }))
+      assert.is_not_nil(text:find("one context= only - drop context=sub: whm", 1, true), text)
+      text = text_of(commands.command({ "unbind", "1L3", "context=", "context=wpn:sword" }))
+      assert.is_not_nil(text:find("one context= only", 1, true), text)
+    end)
+
+    it("refuses a weapon type of dashes alone in the CLI's own terms", function()
+      local commands = build()
+      local text = text_of(commands.command({ "bind", "1L3", "ja", "Provoke", "context=wpn:-" }))
+      assert.is_not_nil(text:find("no such weapon type", 1, true), text)
+    end)
+
     it("says a weaponskill that does not exist does not, rather than asking its type", function()
       local commands, world = build({ known = { ["Savage Blade"] = true } })
       local text = text_of(commands.command({ "bind", "1L3", "ws", "Savage", "Blad" }))
