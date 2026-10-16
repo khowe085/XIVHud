@@ -44,18 +44,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local new_window = require("lib/window")
 
 local TITLE = "XIVHud settings"
-local MENU_WIDTH = 210
+-- Every width at a 1080-line UI; scaled by the window's own factor on open.
+local BASE_MENU_WIDTH = 210
 -- Reserved per tab rather than measured, like every width here.
-local TAB_WIDTH = 160
+local BASE_TAB_WIDTH = 160
 -- Where a row's control starts, past its label.
-local LABEL_WIDTH = 300
-local TOGGLE_WIDTH = 80
+local BASE_LABEL_WIDTH = 300
+local BASE_TOGGLE_WIDTH = 80
 -- A stepper: a step down, the value, a step up. The value's width is
 -- RESERVED rather than measured - Windower cannot say how wide a string will
 -- draw - so the step up stays put while the digits change.
-local STEP_WIDTH = 40
-local VALUE_WIDTH = 160
-local CONTROL_GAP = 6
+local BASE_STEP_WIDTH = 40
+local BASE_VALUE_WIDTH = 160
+local BASE_CONTROL_GAP = 6
 
 local function new(deps)
   deps = deps or {}
@@ -69,8 +70,20 @@ local function new(deps)
   })
   local MOVE, LEFT_DOWN, LEFT_UP, WHEEL = chrome.MOVE, chrome.LEFT_DOWN, chrome.LEFT_UP, chrome.WHEEL
   local inside, draw_rows = chrome.inside, chrome.draw_rows
-  local metrics = chrome.metrics()
-  local GAP, ROW_HEIGHT, BODY_ROWS = metrics.gap, metrics.row_height, metrics.body_rows
+  local BODY_ROWS = chrome.metrics().body_rows
+  -- The lengths at this screen's scale, set by apply_scale on every open.
+  local GAP, ROW_HEIGHT
+  local MENU_WIDTH, TAB_WIDTH, LABEL_WIDTH, TOGGLE_WIDTH, STEP_WIDTH, VALUE_WIDTH, CONTROL_GAP
+
+  local function apply_scale()
+    local metrics = chrome.metrics()
+    local scale = metrics.scale
+    GAP, ROW_HEIGHT = metrics.gap, metrics.row_height
+    MENU_WIDTH, TAB_WIDTH, LABEL_WIDTH = BASE_MENU_WIDTH * scale, BASE_TAB_WIDTH * scale, BASE_LABEL_WIDTH * scale
+    TOGGLE_WIDTH, STEP_WIDTH, VALUE_WIDTH = BASE_TOGGLE_WIDTH * scale, BASE_STEP_WIDTH * scale, BASE_VALUE_WIDTH * scale
+    CONTROL_GAP = BASE_CONTROL_GAP * scale
+  end
+  apply_scale()
 
   local active = false
   -- Put away by its owner while the HUD is suppressed: still open, nothing
@@ -450,6 +463,7 @@ local function new(deps)
     end
     active = true
     chrome.cancel()
+    apply_scale()
     position = chrome.position(deps.window_pos ~= nil and deps.window_pos() or nil)
     if name ~= nil and known(name) then
       selected, tab = name, 1

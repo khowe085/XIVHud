@@ -38,19 +38,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 -- Windower's mouse types, as layout_mode names them.
 local MOVE, LEFT_DOWN, LEFT_UP, WHEEL = 0, 1, 2, 10
 
-local FONT_SIZE = 18
-local ROW_HEIGHT = 26
-local PAD = 10
-local GAP = 12
-local WIDTH = 920
-local HEIGHT = 600
-local BACK_WIDTH = 90
-local CLOSE_WIDTH = 50
+--[[ Every length on a 1080-line UI. A window scales with the screen as the
+     HUD does (Kevin, 2026-10-12) - every length times height / 1080, the
+     font included - so the row counts derived from them hold on any
+     screen. ]]
+local BASE_SCREEN_HEIGHT = 1080
+local BASE_FONT_SIZE = 18
+local BASE_ROW_HEIGHT = 26
+local BASE_PAD = 10
+local BASE_GAP = 12
+local BASE_WIDTH = 920
+-- A client that names no height of its own.
+local BASE_HEIGHT = 600
+local BASE_BACK_WIDTH = 90
+local BASE_CLOSE_WIDTH = 50
 -- The title line and the line under it.
 local HEADER_ROWS = 2
--- Derived from the window rather than fixed, so changing its height moves
--- every client's lists with it instead of leaving them short or overflowing.
-local BODY_ROWS = math.floor((HEIGHT - PAD * 2 - HEADER_ROWS * ROW_HEIGHT) / ROW_HEIGHT)
 -- xivcrossbar's black square (imported; notice in assets/own/LICENSE.txt),
 -- tinted and dimmed behind the window.
 local PANEL_TEXTURE = "assets/own/black-square.png"
@@ -95,13 +98,43 @@ local function new(deps)
     return width or 1920, height or 1080
   end
 
+  local base_height = deps.height or BASE_HEIGHT
+  -- Derived from the window rather than fixed, so changing its height moves
+  -- every client's lists with it instead of leaving them short or
+  -- overflowing. Counted at the base size, so it is the same on any screen.
+  local BODY_ROWS = math.floor((base_height - BASE_PAD * 2 - HEADER_ROWS * BASE_ROW_HEIGHT) / BASE_ROW_HEIGHT)
+
+  local sized_for, cached = nil, nil
+  --- The lengths at this screen's scale, re-derived only when its height moves.
+  local function sized()
+    local _, height = screen()
+    if cached == nil or height ~= sized_for then
+      local scale = (type(height) == "number" and height > 0) and height / BASE_SCREEN_HEIGHT or 1
+      sized_for = height
+      cached = {
+        scale = scale,
+        -- A point size is whole; the lengths need not be.
+        font_size = math.max(1, math.floor(BASE_FONT_SIZE * scale + 0.5)),
+        row_height = BASE_ROW_HEIGHT * scale,
+        pad = BASE_PAD * scale,
+        gap = BASE_GAP * scale,
+        width = BASE_WIDTH * scale,
+        height = base_height * scale,
+        back_width = BASE_BACK_WIDTH * scale,
+        close_width = BASE_CLOSE_WIDTH * scale,
+      }
+    end
+    return cached
+  end
+
   --[[ Fully on screen, always. A position saved at one resolution and
        opened at another would otherwise leave the window unreachable, and
        there is no keyboard to recentre it with. A window larger than the
        screen pins to the top left rather than inverting the range. ]]
   local function clamp(x, y)
     local screen_width, screen_height = screen()
-    return math.max(0, math.min(x, screen_width - WIDTH)), math.max(0, math.min(y, screen_height - HEIGHT))
+    local size = sized()
+    return math.max(0, math.min(x, screen_width - size.width)), math.max(0, math.min(y, screen_height - size.height))
   end
 
   --- A stored or dragged position made safe to open at: nil unless it is a
@@ -114,8 +147,19 @@ local function new(deps)
     return { x = x, y = y }
   end
 
+  --- `scale` is what a client multiplies its own lengths by; read it again
+  --- on every open, since the screen can change between two.
   function self.metrics()
-    return { font_size = FONT_SIZE, row_height = ROW_HEIGHT, gap = GAP, body_rows = BODY_ROWS }
+    local size = sized()
+    return {
+      scale = size.scale,
+      -- The font at a 1080-line UI, for a measure that must not move with the screen.
+      base_font_size = BASE_FONT_SIZE,
+      font_size = size.font_size,
+      row_height = size.row_height,
+      gap = size.gap,
+      body_rows = BODY_ROWS,
+    }
   end
 
   --[[ The window and its regions, dead centre unless it is told where.
@@ -124,6 +168,9 @@ local function new(deps)
        that would make both untestable. ]]
   function self.frame(position)
     local screen_width, screen_height = screen()
+    local size = sized()
+    local WIDTH, HEIGHT, PAD, GAP = size.width, size.height, size.pad, size.gap
+    local ROW_HEIGHT, BACK_WIDTH, CLOSE_WIDTH = size.row_height, size.back_width, size.close_width
     local x = position ~= nil and position.x or math.max(0, math.floor(screen_width / 2 - WIDTH / 2))
     local y = position ~= nil and position.y or math.max(0, math.floor(screen_height / 2 - HEIGHT / 2))
     local frame = { x = x, y = y, width = WIDTH, height = HEIGHT }
@@ -157,6 +204,7 @@ local function new(deps)
        that look the same. Answers the page it actually built: one past the
        end comes back as the last. ]]
   function self.paged(items, column, rows_per_page, page)
+    local ROW_HEIGHT = sized().row_height
     local pages = math.max(1, math.ceil(#items / rows_per_page))
     if page > pages then
       page = pages
@@ -311,6 +359,7 @@ local function new(deps)
     end
     local pool, made = {}, {}
     local family = deps.font ~= nil and deps.font() or nil
+    local font_size = sized().font_size
 
     function pool.image(texture)
       local prim = deps.new_image()
@@ -332,7 +381,7 @@ local function new(deps)
       prim.font(family or "sans-serif")
       -- The FAMILY is the client's, the SIZE is the window's: a bar's 10pt
       -- is unreadable at this scale.
-      prim.size(FONT_SIZE)
+      prim.size(font_size)
       prim.color(255, 255, 255)
       prim.stroke_width(1)
       prim.stroke_color(0, 0, 0)

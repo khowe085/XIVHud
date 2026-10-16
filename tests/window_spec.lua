@@ -221,13 +221,15 @@ describe("window", function()
       assert.are.same({ x = 300, y = 200 }, window.position({ x = 300, y = 200 }))
     end)
 
-    it("pins a window larger than the screen to the top left", function()
+    it("pins a window wider than the screen to the left edge", function()
       local window = build({
+        -- Scaled to the screen's height, it always fits that way; only a
+        -- narrow screen is too small.
         screen = function()
-          return 800, 500
+          return 400, 1080
         end,
       })
-      assert.are.same({ x = 0, y = 0 }, window.position({ x = 300, y = 200 }))
+      assert.are.same({ x = 0, y = 200 }, window.position({ x = 300, y = 200 }))
     end)
 
     it("answers a table of its own", function()
@@ -281,13 +283,15 @@ describe("window", function()
       assert.are.same(rect(1360, 250, 50, 26), frame.close)
     end)
 
-    it("pins a centred frame larger than the screen to the top left", function()
+    it("pins a centred frame wider than the screen to the left edge", function()
       local frame = build({
+        -- Scaled to the screen's height, it always fits that way; only a
+        -- narrow screen is too small.
         screen = function()
-          return 800, 500
+          return 400, 1080
         end,
       }).frame()
-      assert.are.same({ 0, 0 }, { frame.x, frame.y })
+      assert.are.same({ 0, 240 }, { frame.x, frame.y })
     end)
 
     it("centres on a whole pixel, rounded down, on an odd-sized screen", function()
@@ -320,7 +324,10 @@ describe("window", function()
   describe("metrics", function()
     it("names the numbers a client lays its rows out with", function()
       local window = build()
-      assert.are.same({ font_size = 18, row_height = 26, gap = 12, body_rows = 20 }, window.metrics())
+      assert.are.same(
+        { scale = 1, base_font_size = 18, font_size = 18, row_height = 26, gap = 12, body_rows = 20 },
+        window.metrics()
+      )
       assert.are_not.equal(window.metrics(), window.metrics())
     end)
 

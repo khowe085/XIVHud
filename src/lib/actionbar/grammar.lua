@@ -35,8 +35,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      here.
 
      `split(word)` takes an address as typed and answers its four parts -
-     the layer prefix (lower-cased, "" for the job base, "ctx:<name>" for a
-     context), the set's digits as typed, the side's canonical name and the
+     any prefix in front (lower-cased, "" for none - the CLI refuses one,
+     a layer being `context=` since 2026-10-13), the set's digits as typed, the side's canonical name and the
      slot's digits - or nil for anything that is not an address in this
      grammar. Bounds are the caller's to check: this only knows the shape.
      `label` is the other direction, for listings and replies. ]]
@@ -55,7 +55,7 @@ function M.crossbar()
     slot_count = 8,
     sides = sides,
     side_order = { "left", "right" },
-    form = "<set><L|R><slot> - 1L1, 2R8, sub:1L6, wpn:1L6, ctx:<name>:1L3",
+    form = "<set><L|R><slot> - 1L1, 2R8",
     split = function(word)
       if type(word) ~= "string" then
         return nil
@@ -79,16 +79,16 @@ function M.crossbar()
 end
 
 --- `<set>:<slot>` - `3:7`, `3:10`. Digits with a colon cannot be misread the
---- way `1l1` could, and `3-7` reads as a range. The layer prefixes go in
---- front exactly as on the crossbar, so the prefix is whatever precedes the
---- last two colon-separated numbers.
+--- way `1l1` could, and `3-7` reads as a range. Whatever precedes the last
+--- two colon-separated numbers is split off as a prefix, exactly as on the
+--- crossbar, so the CLI can refuse one: the layer is `context=`.
 function M.hotbar()
   return {
     set_count = SET_COUNT,
     slot_count = 10,
     sides = { row = "row" },
     side_order = { "row" },
-    form = "<set>:<slot> - 3:7, 3:10, sub:3:7, wpn:3:7, ctx:<name>:3:7",
+    form = "<set>:<slot> - 3:7, 3:10",
     split = function(word)
       if type(word) ~= "string" then
         return nil

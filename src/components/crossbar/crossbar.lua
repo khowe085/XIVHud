@@ -131,6 +131,8 @@ local EQUIP_CHUNK = 0x050
 local INVENTORY_READY_CHUNK = 0x01D
 -- Equipment slot 0 is the main hand (equipviewer's own slot table).
 local MAIN_HAND_SLOT = 0
+-- And slot 2 the ranged slot, which keys a weapon layer of its own.
+local RANGED_SLOT = 2
 
 local function new(ctx)
   local self = { name = "crossbar", alias = "cb", wants_store = true }
@@ -1112,7 +1114,7 @@ local function new(ctx)
         local raw = ...
         local equip = ctx.parse_packet ~= nil and ctx.parse_packet(raw) or nil
         local moved = type(equip) == "table" and equip["Equipment Slot"] or nil
-        if moved == nil or moved == MAIN_HAND_SLOT then
+        if moved == nil or moved == MAIN_HAND_SLOT or moved == RANGED_SLOT then
           bar.mark_weapon_dirty()
         end
       end

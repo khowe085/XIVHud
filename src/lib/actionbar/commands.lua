@@ -45,6 +45,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local roster = require("lib/actionbar/contexts")
 local grammars = require("lib/actionbar/grammar")
 local jobchange = require("lib/actionbar/jobchange")
+local kebab = require("lib/actionbar/kebab")
+local support_abilities = require("lib/actionbar/job_abilities")
 
 -- The component's own asset root, for the shipped half of an icon name.
 -- The asset ROOT, not one folder in it: what hangs off this is `own/` for
@@ -54,10 +56,10 @@ local ASSETS = "assets/"
 
 -- Slots 1-4 are the face cross, 5-8 the D-pad, both clockwise from the top
 -- (the component's own slot map). Nobody should have to memorise the indices.
---[[ An address is ONE word: `<set><L|R><slot>` - `1L1`, `2R8` - and may
-     carry a layer prefix, `sub:1L1`, `wpn:1L1` or `ctx:light-arts:1L1`.
-     Neither `sub:` nor `wpn:` names its layer: each addresses what is worn
-     or held right now, which is the only one the bar is showing.
+--[[ An address is ONE word: `<set><L|R><slot>` - `1L1`, `2R8` - and
+     carries no layer. It took a prefix until 2026-10-13 (`sub:1L1`,
+     `wpn:great-katana:1L1`, `ctx:light-arts:1L1`); the layer is the
+     `context=` marker now, beside alias= and icon= (see layer_of).
 
      It was three words (`1 l 1`) until 2026-08-22. The side was the
      problem: a lower-case `l` beside digits is indistinguishable from a
@@ -133,10 +135,11 @@ local function help_lines(name, grammar, with_views, extra)
   for _, line in ipairs(extra or {}) do
     lines[#lines + 1] = hud .. " " .. line
   end
-  lines[#lines + 1] = hud .. " bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>]"
-  lines[#lines + 1] = hud .. " unbind <address>"
-  lines[#lines + 1] = hud .. " alias <address> [<name>] - omit to clear"
-  lines[#lines + 1] = hud .. " icon <address> [<name>] - omit to clear"
+  lines[#lines + 1] = hud
+    .. " bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>]"
+  lines[#lines + 1] = hud .. " unbind <address> [context=<layer>]"
+  lines[#lines + 1] = hud .. " alias <address> [<name>] [context=<layer>] - omit the name to clear"
+  lines[#lines + 1] = hud .. " icon <address> [<name>] [context=<layer>] - omit the name to clear"
   lines[#lines + 1] = hud .. " swap <address> <address>"
   if with_views then
     lines[#lines + 1] = hud .. " view <wxhb-L|wxhb-R|exp-LR|exp-RL> <set><L|R>"
@@ -155,6 +158,9 @@ local function help_lines(name, grammar, with_views, extra)
   -- several words, and Windower strips the quotes that used to delimit one.
   lines[#lines + 1] =
     "  a bind's alias and icon are marked - alias=Cure 4 icon=cure - and the mark ends the action name"
+  -- The layer, which was a prefix on the address until 2026-10-13 (Kevin).
+  lines[#lines + 1] = "  a layer is context=sub:<job>, context=wpn:<weapon type> or context=buf:<buff context>"
+    .. " - none is the job base, and a weaponskill goes to its own weapon type"
   return lines
 end
 
@@ -289,14 +295,14 @@ local function join(words, from, to)
   return table.concat(kept, " ")
 end
 
---[[ The two label markers, `alias=` and `icon=`. The value one opens runs
-     to the next marker or the end of the line, which is what makes
+--[[ The label markers, `alias=`, `icon=` and `context=`. The value one
+     opens runs to the next marker or the end of the line, which makes
      `alias="My Alias"` read the same however the client hands it over: as
      one argument with the quotes stripped (what a live client does, settled
      2026-08-30), as two with the quotes still on, or as two bare words. The
      addon has no say in which of those it gets, and quotes alone -- the
      grammar this replaced -- survive none of them. ]]
-local LABEL_MARKERS = { alias = true, icon = true }
+local LABEL_MARKERS = { alias = true, icon = true, context = true }
 
 --- The field a word opens a label for and the first of its value, or nil.
 --- Matched case-insensitively, exactly as every verb and component name is.
@@ -375,7 +381,7 @@ local function take_labels(words, from, targetable, targeted)
       -- Unreachable from `bind`, which starts at a marker and lets every
       -- value run to the next one. Answering rather than assuming keeps a
       -- later caller from dropping words in silence.
-      return nil, "a label starts at alias= or icon= - drop " .. join(words, index)
+      return nil, "a label starts at alias=, icon= or context= - drop " .. join(words, index)
     end
     local stop = index
     while stop < #words and label_marker(words[stop + 1]) == nil do
@@ -416,6 +422,144 @@ local function take_labels(words, from, targetable, targeted)
     index = stop + 1
   end
   return found
+end
+
+--[[ The LAYER a verb writes, given as a third marker beside alias= and icon=
+     (Kevin, 2026-10-13): it was a prefix on the address until then, which
+     let a bare `wpn:` land a gun's weaponskill on the sword's layer. Every
+     form names what it means - a bare `wpn` or `sub` would read whatever is
+     worn or held right now, which is how that happened - and none is the
+     job base. The answer is the model's own prefix, `wpn:great-katana`.
+
+     A buff context is typed `buf:` (Kevin, 2026-10-13) and stored as the
+     model's `ctx:` - the CLI's word, not the model's, so nothing written
+     to a file changes. `layer_word` turns one back into the other. ]]
+local LAYER_FORMS = "context=sub:<job>, context=wpn:<weapon type> or context=buf:<buff context>"
+
+local MISSING_NAME = {
+  wpn = "name the weapon type - context=wpn:sword, context=wpn:marksmanship",
+  sub = "name the subjob - context=sub:whm",
+  buf = "name the buff context - context=buf:light-arts",
+}
+
+local function layer_of(value)
+  local text = tostring(value or "")
+  local kind, name = text:match("^(%a+):(.*)$")
+  if kind == nil then
+    kind, name = text:match("^(%a+)$"), ""
+  end
+  if kind == nil then
+    return nil, "a layer is " .. LAYER_FORMS
+  end
+  kind, name = kind:lower(), trim(name):lower()
+  if name == "" then
+    return nil, MISSING_NAME[kind] or ("a layer is " .. LAYER_FORMS)
+  end
+  --[[ A name is one word, checked here rather than left to the model: past
+       this point a stray word or colon comes back as the model's own
+       `unknown layer: ctx:light arts:1`, which names neither what was typed
+       nor the form that works. ]]
+  if kind == "wpn" then
+    local word = kebab(name)
+    if not word:match("^[%w%-]+$") or not word:match("%w") then
+      return nil, "no such weapon type: " .. name .. " - context=wpn:<weapon type>, like context=wpn:sword"
+    end
+    return "wpn:" .. word
+  elseif kind == "sub" then
+    if not name:match("^%a+$") then
+      return nil, "no such subjob: " .. name .. " - context=sub:<job>, like context=sub:whm"
+    end
+    return "sub:" .. name
+  elseif kind == "buf" then
+    if not name:match("^[%w%-]+$") then
+      return nil, "no such buff context: " .. name .. " - one word, like context=buf:light-arts"
+    end
+    return "ctx:" .. name
+  end
+  return nil, "a layer is " .. LAYER_FORMS
+end
+
+--- A model layer as the CLI says it: a buff context is `buf:`.
+local function layer_word(layer)
+  return (tostring(layer):gsub("^ctx:", "buf:"))
+end
+
+--- The layer a verb's context= names: nil where it carries none, false and
+--- the refusal where it names nothing.
+local function resolve_layer(has_context, value)
+  if not has_context then
+    return nil
+  end
+  local layer, complaint_text = layer_of(value)
+  if layer == nil then
+    return false, complaint_text
+  end
+  return layer
+end
+
+--- Whether a bind's labels carry `context=`, and its value (which may be
+--- empty), read the way take_labels reads every label.
+local function context_marker(words, from)
+  for index = from, #words do
+    local field, first = label_marker(words[index])
+    if field == "context" then
+      local stop = index
+      while stop < #words and label_marker(words[stop + 1]) == nil do
+        stop = stop + 1
+      end
+      return true, undelimit(trim(first .. " " .. join(words, index + 1, stop)))
+    end
+  end
+  return false, nil
+end
+
+--[[ The `context=` word out of a line that takes no other marker - unbind,
+     alias, icon - wherever it stands, and the words left without it. One
+     word: a layer has no spaces, and one the client handed over quoted
+     arrives as a single word. The one exception is a value split where
+     bind would read it whole - `context=wpn: sword`, `context= wpn:sword` -
+     which takes the next word too; anything later stays an alias's. A
+     second marker is the fourth answer, so it is refused as bind refuses
+     it rather than kept as a word of an alias. ]]
+local function extract_context(words, from)
+  local kept, found, value, repeated = {}, false, nil, nil
+  local index = from
+  while index <= #words do
+    local word = words[index]
+    local field, rest = word:match("^(%a+)=(.*)$")
+    if field ~= nil and field:lower() == "context" then
+      local following = words[index + 1]
+      if (trim(rest) == "" or rest:match(":%s*$")) and following ~= nil and not following:match("^%a+=") then
+        rest, word, index = rest .. " " .. following, word .. " " .. following, index + 1
+      end
+      if found then
+        repeated = word
+      else
+        found, value = true, undelimit(trim(rest))
+      end
+    else
+      kept[#kept + 1] = word
+    end
+    index = index + 1
+  end
+  return kept, found, value, repeated
+end
+
+--[[ The jobs whose subjob table claims an ability, by name. No ability is
+     in two (checked against the shipped table, 2026-10-13), but a list
+     keeps the refusal honest if one ever is. ]]
+local function ability_jobs(name)
+  local jobs, wanted = {}, tostring(name):lower()
+  for job, entries in pairs(support_abilities) do
+    for _, entry in ipairs(entries) do
+      if type(entry.name) == "string" and entry.name:lower() == wanted then
+        jobs[#jobs + 1] = job
+        break
+      end
+    end
+  end
+  table.sort(jobs)
+  return jobs
 end
 
 --[[ The action name and its target, over the words in FRONT of the labels.
@@ -503,7 +647,7 @@ local function new(deps)
       return set
     end
     if type(word) == "string" and word:find(":", 1, true) then
-      return nil, hint("a layer prefix belongs on bind, unbind, alias and icon - " .. tail)
+      return nil, hint("a layer is context= on bind, unbind, alias and icon - " .. tail)
     end
     return nil, complaint
   end
@@ -514,16 +658,13 @@ local function new(deps)
     return deps.bindings()
   end
 
-  --[[ One address word -> the three things the model wants: the set
-       argument (prefix and all, as the model spells it), the side folded to
-       `left`/`right`, and the slot number.
-
-       The prefix ends at the LAST colon, because a context address carries
-       two (`ctx:<name>:1L3`) and a context name may contain none. The set
-       is canonicalised to its own digits only when it stands alone, so
-       `007L1` echoes back as the 7 it addressed while a prefixed set keeps
-       the text the model's own patterns expect. ]]
-  local function parse_address(word, allow_prefix)
+  --[[ One address word -> the set (canonical digits, so `007L1` echoes back
+       as the 7 it addressed), the side folded to `left`/`right`, and the
+       slot number. An address carries no layer since 2026-10-13: that is
+       `context=`, and a prefix in front is refused pointing there - except
+       for a verb that moves every layer at once (`whole_stack`), which
+       takes no context= to point at. ]]
+  local function parse_address(word, whole_stack)
     if type(word) ~= "string" then
       return nil, hint("an address is " .. ADDRESS_FORM)
     end
@@ -531,8 +672,19 @@ local function new(deps)
     if digits == nil then
       return nil, hint("no such address: " .. word .. " - an address is " .. ADDRESS_FORM)
     end
-    if prefix ~= "" and not allow_prefix then
-      return nil, hint("a layer prefix belongs on bind, unbind, alias and icon - address this one as " .. ADDRESS_FORM)
+    if prefix ~= "" and whole_stack then
+      return nil,
+        hint("a swap moves every layer at once - drop the " .. prefix .. ": (an address is " .. ADDRESS_FORM .. ")")
+    end
+    if prefix ~= "" then
+      return nil,
+        hint(
+          "an address takes no layer in front - name the layer as "
+            .. LAYER_FORMS
+            .. " (an address is "
+            .. ADDRESS_FORM
+            .. ")"
+        )
     end
     local slot = whole_number(slot_word)
     if type(slot) ~= "number" or slot < 1 or slot > SLOT_COUNT then
@@ -542,9 +694,7 @@ local function new(deps)
     if type(set) ~= "number" or set < 1 or set > SET_COUNT then
       return nil, hint("no such set: " .. digits .. " - a set is 1-" .. SET_COUNT)
     end
-    -- Prefixed, the model parses the whole string itself and wants the
-    -- text; plain, the canonical digits.
-    return (prefix ~= "" and (prefix .. ":" .. digits) or tostring(set)), side, slot
+    return tostring(set), side, slot
   end
 
   --- `<set><L|R>`, for the views, which address a whole side and no slot.
@@ -557,8 +707,7 @@ local function new(deps)
       -- A layer prefix is the likelier mistake than a typo, and deserves
       -- its own answer: a view shows a whole side, every layer stacked.
       if word:find(":", 1, true) then
-        return nil,
-          hint("a layer prefix belongs on bind, unbind, alias and icon - a view points at <set><L|R>, e.g. 2L")
+        return nil, hint("a layer is context= on bind, unbind, alias and icon - a view points at <set><L|R>, e.g. 2L")
       end
       return nil, hint("no such view target: " .. word .. " - a view points at <set><L|R>, e.g. 2L")
     end
@@ -569,10 +718,14 @@ local function new(deps)
     return set, side_word:lower() == "l" and "left" or "right"
   end
 
-  -- "1L3", or "sub:1L3": the layer prefix is kept as the user addressed it,
-  -- and the side arrives already folded to "left"/"right".
-  local function address_label(set_arg, side, slot)
-    return grammar.label(set_arg, side, slot)
+  -- "1L3", and the layer it reached as the context= that names it.
+  local function address_label(set, side, slot, layer)
+    return grammar.label(set, side, slot) .. (layer ~= nil and (" context=" .. layer_word(layer)) or "")
+  end
+
+  -- The model's set argument: the layer's prefix in front of the set.
+  local function set_arg(set, layer)
+    return layer ~= nil and (layer .. ":" .. set) or set
   end
 
   --[[ The bound action as one readable phrase: type, name, target, and the
@@ -705,14 +858,46 @@ local function new(deps)
     return nil, nil
   end
 
-  --- `bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>]`.
+  --[[ A layer as a listing names it: the context= that reaches it, in the
+       form bind takes; the job base and the shared store, which no
+       context= names, as themselves. ]]
+  local function layer_tag(source)
+    local kind, name = tostring(source):match("^(%a+):(.+)$")
+    if kind == "sub" then
+      return "context=sub:" .. name:lower()
+    elseif kind == "wpn" then
+      return "context=wpn:" .. kebab(name)
+    elseif kind == "ctx" then
+      return "context=buf:" .. name
+    end
+    return "[" .. tostring(source) .. "]"
+  end
+
+  --[[ The way to the layers an address DOES hold, for an edit that found its
+       own empty: only bind infers a weaponskill's layer, so `alias 1R1 SB`
+       over one reads the job base, and "nothing bound" alone would deny
+       what the bar is drawing. ]]
+  local function held_hint(address, side, slot)
+    local ways = {}
+    for _, layer in ipairs(bindings().layers_at(tonumber(address), side, slot) or {}) do
+      local tag = layer_tag(layer.source)
+      ways[#ways + 1] = tag:match("^context=") and ("with " .. tag) or "without context="
+    end
+    if #ways == 0 then
+      return ""
+    end
+    return " - try it " .. table.concat(ways, " or ")
+  end
+
+  --- `bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>]`.
   local function bind(args)
     if #args < 3 then
       return hint(
-        "bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] - an address is " .. ADDRESS_FORM
+        "bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>] - an address is "
+          .. ADDRESS_FORM
       )
     end
-    local address, side, slot = parse_address(args[2], true)
+    local address, side, slot = parse_address(args[2])
     if address == nil then
       return side
     end
@@ -751,7 +936,9 @@ local function new(deps)
         end
         if #head > 1 then
           local extra = join(head, 2)
-          return hint("ra takes a target, then alias= and icon= - drop " .. extra .. label_hint(extra, labelled))
+          return hint(
+            "ra takes a target, then alias=, icon= and context= - drop " .. extra .. label_hint(extra, labelled)
+          )
         end
       elseif kind ~= "ra" and #head > 0 then
         local extra = join(head)
@@ -787,7 +974,7 @@ local function new(deps)
         -- the screen names are what the user is missing.
         local extra = join(head, 2)
         return hint(
-          "open takes one screen name, then alias= and icon= - "
+          "open takes one screen name, then alias=, icon= and context= - "
             .. extra
             .. " is neither; drop it"
             .. label_hint(extra, labelled)
@@ -799,7 +986,7 @@ local function new(deps)
       record.action = undelimit(head[1]):lower()
     elseif kind == "jc" then
       if #head ~= 1 then
-        return hint("jc takes one main/sub pair, like WAR/BLM, then alias= and icon=")
+        return hint("jc takes one main/sub pair, like WAR/BLM, then alias=, icon= and context=")
       end
       local main, sub = jobchange.parse(undelimit(head[1]))
       if main == nil then
@@ -821,6 +1008,32 @@ local function new(deps)
       end
       record.alias, record.icon = labels.alias or record.alias, labels.icon
     end
+    --[[ A weaponskill belongs to ONE weapon type, the resources' own, and
+         is filed there (Kevin, 2026-10-13) - never the one in hand, since a
+         gun's weaponskill on the sword's layer is a slot that empties the
+         moment the sword does. A context= naming another layer is refused
+         here, after the labels (whose refusal of a target typed behind
+         context= is the one every marker gives) and BEFORE the
+         swallowed-word check, which would otherwise advise a retry only to
+         have it refused for the layer. Only where the type is KNOWN, which
+         a name that swallowed a word never is: those wait for that check,
+         below. ]]
+    local layer, layer_complaint = resolve_layer(context_marker(rest, labels_at))
+    if layer == false then
+      return hint(layer_complaint)
+    end
+    local weapon_class = kind == "ws" and deps.weapon_class_of ~= nil and deps.weapon_class_of(record.action) or nil
+    local own_layer = weapon_class ~= nil and ("wpn:" .. kebab(weapon_class)) or nil
+    if kind == "ws" and own_layer ~= nil and layer ~= nil and layer ~= own_layer then
+      return hint(
+        record.action
+          .. (weapon_class:match("^[AEIOUaeiou]") and " is an " or " is a ")
+          .. weapon_class
+          .. " weaponskill - context="
+          .. own_layer
+          .. ", or leave context= off"
+      )
+    end
     local ok, complaint_text = deps.validate(record)
     if ok == nil then
       return hint(complaint_text)
@@ -835,58 +1048,133 @@ local function new(deps)
     if refusal ~= nil then
       return hint(refusal)
     end
-    local wrote, err = bindings().bind(address, side, slot, record)
+    --[[ A weaponskill whose type is not known, past the swallowed-word
+         check, which has the better answer for a name that took in a
+         target. One the resources do not have is refused whatever layer it
+         names - a weapon layer would only store the typo - and the form is
+         named only where it can work: with no type to infer, leaving
+         context= off would be refused in turn. ]]
+    if kind == "ws" and own_layer == nil then
+      if known_action("ws", record.action) == false then
+        return hint("no weaponskill named " .. record.action)
+      elseif layer == nil then
+        return hint(
+          "cannot tell which weapon type " .. record.action .. " belongs to - give it as context=wpn:<weapon type>"
+        )
+      elseif not layer:match("^wpn:") then
+        return hint("a weaponskill binds on a weapon layer - context=wpn:<weapon type>")
+      end
+    end
+    -- With no context=, its own type's layer.
+    if kind == "ws" and layer == nil then
+      layer = own_layer
+    end
+    --[[ A subjob's job ability (Kevin, 2026-10-13) binds through the
+         subjob menu or under a buff context, never on the base or a weapon
+         layer: with no context= it goes to the subjob layer of the job
+         whose table claims it, worn or not. One the main job's own table
+         claims is the main job's, and one no table claims (a main-only
+         ability) goes where it is put. ]]
+    if (kind == "ja" or kind == "pet") and record.action ~= nil then
+      local main = bindings().job()
+      local owners, own_sub, mains = ability_jobs(record.action), {}, false
+      for _, job in ipairs(owners) do
+        own_sub["sub:" .. job:lower()] = true
+        mains = mains or job == main
+      end
+      if main ~= nil and #owners > 0 and not mains then
+        if layer == nil and #owners == 1 then
+          layer = "sub:" .. owners[1]:lower()
+        elseif layer == nil or not (own_sub[layer] or layer:match("^ctx:")) then
+          local forms = {}
+          for index, job in ipairs(owners) do
+            forms[index] = "context=sub:" .. job:lower()
+          end
+          return hint(
+            record.action
+              .. " belongs to "
+              .. table.concat(owners, " and ")
+              .. " - "
+              .. table.concat(forms, " or ")
+              .. " or context=buf:<buff context>"
+          )
+        end
+      end
+    end
+    local wrote, err = bindings().bind(set_arg(address, layer), side, slot, record)
     if wrote == nil then
       return hint(err)
     end
-    local told = hint("bound " .. address_label(address, side, slot) .. " to " .. record_label(record))
+    local told = hint("bound " .. address_label(address, side, slot, layer) .. " to " .. record_label(record))
     if caution ~= nil then
       return { told, "  " .. caution }, false, true
     end
     return told, false, true
   end
 
-  --- `unbind <address>` -- the addressed layer only.
+  --- `unbind <address> [context=<layer>]` -- the addressed layer only.
   local function unbind(args)
-    if #args ~= 2 then
-      return hint("unbind <address> - an address is " .. ADDRESS_FORM)
+    local extra, has_context, context_value, repeated = extract_context(args, 3)
+    if repeated ~= nil then
+      return hint("one context= only - drop " .. repeated)
     end
-    local address, side, slot = parse_address(args[2], true)
+    if #args < 2 or #extra > 0 then
+      return hint("unbind <address> [context=<layer>] - an address is " .. ADDRESS_FORM)
+    end
+    local address, side, slot = parse_address(args[2])
     if address == nil then
       return side
     end
-    local entry, err = bindings().entry_at(address, side, slot)
+    local layer, layer_complaint = resolve_layer(has_context, context_value)
+    if layer == false then
+      return hint(layer_complaint)
+    end
+    local entry, err = bindings().entry_at(set_arg(address, layer), side, slot)
     if entry == nil then
       if err ~= nil then
         return hint(err)
       end
       -- An unbind of an empty address is a no-op in the model; saying so
-      -- beats a "done" that changed nothing (a mistyped layer prefix looks
+      -- beats a "done" that changed nothing (a mistyped layer looks
       -- exactly like this).
-      return hint("nothing bound at " .. address_label(address, side, slot))
+      return hint("nothing bound at " .. address_label(address, side, slot, layer) .. held_hint(address, side, slot))
     end
-    local wrote, write_err = bindings().unbind(address, side, slot)
+    local wrote, write_err = bindings().unbind(set_arg(address, layer), side, slot)
     if wrote == nil then
       return hint(write_err)
     end
-    return hint("unbound " .. address_label(address, side, slot)), false, true
+    return hint("unbound " .. address_label(address, side, slot, layer)), false, true
   end
 
   --[[ `alias` and `icon`: per-entry overrides, not separate state. Both read
        the addressed layer's own entry, write one field of it and put it
-       back through bind, so a layer prefix means the same thing it does
+       back through bind, so a context= means the same thing it does
        everywhere else. Omitting the final argument clears the override. ]]
-  local function override(args, field, value, check)
-    local address, side, slot = parse_address(args[2], true)
+  local function override(args, field, value, check, context)
+    local address, side, slot = parse_address(args[2])
     if address == nil then
       return side
     end
-    local entry, err = bindings().entry_at(address, side, slot)
+    if context.repeated ~= nil then
+      return hint("one context= only - drop " .. context.repeated)
+    end
+    local layer, layer_complaint = resolve_layer(context.found, context.value)
+    if layer == false then
+      return hint(layer_complaint)
+    end
+    local entry, err = bindings().entry_at(set_arg(address, layer), side, slot)
     if entry == nil then
       if err ~= nil then
         return hint(err)
       end
-      return hint("nothing bound at " .. address_label(address, side, slot) .. " to give " .. field .. " to")
+      return hint(
+        "nothing bound at "
+          .. address_label(address, side, slot, layer)
+          .. " to give "
+          .. field
+          .. " to"
+          .. held_hint(address, side, slot)
+      )
     end
     -- Value checks run AFTER the address does: "no job loaded yet" and
     -- "nothing bound there" are the more fundamental refusals, and a user
@@ -898,37 +1186,45 @@ local function new(deps)
       end
     end
     entry[field] = value
-    local wrote, write_err = bindings().bind(address, side, slot, entry)
+    local wrote, write_err = bindings().bind(set_arg(address, layer), side, slot, entry)
     if wrote == nil then
       return hint(write_err)
     end
     local phrase = value == nil and (field .. " cleared on ") or (field .. " '" .. value .. "' on ")
-    return hint(phrase .. address_label(address, side, slot)), false, true
+    return hint(phrase .. address_label(address, side, slot, layer)), false, true
   end
 
   local function alias(args)
     if #args < 2 then
-      return hint("alias <address> [<name>] - omit the name to clear")
+      return hint("alias <address> [<name>] [context=<layer>] - omit the name to clear")
     end
-    local name = trim(undelimit(join(args, 3)))
-    return override(args, "alias", name ~= "" and name or nil)
+    local words, has_context, context_value, repeated = extract_context(args, 3)
+    local name = trim(undelimit(join(words)))
+    return override(
+      args,
+      "alias",
+      name ~= "" and name or nil,
+      nil,
+      { found = has_context, value = context_value, repeated = repeated }
+    )
   end
 
   --- `icon <address> [<icon>]` -- the same name a bind takes, checked the
   --- same way.
   local function icon(args)
     if #args < 2 then
-      return hint("icon <address> [<icon>] - omit the icon to clear")
+      return hint("icon <address> [<icon>] [context=<layer>] - omit the icon to clear")
     end
+    local words, has_context, context_value, repeated = extract_context(args, 3)
     -- One name, but a quoted one may carry spaces: the folder is the
     -- player's own and the wiki tells them to name files whatever they want
     -- to type. An unquoted phrase simply resolves to no art and is refused
     -- by the check below.
-    local name = trim(undelimit(join(args, 3)))
+    local name = trim(undelimit(join(words)))
     name = name ~= "" and name or nil
     return override(args, "icon", name, function()
       return icon_complaint(name)
-    end)
+    end, { found = has_context, value = context_value, repeated = repeated })
   end
 
   --[[ `swap <address> <address>` -- both addresses' ENTIRE
@@ -942,7 +1238,7 @@ local function new(deps)
     for index, at in ipairs({ 2, 3 }) do
       -- No prefix: a swap moves every layer at once, so addressing one
       -- would promise something it does not do.
-      local set, side, slot = parse_address(args[at], false)
+      local set, side, slot = parse_address(args[at], true)
       if set == nil then
         return side
       end
@@ -973,7 +1269,7 @@ local function new(deps)
     end
     local first, last = 1, SET_COUNT
     if args[2] ~= nil then
-      local set, complaint = plain_set(args[2], "list already shows every layer, prefixes and all")
+      local set, complaint = plain_set(args[2], "list already shows every layer")
       if set == nil then
         return complaint
       end
@@ -992,10 +1288,10 @@ local function new(deps)
                would be on every row and mean nothing. ]]
           local layers = bindings().layers_at(set, side, slot)
           for _, layer in ipairs(layers) do
-            rows[#rows + 1] = ("  %-4s %s [%s]%s"):format(
+            rows[#rows + 1] = ("  %-4s %s %s%s"):format(
               grammar.label(set, side, slot),
               record_label(layer.entry),
-              layer.source,
+              layer_tag(layer.source),
               (#layers > 1 and layer.active) and " live" or ""
             )
           end
