@@ -609,6 +609,44 @@ local function new(config)
     return string.format("parambar has no '%s' setting (width, spacing, offset, compact, accuracy)", args[1]), false
   end
 
+  --[[ The same settings as rows of the `//hud config` window, each naming
+       the command above that sets it. Every value is read the way `status`
+       reads it: the three metrics from the block compact mode selects, which
+       is the block their verbs write, and the window from the tracker, which
+       falls back over a stored length it refuses. ]]
+  function self.config_panel()
+    local metrics = self.metrics()
+    local function metric(label, verb, value, step)
+      return {
+        label = label,
+        kind = "stepper",
+        value = value,
+        min = METRIC_VERBS[verb].min,
+        step = step,
+        command = { verb },
+      }
+    end
+    return {
+      rows = {
+        metric("Bar width", "width", metrics.bar_width, 4),
+        metric("Bar spacing", "spacing", metrics.spacing, 1),
+        metric("Bar offset", "offset", metrics.offset, 1),
+        { label = "Compact", kind = "toggle", value = metrics.compact, command = { "compact" } },
+        { label = "Accuracy row", kind = "toggle", value = accuracy_enabled(), command = { "accuracy" } },
+        {
+          label = "Accuracy window (s)",
+          kind = "stepper",
+          value = accuracy.window(),
+          -- The least whole number of seconds the `window` verb takes.
+          min = 1,
+          max = accuracy.max_window(),
+          step = 5,
+          command = { "accuracy", "window" },
+        },
+      },
+    }
+  end
+
   return self
 end
 

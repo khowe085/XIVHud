@@ -95,6 +95,12 @@ word**, `<set>:<slot>` - `3:7` is set 3, slot 7, and `3:10` its last slot -
 and a layer is named with `context=` as on the crossbar: `bind 3:7 ma Cure
 context=sub:whm`, `context=wpn:great-katana`, `context=buf:light-arts`.
 
+The settings that are not about one slot - which sets are shared, which
+rotation each set is in, each row's shape and hide-empty switch, and the set
+numbers - can also be changed with the mouse: `//hud config hotbar` opens the
+[settings window](../Home.md#settings-window) on this component. Slots
+themselves are edited in edit mode, not there.
+
 | Command | What it does |
 | --- | --- |
 | `//hud hotbar` | the job, active set and weapon state, then one line per row: on or off, shape, the set it shows, and whether it hides empty slots |

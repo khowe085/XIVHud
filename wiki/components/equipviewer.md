@@ -66,6 +66,9 @@ drawing.
 
 ## Commands
 
+Both switches can also be changed with the mouse: `//hud config equipviewer`
+opens the [settings window](../Home.md#settings-window) on this component.
+
 | Command | What it does |
 | --- | --- |
 | `//hud equipviewer` | print both toggles as they stand |

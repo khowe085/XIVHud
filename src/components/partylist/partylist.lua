@@ -858,6 +858,10 @@ local function new_list(ctx, variant, defaults)
     return lines, changed
   end
 
+  function self.config_rows()
+    return logic.config_rows()
+  end
+
   function self.destroy()
     background.top.destroy()
     background.mid.destroy()
@@ -1104,6 +1108,15 @@ local function new(ctx)
       save()
     end
     return lines
+  end
+
+  -- One tab per list, named by the list word handle_command takes.
+  function self.config_panel()
+    local tabs = {}
+    for index, anchor in ipairs(ANCHORS) do
+      tabs[index] = { name = anchor, rows = lists[anchor].config_rows() }
+    end
+    return { tabs = tabs }
   end
 
   return self

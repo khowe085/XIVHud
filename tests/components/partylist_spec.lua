@@ -1716,4 +1716,283 @@ describe("partylist widget", function()
       assert.are.equal(0, widget.defaults.lists.alliance1.item_spacing)
     end)
   end)
+
+  --[[ `//hud config` draws one tab per list, and every row names the command
+       a player would have typed - so a click goes through the same router,
+       and meets the same refusals, as the words do. ]]
+  describe("its panel in the settings window", function()
+    local panels = require("tests/support/panels")
+    local new_config_window = require("lib/config_window")
+
+    local LEFT_DOWN, LEFT_UP = 1, 2
+    local MAIN_ROWS = {
+      "Row spacing",
+      "Align",
+      "Empty rows",
+      "Hide when solo",
+      "Range display",
+      "Range near",
+      "Range far",
+    }
+
+    local function said(args)
+      return table.concat(widget.handle_command(args), "\n")
+    end
+
+    local function tab(list)
+      for _, shown in ipairs(widget.config_panel().tabs) do
+        if shown.name == list then
+          return shown
+        end
+      end
+      error("the panel has no tab named " .. list)
+    end
+
+    local function row(list, label)
+      for _, candidate in ipairs(tab(list).rows) do
+        if candidate.label == label then
+          return candidate
+        end
+      end
+      error(("the %s tab has no row labelled %s"):format(list, label))
+    end
+
+    -- One field of every row on a list's tab, in the order the rows are drawn.
+    local function column(list, field)
+      local values = {}
+      for index, candidate in ipairs(tab(list).rows) do
+        values[index] = candidate[field]
+      end
+      return values
+    end
+
+    --[[ One click on one control of a main-party row, through the real window:
+         `control` is `inc` or `dec`. Answers the replies to whatever the click
+         sent - none, where the row's bound left it nowhere to go. ]]
+    local function press(label, control)
+      local replies = {}
+      local window = new_config_window({
+        screen = function()
+          return 1920, 1080
+        end,
+        entries = function()
+          return { widget.name }
+        end,
+        panel = function()
+          return widget.config_panel()
+        end,
+        apply = function(_, words)
+          local reply = widget.handle_command(words)
+          replies[#replies + 1] = table.concat(words, " ") .. " -> " .. table.concat(reply, " ")
+          return reply
+        end,
+      })
+      window.open(widget.name)
+      for _, cell in ipairs(window.view().rows) do
+        if cell.label == label then
+          local rect = cell[control]
+          local x, y = rect.x + rect.width / 2, rect.y + rect.height / 2
+          window.mouse(LEFT_DOWN, x, y, 0)
+          window.mouse(LEFT_UP, x, y, 0)
+        end
+      end
+      window.close()
+      return replies
+    end
+
+    it("is one the window can draw", function()
+      assert.same({}, panels.problems(widget.config_panel()))
+    end)
+
+    it("mends a far ring inside the near one by stepping either onto the other, and no other way", function()
+      -- 10 and 3, where the gap is not the far distance: a pair that is
+      -- symmetric cannot tell the right step from a wrong one.
+      local function broken()
+        build()
+        local range = widget.defaults.lists.main.range
+        range.near, range.far = 10, 3
+      end
+      broken()
+      assert.same({ "range 3 3 -> partylist range set to near 3, far 3" }, press("Range near", "dec"))
+      broken()
+      assert.same({ "range 10 10 -> partylist range set to near 10, far 10" }, press("Range far", "inc"))
+      broken()
+      assert.same({}, press("Range near", "inc"))
+      broken()
+      assert.same({}, press("Range far", "dec"))
+    end)
+
+    it("reads a switch, a display mode or a distance of the wrong type the way the list draws it", function()
+      widget.attach({
+        lists = {
+          main = { show_empty_rows = 1, hide_solo = "on", range = { numeric = 1, near = "wide", far = "12" } },
+        },
+      }, function() end)
+      assert.same({}, panels.problems(widget.config_panel()))
+      assert.same({ 0, "top", false, false, "icons", 0, 12 }, column("main", "value"))
+      assert.is_not_nil(said({ "main" }):find("empty rows off", 1, true))
+      assert.is_not_nil(said({ "main" }):find("range icons, near 0, far 12", 1, true))
+      assert.is_not_nil(said({ "main" }):find("hide solo off", 1, true))
+    end)
+
+    it("reads a range that is a number as no range at all", function()
+      widget.attach({ lists = { main = { range = 7 } } }, function() end)
+      assert.same({}, panels.problems(widget.config_panel()))
+      assert.same({ 0, "top", false, false, "icons", 0, 0 }, column("main", "value"))
+    end)
+
+    it("changes every setting through its own command, and saves it", function()
+      assert.same({}, panels.failures(panels.exercise(widget)))
+      assert.equal(26, env.saves, "thirteen rows, each moved and put back")
+    end)
+
+    it("has one tab per list, named by the word its commands take", function()
+      local names = {}
+      for index, shown in ipairs(widget.config_panel().tabs) do
+        names[index] = shown.name
+      end
+      assert.same({ "main", "alliance1", "alliance2" }, names)
+    end)
+
+    it("offers an alliance list its spacing, alignment and empty rows, as they stand", function()
+      for _, list in ipairs({ "alliance1", "alliance2" }) do
+        assert.same({ "Row spacing", "Align", "Empty rows" }, column(list, "label"))
+        assert.same({ "stepper", "choice", "toggle" }, column(list, "kind"))
+        assert.same({ 0, "top", false }, column(list, "value"))
+      end
+
+      said({ "alliance1", "spacing", "6" })
+      said({ "alliance1", "align", "bottom" })
+      said({ "alliance1", "emptyrows", "on" })
+      assert.same({ 6, "bottom", true }, column("alliance1", "value"))
+      assert.same({ 0, "top", false }, column("alliance2", "value"))
+      assert.same({ 0, "top", false, false, "icons", 0, 0 }, column("main", "value"))
+    end)
+
+    -- hidesolo and range are refused at an alliance list, so a row there
+    -- could only ever answer with that refusal.
+    it("gives the main party the rows only it can answer, as they stand", function()
+      assert.same(MAIN_ROWS, column("main", "label"))
+      assert.same({ "stepper", "choice", "toggle", "toggle", "choice", "stepper", "stepper" }, column("main", "kind"))
+      assert.same({ 0, "top", false, false, "icons", 0, 0 }, column("main", "value"))
+
+      said({ "spacing", "4" })
+      said({ "align", "bottom" })
+      said({ "emptyrows", "on" })
+      said({ "hidesolo", "on" })
+      said({ "range", "num" })
+      said({ "range", "5", "10" })
+      assert.same({ 4, "bottom", true, true, "num", 5, 10 }, column("main", "value"))
+      assert.same({ 0, "top", false }, column("alliance1", "value"))
+    end)
+
+    it("puts the list word in front of a per-list command, and none on a main-only one", function()
+      assert.same(
+        { { "alliance2", "spacing" }, { "alliance2", "align" }, { "alliance2", "emptyrows" } },
+        column("alliance2", "command")
+      )
+      said({ "range", "5", "10" })
+      assert.same({
+        { "main", "spacing" },
+        { "main", "align" },
+        { "main", "emptyrows" },
+        { "hidesolo" },
+        { "range" },
+        { "range" },
+        { "range", "5" },
+      }, column("main", "command"))
+    end)
+
+    -- `range <near> <far>` takes both, so each row carries the other's value:
+    -- behind its own for near, in front for far.
+    it("sends the distance a range row does not step alongside the one it does", function()
+      said({ "range", "5", "10" })
+      assert.same({ "10" }, row("main", "Range near").suffix)
+      assert.is_nil(row("main", "Range far").suffix)
+    end)
+
+    it("offers the words align and range take", function()
+      assert.same({ "top", "bottom" }, row("alliance1", "Align").options)
+      local display = row("main", "Range display")
+      assert.same({ "icons", "num" }, display.options)
+      assert.same({ "icons", "numbers" }, display.labels)
+    end)
+
+    it("stops row spacing where the command does", function()
+      for _, list in ipairs({ "main", "alliance1", "alliance2" }) do
+        local spacing = row(list, "Row spacing")
+        assert.same({ 0, 1 }, { spacing.min, spacing.step })
+        assert.is_nil(spacing.max)
+      end
+      assert.is_not_nil(said({ "spacing", "-1" }):find("at least 0", 1, true))
+      assert.is_not_nil(said({ "spacing", "0" }):find("set to 0", 1, true))
+    end)
+
+    it("bounds each range distance by the other, as the command does", function()
+      said({ "range", "5", "10" })
+      local near, far = row("main", "Range near"), row("main", "Range far")
+      assert.same({ 0, 10 }, { near.min, near.max })
+      assert.equal(5, far.min)
+      assert.is_nil(far.max)
+
+      assert.is_not_nil(said({ "range", "5", "4" }):find("further than the near one", 1, true))
+      assert.is_not_nil(said({ "range", "11", "10" }):find("further than the near one", 1, true))
+      assert.is_not_nil(said({ "range", "10", "10" }):find("near 10, far 10", 1, true))
+      assert.is_not_nil(said({ "range", "-1", "10" }):find("range needs", 1, true))
+    end)
+
+    -- 0 switches a ring off, and the command's rule only ties two that are on.
+    it("leaves a range distance unbounded while the other is off", function()
+      assert.is_nil(row("main", "Range near").max)
+      assert.equal(0, row("main", "Range far").min)
+
+      said({ "range", "0", "10" })
+      assert.equal(10, row("main", "Range near").max)
+      assert.equal(0, row("main", "Range far").min)
+
+      said({ "range", "5", "0" })
+      assert.is_nil(row("main", "Range near").max)
+    end)
+
+    --[[ A far ring that is off under a near one that is on: every distance
+         short of the near one is refused, so a step of 1 would be too. ]]
+    it("steps a far ring that is off straight onto the near one", function()
+      said({ "range", "5", "0" })
+      local far = row("main", "Range far")
+      assert.same({ 0, 0, 5 }, { far.value, far.min, far.step })
+      for distance = 1, 4 do
+        assert.is_not_nil(said({ "range", "5", tostring(distance) }):find("further than the near one", 1, true))
+      end
+      assert.same({ "range 5 5 -> partylist range set to near 5, far 5" }, press("Range far", "inc"))
+    end)
+
+    --[[ The two distances share one command, so a bound read wrong shows up
+         as a click the parser turns down. Every pair is written rather than
+         typed: a far ring inside the near one is a state only a hand-edited
+         file holds, and a click there has to mend it, not be refused. ]]
+    it("never sends a range the command refuses", function()
+      for _, pair in ipairs({ { 0, 0 }, { 5, 0 }, { 0, 5 }, { 5, 10 }, { 5, 5 }, { 10, 5 } }) do
+        for _, label in ipairs({ "Range near", "Range far" }) do
+          for _, control in ipairs({ "dec", "inc" }) do
+            build()
+            local range = widget.defaults.lists.main.range
+            range.near, range.far = pair[1], pair[2]
+            local where = ("near %d, far %d, %s %s"):format(pair[1], pair[2], label, control)
+            assert.same({}, panels.problems(widget.config_panel()), where)
+
+            local replies = press(label, control)
+            assert.equal(#replies, env.saves, where .. ": " .. table.concat(replies, "; "))
+          end
+        end
+      end
+    end)
+
+    it("reads a setting the file does not hold the way the status line does", function()
+      widget.attach({ lists = { main = { item_spacing = "wide", align_bottom = 1, range = "far" } } }, function() end)
+      assert.same({}, panels.problems(widget.config_panel()))
+      assert.same({ 0, "top", false, false, "icons", 0, 0 }, column("main", "value"))
+      assert.is_not_nil(said({ "main" }):find("spacing 0, align top, empty rows off", 1, true))
+      assert.is_not_nil(said({ "main" }):find("range icons, near 0, far 0", 1, true))
+    end)
+  end)
 end)

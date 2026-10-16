@@ -1077,6 +1077,80 @@ local function new(deps)
     return unknown(args[1])
   end
 
+  --[[ Settings window ]]
+
+  local function stepper(label, value, command)
+    return { label = label, kind = "stepper", value = value, min = 0, step = 1, command = command }
+  end
+
+  local function switch(label, key, command)
+    return { label = label, kind = "toggle", value = config[key] == true, command = command }
+  end
+
+  --[[ The two distances share `range <near> <far>`, so each row sends the
+       other's value beside its own, and is bounded by it the way set_range
+       refuses: a far ring inside the near one, 0 being off for either.
+
+       A far ring that is off under a near one has no accepted distance short
+       of the near one, so its one step lands there. A file edited into a far
+       ring inside the near one gets the same on both rows - each steps onto
+       the other's value, which mends the pair. ]]
+  local function range_rows()
+    local settings = type(config.range) == "table" and config.range or {}
+    local near, far = tonumber(settings.near) or 0, tonumber(settings.far) or 0
+    local near_row = stepper("Range near", near, { "range" })
+    near_row.suffix = { tostring(far) }
+    local far_row = stepper("Range far", far, { "range", tostring(near) })
+
+    if far >= near then
+      far_row.min = near
+      near_row.max = far > 0 and far or nil
+    else
+      far_row.min, far_row.step = far, near - far
+      if far > 0 then
+        near_row.max, near_row.step = near, near - far
+      end
+    end
+
+    return {
+      {
+        label = "Range display",
+        kind = "choice",
+        value = settings.numeric == true and "num" or "icons",
+        options = { "icons", "num" },
+        labels = { "icons", "numbers" },
+        command = { "range" },
+      },
+      near_row,
+      far_row,
+    }
+  end
+
+  --[[ This list's page of the `//hud config` window, each row naming the
+       command above that sets it and reading its value as status() does. The
+       per-list verbs carry the list word; hidesolo and range carry none, the
+       router refusing them at any list but main. ]]
+  function self.config_rows()
+    local rows = {
+      stepper("Row spacing", tonumber(config.item_spacing) or 0, { variant, "spacing" }),
+      {
+        label = "Align",
+        kind = "choice",
+        value = config.align_bottom == true and "bottom" or "top",
+        options = { "top", "bottom" },
+        command = { variant, "align" },
+      },
+      switch("Empty rows", "show_empty_rows", { variant, "emptyrows" }),
+    }
+    if variant == "main" then
+      rows[#rows + 1] = switch("Hide when solo", "hide_solo", { "hidesolo" })
+      for _, row in ipairs(range_rows()) do
+        rows[#rows + 1] = row
+      end
+    end
+    return rows
+  end
+
   return self
 end
 

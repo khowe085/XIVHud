@@ -77,6 +77,11 @@ it).
 
 ## Commands
 
+Every setting below can also be changed with the mouse: `//hud config
+invtracker` opens the [settings window](../Home.md#settings-window) on this
+component, with three tabs - which bags are drawn, each bag's columns, and the
+rest.
+
 | Command | What it does |
 | --- | --- |
 | `//hud invtracker` | list every bag with its on/off state and columns, then sort, labels, spacing and alignment |

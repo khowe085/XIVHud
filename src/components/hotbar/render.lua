@@ -96,6 +96,16 @@ local function new(deps)
     return COLUMNS_BY_ROWS[rows]
   end
 
+  --- Every row count that is a shape, fewest rows first.
+  function self.shapes()
+    local shapes = {}
+    for rows in pairs(COLUMNS_BY_ROWS) do
+      shapes[#shapes + 1] = rows
+    end
+    table.sort(shapes)
+    return shapes
+  end
+
   function self.slot_count()
     return SLOT_COUNT
   end

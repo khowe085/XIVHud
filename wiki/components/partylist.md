@@ -59,6 +59,13 @@ alliance1` switches one on, or SHIFT + right-click it in layout mode.
 Every command takes an optional list word in front of the verb: `main` (the
 default), `alliance1` or `alliance2`.
 
+The spacing, alignment, empty-row, solo and range settings can also be changed
+with the mouse: `//hud config partylist` opens the
+[settings window](../Home.md#settings-window) on this component, with a tab
+for each list. Two things it cannot do: switch the far range ring off while
+the near one is on (type `//hud partylist range <near> 0`), and edit the buff
+order and filters, which stay commands.
+
 | Command | What it does |
 | --- | --- |
 | `//hud partylist` | print all three lists' settings |

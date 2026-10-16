@@ -691,6 +691,12 @@ local function new(initial_config)
     return ("invtracker %s takes on, off, or columns <1-%d>"):format(group, MAX_COLUMNS), false
   end
 
+  -- The pitch has to clear the square it carries, or the grid draws as one
+  -- solid block with no gaps in it.
+  local function lowest_spacing()
+    return math.max(1, math.floor(config.slot_size or 1))
+  end
+
   --[[ The `//hud invtracker` line, already split into words. Answers the
        message core prints, whether anything changed - the widget repaints and
        persists on a change, and never on a report - and whether the change
@@ -730,9 +736,7 @@ local function new(initial_config)
     end
 
     if word == "spacing" then
-      -- The pitch has to clear the square it carries, or the grid draws as one
-      -- solid block with no gaps in it.
-      local lowest = math.max(1, math.floor(config.slot_size or 1))
+      local lowest = lowest_spacing()
       local spacing = bounded_number(args[2], lowest, MAX_SPACING)
       if not spacing then
         return ("invtracker spacing takes a number from %d to %d"):format(lowest, MAX_SPACING), false
@@ -771,6 +775,71 @@ local function new(initial_config)
       "  settings: sort on|off, labels on|off, spacing <px>, blockspacing <px>, align top|bottom",
     },
       false
+  end
+
+  --[[ The same settings as pages of the `//hud config` window, each row naming
+       the command above that sets it. Every value is the one in FORCE - what
+       the grid draws with, clamps included - rather than the one stored, so a
+       stepper always starts inside the bounds its command enforces. ]]
+  function self.config_panel()
+    local switches, widths = {}, {}
+    for _, group in ipairs(BAG_WORDS) do
+      local bag = (config.bags or {})[group]
+      -- The command refuses a group with no settings, so its rows could only
+      -- ever be dead controls.
+      if bag then
+        local label = group:sub(1, 1):upper() .. group:sub(2)
+        switches[#switches + 1] =
+          { label = label, kind = "toggle", value = bag.enabled and true or false, command = { group } }
+        widths[#widths + 1] = {
+          label = label,
+          kind = "stepper",
+          value = columns_for({ group = group }),
+          min = 1,
+          max = MAX_COLUMNS,
+          step = 1,
+          command = { group, "columns" },
+        }
+      end
+    end
+
+    local general = {
+      { label = "Sort", kind = "toggle", value = config.sort ~= false, command = { "sort" } },
+      { label = "Labels", kind = "toggle", value = self.labels_enabled(), command = { "labels" } },
+      {
+        label = "Slot spacing",
+        kind = "stepper",
+        value = effective_spacing(),
+        min = lowest_spacing(),
+        max = MAX_SPACING,
+        step = 1,
+        command = { "spacing" },
+      },
+      {
+        label = "Block spacing",
+        kind = "stepper",
+        value = effective_block_spacing(),
+        min = 0,
+        max = MAX_BLOCK_SPACING,
+        step = 1,
+        command = { "blockspacing" },
+      },
+      {
+        label = "Align",
+        kind = "choice",
+        value = config.align == "top" and "top" or "bottom",
+        options = { "top", "bottom" },
+        command = { "align" },
+      },
+    }
+
+    return {
+      tabs = {
+        { name = "bags", rows = switches },
+        { name = "columns", rows = widths },
+        { name = "general", rows = general },
+      },
+    }
   end
 
   function self.set_preview(on)

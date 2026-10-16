@@ -691,6 +691,31 @@ describe("equipviewer widget", function()
     end)
   end)
 
+  describe("its panel in the settings window", function()
+    local panels = require("tests/support/panels")
+
+    it("is one the window can draw", function()
+      attach()
+      assert.same({}, panels.problems(widget.config_panel()))
+    end)
+
+    it("offers the two switches its commands set, as they stand", function()
+      attach()
+      local rows = widget.config_panel().rows
+      assert.same({ "Encumbrance", "Ammo count" }, { rows[1].label, rows[2].label })
+      assert.same({ true, true }, { rows[1].value, rows[2].value })
+      widget.handle_command({ "ammocount", "off" })
+      rows = widget.config_panel().rows
+      assert.same({ true, false }, { rows[1].value, rows[2].value })
+    end)
+
+    it("changes each setting through its own command, and saves it", function()
+      attach()
+      assert.same({}, panels.failures(panels.exercise(widget)))
+      assert.equal(4, saves, "each of the two was switched and switched back")
+    end)
+  end)
+
   describe("teardown", function()
     it("disposes every prim it built", function()
       attach()
