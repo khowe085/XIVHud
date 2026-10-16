@@ -50,8 +50,6 @@ end
 return function(screen_width, screen_height)
   return {
     compact = false, -- Theme.Compact
-    bar = { width = 132, spacing = 18, offset = 0 }, -- Theme.Bar.*
-    compact_bar = { width = 116, spacing = 16, offset = 0 }, -- Theme.Bar.Compact.*
     dim_tp_bar = true, -- Theme.DimTpBar
     font = "sans-serif", -- Texts.Font
     font_size = 14, -- Texts.Size
