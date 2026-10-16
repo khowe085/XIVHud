@@ -109,7 +109,8 @@ local function world(opts)
     layout_active = function()
       return env.layout
     end,
-    resources = resources(),
+    resources = opts.resources or resources(),
+    master_level = opts.master_level,
   }
   env.service_config = {
     retry = require("lib/actionbar/retry")({}).defaults(),
@@ -210,6 +211,75 @@ describe("one bar's state", function()
       bar.try_scope()
       bar.detach()
       assert.is_nil(bar.scoped())
+    end)
+  end)
+
+  --[[ The ranged slot keys a weapon layer of its own beside the main hand's
+       (Kevin, 2026-10-12), read whenever the main hand is. ]]
+  describe("the weapon layers", function()
+    it("reads the ranged slot's class with the main hand's", function()
+      local res = resources()
+      res.items[21267] = { id = 21267, en = "Gun", skill = 26 }
+      res.skills[26] = { id = 26, en = "Marksmanship" }
+      local bar, env, _, store = world({ resources = res })
+      env.items[0][4] = { id = 16535 }
+      env.items[0][5] = { id = 21267 }
+      env.equipment = { main = 4, main_bag = 0, range = 5, range_bag = 0 }
+      bar.attach(store)
+      bar.try_scope()
+      bar.mark_weapon_dirty()
+      bar.refresh_reads(1)
+      assert.equal("Sword", bar.bindings().weapon_type())
+      assert.equal("Marksmanship", bar.bindings().ranged_type())
+      -- Reported, since nothing else on screen says what the ranged slot read.
+      assert.is_not_nil(bar.status_lines()[1]:find("Sword + Marksmanship", 1, true), bar.status_lines()[1])
+    end)
+
+    -- The main hand untouched: the ranged layer still has to follow the
+    -- ranged slot, and the bar has to redraw for it.
+    it("follows a ranged swap that leaves the main hand alone", function()
+      local res = resources()
+      res.items[21267] = { id = 21267, en = "Gun", skill = 26 }
+      res.items[21210] = { id = 21210, en = "Bow", skill = 25 }
+      res.skills[25] = { id = 25, en = "Archery" }
+      res.skills[26] = { id = 26, en = "Marksmanship" }
+      local files = {
+        WAR = {
+          weapons = {
+            Archery = { [1] = { row = { [3] = { type = "ws", action = "Empyreal Arrow" } } } },
+            Marksmanship = { [1] = { row = { [3] = { type = "ws", action = "Hot Shot" } } } },
+          },
+        },
+      }
+      local bar, env, _, store = world({ resources = res, store_files = files })
+      env.items[0][4] = { id = 16535 }
+      env.items[0][5] = { id = 21267 }
+      env.items[0][6] = { id = 21210 }
+      env.equipment = { main = 4, main_bag = 0, range = 5, range_bag = 0 }
+      bar.attach(store)
+      bar.try_scope()
+      bar.mark_weapon_dirty()
+      bar.refresh_reads(1)
+      assert.equal("Hot Shot", bar.bindings().resolve(1, "row", 3).action)
+      local repaints = env.repaints
+      env.equipment = { main = 4, main_bag = 0, range = 6, range_bag = 0 }
+      bar.mark_weapon_dirty()
+      bar.refresh_reads(2)
+      assert.equal("Archery", bar.bindings().ranged_type())
+      assert.equal("Empyreal Arrow", bar.bindings().resolve(1, "row", 3).action)
+      assert.is_true(env.repaints > repaints, "and the bar redrew")
+    end)
+  end)
+
+  -- The CLI files a weaponskill with no context= under its own weapon type,
+  -- named off the bar's resources (Kevin, 2026-10-13).
+  describe("the CLI's weaponskill placement", function()
+    it("files a weaponskill under the weapon type its resource names", function()
+      local bar, env, _, store = world()
+      bar.attach(store)
+      bar.try_scope()
+      bar.command({ "bind", "1:3", "ws", "Savage", "Blade" })
+      assert.equal("Savage Blade", env.store_files.WAR.weapons.Sword[1].row[3].action)
     end)
   end)
 
@@ -470,13 +540,23 @@ describe("one bar's state", function()
       -- space clears.
       binder.mouse(LEFT_DOWN, 120, 120, 0)
       binder.mouse(LEFT_UP, 120, 120, 0)
-      for _, row in ipairs(binder.layer_view().rows) do
-        if row.source == "sub" then
-          binder.mouse(LEFT_DOWN, row.x + 5, row.y + 5, 0)
-          binder.mouse(LEFT_UP, row.x + 5, row.y + 5, 0)
+      -- The layer step is a tree: the Subjob menu, then the worn one.
+      local function click_row(wanted)
+        for _, row in ipairs(binder.layer_view().rows) do
+          if wanted(row) then
+            binder.mouse(LEFT_DOWN, row.x + 5, row.y + 5, 0)
+            binder.mouse(LEFT_UP, row.x + 5, row.y + 5, 0)
+            return
+          end
         end
       end
-      assert.are.equal("sub", binder.layer())
+      click_row(function(row)
+        return row.menu == "subjob"
+      end)
+      click_row(function(row)
+        return row.source == "sub:NIN"
+      end)
+      assert.are.equal("sub:NIN", binder.layer())
       local said = #env.chat
       binder.mouse(LEFT_DOWN, 120, 120, 0)
       binder.mouse(MOVE, 200, 145, 0)
@@ -487,6 +567,91 @@ describe("one bar's state", function()
       binder.mouse(MOVE, 4, 4, 0)
       binder.mouse(LEFT_UP, 4, 4, 0)
       assert.is_nil(env.store_files.WAR.sub.NIN, "clear of the bar still clears the layer")
+    end)
+
+    --[[ The binder previews a subjob you are not on (Kevin, 2026-10-12):
+         the bar's own model reads it in place of the worn one until the
+         row is let go. ]]
+    it("previews a subjob picked in the binder through its own model", function()
+      local files = {
+        WAR = {
+          sets = { [1] = { row = { [3] = { type = "ma", action = "Cure", target = "t" } } } },
+          sub = { WHM = { [1] = { row = { [3] = { type = "ja", action = "Divine Seal" } } } } },
+        },
+      }
+      local bar, env, _, store = world({ store_files = files })
+      bar.attach(store)
+      bar.try_scope()
+      on_screen(env)
+      bar.command({ "edit" })
+      local binder = bar.binder()
+      binder.mouse(LEFT_DOWN, 120, 120, 0)
+      binder.mouse(LEFT_UP, 120, 120, 0)
+      local function click_row(wanted)
+        for _, row in ipairs(binder.layer_view().rows) do
+          if wanted(row) then
+            binder.mouse(LEFT_DOWN, row.x + 5, row.y + 5, 0)
+            binder.mouse(LEFT_UP, row.x + 5, row.y + 5, 0)
+            return
+          end
+        end
+      end
+      click_row(function(row)
+        return row.menu == "subjob"
+      end)
+      click_row(function(row)
+        return row.source == "sub:WHM"
+      end)
+      assert.are.equal("Divine Seal", bar.bindings().resolve(1, "row", 3).action)
+      -- A re-attach (`//hud slot`, `//hud reset`) builds a new model under
+      -- the open binder: the preview has to survive it, as a context's does.
+      bar.attach(store)
+      bar.try_scope()
+      assert.are.equal("Divine Seal", bar.bindings().resolve(1, "row", 3).action, "through a re-attach")
+      bar.command({ "edit" })
+      assert.are.equal("Cure", bar.bindings().resolve(1, "row", 3).action, "the worn subjob again")
+    end)
+
+    --[[ A subjob layer's catalog is capped by the master level (Kevin,
+         2026-10-12): at ML0 a WHM subjob tops out at 49, where an unwired
+         reader is taken as ML50 and reaches 59. ]]
+    it("hands the binder's catalog the master level", function()
+      local function categories(master_level)
+        local bar, env, ctx, store = world({ master_level = master_level })
+        ctx.resources.jobs = { [3] = { id = 3, ens = "WHM" } }
+        ctx.resources.spells[1].levels = { [3] = 55 }
+        bar.attach(store)
+        bar.try_scope()
+        on_screen(env)
+        bar.command({ "edit" })
+        local binder = bar.binder()
+        binder.mouse(LEFT_DOWN, 120, 120, 0)
+        binder.mouse(LEFT_UP, 120, 120, 0)
+        local function click_row(wanted)
+          for _, row in ipairs(binder.layer_view().rows) do
+            if wanted(row) then
+              binder.mouse(LEFT_DOWN, row.x + 5, row.y + 5, 0)
+              binder.mouse(LEFT_UP, row.x + 5, row.y + 5, 0)
+              return
+            end
+          end
+        end
+        click_row(function(row)
+          return row.menu == "subjob"
+        end)
+        click_row(function(row)
+          return row.source == "sub:WHM"
+        end)
+        local names = {}
+        for _, category in ipairs(binder.catalog_view().categories) do
+          names[category.name] = true
+        end
+        return names
+      end
+      assert.is_true(categories(nil)["White Magic"], "Cure is WHM 55")
+      assert.is_nil(categories(function()
+        return 0
+      end)["White Magic"])
     end)
 
     it("repaints when another bar's binder opens and when it closes", function()

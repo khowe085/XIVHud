@@ -138,9 +138,10 @@ All commands are `//hud crossbar …`. Verbs and names are case-insensitive.
 taken: `//hud cb set 3`, `//hud show cb`, `//hud reset cb`.
 
 **An address is one word**: `<set><L|R><slot>`, so `1L1` is set 1, left side,
-slot 1, and `2R8` is set 2, right side, slot 8. Four verbs — `bind`, `unbind`,
-`alias` and `icon` — also take a layer prefix in front: `sub:1L6`,
-`wpn:1L6`, `ctx:light-arts:1L3`.
+slot 1, and `2R8` is set 2, right side, slot 8. To work on a layer other than
+the job base, four verbs — `bind`, `unbind`, `alias` and `icon` — take
+`context=`: `context=sub:whm`, `context=wpn:great-katana`,
+`context=buf:light-arts` (below).
 
 You may type the side in either case.
 
@@ -163,11 +164,11 @@ right-hand cross is slots 1–4 and the left-hand cross 5–8.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>]` | bind a slot, labelling it in the same command if you want |
-| `//hud crossbar unbind <address>` | clear a slot in one layer — the one you addressed |
-| `//hud crossbar alias <address> [<name>]` | change the label under a slot — omit `<name>` to clear it |
-| `//hud crossbar icon <address> [<icon>]` | change a slot's icon — omit `<icon>` to clear it |
-| `//hud crossbar swap <address> <address>` | swap two slots, everything about them — every layer at once, so no layer prefix applies |
+| `//hud crossbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>]` | bind a slot, labelling it in the same command if you want |
+| `//hud crossbar unbind <address> [context=<layer>]` | clear a slot in one layer — the one `context=` names, or the job base without it |
+| `//hud crossbar alias <address> [<name>] [context=<layer>]` | change the label under a slot — omit `<name>` to clear it |
+| `//hud crossbar icon <address> [<icon>] [context=<layer>]` | change a slot's icon — omit `<icon>` to clear it |
+| `//hud crossbar swap <address> <address>` | swap two slots, everything about them — every layer at once, so it takes no `context=` |
 | `//hud crossbar copy <JOB>` | replace this job's bindings with another job's |
 
 **`<type>`** says what kind of thing you are binding, and decides what the
@@ -176,8 +177,8 @@ rest of the line means:
 | `<type>` | `<action>` is | Example |
 | --- | --- | --- |
 | `ma` | a spell — including trusts and blue magic | `bind 1L1 ma "Cure IV" t` |
-| `ja` | a job ability | `bind 1L2 ja "Divine Seal"` |
-| `ws` | a weaponskill | `bind 1R1 ws "Savage Blade" t` |
+| `ja` | a job ability — a subjob's on its subjob layer or under a buff context (below) | `bind 1L2 ja "Divine Seal"` |
+| `ws` | a weaponskill — on a weapon layer only (below) | `bind 1R1 ws "Savage Blade" t` |
 | `item` | a usable item | `bind 2L1 item "Echo Drops" me` |
 | `enchanteditem` | enchanted gear — equips it, waits out the warmup, uses it | `bind 2L2 enchanteditem "Vocation Ring"` |
 | `pet` | a pet command | `bind 2R1 pet "Fight" t` |
@@ -294,8 +295,9 @@ from that:
 - An icon the addon cannot find **refuses the whole bind**, rather than
   binding the action and dropping the art quietly.
 
-The `alias` and `icon` verbs follow the same layer prefixes as `bind`, so aliasing
-`ctx:light-arts:1L3` relabels only what that context puts in the slot. Both need
+The `alias` and `icon` verbs take the same `context=` as `bind`, so
+`alias 1L3 Penury context=buf:light-arts` relabels only what that context puts
+in the slot. Both need
 something in the slot to act on — on an empty one they report an error rather
 than doing nothing quietly, and `icon` says so too if it cannot find the name
 you gave it.
@@ -337,17 +339,29 @@ name is looked for there. `icon 6L1 items/warp-ring` checks
 `icons/custom/warp-ring.png` first and the addon's own `items/warp-ring` after
 — you never make an `items` folder of your own.
 
-`bind`, `unbind`, `alias` and `icon` take an optional layer prefix on the set
-number — `sub:<set>` for the current subjob, `wpn:<set>` for the weapon class
-in your main hand, `ctx:<name>:<set>` for a buff context. With no prefix you
-are editing the job's base layer. See
+`bind`, `unbind`, `alias` and `icon` take an optional `context=` naming the
+layer — `context=sub:<job>` for a subjob (`context=sub:whm`, worn or not),
+`context=wpn:<weapon type>` for a weapon type, written in lower case with
+dashes for spaces (`context=wpn:great-katana`, `context=wpn:hand-to-hand`, and
+for the ranged slot `context=wpn:marksmanship`), and `context=buf:<name>` for a
+buff context (`context=buf:light-arts`). It can go anywhere among the labels.
+With none you are editing the job's base layer — except that `bind` puts a
+weaponskill on its own weapon type: `bind 1R1 ws "Leaden Salute" t` lands on
+the Marksmanship layer whatever you are holding. A job ability that belongs to
+a subjob goes to that subjob's layer the same way: on DNC, `bind 1L2 ja
+Provoke` lands on `context=sub:war`, worn or not. A subjob's ability can also
+go under a buff context (`context=buf:light-arts`), but never on the base or a
+weapon layer. `unbind`, `alias` and `icon`
+never guess, so name that layer to edit it afterwards (`alias 1R1 LS
+context=wpn:marksmanship`); without it they say which layers the slot holds. See
 [Layers](#layers-how-a-slot-decides-what-to-show).
 
 ```
 //hud crossbar bind 1L3 ma "Cure IV" t
-//hud crossbar bind sub:1L4 ja "Utsusemi: Ichi"
-//hud crossbar bind wpn:1R1 ws "Savage Blade" t
-//hud crossbar bind ctx:light-arts:1L3 ja "Addendum: White"
+//hud crossbar bind 1L4 ja "Utsusemi: Ichi" context=sub:nin
+//hud crossbar bind 1R1 ws "Savage Blade" t
+//hud crossbar bind 1L4 ma Cure t context=sub:whm
+//hud crossbar bind 1L3 ja "Addendum: White" context=buf:light-arts
 ```
 
 Most of this is also bindable by mouse in `//hud crossbar edit`, which is
@@ -537,6 +551,7 @@ with something in it wins:
 ```
 buff contexts    ← Light Arts, Addendum: White, …   (only while the buff is up)
 weapon overrides ← just while a sword is in your main hand, say
+ranged overrides ← just while a gun is in your ranged slot, say
 subjob overrides ← just for RDM/NIN, say
 job base         ← every subjob shares this — or the shared copy, for a set
                    marked shared (the same on every job)
@@ -545,7 +560,9 @@ job base         ← every subjob shares this — or the shared copy, for a set
 **Weapon overrides** are keyed by the class of weapon in your main hand —
 Sword, Great Katana, Hand-to-Hand when unarmed — and are the place for
 weaponskills, so swapping weapons swaps the slots with them. They sit above
-subjob overrides where both hold the same slot.
+subjob overrides where both hold the same slot. **Ranged overrides** work the
+same way for the weapon in your ranged slot - Archery, Marksmanship or
+Throwing - and sit just below the main hand's.
 
 The point is that **you only say a thing once**. A slot that should be the
 same on RDM/NIN and RDM/WHM is set on the job base and left alone. Only the
@@ -568,13 +585,26 @@ Scholar is the clearest example:
 - Your four stratagem slots hold the light stratagems under Light Arts and
   the dark ones under Dark Arts, automatically.
 
-Contexts ship with the addon; you fill in what goes in them. The list today is
-Scholar's four — `light-arts`, `dark-arts`, `addendum-white`, `addendum-black`
-— and Blue Mage's `unbridled` (Unbridled Learning or Unbridled Wisdom).
+Contexts ship with the addon; you fill in what goes in them. The list today,
+lowest priority first (when two live contexts both fill a slot, the later one
+wins):
+
+- Scholar's `klimaform`, then one per storm — `sandstorm`, `rainstorm`,
+  `windstorm`, `firestorm`, `hailstorm`, `thunderstorm`, `voidstorm`,
+  `aurorastorm` (each also live under its Storm II)
+- Red Mage's `composure`
+- Scholar's `light-arts`, `dark-arts`, `addendum-white`, `addendum-black`
+- Blue Mage's `unbridled` (Unbridled Learning or Unbridled Wisdom)
+
 `//hud crossbar context list` shows them and which are live. A context only
-exists on the job it belongs to: the Scholar contexts appear on SCH main or
-sub, `unbridled` on BLU main, and on any other job they are neither listed
-nor active.
+fires on the job it belongs to: the Scholar contexts on SCH main or sub,
+`composure` on RDM main, `unbridled` on BLU main; on any other job `context
+list` leaves them out and they never turn on. You can still bind one there -
+the edit window lists every job's contexts - and it is kept with this main
+job's bindings: on WAR/NIN you can set up the Scholar slots you want for
+when you switch to /SCH. `composure` and `unbridled` only ever turn on with
+RDM or BLU as the main job, so binding one on any other main job does
+nothing.
 
 ### Editing without guessing
 
@@ -635,10 +665,36 @@ on the window is always the window's, whatever slot of the other bar is
 under it.
 
 **One window, three steps.** Edit mode draws nothing until you click a slot.
-Then a single window opens dead centre and walks you through:
+Then a single window opens dead centre - sized to your screen, the way the
+rest of the HUD is - and walks you through:
 
-1. **Pick a layer** — base (or shared), your worn subjob, the weapon in your main hand (once one has been read), and every context.
-   Picking a context previews the bar as if that buff were up.
+1. **Pick a layer** — base (or shared) at the top, then three menus:
+   **subjob** (every job but your main one), **weapon** (every main-hand
+   weapon type, then Archery, Marksmanship and Throwing for your ranged
+   slot - a ranged layer is live while that kind of ranged weapon is on, and
+   where it and your main hand's layer both bind a slot the main hand wins)
+   and **job specific** (RDM's Composure, BLU's Unbridled
+   Learning, and SCH's Klimaform, a **Storms** menu, and the arts and
+   addenda). The subjob or weapon doesn't have to be the one you have on.
+   Picking a layer previews the bar as if it were in use - that subjob worn,
+   that weapon held, that buff up. A `>` marks a menu; a `*` on one means the
+   layer showing on the bar is inside it. `[ < back ]` climbs out of a menu.
+   The actions offered next follow the layer. A weapon layer offers every
+   weaponskill of that weapon type, as if you were holding it, and is the
+   only layer that offers weaponskills at all - nor can `bind` put one
+   anywhere else (a weaponskill you already have elsewhere keeps working).
+   A subjob layer - the one you have on included - offers what that job can do
+   as your subjob at the highest level your master level allows (59 at
+   master level 50, 49 at 0, half your main job's level below 99), whatever
+   level that job itself is: the spells you have learned up to that level,
+   and its job abilities up to that level. A master level the addon has not
+   read yet counts as 50. Your main job's own abilities are offered as
+   always, minus the ones that belong to the subjob you are actually
+   wearing - a WHM layer on WAR/SAM does not offer Hasso. The base and
+   weapon layers leave the worn subjob's abilities out too: those are bound
+   through the subjob menu, or under a buff context, which offers them.
+   Inside the subjob and weapon menus the rows read just the job or the
+   weapon type (`WHM`, `Great Axe`).
 2. **Pick an action** — categories down the left, one page of actions on the
    right, the wheel to page through them.
 3. **Pick a target** — the common target tokens, with `(no target)` first (`stal`, `lastst`, `scan` and `r` are `bind`-command only). Actions

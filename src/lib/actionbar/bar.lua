@@ -200,6 +200,12 @@ local function new(deps)
     return index[key:lower()]
   end
 
+  -- The weapon type a weaponskill resource belongs to, by its own `skill`.
+  local function weapon_type_of(ws)
+    local skill = resources ~= nil and resources.skills ~= nil and resources.skills[ws.skill] or nil
+    return type(skill) == "table" and skill.en or nil
+  end
+
   local function display_category(resource_type)
     if type(resource_type) ~= "string" then
       return nil
@@ -244,8 +250,7 @@ local function new(deps)
     elseif record.type == "ws" then
       local ws = resource_by_name("weapon_skills", record.action)
       if ws ~= nil then
-        local skill = resources ~= nil and resources.skills and resources.skills[ws.skill] or nil
-        return { kind = "ws", ws_id = ws.id, weapon = skill and skill.en or nil, tp_cost = 1000 }
+        return { kind = "ws", ws_id = ws.id, weapon = weapon_type_of(ws), tp_cost = 1000 }
       end
     elseif record.type == "item" or record.type == "enchanteditem" then
       local item = resource_by_name("items", record.action)
@@ -299,6 +304,12 @@ local function new(deps)
       end
       return resource_by_name(table_name, action) ~= nil
     end,
+    -- The weapon type a weaponskill belongs to, by the resources' own
+    -- `skill`: where the CLI files one bound with no context=.
+    weapon_class_of = function(action)
+      local ws = resource_by_name("weapon_skills", action)
+      return ws ~= nil and weapon_type_of(ws) or nil
+    end,
   })
   self.authoring = authoring
   --[[ A built-in that shares a word with an authoring verb would be
@@ -330,10 +341,17 @@ local function new(deps)
        view. The handover (preview(nil)) re-reads the client here, so nothing
        stale can survive the preview coming down. ]]
   local previewing = nil
+  -- The subjob or class previewed, held HERE for the same reason: a
+  -- re-attach builds a new model under the open binder, and this re-asserts
+  -- it on the model that replaced it.
+  local previewing_layers = nil
 
   local function apply_buffs()
+    bindings.preview_layers(previewing_layers)
     if previewing ~= nil then
-      return bindings.update_buffs(previewing)
+      -- Ungated: the binder lists every job's contexts, and one picked off
+      -- its job should still show what it holds.
+      return bindings.update_buffs(previewing, true)
     end
     local player = get_player()
     if player == nil then
@@ -478,7 +496,17 @@ local function new(deps)
       return
     end
     weapon_dirty = false
+    -- The ranged slot's class too, its own layer beside the main hand's
+    -- (Kevin, 2026-10-12); a slot the client cannot read leaves it alone.
+    local shot, shot_known = weapon_layer.resolve_ranged()
+    local shot_moved = shot_known and shot ~= bindings.ranged_type()
+    if shot_moved then
+      bindings.set_ranged_type(shot)
+    end
     if class == bindings.weapon_type() then
+      if shot_moved then
+        deps.repaint()
+      end
       return
     end
     local set_before = bindings.active_set()
@@ -859,13 +887,10 @@ local function new(deps)
     get_player = get_player,
     get_spells = ctx.get_spells,
     get_abilities = ctx.get_abilities,
-    -- What the weapon in hand can perform: the client's weaponskill list is
-    -- the JOB's. Read through the model rather than resolved again here,
-    -- so the picker and the `wpn:` layer can never name different classes.
-    weapon_class = function()
-      return bindings ~= nil and bindings.weapon_type() or nil
-    end,
     get_items = ctx.get_items,
+    -- Nil where the entry point has not wired it: the catalog then assumes
+    -- master level 50.
+    master_level = ctx.master_level,
     owned_mounts = roulette ~= nil and roulette.owned or nil,
     mount_display = roulette ~= nil and roulette.display or nil,
     resources = resources,
@@ -940,8 +965,8 @@ local function new(deps)
     --[[ Preview = a SIMULATED buff list through the live resolver, never a
          hand-toggled layer, so the bar always shows the true stacked
          result. nil hands the live buff list back. ]]
-    preview = function(buffs)
-      previewing = buffs
+    preview = function(buffs, layers)
+      previewing, previewing_layers = buffs, layers
       apply_buffs()
       deps.repaint()
     end,
@@ -1096,10 +1121,11 @@ local function new(deps)
       head = head .. "/" .. scoped_sub
     end
     local lines = { head .. " - set " .. bindings.active_set() .. " (" .. bindings.weapon_state() .. ")" }
-    -- The class the weapon layer is keyed to, which nothing else reports.
-    local class = bindings.weapon_type()
-    if class ~= nil then
-      lines[1] = lines[1] .. " - " .. class
+    -- The classes the weapon layers are keyed to, which nothing else
+    -- reports: the main hand's, then the ranged slot's.
+    local class, shot = bindings.weapon_type(), bindings.ranged_type()
+    if class ~= nil or shot ~= nil then
+      lines[1] = lines[1] .. " - " .. (class or "-") .. (shot ~= nil and (" + " .. shot) or "")
     end
     if deps.views ~= false then
       -- The CLI owns the view map: it is the spelling the user types.

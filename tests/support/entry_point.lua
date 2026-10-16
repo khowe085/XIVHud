@@ -74,7 +74,7 @@ local function build_stubs(boot, options)
         if boot.parse_raises then
           error("cannot parse " .. tostring(data))
         end
-        return { packet = data }
+        return boot.parse_answer or { packet = data }
       end,
     },
     extdata = {
@@ -226,7 +226,7 @@ local function build_windower(boot)
       end,
       get_info = function()
         boot.client_calls.info = boot.client_calls.info + 1
-        return { logged_in = true, chat_open = false }
+        return { logged_in = boot.logged_in, chat_open = false }
       end,
       -- Every call is recorded with its arguments: get_items(bag) answers one
       -- bag and get_items() the lot, and which of the two a component is wired
@@ -321,6 +321,8 @@ end
        files         - seeded in-memory files (an entry named
                        "addons/XIVHud/safe_mode" boots the addon in safe mode)
        require_fails - module name -> message, for a library that will not load ]]
+-- `options.logged_out` boots at the character screen (get_info reports
+-- logged_in = false); `require_fails` maps a module to the error it raises.
 function M.boot(options)
   options = options or {}
 
@@ -343,6 +345,8 @@ function M.boot(options)
     action = { category = 8, param = 0, targets = {} },
     action_raises = false,
     parse_raises = false,
+    -- What the fake packets.parse answers with in place of its marker table.
+    parse_answer = nil,
     -- What the fake windower.packets.last_incoming answers with, per id.
     last_incoming = {},
     last_incoming_asked = {},
@@ -351,6 +355,8 @@ function M.boot(options)
     items = {},
     last_incoming_raises = false,
     player = { name = "Tester", vitals = { hp = 1000, hpp = 100, mp = 500, mpp = 100, tp = 0 } },
+    -- What get_info reports; `logged_out = true` boots at the character screen.
+    logged_in = not options.logged_out,
     party = {},
     mobs = { t = { id = 7 } },
     client_calls = { player = 0, party = 0, info = 0, mob = 0 },

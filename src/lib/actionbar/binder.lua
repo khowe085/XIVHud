@@ -65,6 +65,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local contexts = require("lib/actionbar/contexts")
 local grammars = require("lib/actionbar/grammar")
+local JOBS = require("lib/actionbar/jobchange").JOBS
+local CLASSES = require("lib/actionbar/weapon_classes")
+local RANGED = {}
+for _, class in ipairs(CLASSES.ranged) do
+  RANGED[class] = true
+end
+local kebab = require("lib/actionbar/kebab")
 
 -- Windower's mouse types, as layout_mode names them.
 local MOVE, LEFT_DOWN, LEFT_UP, WHEEL = 0, 1, 2, 10
@@ -102,23 +109,33 @@ local STEP_LAYER, STEP_CATALOG, STEP_TARGET = "layer", "catalog", "target"
      the rule `paged` already keeps for the catalog and target steps. ]]
 local STEP_SUBMENU = "submenu"
 
-local FONT_SIZE = 18
-local ROW_HEIGHT = 26
-local PAD = 10
-local GAP = 12
-local WINDOW_WIDTH = 920
-local WINDOW_HEIGHT = 600
-local CATEGORY_WIDTH = 210
-local DETAILS_WIDTH = 280
-local BACK_WIDTH = 90
-local CLOSE_WIDTH = 50
+--[[ The window's size on a 1080-line UI. It scales with the screen as the
+     HUD does (Kevin, 2026-10-12) - every length below times height / 1080,
+     the font included - so the row counts derived from these hold on any
+     screen. ]]
+local BASE_SCREEN_HEIGHT = 1080
+local BASE_FONT_SIZE = 18
+local BASE_ROW_HEIGHT = 26
+local BASE_PAD = 10
+local BASE_GAP = 12
+local BASE_WINDOW_WIDTH = 920
+-- 25 list rows under the header (Kevin, 2026-10-12); it was 600, nineteen
+-- rows, until the subjob menu needed 21.
+local BASE_WINDOW_HEIGHT = 748
+local BASE_CATEGORY_WIDTH = 210
+local BASE_DETAILS_WIDTH = 280
+local BASE_BACK_WIDTH = 90
+local BASE_CLOSE_WIDTH = 50
+local BASE_ICON_SIZE = 16
+-- Between an entry's icon and its label.
+local BASE_ICON_GAP = 4
 -- The title line and the line under it naming the slot and the choice so far.
 local HEADER_ROWS = 2
 --[[ Rows are derived from the window rather than fixed, so changing its
      height moves the lists with it instead of leaving them short or
      overflowing. The entry list gives one row back to the pager; the
      category column and the details pane use the full body. ]]
-local BODY_ROWS = math.floor((WINDOW_HEIGHT - PAD * 2 - HEADER_ROWS * ROW_HEIGHT) / ROW_HEIGHT)
+local BODY_ROWS = math.floor((BASE_WINDOW_HEIGHT - BASE_PAD * 2 - HEADER_ROWS * BASE_ROW_HEIGHT) / BASE_ROW_HEIGHT)
 local ENTRY_ROWS = BODY_ROWS - 1
 --[[ The shipped catalog produces fifteen categories (eight magic groups,
      Trusts among them, then abilities, weaponskills, items, enchanted,
@@ -127,15 +144,9 @@ local ENTRY_ROWS = BODY_ROWS - 1
      silently - the CLI can still reach it. ]]
 local CATEGORY_ROWS = BODY_ROWS
 local DETAIL_ROWS = BODY_ROWS
--- base/shared + the worn subjob + the weapon in hand + every roster context,
--- with headroom so a roster addition needs no prim-count edit here. Counted
--- off the WHOLE roster though the job gate hides most of it: the panel is
--- rebuilt per job and the prims are not.
-local STACK_ROWS = #contexts + 5
 -- Panel chrome: the component's own white square, tinted and dimmed.
 local PANEL_TEXTURE = "assets/own/black-square.png"
 local PANEL_ALPHA = 220
-local ICON_SIZE = 16
 -- A dragged slot's ghost: see-through, so the slot it is over still reads.
 local GHOST_ALPHA = 180
 
@@ -255,6 +266,13 @@ local function new(deps)
   deps = deps or {}
   local self = {}
 
+  -- The lengths at this screen's scale, set by apply_scale on every open.
+  local FONT_SIZE, ROW_HEIGHT, PAD, GAP = BASE_FONT_SIZE, BASE_ROW_HEIGHT, BASE_PAD, BASE_GAP
+  local WINDOW_WIDTH, WINDOW_HEIGHT = BASE_WINDOW_WIDTH, BASE_WINDOW_HEIGHT
+  local CATEGORY_WIDTH, DETAILS_WIDTH = BASE_CATEGORY_WIDTH, BASE_DETAILS_WIDTH
+  local BACK_WIDTH, CLOSE_WIDTH, ICON_SIZE = BASE_BACK_WIDTH, BASE_CLOSE_WIDTH, BASE_ICON_SIZE
+  local ICON_GAP = BASE_ICON_GAP
+
   -- Whose binder this is: the bar's name prefixes every line it says, and
   -- its grammar spells the address in the window's subhead - the crossbar's
   -- unless the bar says otherwise, so a caller that predates the hotbar
@@ -279,6 +297,11 @@ local function new(deps)
   -- nested, so coming back out to page 1 would only lose your place.
   local submenu = nil
   local submenu_page = 1
+  --[[ Where the layer step stands in its tree: the menu keys from the top
+       (`{ "job", "SCH", "Storms" }`), empty at the top. Keys, not nodes,
+       because the tree is rebuilt from the model on every read and a job
+       change can take a menu away; whatever no longer resolves is cut. ]]
+  local layer_path = {}
   --[[ The menus a nested one was opened from, outermost first, each with the
        page it was left on (General -> Job Change -> WAR). Reset whenever a
        menu is opened from the catalog itself, so a trail left behind by any
@@ -377,6 +400,18 @@ local function new(deps)
     return width or 1920, height or 1080
   end
 
+  local function apply_scale()
+    local _, height = screen()
+    local scale = (type(height) == "number" and height > 0) and height / BASE_SCREEN_HEIGHT or 1
+    -- A point size is whole; the lengths need not be.
+    FONT_SIZE = math.max(1, math.floor(BASE_FONT_SIZE * scale + 0.5))
+    ROW_HEIGHT, PAD, GAP = BASE_ROW_HEIGHT * scale, BASE_PAD * scale, BASE_GAP * scale
+    WINDOW_WIDTH, WINDOW_HEIGHT = BASE_WINDOW_WIDTH * scale, BASE_WINDOW_HEIGHT * scale
+    CATEGORY_WIDTH, DETAILS_WIDTH = BASE_CATEGORY_WIDTH * scale, BASE_DETAILS_WIDTH * scale
+    BACK_WIDTH, CLOSE_WIDTH, ICON_SIZE = BASE_BACK_WIDTH * scale, BASE_CLOSE_WIDTH * scale, BASE_ICON_SIZE * scale
+    ICON_GAP = BASE_ICON_GAP * scale
+  end
+
   --[[ Prims ---------------------------------------------------------------- ]]
 
   --[[ The job PAIR the catalog listing was built for: a job change under an
@@ -387,13 +422,38 @@ local function new(deps)
        (Kevin, 2026-09-07). ]]
   local catalog_job, catalog_sub = nil, nil
 
+  --[[ The layer the listing is for (review, 2026-10-12): a weapon layer's
+       weaponskills are its class's, a subjob's spells that job's, a buff
+       context the live listing, and the base that listing without the worn
+       subjob's abilities (Kevin, 2026-10-13). ]]
+  local function layer_view_for(source)
+    local job = source ~= nil and source:match("^sub:(.+)$") or nil
+    if job ~= nil then
+      return { sub = job }, "sub:" .. job
+    end
+    local class = source ~= nil and source:match("^wpn:(.+)$") or nil
+    if class ~= nil then
+      return { weapon = class }, "wpn:" .. class
+    end
+    -- One listing for every buff context: it keeps the worn subjob's
+    -- abilities, which the base and a weapon layer drop.
+    local context = source ~= nil and source:match("^ctx:(.+)$") or nil
+    if context ~= nil then
+      return { context = context }, "ctx"
+    end
+    return {}, ""
+  end
+  local catalog_layer = ""
+
   local function rebuild_catalog()
     local bindings = model()
     catalog_job, catalog_sub = nil, nil
     if bindings ~= nil then
       catalog_job, catalog_sub = bindings.job()
     end
-    catalog_groups = deps.catalog ~= nil and deps.catalog.build() or {}
+    local view
+    view, catalog_layer = layer_view_for(cursor ~= nil and cursor.source or nil)
+    catalog_groups = deps.catalog ~= nil and deps.catalog.build(view) or {}
     category_index, page = 1, 1
     --[[ The submenu is the one piece of picker state that outlives a rebuild:
          the catalog step self-heals, because its rows come from the groups
@@ -484,7 +544,9 @@ local function new(deps)
       title = text(),
       subhead = text(),
       categories = texts(CATEGORY_ROWS),
-      entries = texts(math.max(ENTRY_ROWS, STACK_ROWS)),
+      -- The layer step lists into the same rows; its longest menu, Subjob's
+      -- 21 jobs, fits them without a pager.
+      entries = texts(ENTRY_ROWS),
       entry_icons = images(ENTRY_ROWS),
       pager = text(),
       details = texts(DETAIL_ROWS),
@@ -619,9 +681,10 @@ local function new(deps)
     end
     local frame = build_frame()
     frame.step = step
-    if step == STEP_LAYER then
+    if step == STEP_LAYER and #layer_path == 0 then
       -- Not merely hidden: an undrawn control that still answered the hit
-      -- test would swallow clicks on the first step for good.
+      -- test would swallow clicks on the first step for good. Inside one of
+      -- its menus the step has somewhere to climb back to.
       frame.back = nil
     end
     frame.address = { set = slot.set, side = slot.side, slot = slot.slot }
@@ -629,7 +692,14 @@ local function new(deps)
     -- previews itself, so the window has to say which one you are looking
     -- at or the bar's contents are unexplained.
     local context = cursor ~= nil and context_named((cursor.source:match("^ctx:(.+)$")) or "") or nil
-    frame.viewing = context ~= nil and context.label:upper() or "LIVE"
+    if context ~= nil then
+      frame.viewing = context.label:upper()
+    elseif cursor ~= nil and (cursor.source:match("^sub:") or cursor.source:match("^wpn:")) then
+      -- A subjob or class previews itself too (Kevin, 2026-10-12).
+      frame.viewing = cursor.label:upper()
+    else
+      frame.viewing = "LIVE"
+    end
     return frame
   end
 
@@ -663,11 +733,14 @@ local function new(deps)
   --[[ The stack ------------------------------------------------------------- ]]
 
   local function address_for(source, set)
-    if source == "sub" then
-      return "sub:" .. set
+    local job = source:match("^sub:(.+)$")
+    if job ~= nil then
+      return "sub:" .. job .. ":" .. set
     end
-    if source == "wpn" then
-      return "wpn:" .. set
+    -- An address is one word, so the class goes kebab: `wpn:great-katana:1`.
+    local class = source:match("^wpn:(.+)$")
+    if class ~= nil then
+      return "wpn:" .. kebab(class) .. ":" .. set
     end
     local name = source:match("^ctx:(.+)$")
     if name ~= nil then
@@ -678,56 +751,152 @@ local function new(deps)
     return tostring(set)
   end
 
+  --[[ The layer step's tree (Kevin, 2026-10-12): the base, then three menus.
+       Subjob holds every job but the main one and Weapon every main-hand
+       class, worn and held or not - each a NAMED layer, so the binder can
+       write a subjob you are not on. Job Specific holds one menu per job
+       that owns a context - EVERY one, whatever the job in use (Kevin): a
+       layer bound off its job waits in this job's file until the job can
+       raise it. Each lists its own in roster order, a `group` folded into a
+       menu of its own: SCH reads Klimaform, Storms >, then the arts and
+       addenda.
+
+       A leaf is `{ source, label }`, a menu `{ menu, label, children }`;
+       `menu` is the key the path walks by. A leaf may carry `text`, what its
+       row draws where that is not its label: inside the subjob and weapon
+       menus the row needs no `sub:` or `wpn:` (Kevin, 2026-10-13), while
+       the header and what is said, read outside them, keep the label. ]]
+  local function layer_tree(bindings)
+    local main = bindings.job()
+    -- The SET's own flag, never whether a layer happens to hold an entry:
+    -- an empty shared set would otherwise be labelled (and echoed) `base`
+    -- while the write landed in SHARED.
+    local items = { { source = "base", label = bindings.shared(slot.set) and "shared" or "base" } }
+    local subs = {}
+    for _, job in ipairs(JOBS) do
+      if job ~= main then
+        subs[#subs + 1] = { source = "sub:" .. job, label = "sub:" .. job, text = job }
+      end
+    end
+    items[#items + 1] = { menu = "subjob", label = "subjob", children = subs }
+    local classes = {}
+    for _, class in ipairs(CLASSES.main) do
+      classes[#classes + 1] = { source = "wpn:" .. class, label = "wpn:" .. class, text = class }
+    end
+    for _, class in ipairs(CLASSES.ranged) do
+      classes[#classes + 1] = { source = "wpn:" .. class, label = "wpn:" .. class, text = class }
+    end
+    items[#items + 1] = { menu = "weapon", label = "weapon", children = classes }
+    local by_job = {}
+    for _, context in ipairs(contexts) do
+      -- A context naming no job is eligible everywhere; nothing ships one,
+      -- and the job in use is where it would be looked for.
+      local owner = (context.jobs or {})[1] or main
+      if owner ~= nil then
+        by_job[owner] = by_job[owner] or {}
+        local list = by_job[owner]
+        local leaf = { source = "ctx:" .. context.name, label = context.name }
+        if context.group ~= nil then
+          local group = nil
+          for _, item in ipairs(list) do
+            if item.menu == context.group then
+              group = item
+            end
+          end
+          if group == nil then
+            group = { menu = context.group, label = context.group, children = {} }
+            list[#list + 1] = group
+          end
+          group.children[#group.children + 1] = leaf
+        else
+          list[#list + 1] = leaf
+        end
+      end
+    end
+    local jobs = {}
+    for _, job in ipairs(JOBS) do
+      if by_job[job] ~= nil then
+        jobs[#jobs + 1] = { menu = job, label = job, children = by_job[job] }
+      end
+    end
+    if #jobs > 0 then
+      items[#items + 1] = { menu = "job", label = "job specific", children = jobs }
+    end
+    return items
+  end
+
+  -- Every leaf under `items`, depth first.
+  local function leaves_of(items, out)
+    out = out or {}
+    for _, item in ipairs(items) do
+      if item.children ~= nil then
+        leaves_of(item.children, out)
+      else
+        out[#out + 1] = item
+      end
+    end
+    return out
+  end
+
+  --- The menu the path names, and the labels of the menus walked to reach
+  --- it. A key that no longer resolves cuts the path there.
+  local function layer_menu(bindings)
+    local items, labels = layer_tree(bindings), {}
+    for depth, key in ipairs(layer_path) do
+      local found = nil
+      for _, item in ipairs(items) do
+        if item.menu == key then
+          found = item
+        end
+      end
+      if found == nil then
+        for cut = #layer_path, depth, -1 do
+          layer_path[cut] = nil
+        end
+        break
+      end
+      items, labels[#labels + 1] = found.children, found.label
+    end
+    return items, labels
+  end
+
   local function stack_rows()
     local rows = {}
     local bindings = model()
     if slot == nil or bindings == nil then
       return rows
     end
-    local layers = bindings.layers_at(slot.set, slot.side, slot.slot) or {}
     local found = {}
-    for _, layer in ipairs(layers) do
+    for _, layer in ipairs(bindings.layers_at(slot.set, slot.side, slot.slot) or {}) do
       -- The shared store and the job base are one row: which of the two a
       -- set uses is the set's flag, not a choice at the slot.
-      local key = layer.source
-      if key == "shared" then
-        key = "base"
-      elseif key:match("^sub:") or key:match("^wpn:") then
-        -- Only the worn subjob and the class in hand have a row here; the
-        -- others are stored layers this slot cannot be edited through.
-        key = layer.worn and key:sub(1, 3) or nil
+      found[layer.source == "shared" and "base" or layer.source] = layer
+    end
+    local items = layer_menu(bindings)
+    for _, item in ipairs(items) do
+      if item.children ~= nil then
+        --[[ A menu carries the marks of what it holds, so the top of the
+             tree still says where the slot's live binding comes from and
+             where the cursor is. ]]
+        local winner, selected = false, false
+        for _, leaf in ipairs(leaves_of(item.children)) do
+          local layer = found[leaf.source]
+          winner = winner or (layer ~= nil and layer.active == true)
+          selected = selected or (cursor ~= nil and cursor.source == leaf.source)
+        end
+        rows[#rows + 1] = { menu = item.menu, label = item.label, winner = winner, selected = selected }
+      else
+        local layer = found[item.source]
+        rows[#rows + 1] = {
+          source = item.source,
+          label = item.label,
+          text = item.text,
+          entry = layer ~= nil and label_of(layer.entry) or "-",
+          record = layer ~= nil and layer.entry or nil,
+          winner = layer ~= nil and layer.active == true,
+          selected = cursor ~= nil and cursor.source == item.source,
+        }
       end
-      if key ~= nil then
-        found[key] = layer
-      end
-    end
-    local function row(source, label)
-      local layer = found[source]
-      rows[#rows + 1] = {
-        source = source,
-        label = label,
-        entry = layer ~= nil and label_of(layer.entry) or "-",
-        record = layer ~= nil and layer.entry or nil,
-        winner = layer ~= nil and layer.active == true,
-      }
-    end
-    -- The SET's own flag, never whether a layer happens to hold an entry:
-    -- an empty shared set would otherwise be labelled (and echoed) `base`
-    -- while the write landed in SHARED.
-    row("base", bindings.shared(slot.set) and "shared" or "base")
-    local _, sub = bindings.job()
-    if sub ~= nil then
-      row("sub", "sub:" .. tostring(sub))
-    end
-    -- The weapon row exists only once the client has answered with a class:
-    -- it is what is in your hand, not a setting.
-    local weapon = bindings.weapon_type()
-    if weapon ~= nil then
-      row("wpn", "wpn:" .. tostring(weapon))
-    end
-    -- Job-gated: a context this job cannot raise is not a layer to bind into.
-    for _, name in ipairs(bindings.available_contexts()) do
-      row("ctx:" .. name, name)
     end
     return rows
   end
@@ -740,7 +909,6 @@ local function new(deps)
     for index, row in ipairs(rows) do
       row.x, row.width = frame.list.x, frame.list.width
       row.y, row.height = frame.list.y + (index - 1) * ROW_HEIGHT, ROW_HEIGHT
-      row.selected = cursor ~= nil and cursor.source == row.source
     end
     return { rows = rows }
   end
@@ -927,7 +1095,8 @@ local function new(deps)
        line that stops short looks tidy and one that runs off the backdrop
        does not. Two chain properties on one SC row found it in a live
        client (Kevin, 2026-08-22). ]]
-  local DETAIL_CHARS = math.max(8, math.floor(DETAILS_WIDTH / (FONT_SIZE * 0.55)))
+  -- Off the 1080-line sizes: scaling both lengths together leaves it alone.
+  local DETAIL_CHARS = math.max(8, math.floor(BASE_DETAILS_WIDTH / (BASE_FONT_SIZE * 0.55)))
 
   local function wrap_details(lines)
     local out = {}
@@ -996,6 +1165,14 @@ local function new(deps)
     -- command line name a slot the same way.
     local where = grammar.label(address.set, address.side, address.slot)
     if frame.step == STEP_LAYER then
+      local bindings = model()
+      local labels = {}
+      if bindings ~= nil then
+        labels = select(2, layer_menu(bindings))
+      end
+      if #labels > 0 then
+        return "pick a layer", where .. "   in: " .. table.concat(labels, " > ")
+      end
       return "pick a layer", where
     end
     local layer = cursor ~= nil and cursor.label or "?"
@@ -1082,8 +1259,9 @@ local function new(deps)
     local icons = {}
     if layer_view ~= nil then
       for index, row in ipairs(layer_view.rows) do
+        local tail = row.menu ~= nil and " >" or (": " .. row.entry)
         rows[index] = {
-          text = (row.winner and "* " or "  ") .. (row.selected and "> " or "") .. row.label .. ": " .. row.entry,
+          text = (row.winner and "* " or "  ") .. (row.selected and "> " or "") .. (row.text or row.label) .. tail,
           x = row.x,
           y = row.y,
         }
@@ -1097,7 +1275,7 @@ local function new(deps)
         }
       end
       for index, entry in ipairs(catalog_view.entries) do
-        rows[index] = { text = entry.label, x = entry.x + ICON_SIZE + 4, y = entry.y }
+        rows[index] = { text = entry.label, x = entry.x + ICON_SIZE + ICON_GAP, y = entry.y }
         icons[index] = entry
       end
       local text = "page " .. catalog_view.page .. "/" .. catalog_view.pages .. " - wheel to scroll"
@@ -1298,11 +1476,26 @@ local function new(deps)
 
   --[[ Actions --------------------------------------------------------------- ]]
 
+  --- The simulated buff list and the layers to preview, for a row.
   local function preview_for(source)
-    local name = source ~= nil and source:match("^ctx:(.+)$") or nil
+    if source == nil then
+      return nil, nil
+    end
+    -- A subjob or class is previewed in place of the one in use, through
+    -- the model's own resolver (Kevin, 2026-10-12).
+    local job = source:match("^sub:(.+)$")
+    if job ~= nil then
+      return nil, { sub = job }
+    end
+    local class = source:match("^wpn:(.+)$")
+    if class ~= nil then
+      -- A ranged class previews in the ranged slot, the main hand untouched.
+      return nil, RANGED[class] and { ranged = class } or { weapon = class }
+    end
+    local name = source:match("^ctx:(.+)$")
     local context = name ~= nil and context_named(name) or nil
     if context == nil then
-      return nil
+      return nil, nil
     end
     -- One simulated buff, run through the LIVE resolver: picking dark-arts
     -- drops light-arts even if it is actually up (the arts are mutually
@@ -1419,7 +1612,7 @@ local function new(deps)
       apply_preview()
     end
     slot = { set = target.set, side = target.side, slot = target.slot, rect = target.rect }
-    step, page, submenu = STEP_LAYER, 1, nil
+    step, page, submenu, layer_path = STEP_LAYER, 1, nil, {}
     -- The window is this binder's now: any other bar's stands down.
     if deps.window_opened ~= nil then
       deps.window_opened()
@@ -1427,7 +1620,7 @@ local function new(deps)
   end
 
   local function close_panel()
-    slot, cursor, pending, step, submenu = nil, nil, nil, nil, nil
+    slot, cursor, pending, step, submenu, layer_path = nil, nil, nil, nil, nil, {}
     -- The details column describes what the cursor is over, and there is no
     -- longer anything to be over. Cleared HERE rather than in each caller,
     -- so the X, an empty-space click and back's first step cannot drift.
@@ -1458,8 +1651,11 @@ local function new(deps)
     elseif step == STEP_SUBMENU then
       step, page, submenu = STEP_CATALOG, submenu_page, nil
     elseif step == STEP_CATALOG then
+      -- To the menu the layer was picked from: the path is still where it was.
       cursor, step, page = nil, STEP_LAYER, 1
       apply_preview()
+    elseif step == STEP_LAYER and #layer_path > 0 then
+      layer_path[#layer_path] = nil
     else
       -- Unreachable while the first step draws no back button, and kept
       -- rather than trimmed: the answer to an unexpected step must not be a
@@ -1478,10 +1674,25 @@ local function new(deps)
       close_panel()
     elseif target.kind == "slot" then
       select_slot(target)
+    elseif target.kind == "row" and target.row ~= nil and target.row.menu ~= nil then
+      layer_path[#layer_path + 1] = target.row.menu
+      details, hovered = nil, nil
     elseif target.kind == "row" then
       local row = target.row
       if row ~= nil then
         cursor = { source = row.source, label = row.label }
+        local _, layer = layer_view_for(row.source)
+        if layer ~= catalog_layer then
+          -- The category the player was in survives a new listing by NAME:
+          -- the index belongs to the listing replaced.
+          local was = catalog_groups ~= nil and catalog_groups[category_index] or nil
+          rebuild_catalog()
+          for index, group in ipairs(catalog_groups) do
+            if was ~= nil and group.name == was.name then
+              category_index = index
+            end
+          end
+        end
         step = STEP_CATALOG
         -- The category the user last picked survives; the page does not,
         -- since the listing itself may have changed under it. Nor does the
@@ -1641,6 +1852,7 @@ local function new(deps)
          player's own file and nothing else writes this key. A stored value
          that is not a pair of numbers is ignored rather than trusted -
          these files are hand-editable. ]]
+    apply_scale()
     position = nil
     local stored = deps.window_pos ~= nil and deps.window_pos() or nil
     if type(stored) == "table" and type(stored.x) == "number" and type(stored.y) == "number" then
@@ -1693,25 +1905,29 @@ local function new(deps)
     redraw()
   end
 
-  --[[ The cursor against the rows the slot offers NOW. It deliberately
-       outlives a bind, so it can outlive its row - a subjob change takes a
-       context out of reach and unequipping takes the weapon row away - and
-       it can outlive its row's NAME: `sub:` and `wpn:` address whatever is
-       worn or held, so the class under the cursor changes when the hand
-       does. Both are answered from stack_rows rather than from the model,
-       so the panel and the cursor can never hold different opinions of
-       what a row is called. A cursor always has a slot (close_panel drops
-       them together, and a new slot drops the cursor), so the rows are
-       always there to compare against.
+  --[[ The cursor against the layers the slot offers NOW, anywhere in the
+       tree. It deliberately outlives a bind, so it can outlive its layer: a
+       main job change takes that job out of the Subjob menu. Every context
+       is listed whatever the job and a subjob or class is NAMED (Kevin,
+       2026-10-12), so neither a subjob change nor the hand moves anything
+       else under it.
+       Answered from the tree rather than from the model, so the panel and
+       the cursor can never hold different opinions of what a layer is
+       called. A cursor always has a slot (close_panel drops them together,
+       and a new slot drops the cursor).
 
-       Answers false when the row is gone; adopts the live label otherwise. ]]
+       Answers false when the layer is gone; adopts the live label otherwise. ]]
   local function cursor_offered()
     if cursor == nil or slot == nil then
       return true
     end
-    for _, row in ipairs(stack_rows()) do
-      if row.source == cursor.source then
-        cursor.label = row.label
+    local bindings = model()
+    if bindings == nil then
+      return false
+    end
+    for _, leaf in ipairs(leaves_of(layer_tree(bindings))) do
+      if leaf.source == cursor.source then
+        cursor.label = leaf.label
         return true
       end
     end
