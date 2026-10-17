@@ -2013,8 +2013,6 @@ describe("core", function()
       calls = {}
       service = {
         config = {
-          retry = { enabled = false },
-          wsgate = { enabled = false, melee_range = 4, size_pivot = 1.3 },
           delay = 5,
         },
         travel = {
@@ -2022,30 +2020,9 @@ describe("core", function()
             return service.config.delay
           end,
         },
-        retry = {
-          sync = function()
-            calls[#calls + 1] = { "sync" }
-          end,
-        },
-        wsgate = {
-          enabled = function()
-            return service.config.wsgate.enabled == true
-          end,
-          melee_range = function()
-            return service.config.wsgate.melee_range
-          end,
-          size_pivot = function()
-            return service.config.wsgate.size_pivot
-          end,
-          reach_for = function(size)
-            return size and 4 + size or nil
-          end,
-        },
       }
       function service.config_defaults()
         return {
-          retry = { enabled = false },
-          wsgate = { enabled = false, melee_range = 4, size_pivot = 1.3 },
           delay = 5,
         }
       end
@@ -2078,8 +2055,11 @@ describe("core", function()
     it("lists the verbs in help", function()
       service_core()
       core.on_command({ "help" })
-      for _, verb in ipairs({ "warp", "mr", "sneak", "invisible", "draw", "retry", "wsgate", "delay" }) do
+      for _, verb in ipairs({ "warp", "mr", "sneak", "invisible", "draw", "delay" }) do
         assert.is_not_nil(env.said():find("//hud " .. verb, 1, true), verb .. " missing from help")
+      end
+      for _, verb in ipairs({ "retry", "wsgate" }) do
+        assert.is_nil(env.said():find("//hud " .. verb, 1, true), verb .. " is gone")
       end
     end)
 
@@ -2132,45 +2112,8 @@ describe("core", function()
       service_core()
       login()
       local written = env.fs.files["data/Azureblood/core.lua"]
-      assert.is_not_nil(written:find("retry", 1, true))
-      assert.is_not_nil(written:find("wsgate", 1, true))
       assert.is_not_nil(written:find("delay", 1, true))
       assert.are.equal(5, core.config().delay)
-    end)
-
-    it("switches the cast retry, writing core.lua at once", function()
-      service_core()
-      login()
-      core.on_command({ "retry" })
-      assert.is_not_nil(env.said():find("cast retry: off", 1, true))
-      core.on_command({ "retry", "on" })
-      assert.is_true(core.config().retry.enabled)
-      assert.are.same({ { "sync" } }, calls, "the service's retry hears the write at once")
-      assert.is_not_nil(env.fs.files["data/Azureblood/core.lua"]:find("enabled = true", 1, true))
-      core.on_command({ "retry", "maybe" })
-      assert.is_not_nil(env.said():find("retry [on|off]", 1, true))
-    end)
-
-    it("reports and tunes the weaponskill gate", function()
-      service_core({
-        get_mob_by_target = function()
-          return { distance = 16, model_size = 2 }
-        end,
-      })
-      login()
-      core.on_command({ "wsgate" })
-      assert.is_not_nil(env.said():find("weaponskill gate: off, melee reach 4 yalms, size pivot 1.3", 1, true))
-      assert.is_not_nil(env.said():find("target 4.00 yalms, model size 2.00, reach here 6.00", 1, true))
-      core.on_command({ "wsgate", "on" })
-      assert.is_true(core.config().wsgate.enabled)
-      core.on_command({ "wsgate", "range", "30" })
-      assert.are.equal(30, core.config().wsgate.melee_range)
-      core.on_command({ "wsgate", "pivot", "0" })
-      assert.are.equal(0, core.config().wsgate.size_pivot)
-      env.forget()
-      core.on_command({ "wsgate", "range", "0" })
-      assert.is_not_nil(env.said():find("greater than zero", 1, true))
-      assert.are.equal(30, core.config().wsgate.melee_range)
     end)
 
     it("reports and sets the travel delay", function()
@@ -2222,33 +2165,12 @@ describe("core", function()
     -- The tuning the real service reads is core's own config, so this one
     -- reads it too: a change made through the window shows up in the panel.
     local function fake_service()
-      service = { binders_closed = 0, synced = 0 }
+      service = { binders_closed = 0 }
       function service.config_defaults()
         return {
-          retry = { enabled = false },
-          wsgate = { enabled = false, melee_range = 4, size_pivot = 1.3 },
           delay = 5,
         }
       end
-      service.retry = {
-        sync = function()
-          service.synced = service.synced + 1
-        end,
-      }
-      service.wsgate = {
-        enabled = function()
-          return core.config().wsgate.enabled == true
-        end,
-        melee_range = function()
-          return core.config().wsgate.melee_range
-        end,
-        size_pivot = function()
-          return core.config().wsgate.size_pivot
-        end,
-        reach_for = function()
-          return nil
-        end,
-      }
       service.travel = {
         delay = function()
           return core.config().delay
@@ -2431,7 +2353,7 @@ describe("core", function()
         login()
         core.on_command({ "config" })
         assert.is_not_nil(live_text("Hide in cutscenes"))
-        assert.is_nil(live_text("Cast retry"))
+        assert.is_nil(live_text("Travel delay (seconds)"))
       end)
 
       it("carries the service's tuning beside it", function()
@@ -2439,55 +2361,26 @@ describe("core", function()
         login()
         core.on_command({ "config" })
         for _, label in ipairs({
-          "Cast retry",
-          "Weaponskill gate",
-          "Gate melee reach (yalms)",
-          "Gate size pivot (yalms)",
           "Travel delay (seconds)",
           "Hide in cutscenes",
         }) do
           assert.is_not_nil(live_text(label), label)
         end
-        local reach = live_text("Gate melee reach (yalms)")
-        assert.is_not_nil(live_text("4", reach.y))
-        assert.is_not_nil(live_text("1.3", live_text("Gate size pivot (yalms)").y))
+        assert.is_nil(live_text("Cast retry"), "the cast retry is gone")
+        assert.is_nil(live_text("Weaponskill gate"), "the weaponskill gate is gone")
+        assert.is_not_nil(live_text("5", live_text("Travel delay (seconds)").y))
       end)
 
-      it("switches the cast retry through the command's own handler", function()
+      it("steps the travel delay through the command's own handler", function()
         service_core()
         login()
         core.on_command({ "config" })
         env.forget()
-        assert.is_true(click_control("Cast retry", "[ off ]"))
-        assert.is_true(core.config().retry.enabled)
-        assert.are.equal(1, service.synced, "the retry heard the write, as it does from the CLI")
-        assert.is_not_nil(env.fs.files["data/Azureblood/core.lua"]:find("enabled = true", 1, true))
-        assert.is_not_nil(live_text("[ on ]", live_text("Cast retry").y))
-        assert.is_not_nil(live_text("cast retry: on"), "the answer is on the status line")
-        assert.are.equal("", env.said(), "and not in chat")
-      end)
-
-      it("steps the gate's reach and pivot and the travel delay", function()
-        service_core()
-        login()
-        core.on_command({ "config" })
-        click_control("Gate melee reach (yalms)", "[+]")
-        assert.are.equal(4.5, core.config().wsgate.melee_range)
-        click_control("Gate size pivot (yalms)", "[-]")
-        assert.are.equal("1.2", tostring(core.config().wsgate.size_pivot))
-        click_control("Travel delay (seconds)", "[-]")
+        assert.is_true(click_control("Travel delay (seconds)", "[-]"))
         assert.are.equal(4, core.config().delay)
-        click_control("Weaponskill gate", "[ off ]")
-        assert.is_true(core.config().wsgate.enabled)
-      end)
-
-      it("will not step the reach to zero, which the command refuses", function()
-        service_core()
-        env.fs.put("data/Azureblood/core.lua", "return { wsgate = { melee_range = 0.5 } }")
-        login()
-        core.on_command({ "config" })
-        click_control("Gate melee reach (yalms)", "[-]")
-        assert.are.equal(0.5, core.config().wsgate.melee_range)
+        assert.is_not_nil(env.fs.files["data/Azureblood/core.lua"]:find("delay = 4", 1, true))
+        assert.is_not_nil(live_text("travel delay: 4 seconds"), "the answer is on the status line")
+        assert.are.equal("", env.said(), "and not in chat")
       end)
 
       it("switches the cutscene hiding, at once", function()

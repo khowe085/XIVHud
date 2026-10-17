@@ -1,6 +1,4 @@
 local new_service = require("lib/actionbar/service")
-local new_retry = require("lib/actionbar/retry")
-local new_wsgate = require("lib/actionbar/wsgate")
 local enchanted = require("lib/actionbar/enchanted")
 
 local RING_EXT_WARMING = {
@@ -55,7 +53,6 @@ local function world(opts)
     equips = {},
     now = 0,
     time = 1000000,
-    chat_open = false,
     suppressed = false,
     layout = false,
     player = {
@@ -71,15 +68,11 @@ local function world(opts)
     known_spells = { [261] = true, [1] = true },
     items = { [0] = {} },
     ext = nil,
-    target = { id = 99, distance = 4, model_size = 1 },
+    target = { id = 99 },
     config = {
-      retry = new_retry({}).defaults(),
-      wsgate = new_wsgate({}).defaults(),
       delay = 5,
     },
   }
-  env.config.retry.enabled = true
-  env.config.wsgate.enabled = true
   local service = new_service({
     say = function(line)
       env.chat[#env.chat + 1] = line
@@ -99,7 +92,8 @@ local function world(opts)
     get_player = function()
       return env.player
     end,
-    get_mob_by_target = function()
+    get_mob_by_target = function(token)
+      env.asked_token = token
       return env.target
     end,
     get_items = function(bag)
@@ -137,9 +131,6 @@ local function world(opts)
     resources = res,
     suppressed = function()
       return env.suppressed
-    end,
-    chat_open = function()
-      return env.chat_open
     end,
     layout_active = function()
       return env.layout
@@ -227,66 +218,55 @@ describe("the action service", function()
     end)
   end)
 
+  --[[ What a command sent late is sent as: a pinned token becomes the id it
+       stood for at the press, a fixed one goes as written, and anything
+       else cannot be pinned. ]]
+  describe("the target pin", function()
+    it("pins the battle target to its id", function()
+      local service, env = world()
+      assert.are.equal('input /item "Ring" 99', service.pinned_command('input /item "Ring" <bt>', "bt"))
+      assert.are.equal("bt", env.asked_token)
+    end)
+
+    it("folds a hand-edited upper-case token before pinning it", function()
+      local service = world()
+      assert.are.equal('input /item "Ring" 99', service.pinned_command('input /item "Ring" <T>', "T"))
+    end)
+
+    it("sends a fixed token as written", function()
+      local service = world()
+      assert.are.equal('input /item "Ring" <pet>', service.pinned_command('input /item "Ring" <pet>', "pet"))
+      assert.are.equal('input /item "Ring" <me>', service.pinned_command('input /item "Ring" <me>', "me"))
+    end)
+
+    it("refuses a token it cannot pin", function()
+      local service = world()
+      assert.is_nil(service.pinned_command('input /item "Ring" <st>', "st"))
+    end)
+
+    it("refuses a command that does not end in the token it names", function()
+      local service = world()
+      assert.is_nil(service.pinned_command('input /item "Ring" <me>', "t"))
+    end)
+  end)
+
   describe("a slot press", function()
-    it("sends the record's command and hands the retry a re-send pinned to the target", function()
+    it("sends the record's command and flashes", function()
       local service, env = world()
       local flashed = 0
-      local probe = function()
-        return { bound = true }
-      end
       service.fire({ type = "ma", action = "Cure", target = "t" }, {
         flash = function()
           flashed = flashed + 1
         end,
-        retry_facts = probe,
       })
       assert.are.same({ 'input /ma "Cure" <t>' }, env.commands)
       assert.are.equal(1, flashed)
-      assert.are.equal('input /ma "Cure" 99', service.retry.held().command)
-      assert.are.equal(probe, service.retry.held().probe, "the bar's probe rides with the press")
     end)
 
-    --[[ A `pet` record is a job ability by another command word - a blood
-         pact, a ready move, a maneuver - and the game refuses one as too soon
-         exactly as it refuses a `ja`. Without an entry in RETRY_KINDS it was
-         never watched at all, so the picker's move to prefix-derived types
-         would have quietly dropped the thirty flat pet abilities out of retry
-         coverage (Kevin, 2026-09-07). ]]
-    it("watches a pet command the way it watches an ability", function()
+    it("is silent for an empty slot", function()
       local service, env = world()
-      service.fire({ type = "pet", action = "Fire Maneuver", target = "me" }, {
-        retry_facts = function()
-          return { bound = true }
-        end,
-      })
-      assert.are.same({ 'input /pet "Fire Maneuver" <me>' }, env.commands)
-      assert.are.equal("ability", service.retry.held().kind, "refused in an ability's words")
-    end)
-
-    it("refuses a weaponskill the gate turns down, with no flash and no command", function()
-      local service, env = world()
-      local flashed = 0
-      service.fire({ type = "ws", action = "Savage Blade", target = "t" }, {
-        gate_facts = { tp = 500, status = 1, buffs = {}, skill = "Sword", distance_squared = 4, model_size = 1 },
-        flash = function()
-          flashed = flashed + 1
-        end,
-      })
-      assert.are.same({}, env.commands)
-      assert.are.equal(0, flashed)
-    end)
-
-    it("is silent for an empty slot and drops whatever the retry was watching", function()
-      local service, env = world()
-      service.fire({ type = "ma", action = "Cure", target = "t" }, {
-        retry_facts = function()
-          return { bound = true }
-        end,
-      })
-      assert.is_not_nil(service.retry.held())
       service.fire(nil, {})
-      assert.is_nil(service.retry.held())
-      assert.are.equal(1, #env.commands)
+      assert.are.same({}, env.commands)
       assert.are.equal("", said(env))
     end)
   end)
@@ -689,25 +669,14 @@ describe("the action service", function()
       assert.are.equal("sheathed", service.weapon_state())
     end)
 
-    it("drops a held cast only for the bar that pressed it, and a countdown only under suppression", function()
+    it("drops a countdown only under suppression", function()
       local service, env = world()
-      service.fire({ type = "ma", action = "Cure", target = "t" }, {
-        owner = "crossbar",
-        retry_facts = function()
-          return { bound = true }
-        end,
-      })
-      assert.is_not_nil(service.retry.held())
-      service.bar_hidden("hotbar")
-      assert.is_not_nil(service.retry.held(), "the other bar's cast stands")
-      service.bar_hidden("crossbar")
-      assert.is_nil(service.retry.held())
       service.warp(false)
       assert.is_true(service.travel.armed())
-      service.bar_hidden("crossbar")
+      service.bar_hidden()
       assert.is_true(service.travel.armed(), "a user hide is not a change of mind about a warp")
       env.suppressed = true
-      service.bar_hidden("hotbar")
+      service.bar_hidden()
       assert.is_false(service.travel.armed(), "a cutscene is the moment gone")
       assert.is_not_nil(said(env):find("cancelled", 1, true))
     end)
@@ -978,9 +947,9 @@ describe("the action service", function()
     it("names the tuning core seeds from the modules that own it", function()
       local service = world()
       local defaults = service.config_defaults()
-      assert.is_false(defaults.retry.enabled)
-      assert.is_false(defaults.wsgate.enabled)
       assert.are.equal(5, defaults.delay)
+      assert.is_nil(defaults.retry, "the cast retry is gone")
+      assert.is_nil(defaults.wsgate, "the weaponskill gate is gone")
     end)
   end)
 

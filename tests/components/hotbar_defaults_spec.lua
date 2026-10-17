@@ -34,7 +34,6 @@ describe("hotbar defaults", function()
     assert.is_nil(defaults.views)
     assert.is_nil(defaults.always_show_wxhb)
     assert.is_nil(defaults.skillchain)
-    assert.is_nil(defaults.retry)
     assert.is_nil(defaults.delay)
   end)
 

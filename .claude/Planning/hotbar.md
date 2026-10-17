@@ -39,7 +39,7 @@ ported from xivhotbar or xivcrossbar that is not already here. The map of what
 moves, read 2026-09-05:
 
 - The feature modules are already pure and standalone. `warp`, `roulette`,
-  `skillchain`, `stealth`, `travel`, `retry`, `wsgate`, `enchanted`,
+  `skillchain`, `stealth`, `travel`, `enchanted`,
   `enchanteditem` require nothing from `lib/` and only three edges between
   them (`warp -> enchanted`, `enchanteditem -> enchanted`, `stealth ->
   counters`). Their 23 specs stand alone. Moving them is a path change.
@@ -47,7 +47,7 @@ moves, read 2026-09-05:
   600 are execution: `run_item_plan` / `abort_pending` / `tick_pending`
   (1756-2082, the equip-wait-use scheduler with its GearSwap holds and spoken
   countdown), `execute` / `delay_travel` / `fire_at` (2107-2348), and the
-  travel, retry and skillchain steps inside `tick()` (3144-3271). That glue is
+  travel and skillchain steps inside `tick()` (3144-3271). That glue is
   covered only by `crossbar_spec.lua` (389 cases), through the widget.
 - `bindings.lua` is hardwired to 8 sets x 2 sides x 8 slots and the `1L1`
   grammar (`SIDES`, `SET_COUNT`, `SLOT_COUNT`, `parse_address` at 48-182).
@@ -85,19 +85,18 @@ moves, read 2026-09-05:
    unknown-verb hint. Weapon state is the PLAYER's, so it lives in the service
    and both bars read it; `draw` from the console or from a slot on either bar
    flips the one state.
-3. **Service config lives in `core.lua`** - `retry`, `wsgate`, `delay` join
-   `snap` and `hideCutscene` - edited by `//hud retry [on|off]`, `//hud
-   wsgate [on|off] | range <yalms> | pivot <yalms>` and `//hud delay
-   <seconds>`. They were never meant to vary by slot (Kevin, 2026-09-06),
+3. **Service config lives in `core.lua`** - `delay` joins
+   `snap` and `hideCutscene` - edited by `//hud delay
+   <seconds>`. It was never meant to vary by slot (Kevin, 2026-09-06),
    and the alternative was a settings handle for something that is not a
-   component. Costs accepted: they no longer follow `//hud slot`, and no
-   `//hud reset` verb touches them. A stored crossbar `retry` / `wsgate` /
-   `delay` block is dead weight the settings merge preserves; **nothing
+   component. Costs accepted: it no longer follows `//hud slot`, and no
+   `//hud reset` verb touches it. A stored crossbar `delay`
+   block is dead weight the settings merge preserves; **nothing
    migrates**, the partylist and targetbar precedent.
 4. **Directory shape**: everything shared goes in `lib/actionbar/` (the first
    directory under `lib/`); `lib/warp.lua`, `lib/roulette.lua`,
    `lib/skillchain.lua`, `lib/stealth.lua` are flat beside it. `travel`,
-   `retry`, `wsgate`, `enchanted`, `enchanteditem`, `counters` are actionbar's.
+   `enchanted`, `enchanteditem`, `counters` are actionbar's.
 5. **The two bars know nothing about each other.** A crossbar set and a hotbar
    set are different things (16 slots against 10), each bar has its own
    per-job files and its own `SHARED.lua` in its own directory, and "shared"
@@ -239,7 +238,7 @@ Picked as the smallest option each time; say so and I change it.
 
 Moved unchanged but for the require path: `bindings`, `catalog`, `binder`,
 `commands`, `actions`, `counters`, `openers`, `contexts`, `kebab`, `weapon`,
-`enchanted`, `enchanteditem`, `retry`, `wsgate`, `travel`. Their specs move to
+`enchanted`, `enchanteditem`, `travel`. Their specs move to
 `tests/actionbar_<module>_spec.lua` (or `tests/actionbar/`; whichever
 `.busted` needs least - check its `pattern` first). Licence headers travel;
 `render.lua`'s upstream BSD notice (lines 29-60) must survive the split.
@@ -285,40 +284,35 @@ actions = service, catalog deps, binder deps, verb_roster }`. `verb_roster`
 is how the crossbar keeps `wxhb` / `view` and the hotbar does not.
 
 **`service.lua`** is the glue at crossbar.lua 1756-2348 plus the travel /
-retry / skillchain / roulette steps of `tick()`, with the four feature libs,
-`travel`, `retry`, `wsgate`, `actions` (the plan resolver) and `enchanted`'s
+skillchain / roulette steps of `tick()`, with the four feature libs,
+`travel`, `actions` (the plan resolver) and `enchanted`'s
 scheduler inside it. Public surface:
 
 ```
-service.fire(record, opts)          -- a bar's press: gate, resolve, travel or execute, arm retry
+service.fire(record, opts)          -- a bar's press: resolve, travel or execute
 service.builtin(name, arg)          -- `//hud warp|mr|sneak|invisible|draw`, and `warp all`
 service.weapon_state() / set_weapon_state(state) / on_status(status)
 service.skillchain                  -- the engine, for per-slot chain borders and the indicator
 service.roulette                    -- owned mounts / blocked / cooldown, for the binder and dim
-service.retry, service.wsgate, service.travel  -- for the three config verbs' state lines
-service.tick(facts)                 -- once per frame, from core: config_mode, suppressed, chat_open
+service.travel                      -- for the config verb's state line
+service.tick(facts)                 -- once per frame, from core: config_mode, suppressed
 service.on_chunk(id, data, parsed)  -- 0x028 / 0x029 / 0x063 / zone-out / the roulette ids
 service.on_status(status) / on_zone() / on_job_change() / on_ipc(message) / on_logout()
 service.end_trip(reason)            -- layout mode, edit mode, re-attach
 ```
 
-`retry.sent` today is keyed to a slot address and re-checks it through
-`bindings.resolve`; a shared service cannot reach a bar's bindings, so the
-bar passes a `still_bound()` closure in `opts` and the retry facts call it.
-That is the one behavioural seam in the extraction; everything else is a move.
-
 ### Framework
 
 - `lib/commands.lua`: `RESERVED` gains `warp`, `mr`, `sneak`, `invisible`,
-  `draw`, `retry`, `wsgate`, `delay`; a parse arm per verb (the config three
-  carry their words through). None collides with a shipped alias (`cb pb gt
+  `draw`, `delay`; a parse arm per verb (the config one
+  carries its words through). None collides with a shipped alias (`cb pb gt
   ev tb pl sc eb sb inv`) and `hb` is free.
 - `lib/core.lua`: `deps.actions`; `run_action` / `run_service_config` arms;
-  `CORE_DEFAULTS` gains `retry`, `wsgate`, `delay` seeded from the three
-  modules' own `defaults()` (defaults.lua does this today at 128-137);
+  `CORE_DEFAULTS` gains `delay` seeded from the
+  module's own `defaults()` (defaults.lua does this today at 128-137);
   `on_prerender` ticks the service after visibility resolves, so it can hand
   it `suppressed` and `layout_active`; `on_logout` calls `on_logout`; the
-  help text gains the eight verbs.
+  help text gains the six verbs.
 - `src/XIVHud.lua`: builds the service from the fifteen crossbar-only members
   plus `send_command`, `get_items`, `get_equipment`, `parse_packet`,
   `resources`, `now`, `time`, and hands it to core and to both bars' ctx;
@@ -415,18 +409,17 @@ Crossbar green.
 
 Extract `service.lua` from crossbar.lua as described; weapon state moves into
 it; the crossbar consumes `ctx.actions` and drops its own scheduler, travel,
-retry, roulette, warp, stealth, skillchain and wsgate instances. The entry
-point builds it; core ticks it; `retry` / `wsgate` / `delay` move to
-`CORE_DEFAULTS` and `//hud crossbar retry|wsgate` are removed from
-`commands.lua`. The `execution`, `auto-warp`, `travel delay`, `cast retry`,
-`skillchain` and `the weaponskill gate` describe blocks of `crossbar_spec.lua`
+roulette, warp, stealth and skillchain instances. The entry
+point builds it; core ticks it; `delay` moves to
+`CORE_DEFAULTS`. The `execution`, `auto-warp`, `travel delay` and
+`skillchain` describe blocks of `crossbar_spec.lua`
 move to `tests/actionbar_service_spec.lua`, rewritten against the service's
 surface; what stays in the widget spec is that a press reaches `fire` and a
 plan's feedback reaches the prims. Crossbar green.
 
 ### H3 - The framework verbs
 
-`//hud warp [all]`, `mr`, `sneak`, `invisible`, `draw`, `retry`, `wsgate`,
+`//hud warp [all]`, `mr`, `sneak`, `invisible`, `draw`,
 `delay` in `lib/commands` and core; the crossbar's `dispatch_command` loses
 `warp` and the builtin fallthrough; the IPC string changes. `commands_spec`,
 `core_spec` and `entry_point_spec` grow; `crossbar_commands_spec` shrinks.
@@ -481,31 +474,27 @@ the rows a live client has to answer (below).
 
 ## As built (2026-09-06) - where the build departed from the plan above
 
-- **H2 and H3 landed together.** The three tuning keys could not move to
-  `core.lua` without their verbs moving with them, or one phase would have
-  left `retry`/`wsgate`/`delay` unreachable.
+- **H2 and H3 landed together.** The tuning key could not move to
+  `core.lua` without its verb moving with it, or one phase would have
+  left `delay` unreachable.
 - **The widget spec kept its execution blocks** rather than moving them to
   the service spec: they drive the widget through a `push` mirror of the
   entry point (service first, then the widget) and pass as integration
   tests, while `tests/actionbar/service_spec.lua` covers the service's own
   surface. Fifteen assertions lost the `crossbar: ` prefix the service's
   lines no longer carry (the entry point prefixes every line with the
-  addon's); `retry`/`wsgate`/`delay` tuning is flipped in `env.service_config`
+  addon's); `delay` tuning is flipped in `env.service_config`
   where the widget's config used to hold it; and the widget's attach still
   drops a trip through `service.drop_trip()`, for parity.
 - **`bindings` kept its weapon-state API** (`set_weapon_state`,
   `weapon_state`, `on_status`) rather than growing `on_weapon_state`: the
   service is the truth and the bar MIRRORS it in (`bar.sync_weapon`), which
   left the bindings spec untouched.
-- **The retry probe** rides the press as `opts.retry_facts`, a closure the bar
-  builds over the slot address, and reads the recasts live rather than off
-  the tick's snapshot: the service steps the retry before the bar's tick
-  refreshes that snapshot.
 - **`open <name>` stayed on both bars**: it opens a game window, a bar's
   convenience rather than a press.
 - **`core.on_keyboard` accumulates the block** exactly as decision 13's
-  framework bullet describes, and `core.lua` gained `deps.get_mob_by_target`
-  for `//hud wsgate`'s state line and `self.config()` for the service.
+  framework bullet describes, and `core.lua` gained `self.config()` for the
+  service.
 - **The hotbar builds a row's prims on the first TICK it is still shown**, not
   on the first `show`: core's apply sends the bare `show()` and then restates
   each anchor, so a build-on-show would have built all eight at every login.
@@ -519,9 +508,7 @@ the rows a live client has to answer (below).
   concatenates, so a nil there threw and would have disabled `//hud` after
   five presses - the core spec's chat fake now refuses a nil the way the
   client would); the service sheathes on a job change, as `set_job` does, or
-  the mirror put the drawn rotation straight back; a held cast is keyed to
-  the bar that PRESSED it (`opts.owner`), so one bar hiding drops only its
-  own, and a countdown is the player's and goes only under suppression - a
+  the mirror put the drawn rotation straight back; a countdown is the player's and goes only under suppression - a
   user switching one bar off no longer cancels a warp (a change from the
   single-bar crossbar, where any hide did); and a bar refuses to open its
   binder while another bar's is open. The hotbar grammar also stopped
@@ -542,10 +529,9 @@ the rows a live client has to answer (below).
 - **Review round 5** gave the hotbar's geometry the 10px name band the
   shared render draws a slot's name in (row pitch 56 inside a shape, 58
   between stacked rows, bounds include it), listed `rows` in `//hud hotbar
-  help` (the CLI takes a bar's extra lines), scoped a bar's detach to its
-  own held cast, and made the hotbar tear down the rows layout mode's
+  help` (the CLI takes a bar's extra lines), and made the hotbar tear down the rows layout mode's
   force-show built once the preview ends. Not taken: a crossbar shortcut
-  key bound to `retry`/`wsgate` (only `edit` ships bound), and two bars
+  key bound to a framework verb (only `edit` ships bound), and two bars
   answering one click where a user drags one over the other - core does not
   arbitrate the mouse, and the shipped placements do not overlap.
 - **Review round 6** moved that teardown to the TICK: core sends the preview
@@ -577,7 +563,7 @@ crossbar only; the hotbar asserts its per-anchor build-on-show instead.
 - `warp all` after the IPC string change, between two updated clients.
 - Text prims render above image prims; the hotbar's set-number label and the
   binder window must not fight the way the first binder design did.
-- `//hud retry` and `//hud wsgate` state lines read from `core.lua` after a
+- `//hud delay`'s state line reads from `core.lua` after a
   `//hud copy`.
 - Whether the game binds anything to the BARE number row or to SHIFT+number
   outside the chat box. If it does, the hotbar's swallow takes it away, and
@@ -597,8 +583,8 @@ crossbar only; the hotbar asserts its per-anchor build-on-show instead.
   flagged interpretation above). The crossbar's `input.lua` is untouched.
 - No skillchain indicator on either bar (decision 14): per-slot chain
   borders only, the window bar is the `skillchain` component's.
-- No migration of any stored file: crossbar `retry` / `wsgate` / `delay`
-  blocks are left in place unread.
+- No migration of any stored file: crossbar `delay`
+  block is left in place unread.
 - No shapes beyond the four (decision 12) and no 12-slot XIV layout; the
   slot count is ten in every shape.
 - No framework re-clamp when a row is reshaped; the statusbar's limitation,

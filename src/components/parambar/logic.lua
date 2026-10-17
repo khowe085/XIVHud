@@ -514,7 +514,7 @@ local function new(config)
   end
 
   --[[ The accuracy verbs. `window` is a command rather than a file-only key
-       for wsgate's reason: it is settled by watching the number move in a
+       because it is settled by watching the number move in a
        fight, and alt-tabbing to a text file between readings is the wrong
        loop. The value the CLI refuses is exactly the value the module would
        fall back over, and the length it reports comes from the module, so

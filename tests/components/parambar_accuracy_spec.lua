@@ -130,8 +130,8 @@ describe("parambar accuracy", function()
     end)
 
     --[[ The config is a file the user can hand-edit, so a value the module
-         would fall back over is refused here rather than believed. wsgate's
-         rule: the report and the fallback come from one place. ]]
+         would fall back over is refused here rather than believed: the
+         report and the fallback come from one place. ]]
     it("falls back to its own length when the config value is unusable", function()
       config.window_seconds = 0
       assert.are.equal(30, accuracy.window())

@@ -204,9 +204,9 @@ local function new(deps)
        nil is therefore always "the caller fires it", and an armed countdown
        always leaves a line to say - there is no silent third case.
 
-       A newer press REPLACES whatever was counting down, the cast retry's
-       own discipline: nothing outlives the moment it belonged to, and the
-       press the player just made is the one they meant. ]]
+       A newer press REPLACES whatever was counting down: nothing outlives
+       the moment it belonged to, and the press the player just made is the
+       one they meant. ]]
   function self.arm(entry)
     --[[ Cleared before anything is decided, so every answer this can give
          leaves the older countdown gone. DEFENCE, not a live path: it takes
@@ -271,8 +271,7 @@ local function new(deps)
        framework's layout flag), but they are calls across the ctx boundary
        on every frame, and the settled-tick budget the specs pin counts
        them. A player with nothing counting down should pay for the cheapest
-       question only. (The cast retry's `pending()` gates its tick the same
-       way, where the question behind it really is a client read.) ]]
+       question only. ]]
   function self.armed()
     return pending ~= nil
   end

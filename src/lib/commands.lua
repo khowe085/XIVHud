@@ -51,15 +51,13 @@ local RESERVED = {
   -- The settings window's name for the framework's own panel: a component
   -- called this could never be opened by `//hud config <name>`.
   global = true,
-  -- The action service's own verbs and its three tuning words.
+  -- The action service's own verbs and the tuning words.
   warp = true,
   mr = true,
   sneak = true,
   invisible = true,
   reraise = true,
   draw = true,
-  retry = true,
-  wsgate = true,
   delay = true,
   hidecutscene = true,
 }
@@ -72,7 +70,7 @@ local ACTION_VERBS = { mr = true, sneak = true, invisible = true, reraise = true
 -- The options core.lua carries - the service's tuning and the framework's
 -- own: the words after the verb go through untouched, and core answers them
 -- over its own config.
-local TUNING_VERBS = { retry = true, wsgate = true, delay = true, hidecutscene = true }
+local TUNING_VERBS = { delay = true, hidecutscene = true }
 
 local SLOT_OPS = { list = true, create = true, delete = true }
 

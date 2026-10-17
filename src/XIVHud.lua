@@ -816,7 +816,7 @@ local function get_items(...)
   return windower.ffxi.get_items(...)
 end
 
--- The recast tables, for a slot's sweep and the retry's probe.
+-- The recast tables, for a slot's sweep.
 local function get_spell_recasts()
   return windower.ffxi.get_spell_recasts()
 end
@@ -890,7 +890,6 @@ local action_service = step("building the action service", function()
     suppressed = function()
       return core.suppressed()
     end,
-    chat_open = chat_open,
     layout_active = function()
       return core.layout_active()
     end,
@@ -939,8 +938,6 @@ step("building the framework", function()
     resources = libraries_error == nil and res or nil,
     -- `//hud warp` and its kin, and the tuning core.lua carries for them.
     actions = action_service,
-    -- The memoized target read, for `//hud wsgate`'s state line.
-    get_mob_by_target = read_mob_by_target,
     screen = screen,
     now = os.clock,
     chat = chat,
@@ -1639,8 +1636,8 @@ if not safe_mode and not libraries_error then
           char_stats.arrived(original, type(player) == "table" and player.name or nil)
         end)
       end
-      -- The service first, with the same parse: the skillchain engine, the
-      -- retry's refusal branch and roulette read from here and nowhere else.
+      -- The service first, with the same parse: the skillchain engine and
+      -- roulette read from here and nowhere else.
       action_service.on_chunk(id, original, parsed)
       core.dispatch("chunk", id, original, parsed)
     end)

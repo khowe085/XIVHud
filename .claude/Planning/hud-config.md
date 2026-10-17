@@ -27,8 +27,7 @@ Settled up front (Kevin, 2026-10-01):
 
 - Buff priority/filter list editing (a later feature of its own: search, paging, reordering).
 - Anything the binder or layout mode already owns.
-- File-only keys with no command surface (`retry.window/backoff/deadline/attempts`,
-  `buffs.max_icons`, skillchain's colors) - except `snap`/`hideCutscene`, see Open questions.
+- File-only keys with no command surface (`buffs.max_icons`, skillchain's colors) - except `snap`/`hideCutscene`, see Open questions.
 - Text entry of any kind.
 
 ## Panel inventory
@@ -41,10 +40,6 @@ HEAD). "choice" renders as `[<] value [>]` cycling the options; "stepper" as `[-
 
 | Setting | Control | Bounds | Default |
 |---|---|---|---|
-| retry | toggle | | off |
-| wsgate | toggle | | off |
-| wsgate range | stepper | > 0, step 0.5 | 4 |
-| wsgate pivot | stepper | >= 0, step 0.1 | 1.3 |
 | delay | stepper | >= 0, step 1 (0 = off) | 5 |
 | hidecutscene | toggle | | on |
 
@@ -124,7 +119,7 @@ them through the same function core's passthrough calls:
   ways in, one behaviour).
 - Statusbar category rows: `component.handle_buffs({bar, "filter", cat})` - the only path that
   verb has (statusbar logic.lua:422-442).
-- Global rows: core's `retry`/`wsgate`/`delay` handlers, factored so each returns its message and
+- Global rows: core's `delay` handler, factored so each returns its message and
   both `//hud` and the window call the one function.
 
 The returned message is shown in a **status line inside the window**, not said to chat - the window
@@ -236,7 +231,7 @@ along it moves nothing until it exits.
 - **A click outside the window is the game's and does not close it** (the binder dismisses its
   panel on one; this window is the whole mode). **The bars' KEYS still fire while it is open**:
   keyboard delivery is untouched, as planned, and nothing makes a bar inert for this mode. The trip
-  refusal and the retry clear do apply (the service counts it as a config mode), so a warp or mount
+  refusal does apply (the service counts it as a config mode), so a warp or mount
   pressed from a bar key while the window is open is refused, while an ordinary action goes. Both
   are Kevin's to overturn.
 - **A row's words are `command .. value .. suffix`**: the optional `suffix` exists for a command
@@ -247,7 +242,7 @@ along it moves nothing until it exits.
   drawn. Phase 3 adds the cross-component spec that pins every shipped panel inside it.
 - **A typed command refreshes an open window** (core re-reads the panel after every `//hud`
   command), and a change of character closes it.
-- The tuners (`retry`, `wsgate`, `delay`, `hidecutscene`) now ANSWER their line; `//hud` says it
+- The tuners (`delay`, `hidecutscene`) now ANSWER their line; `//hud` says it
   and the window writes it on its status line.
 - A parity test in `binder_spec` runs one mouse script through the binder and the settings window
   and compares every verdict the two share.
@@ -302,7 +297,7 @@ Where the panels differ from the inventory above:
   bar-wide fallback. For a hand-broken file this can differ from what the component's status line
   prints (invtracker prints the stored column count); they agree for every value a command can set.
 - **Step sizes**: parambar's width steps by 4 and its accuracy window by 5; every other stepper by
-  1 (the gate's reach by 0.5 and pivot by 0.1). A value between steps is typed.
+  1. A value between steps is typed.
 - **The two bars' `sets` tab is one function** (`lib/actionbar/commands.config_tabs`), which also
   carries the crossbar's `views` and `general`; the hotbar appends its own `rows` and `general`.
   `bindings.cycles(set, state)` and `render.shapes()` were added for it to read through.

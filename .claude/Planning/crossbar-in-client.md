@@ -126,7 +126,7 @@ unverified is the **wired component** behaving the same way.
 | --- | --- | --- | --- |
 | 7.1 | `//hud warp`, `//hud mr`, `//hud sneak`, `//hud invisible`, `//hud draw` from the console | Each does what `//hud crossbar <verb>` did; `//hud crossbar warp` answers the crossbar's unknown-verb hint | The verbs are core's now (`lib/actionbar/service`); a hint from the crossbar means the passthrough won |
 | 7.2 | `//hud draw` from the console, then engage a mob, then `//hud draw` again | The crossbar's sword and BOTH bars' rotations follow one state: drawn lights the sword and lands each bar on its first drawn set; the second `draw` sends `/attack off` | Weapon state is the service's; a bar reads it back each tick (`bar.sync_weapon`) |
-| 7.3 | `//hud retry`, `//hud retry on`, `//hud wsgate`, `//hud wsgate range 30`, `//hud delay 2`, then `//hud copy` this character onto another and read them there | Each reports and writes `data/<Character>/core.lua` at once; `//hud slot` does NOT switch them; the copy carries them | They live in core.lua beside `snap` and `hideCutscene`, outside every slot |
+| 7.3 | `//hud delay 2`, then `//hud copy` this character onto another and read them there | It reports and writes `data/<Character>/core.lua` at once; `//hud slot` does NOT switch them; the copy carries it | It lives in core.lua beside `snap` and `hideCutscene`, outside every slot |
 | 7.4 | `//hud warp all` between two clients on THIS build | Both warp; the receiver does not re-broadcast | The IPC string is `xivhud warp` now; an alt on the older build hears nothing |
 | 7.5 | Hold `;` and press `1` with the hotbar on; release; press bare `1`; press CTRL+`1` | The crossbar fires alone on the chord; the bare key fires nothing and reaches the game (2026-10-09: the bare row is nobody's); CTRL+`1` fires row 1 AND the game's macro (expected - keep those macros inert) | Core hands a later component the block an earlier one took; the crossbar is registered first |
 | 7.6 | ALT+`1`, SHIFT+`1`, CTRL+ALT+`1` | Row 2, row 3, and nothing at all (CTRL+ALT is assigned to no row) | Whether ALT chords reach the addon is unobserved - the crossbar never used ALT |
@@ -157,8 +157,7 @@ answer it.
 | 8.5 | Same on SMN and BST (`Blood Pact: Rage`/`Ward`, `Ready`) | Each opens its children, bound as `/pet` and firing | The long-list case: 91 pacts and 120 ready moves if the client reports only the parents. Kevin accepted that 2026-09-07 - this is where to say whether it is actually usable |
 | 8.6 | On a job with a pet, look for `Pet commands` in `Job Abilities` | It is NOT listed; Fight, Heel, Sic, Deploy and the maneuvers are | 55 is a menu with no submenu of its own |
 | 8.6a | Bind a maneuver on PUP (or Fight on BST) from the picker and press it | It fires | **A behaviour change outside this feature's purpose.** These thirty `PetCommand` abilities bound as `/ja` before and bind as `/pet` now - the resource's `prefix` and upstream both say `/pet`, but whether `/ja` was broken is unverified and the game may accept both. If `/pet` fails here, restrict the prefix derivation to family CHILDREN and leave the flat list on `ja` |
-| 8.6b | Press a bound maneuver or blood pact the moment it is still on recast, with the cast retry ON | It re-sends once the recast clears, exactly as a job ability does | **A reversal (Kevin, 2026-09-07).** `pet` was deliberately unwatched - nobody had seen which message refuses one, and guessing the ability's 71 was the one thing the retry must not do. The picker's move to prefix-derived types moved thirty abilities that DID have coverage off `ja`, which changed the cost of leaving it out. Both halves are still guesses: message 71, and whether AMNESIA blocks a `/pet`. If it never re-sends, 71 is wrong |
-| 8.6c | On SMN, bind a blood pact and watch the slot's recast arc, then press one while the 1-hour is down | The arc follows the PACT's recast, and a refused pact still re-sends | `render.lua` records that pacts share recast id **0** with the level-1 SP abilities. If that holds, a pact slot dims on the SP timer and `guards_pass` drops every retry while the 1-hour is down - so the retry 8.6b buys would be inert for pacts and real only for the flat pet commands. Raised in review, ~50%: nobody has read `ability_recasts[0]` for a pact in a client |
+| 8.6c | On SMN, bind a blood pact and watch the slot's recast arc, then press one while the 1-hour is down | The arc follows the PACT's recast | `render.lua` records that pacts share recast id **0** with the level-1 SP abilities. If that holds, a pact slot dims on the SP timer while the 1-hour is down. Raised in review, ~50%: nobody has read `ability_recasts[0]` for a pact in a client |
 | 8.7 | Open a submenu, then change job or SUBJOB without closing the binder | The window drops back out of the submenu, and the listing behind it is the new pair's | Three review rounds found strands here. The catalog is scoped to the job PAIR, so the rebuild compares both halves now (2026-09-07); comparing the main job alone left a departed subjob's spells and abilities in the picker - a pre-existing bug the submenu inherited |
 
 ## 9. The reraise ladder (2026-10-09)
@@ -184,8 +183,7 @@ been watched in a client.
 ## Open questions — answers, not checks
 
 These are not pass/fail runs; they are facts the code is currently guessing at,
-and the answer changes what ships. C and D gate the CB9 cast-retry feature and
-are worth collecting while you are casting anyway.
+and the answer changes what ships.
 
 **A. Does FFXI accept a bare player name as a target, and does `<Name>` work?**
 The CLI refuses a trailing unrecognised word and names the two readings that
@@ -202,73 +200,19 @@ for NIN. The reference fork's COR branch predates its own master-tool gate, so
 it is no evidence either way. If a /COR *can* spend a Trump Card, the rule needs
 a per-family exception rather than the one main-job test.
 
-**C. What does a too-soon action actually send?** (gates CB9.) **Three
-refusals to collect, not one**, because the retry covers all three kinds and
-keys on the message per kind. Take each back to back, with a packet viewer or
-a scratch handler, and note the packet and the message id: a **spell** cast
-too soon (believed `0x029` message **17 or 18**), a **job ability** used too
-soon (believed **71**), and a **weaponskill** used too soon (believed **72**).
-The ability and weaponskill ids are the weaker guess of the three - the spell
-pair at least has the reference addon's citation behind it. Note also whether
-the packet identifies you as the actor in
-a field we can match. Everything CB9 triggers on rests on this, and the
-reference addon's own handler for it has never once executed, so the ids come
-from a resource table rather than from anyone's observation. If the ids differ,
-CB9 uses whatever you see; if the refusal turns out to be client-side with no
-packet at all, CB9 cannot be built as designed and falls back to predicting the
-window — which is the design Kevin rejected, so say so rather than quietly
-switching.
-
-While you have the packet open, also note **whether it carries the spell** (Param 1
-is the candidate). As shipped, a refusal is attributed to our last send by actor
-and timing alone, so a refusal caused by a game macro or by GearSwap inside the
-window would re-send *our* spell instead. Reading the spell out of the packet
-closes that, and nothing is decoded on a guess until someone has seen the bytes.
-
-**D. How long is the enforced gap, and how long should a retry wait?** (gates
-CB9's default.) Cast back to back for a few minutes and note roughly how long
-after a refusal a re-send succeeds. Kevin reports "usually 1-2 seconds, but".
-A backoff shorter than the real gap just collects a second refusal and burns an
-attempt; longer than it wastes the smoothing the feature exists for. This
-number ships as a tuned default, not a guess.
-
-**E. Does a command take a bare numeric target id, and does `<pN>` resolve?**
-(gates CB9's pinning.) Two halves of the same question, both cheap while you
-are casting anyway.
-
-1. Type `/ma "Cure" 16941234` by hand, substituting a real mob id read from a
-   packet viewer or `//hud` diagnostics, and see whether it lands. The cast
-   retry re-sends exactly this shape - the token the slot was bound with,
-   replaced by the id it pointed at when you pressed - which is what
-   Selindrile's widely-used files do (`delayed_target = spell.target.id`).
-   That is good evidence and it is not observation. If a bare id is *not*
-   accepted, the pin cannot be sent as an id and CB9 needs another form
-   (`<t>` re-resolved is the thing Kevin rejected, so say so rather than
-   quietly reverting to it).
-2. `windower.ffxi.get_mob_by_target("p3")` - does it answer the third party
-   member? **Moot for correctness as of 2026-08-19**: party and alliance
-   targets are no longer retried at all, so nothing can land on the wrong
-   person. Kept on the list because the answer would let them back in - a
-   `<p3>` cure pinned by id is strictly better than not retrying it, and
-   back-to-back party curing is the case the feature exists for.
-
-**F. What does a targetless spell command actually do?** (a CB8 question the
-cast retry surfaced, not a CB9 one.) Type `/ma "Cure IV"` with a mob selected,
+**F. What does a targetless spell command actually do?** (a CB8 question.) Type `/ma "Cure IV"` with a mob selected,
 then with nothing selected, and note each outcome: does it use the current
 target, open a prompt, or fail outright?
 
 **Half answered, 2026-08-22.** This item existed because the binder wrote its
 records **without a target word** (`catalog.lua:162`, `{ type = "ma", action =
-<name> }`), so a mouse-bound slot handed the game a bare command - and that is
-why the cast retry never watched one: with no target on the press there is
-nothing to pin the re-send to.
+<name> }`), so a mouse-bound slot handed the game a bare command.
 
 The binder's third step now asks for a target, so a mouse binding can carry one
 and every surface produces the same record. **The question still stands for the
 default**: `(no target)` is the first row and is what a player who clicks
 straight past it gets, which is the old behaviour exactly. Knowing what a bare
-`/ma "Cure IV"` does decides whether that default is right, and whether a
-targetless record is worth the retry watching at all.
+`/ma "Cure IV"` does decides whether that default is right.
 
 **G. What number is the Resting player status?** (gates CB10's cancel.) Sit
 down with `/heal` and read `windower.ffxi.get_player().status`, then stand and
@@ -348,9 +292,8 @@ a hitch?** Two cheap observations while the binder is up:
 **K. Does `/item` take a bare numeric target id?** (gates the enchanted
 item's target pin.) The deferred `/item` is sent when the enchantment goes
 live, so a `<t>` written into the binding is pinned at the press and re-sent
-as the mob id - the same substitution the cast retry makes. Question E asks
-this of `/ma`, where Selindrile's widely-used files are the evidence.
-NOTHING vouches for the `/item` form. Only reachable when a binding names
+as the mob id. The since-removed cast retry (2026-09) showed `/ma` accepts
+a bare numeric target; nothing vouches for the `/item` form. Only reachable when a binding names
 `t` or `bt`, which is rare for enchanted gear (most of it is self-targeting),
 so a failure here is narrow: the deferred use is refused and nothing else
 misbehaves.
@@ -396,44 +339,6 @@ and a slot can be bound to one from the CLI. What it loses is only its
 motivating example. Note the fixture no longer uses Instant Warp as its
 stand-in for a temporary item, since that would have written the wrong
 classification into the tests.
-
-**P. ANSWERED (Kevin, 2026-09-05): the game does not allow a weaponskill
-while not engaged.** So the weaponskill gate's engagement rule refuses only
-what the game refuses anyway, and it stays.
-
-It was written as an assumption with no evidence behind it, unlike
-`melee_range` and `in_flight`, which were at least labelled guesses - and
-the wrong answer here would have made every out-of-combat weaponskill press
-a dead button with no message, since a gate refusal is silent by design.
-Testplan row O9 is answered; K2.4 and K2.3 still exercise the rule.
-
-**Q. PARTLY ANSWERED (Kevin, 2026-09-05): a weaponskill's reach, and the
-game's own behaviour past it.**
-
-Three readings, all in the distance the target bar prints: a weaponskill
-landed at **3** and at **4**, and at **6** it FIRED AND SPENT THE WHOLE 3000
-TP. So `melee_range` ships at 4, expressed as that same distance with nothing
-added to it, and the comparison is strictly greater so the number a player
-watched work is the number they can type.
-
-The 6 is the important half. The gate was designed on the assumption that a
-press let through reaches a game that refuses it harmlessly, which made the
-range rule the most expendable of the six and argued for shipping it loose.
-The game does not refuse it. Too loose costs 3000 TP; too tight costs a dead
-button. The rule is now the most valuable of the six, and the reasoning in
-`wsgate.lua` is written the other way round.
-
-STILL OPEN, the other half: whether our own category-3 `0x028` matched on
-`actor_id` releases the in-flight lock. Nobody has read that packet in a
-client - the same caveat the cast retry's refusal ids carry - and a wrong
-match costs the player their weaponskill for `in_flight` after every press,
-which is why that span is one second. Rows K2.8, K2.9 and O11.
-
-Also open: whether 4 holds across weapon classes. A polearm reaches further
-than a dagger and one number cannot be right for both, and dropping the
-model sizes means a large mob is measured like a small one - both are
-`//hud crossbar wsgate range <yalms>` to adjust, which is why that verb
-exists.
 
 ---
 

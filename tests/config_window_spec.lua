@@ -18,7 +18,7 @@ local function build(opts)
   local env = {
     prims = prims,
     entries = opts.entries or { "global", "hotbar" },
-    values = { retry = false, range = 4, delay = 5, shared = false, columns = 3 },
+    values = { sound = false, range = 4, delay = 5, shared = false, columns = 3 },
     applied = {},
     panel_reads = 0,
     closed = 0,
@@ -31,14 +31,14 @@ local function build(opts)
     if name == "global" then
       return {
         rows = {
-          { label = "Cast retry", kind = "toggle", value = values.retry, command = { "retry" } },
+          { label = "Sound", kind = "toggle", value = values.sound, command = { "sound" } },
           {
-            label = "Gate reach",
+            label = "Reach",
             kind = "stepper",
             value = values.range,
             min = 0.5,
             step = 0.5,
-            command = { "wsgate", "range" },
+            command = { "reach" },
           },
           {
             label = "Travel delay",
@@ -85,12 +85,12 @@ local function build(opts)
       return opts.on_apply(words)
     end
     local values = env.values
-    if words[1] == "retry" then
-      values.retry = words[2] == "on"
-      return "cast retry: " .. words[2]
-    elseif words[1] == "wsgate" then
-      values.range = tonumber(words[3])
-      return "weaponskill gate melee reach: " .. words[3] .. " yalms"
+    if words[1] == "sound" then
+      values.sound = words[2] == "on"
+      return "sound: " .. words[2]
+    elseif words[1] == "reach" then
+      values.range = tonumber(words[2])
+      return "reach: " .. words[2]
     elseif words[1] == "delay" then
       values.delay = tonumber(words[2])
       return { "travel delay: " .. words[2] .. " seconds", "a second line" }
@@ -221,8 +221,8 @@ describe("config window", function()
       local window, env = build({ headless = true })
       window.open()
       assert.are.equal(0, #env.prims.all)
-      click(window, centre(row_labelled(window, "Cast retry").toggle))
-      assert.is_true(env.values.retry)
+      click(window, centre(row_labelled(window, "Sound").toggle))
+      assert.is_true(env.values.sound)
     end)
   end)
 
@@ -257,11 +257,11 @@ describe("config window", function()
     it("switches panel on a menu click", function()
       local window = build()
       window.open()
-      assert.is_not_nil(row_labelled(window, "Cast retry"))
+      assert.is_not_nil(row_labelled(window, "Sound"))
       click(window, centre(menu_entry(window, "hotbar")))
       assert.is_true(menu_entry(window, "hotbar").selected)
       assert.is_false(menu_entry(window, "global").selected)
-      assert.is_nil(row_labelled(window, "Cast retry"))
+      assert.is_nil(row_labelled(window, "Sound"))
       assert.is_not_nil(row_labelled(window, "Set 1 shared"))
     end)
 
@@ -305,11 +305,11 @@ describe("config window", function()
       local window, env = build()
       window.open()
       local frame = window.view().frame
-      local row = row_labelled(window, "Cast retry")
+      local row = row_labelled(window, "Sound")
       assert.are.same({ frame.body.x + 222, frame.body.y }, { row.x, row.y })
-      local label = shown_text(env, "Cast retry")
+      local label = shown_text(env, "Sound")
       assert.are.same({ row.x, row.y }, { label.x, label.y })
-      assert.are.equal(row.y + 26, row_labelled(window, "Gate reach").y)
+      assert.are.equal(row.y + 26, row_labelled(window, "Reach").y)
     end)
 
     it("hides the prims of rows the panel no longer has", function()
@@ -318,7 +318,7 @@ describe("config window", function()
       assert.is_not_nil(shown_text(env, "Travel delay"))
       click(window, centre(menu_entry(window, "hotbar")))
       assert.is_nil(shown_text(env, "Travel delay"))
-      assert.is_nil(shown_text(env, "Gate reach"))
+      assert.is_nil(shown_text(env, "Reach"))
     end)
   end)
 
@@ -326,7 +326,7 @@ describe("config window", function()
     it("shows the value and takes a click on it", function()
       local window, env = build()
       window.open()
-      local row = row_labelled(window, "Cast retry")
+      local row = row_labelled(window, "Sound")
       assert.are.equal("[ off ]", row.text)
       local drawn = shown_text(env, "[ off ]")
       assert.are.same({ row.toggle.x, row.toggle.y }, { drawn.x, drawn.y })
@@ -336,19 +336,19 @@ describe("config window", function()
     it("sends the row's command with the other value on the end", function()
       local window, env = build()
       window.open()
-      click(window, centre(row_labelled(window, "Cast retry").toggle))
-      assert.are.same({ { name = "global", words = { "retry", "on" } } }, env.applied)
-      click(window, centre(row_labelled(window, "Cast retry").toggle))
-      assert.are.same({ "retry", "off" }, env.applied[2].words)
+      click(window, centre(row_labelled(window, "Sound").toggle))
+      assert.are.same({ { name = "global", words = { "sound", "on" } } }, env.applied)
+      click(window, centre(row_labelled(window, "Sound").toggle))
+      assert.are.same({ "sound", "off" }, env.applied[2].words)
     end)
 
     it("re-reads the panel, so it shows what the command left behind", function()
       local window, env = build()
       window.open()
       local reads = env.panel_reads
-      click(window, centre(row_labelled(window, "Cast retry").toggle))
+      click(window, centre(row_labelled(window, "Sound").toggle))
       assert.are.equal(reads + 1, env.panel_reads)
-      assert.are.equal("[ on ]", row_labelled(window, "Cast retry").text)
+      assert.are.equal("[ on ]", row_labelled(window, "Sound").text)
       assert.is_not_nil(shown_text(env, "[ on ]"))
     end)
 
@@ -356,17 +356,17 @@ describe("config window", function()
       local window, env = build()
       window.open()
       assert.are.equal("", window.view().status)
-      click(window, centre(row_labelled(window, "Cast retry").toggle))
-      assert.are.equal("cast retry: on", window.view().status)
+      click(window, centre(row_labelled(window, "Sound").toggle))
+      assert.are.equal("sound: on", window.view().status)
       local frame = window.view().frame
-      local drawn = shown_text(env, "cast retry: on")
+      local drawn = shown_text(env, "sound: on")
       assert.are.same({ frame.subhead.x, frame.subhead.y }, { drawn.x, drawn.y })
     end)
 
     it("does nothing for a press that slid off it before the release", function()
       local window, env = build()
       window.open()
-      local x, y = centre(row_labelled(window, "Cast retry").toggle)
+      local x, y = centre(row_labelled(window, "Sound").toggle)
       window.mouse(LEFT_DOWN, x, y, 0)
       assert.is_true(window.mouse(MOVE, x, y + 60, 0), "a drag in the window is the window's")
       assert.is_true(window.mouse(LEFT_UP, x, y + 60, 0))
@@ -422,8 +422,8 @@ describe("config window", function()
       local window, env = build()
       env.values.range = 0.75
       window.open()
-      click(window, centre(row_labelled(window, "Gate reach").dec))
-      assert.are.same({ "wsgate", "range", "0.5" }, env.applied[1].words)
+      click(window, centre(row_labelled(window, "Reach").dec))
+      assert.are.same({ "reach", "0.5" }, env.applied[1].words)
     end)
 
     it("never moves a value the wrong way to bring it inside a bound", function()
@@ -433,10 +433,10 @@ describe("config window", function()
       local window, env = build()
       env.values.range = 0.3
       window.open()
-      click(window, centre(row_labelled(window, "Gate reach").dec))
+      click(window, centre(row_labelled(window, "Reach").dec))
       assert.are.same({}, env.applied)
-      click(window, centre(row_labelled(window, "Gate reach").inc))
-      assert.are.same({ "wsgate", "range", "0.8" }, env.applied[1].words, "the way it was asked to go still works")
+      click(window, centre(row_labelled(window, "Reach").inc))
+      assert.are.same({ "reach", "0.8" }, env.applied[1].words, "the way it was asked to go still works")
       env.values.delay = 9
       window.refresh()
       click(window, centre(row_labelled(window, "Travel delay").inc))
@@ -463,8 +463,8 @@ describe("config window", function()
       local window, env = build()
       env.values.range = 400
       window.open()
-      click(window, centre(row_labelled(window, "Gate reach").inc))
-      assert.are.same({ "wsgate", "range", "400.5" }, env.applied[1].words)
+      click(window, centre(row_labelled(window, "Reach").inc))
+      assert.are.same({ "reach", "400.5" }, env.applied[1].words)
     end)
 
     it("sends a fractional step as the number a player would type", function()
@@ -689,10 +689,10 @@ describe("config window", function()
       })
       window.open()
       assert.has_no.errors(function()
-        click(window, centre(row_labelled(window, "Cast retry").toggle))
+        click(window, centre(row_labelled(window, "Sound").toggle))
       end)
       assert.is_not_nil(window.view().status:find("the handler broke", 1, true))
-      assert.are.equal("[ off ]", row_labelled(window, "Cast retry").text)
+      assert.are.equal("[ off ]", row_labelled(window, "Sound").text)
       assert.are.equal(1, #env.applied)
     end)
   end)
@@ -772,7 +772,7 @@ describe("config window", function()
     it("drops a press when the window closes under it", function()
       local window = build()
       window.open()
-      local x, y = centre(row_labelled(window, "Cast retry").toggle)
+      local x, y = centre(row_labelled(window, "Sound").toggle)
       window.mouse(LEFT_DOWN, x, y, 0)
       window.close()
       window.open()
@@ -812,7 +812,7 @@ describe("config window", function()
       window.open("hotbar")
       click(window, centre(menu_entry(window, "global")))
       assert.are.same({}, window.view().tabs)
-      assert.are.equal(window.view().frame.body.y, row_labelled(window, "Cast retry").y)
+      assert.are.equal(window.view().frame.body.y, row_labelled(window, "Sound").y)
       assert.is_nil(shown_text(env, "[ sets ]"))
       assert.is_nil(shown_text(env, "  rows"))
     end)
@@ -853,7 +853,7 @@ describe("config window", function()
       local window, env = build()
       window.open()
       local before = window.view().frame
-      local row_before = row_labelled(window, "Cast retry")
+      local row_before = row_labelled(window, "Sound")
       local grab_x, grab_y = before.header.x + 20, before.header.y + 5
       window.mouse(LEFT_DOWN, grab_x, grab_y, 0)
       assert.is_true(window.mouse(MOVE, grab_x - 200, grab_y - 150, 0))
@@ -861,7 +861,7 @@ describe("config window", function()
       assert.are.same({ before.x - 200, before.y - 150 }, { frame.x, frame.y })
       assert.are.same(
         { row_before.x - 200, row_before.y - 150 },
-        { row_labelled(window, "Cast retry").x, row_labelled(window, "Cast retry").y },
+        { row_labelled(window, "Sound").x, row_labelled(window, "Sound").y },
         "everything in it moves with it"
       )
       assert.is_nil(env.saves, "nothing is written per pixel")
@@ -923,7 +923,7 @@ describe("config window", function()
       window.set_hidden(true)
       assert.are.equal(0, visible_prims(env))
       assert.is_true(window.active())
-      local x, y = centre(row_labelled(window, "Cast retry").toggle)
+      local x, y = centre(row_labelled(window, "Sound").toggle)
       assert.is_false(click(window, x, y))
       assert.is_false(window.mouse(WHEEL, x, y, -1))
       assert.are.same({}, env.applied)
@@ -943,7 +943,7 @@ describe("config window", function()
       local window, env = build()
       window.open()
       window.set_hidden(true)
-      env.values.retry = true
+      env.values.sound = true
       window.refresh()
       assert.are.equal(0, visible_prims(env))
       window.set_hidden(false)
@@ -953,7 +953,7 @@ describe("config window", function()
     it("drops a press it was hidden under", function()
       local window = build()
       window.open()
-      local x, y = centre(row_labelled(window, "Cast retry").toggle)
+      local x, y = centre(row_labelled(window, "Sound").toggle)
       window.mouse(LEFT_DOWN, x, y, 0)
       window.set_hidden(true)
       window.set_hidden(false)
@@ -963,11 +963,11 @@ describe("config window", function()
     it("leaves a press alone when it is told what it already is", function()
       local window, env = build()
       window.open()
-      local x, y = centre(row_labelled(window, "Cast retry").toggle)
+      local x, y = centre(row_labelled(window, "Sound").toggle)
       window.mouse(LEFT_DOWN, x, y, 0)
       window.set_hidden(false)
       assert.is_true(window.mouse(LEFT_UP, x, y, 0))
-      assert.is_true(env.values.retry)
+      assert.is_true(env.values.sound)
     end)
 
     it("is forgotten by a close", function()

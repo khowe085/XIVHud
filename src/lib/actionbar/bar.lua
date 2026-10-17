@@ -75,11 +75,6 @@ local PLAIN_COUNT_COLOR = { 255, 255, 255 }
 -- re-arms it.
 local RESCOPE_DEADLINE_SECONDS = 10
 
---[[ The two target tokens the weaponskill gate may look up a mob for - the
-     pair this repo has read `get_mob_by_target` for, exactly as the service's
-     retry pin is scoped. ]]
-local PINNED_TARGETS = { t = true, bt = true }
-
 local RESOURCE_TABLES = {
   ma = "spells",
   ja = "job_abilities",
@@ -214,7 +209,7 @@ local function new(deps)
   end
 
   --[[ What a record resolves to in the resources: the facts a slot draws
-       and a press is gated on - recast id, costs, the display category the
+       - recast id, costs, the display category the
        icon pack is keyed by, the weapon class of a weaponskill, an item's
        id. The SP job suffix takes the player's main job id - the owning job
        coincides for your own SP; a shared set viewed cross-job may draw the
@@ -718,68 +713,6 @@ local function new(deps)
     return nil
   end
 
-  --[[ The press -----------------------------------------------------------
-       Which mob the gate may look up for a press, or nil for "do not look":
-       the PINNED PAIR and nothing else. A weaponskill bound to <st>, <p3>
-       or a scan cannot be resolved here, and reading <t> in its place would
-       refuse a press on a mob it never aimed at. A record with no token at
-       all aims at the current target, which IS <t>. ]]
-  local function gate_token(record)
-    local token = record.target
-    if token == nil then
-      return "t"
-    end
-    token = type(token) == "string" and token:lower() or nil
-    return token ~= nil and PINNED_TARGETS[token] and token or nil
-  end
-
-  --[[ What the weaponskill gate needs, for a weaponskill alone: every other
-       type would pay a resource lookup and up to two mob reads for facts
-       nothing downstream consults. The mob read is memoized for the frame
-       by the player service. ]]
-  local function gate_facts(record)
-    if record.type ~= "ws" then
-      return nil
-    end
-    local player = get_player()
-    local vitals = player ~= nil and player.vitals or nil
-    local meta = meta_for(record)
-    local token = ctx.get_mob_by_target ~= nil and gate_token(record) or nil
-    local target = token ~= nil and ctx.get_mob_by_target(token) or nil
-    return {
-      tp = vitals ~= nil and vitals.tp or nil,
-      status = player ~= nil and player.status or nil,
-      buffs = player ~= nil and player.buffs or nil,
-      skill = meta ~= nil and meta.weapon or nil,
-      distance_squared = target ~= nil and target.distance or nil,
-      model_size = target ~= nil and target.model_size or nil,
-    }
-  end
-
-  --[[ The cast retry's guards, answered for the record it is about to
-       re-send: whether this very slot still holds it (identity, not
-       contents), its recast, its affordability and the player's buffs. Read
-       live rather than off the tick's snapshot: the service steps the
-       retry BEFORE this bar's tick refreshes that snapshot, and the probe
-       runs only when a re-send is otherwise due. ]]
-  local function retry_facts_at(entry, set, side, slot)
-    if bindings.resolve(set, side, slot) ~= entry.record then
-      return { bound = false }
-    end
-    local meta = meta_for(entry.record)
-    local player = get_player()
-    local render = deps.render()
-    local cost = render.cost(meta, player ~= nil and player.vitals or {})
-    local spell_recasts = ctx.get_spell_recasts ~= nil and ctx.get_spell_recasts() or {}
-    local ability_recasts = ctx.get_ability_recasts ~= nil and ctx.get_ability_recasts() or {}
-    return {
-      bound = true,
-      recast = render.remaining_for(meta, spell_recasts, ability_recasts),
-      affordable = cost == nil or cost.affordable ~= false,
-      buffs = player ~= nil and player.buffs or nil,
-    }
-  end
-
   --[[ The weapon state is the service's; the rotation follows it from
        here. Read on every path that can move it - a press, a status, the
        tick - and a change lands the set exactly as the old in-widget flip
@@ -793,19 +726,10 @@ local function new(deps)
   end
 
   --[[ Fire one slot of one (set, side), whatever pointed at it. Everything
-       after the resolve - the gate, the flash, the travel countdown, the
-       cast retry - is the service's, so two ways in cannot become two
-       behaviours. ]]
+       after the resolve - the flash and the travel countdown - is the
+       service's, so two ways in cannot become two behaviours. ]]
   function self.fire(set, side, slot, flash)
-    local record = bindings.resolve(set, side, slot)
-    service.fire(record, {
-      gate_facts = record ~= nil and gate_facts(record) or nil,
-      flash = flash,
-      retry_facts = function(entry)
-        return retry_facts_at(entry, set, side, slot)
-      end,
-      owner = name,
-    })
+    service.fire(bindings.resolve(set, side, slot), { flash = flash })
     self.sync_weapon()
   end
 
@@ -1265,14 +1189,8 @@ local function new(deps)
     -- The binder describes a character's bindings; a logout invalidates
     -- every one of them, so it goes down with the scope.
     self.close_edit()
-    -- A logout mid-warp must not leave a GearSwap slot disabled, and the
-    -- cast THIS bar pressed is invalidated with everything else - the other
-    -- bar's is its own to drop, the rule bar_hidden keeps.
+    -- A logout mid-warp must not leave a GearSwap slot disabled.
     service.drop_trip()
-    local held = service.retry.held()
-    if held ~= nil and held.owner == name then
-      service.retry.clear()
-    end
     scoped_main, scoped_sub, rescope_want = nil, nil, nil
     reads, last_read_generation = nil, nil
     bindings = build_bindings(nil)

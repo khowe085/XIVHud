@@ -103,9 +103,6 @@ local HELP = {
   "  //hud invisible            the invisible ladder, likewise",
   "  //hud reraise              the best reraise you have: spell, item, then gear",
   "  //hud draw                 toggle the weapon state every bar follows",
-  "  //hud retry [on|off]       re-send an action the game refused as too soon",
-  "  //hud wsgate [on|off]      drop a weaponskill press the game would refuse;",
-  "                            wsgate range|pivot <yalms> tune its reach",
   "  //hud delay [<seconds>]    the countdown before a mount or a warp goes",
   "  //hud hidecutscene [on|off]",
   "                            hide the HUD during cutscenes",
@@ -157,11 +154,10 @@ local function new(deps)
   self.config = core_config
 
   --[[ The action service's tuning lives in core.lua beside snap and
-       hideCutscene: retry, the weaponskill gate and the travel delay were
-       never meant to vary by slot, and a slot-scoped home would have meant a
-       settings handle for something that is not a component (Kevin,
-       2026-09-06). The service names its own defaults; without the service
-       core.lua carries none of them. ]]
+       hideCutscene: the travel delay was never meant to vary by slot, and a
+       slot-scoped home would have meant a settings handle for something
+       that is not a component (Kevin, 2026-09-06). The service names its
+       own defaults; without the service core.lua carries none of them. ]]
   local function core_defaults()
     local defaults = {}
     for key, value in pairs(CORE_DEFAULTS) do
@@ -1311,123 +1307,9 @@ local function new(deps)
     return nil
   end
 
-  -- A block of the tuning, made if a hand-edited file lost it: only the key
-  -- being set is touched, so the tuning beside it survives the switch.
-  local function tuning_table(key)
-    local config = core_config()
-    if type(config[key]) ~= "table" then
-      config[key] = {}
-    end
-    return config[key]
-  end
-
   --[[ Each tuner ANSWERS its line rather than saying it: `//hud` says the
        answer in chat and the settings window writes it on its status line,
        so a click and a typed command are one behaviour through two doors. ]]
-  local function tune_retry(words)
-    if #words > 1 then
-      return "retry [on|off]"
-    end
-    if words[1] == nil then
-      local block = core_config().retry
-      return "cast retry: " .. (type(block) == "table" and block.enabled == true and "on" or "off")
-    end
-    local on = parse_switch(words[1])
-    if on == nil then
-      return "retry [on|off]"
-    end
-    tuning_table("retry").enabled = on
-    core_handle.save()
-    -- Switching off drops a cast held at that moment rather than letting a
-    -- last one through; the service's retry reads the write it just saw.
-    deps.actions.retry.sync()
-    return "cast retry: " .. (on and "on" or "off")
-  end
-
-  local WSGATE_FORM = "wsgate [on|off] - or wsgate range <yalms>, wsgate pivot <yalms>"
-
-  --[[ The gate's state, switch and reach together, plus what is in front of
-       you: the reach is settled by walking in on mobs of different sizes and
-       reading what worked, and neither the distance nor the model size is on
-       screen anywhere else. The numbers come from the service's own gate, so
-       the line cannot name a value that is not in force. ]]
-  local function wsgate_state()
-    local gate = deps.actions.wsgate
-    local line = "weaponskill gate: "
-      .. (gate.enabled() and "on" or "off")
-      .. ", melee reach "
-      .. tostring(gate.melee_range())
-      .. " yalms, size pivot "
-      .. tostring(gate.size_pivot())
-    local target = deps.get_mob_by_target ~= nil and deps.get_mob_by_target("t") or nil
-    if type(target) ~= "table" then
-      return line
-    end
-    local squared = tonumber(target.distance)
-    if squared ~= nil then
-      line = line .. (", target %.2f yalms"):format(math.sqrt(math.max(squared, 0)))
-    end
-    local size = tonumber(target.model_size)
-    if size ~= nil then
-      line = line .. (", model size %.2f"):format(size)
-    end
-    local reach = gate.reach_for(target.model_size)
-    if reach ~= nil then
-      line = line .. (", reach here %.2f"):format(reach)
-    end
-    return line
-  end
-
-  local function tune_wsgate(words)
-    local sub = type(words[1]) == "string" and words[1]:lower() or nil
-    if sub == "range" or sub == "pivot" then
-      if #words > 2 then
-        return WSGATE_FORM
-      end
-      local gate = deps.actions.wsgate
-      if words[2] == nil then
-        if sub == "range" then
-          return "weaponskill gate melee reach: " .. tostring(gate.melee_range()) .. " yalms"
-        end
-        return "weaponskill gate size pivot: " .. tostring(gate.size_pivot()) .. " yalms"
-      end
-      -- Refused rather than stored: the module falls back to the shipped
-      -- value for one it cannot use, so writing it would leave the player
-      -- believing a number that is not being measured against. Zero is
-      -- legitimate for the pivot (every mob adds the whole of its bulk) and
-      -- not for the reach - `wsgate off` is the off switch.
-      local yalms = tonumber(words[2])
-      local bad = yalms == nil or yalms ~= yalms or yalms == math.huge
-      if sub == "range" then
-        if bad or yalms <= 0 then
-          return "wsgate range <yalms> - a distance greater than zero"
-        end
-        tuning_table("wsgate").melee_range = yalms
-        core_handle.save()
-        return "weaponskill gate melee reach: " .. tostring(yalms) .. " yalms"
-      end
-      if bad or yalms < 0 then
-        return "wsgate pivot <yalms> - a distance of zero or more"
-      end
-      tuning_table("wsgate").size_pivot = yalms
-      core_handle.save()
-      return "weaponskill gate size pivot: " .. tostring(yalms) .. " yalms"
-    end
-    if #words > 1 then
-      return WSGATE_FORM
-    end
-    if words[1] == nil then
-      return wsgate_state()
-    end
-    local on = parse_switch(words[1])
-    if on == nil then
-      return WSGATE_FORM
-    end
-    tuning_table("wsgate").enabled = on
-    core_handle.save()
-    return "weaponskill gate: " .. (on and "on" or "off")
-  end
-
   local function tune_delay(words)
     if words[1] == nil then
       local span = deps.actions.travel.delay()
@@ -1464,9 +1346,9 @@ local function new(deps)
     return "hide in cutscenes: " .. (on and "on" or "off")
   end
 
-  local TUNERS = { retry = tune_retry, wsgate = tune_wsgate, delay = tune_delay, hidecutscene = tune_hidecutscene }
-  -- The three that are the action service's own tuning, and need it loaded.
-  local SERVICE_TUNERS = { retry = true, wsgate = true, delay = true }
+  local TUNERS = { delay = tune_delay, hidecutscene = tune_hidecutscene }
+  -- The one that is the action service's own tuning, and needs it loaded.
+  local SERVICE_TUNERS = { delay = true }
 
   local function run_tune(action)
     if not require_character() then
@@ -1502,33 +1384,7 @@ local function new(deps)
   local function global_panel()
     local rows = {}
     if deps.actions ~= nil then
-      local retry, gate = core_config().retry, deps.actions.wsgate
       rows = {
-        {
-          label = "Cast retry",
-          kind = "toggle",
-          value = type(retry) == "table" and retry.enabled == true,
-          command = { "retry" },
-        },
-        { label = "Weaponskill gate", kind = "toggle", value = gate.enabled(), command = { "wsgate" } },
-        -- Half a yalm is as near to zero as the reach steps: the command
-        -- refuses zero itself, `wsgate off` being the off switch.
-        {
-          label = "Gate melee reach (yalms)",
-          kind = "stepper",
-          value = gate.melee_range(),
-          min = 0.5,
-          step = 0.5,
-          command = { "wsgate", "range" },
-        },
-        {
-          label = "Gate size pivot (yalms)",
-          kind = "stepper",
-          value = gate.size_pivot(),
-          min = 0,
-          step = 0.1,
-          command = { "wsgate", "pivot" },
-        },
         {
           label = "Travel delay (seconds)",
           kind = "stepper",

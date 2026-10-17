@@ -80,8 +80,6 @@ describe("crossbar defaults", function()
   end)
 
   it("carries none of the action service's tuning - that is core.lua's", function()
-    assert.is_nil(defaults.retry)
-    assert.is_nil(defaults.wsgate)
     assert.is_nil(defaults.delay)
   end)
 

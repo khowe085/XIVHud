@@ -173,11 +173,10 @@ local function new(ctx)
 
   --[[ Execution is the action service's (lib/actionbar/service), built once
        in the entry point and shared with every bar: the scheduler, the
-       travel countdown, the cast retry, the weaponskill gate, the skillchain
-       engine, mount roulette and the warp and stealth ladders all live
-       there, and so does the player's weapon state. This bar hands it a
-       resolved record and the facts only the bar knows, and mirrors its
-       weapon state into the rotation below. ]]
+       travel countdown, the skillchain engine, mount roulette and the warp
+       and stealth ladders all live there, and so does the player's weapon
+       state. This bar hands it a resolved record, and mirrors its weapon
+       state into the rotation below. ]]
   local service = assert(ctx.actions, "crossbar needs ctx.actions, the action service")
   local roulette = service.roulette
   local skillchain = service.skillchain
@@ -992,7 +991,7 @@ local function new(ctx)
     -- Nothing owed to a click on a bar that is going away.
     swallow_left_up = false
     -- The bar's half: the binder goes down with the scope, the service
-    -- drops the trip and the held cast, the bindings are rebuilt empty.
+    -- drops the trip, the bindings are rebuilt empty.
     bar.detach()
     -- Core's save belongs to the attached config; holding it past a detach
     -- would write a config this widget no longer has.
@@ -1211,7 +1210,7 @@ local function new(ctx)
   function self.hide(anchor)
     --[[ One anchor going down takes nothing else with it: the widget is still
          on screen and still the owner of its keys, so none of the teardown
-         below applies - a retry or a trip is not a property of the anchor the
+         below applies - a trip is not a property of the anchor the
          user just switched off. ]]
     if anchor ~= nil then
       if hidden_anchors[anchor] then
@@ -1222,14 +1221,13 @@ local function new(ctx)
       return
     end
     visible = false
-    -- Suppression (a cutscene, zoning) and a user hide both arrive here,
-    -- and a cast held through either would fire into a moment that has
-    -- gone. Nothing the retry holds outlives the bar being on screen, and
-    -- neither does a trip counting down - nor the sword's owed release,
-    -- which core would go on dispatching to a hidden component and which
-    -- would then be paid out of the game's next click.
+    -- Suppression (a cutscene, zoning) and a user hide both arrive here. The
+    -- sword's owed release does not outlive either - core would go on
+    -- dispatching to a hidden component, and it would then be paid out of
+    -- the game's next click. A trip counting down goes only under
+    -- suppression.
     swallow_left_up = false
-    service.bar_hidden("crossbar")
+    service.bar_hidden()
     -- A hidden crossbar has no bar to bind against, and its panels would be
     -- left floating over a screen with nothing under them. Suppression
     -- (cutscene, zoning) arrives here as a hide too, and takes the binder

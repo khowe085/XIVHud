@@ -420,12 +420,10 @@ end
 --[[ The action service over a component ctx's own fakes, so a widget spec
      drives the one instance the entry point would hand it as `ctx.actions`.
      `config` is the tuning core would hold in core.lua; absent, the modules'
-     own defaults (retry and the gate off, a five-second delay). ]]
+     own defaults (a five-second delay). ]]
 function M.action_service(ctx, config)
   if config == nil then
     config = {
-      retry = require("lib/actionbar/retry")({}).defaults(),
-      wsgate = require("lib/actionbar/wsgate")({}).defaults(),
       delay = require("lib/actionbar/travel")({}).defaults().delay,
     }
   end

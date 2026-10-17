@@ -31,27 +31,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
      It exists because the crossbar's execution glue held process-wide
      invariants - "only one wait of any kind is in flight", the GearSwap hold
-     over a ring being warmed up, the cast retry's single held press, the
-     player's weapon state - and a second bar with a scheduler of its own
-     could issue a second `gs disable` over the same ring. So the scheduler,
-     the travel countdown, the retry, the weaponskill gate, the skillchain
-     engine, mount roulette and the warp, stealth and reraise ladders all live here,
-     built once in the entry point (lib/player's shape) and handed to each bar
-     as `ctx.actions`.
+     over a ring being warmed up, the player's weapon state - and a second
+     bar with a scheduler of its own could issue a second `gs disable` over
+     the same ring. So the scheduler, the travel countdown, the skillchain
+     engine, mount roulette and the warp, stealth and reraise ladders all
+     live here, built once in the entry point (lib/player's shape) and handed
+     to each bar as `ctx.actions`.
 
-     A BAR keeps what is its own: its bindings, its job scoping, the facts a
-     press needs from them (the weaponskill gate's facts, the retry's probe of
-     whether the slot still holds the record) and its prims. It hands a
-     resolved record to `fire` with those facts in `opts`, and reads
+     A BAR keeps what is its own: its bindings, its job scoping and its
+     prims. It hands a resolved record to `fire`, and reads
      `weapon_state()` back to mirror into its own rotation.
 
      Lines said here carry no bar's name: the entry point prefixes every line
      with the addon's, and a warp is nobody's bar's in particular. ]]
 
 local new_actions = require("lib/actionbar/actions")
-local new_retry = require("lib/actionbar/retry")
 local new_travel = require("lib/actionbar/travel")
-local new_wsgate = require("lib/actionbar/wsgate")
 local new_enchanteditem = require("lib/actionbar/enchanteditem")
 local enchanted = require("lib/actionbar/enchanted")
 local counters = require("lib/actionbar/counters")
@@ -121,34 +116,13 @@ local ZONE_OUT_CHUNK = 0x0B
 local SC_CHUNKS = { [0x29] = true, [0x63] = true, [ZONE_OUT_CHUNK] = true }
 local DEAD_STATUSES = { [2] = true, [3] = true }
 
---[[ The cast retry's target pinning. A command's target is resolved by the
-     GAME when the command is sent, so a re-send would otherwise land
+--[[ A deferred use's target pinning. A command's target is resolved by the
+     GAME when the command is sent, so one sent late would otherwise land
      wherever the token points THEN. PINNED tokens are resolved to a mob id
-     at the press and re-sent as the id; FIXED ones (yourself, your pet) need
-     no pin; everything else is not watched at all - a token nobody thought
-     of falls out unwatched rather than guessed at. See the crossbar plan's
-     cast retry decision for the cases (party slots in particular). ]]
+     at the press and sent as the id; FIXED ones (yourself, your pet) need
+     no pin; anything else cannot be pinned and the press is refused. ]]
 local FIXED_TARGETS = { me = true, pet = true }
 local PINNED_TARGETS = { t = true, bt = true }
---[[ The record types the retry can watch, by the kind retry.lua refuses in.
-
-     `pet` rides the ABILITY kind (Kevin, 2026-09-07): a blood pact, a ready
-     move and a maneuver are job abilities under another command word, and the
-     game refuses one as too soon exactly as it refuses a `ja`. It was added
-     when the binder began deriving a record's type from the resource's own
-     `prefix`, which moved the thirty flat pet abilities (Fight, Heel, Deploy,
-     the eight maneuvers) off `ja` - without an entry here they would have
-     dropped out of retry coverage silently.
-
-     TWO halves of that are UNVERIFIED and want a live client. Whether a
-     refused pet command carries message 71 like a job ability's, and whether
-     AMNESIA blocks one the way it blocks a `ja` - the ability kind's whole
-     blocking set. Both fail safe in opposite directions and neither is worse
-     than the `ja` behaviour these binds already had: a wrong message id means
-     the retry never fires, and a wrong blocking buff means one retry is
-     skipped under amnesia. The ability message id is called out in retry.lua
-     as the weaker guess of the three already. ]]
-local RETRY_KINDS = { ma = "spell", ja = "ability", ws = "weaponskill", pet = "ability" }
 
 local function new(deps)
   local self = { ipc_warp_message = IPC_WARP_MESSAGE }
@@ -387,32 +361,12 @@ local function new(deps)
     return type(live) == "table" and live or {}
   end
 
-  -- Each reads its config through a closure, so a write reaches it the
-  -- moment it lands - `//hud retry off` with a cast already pending drops
-  -- it rather than firing a last one.
-  local retry = new_retry({
-    now = frame_now,
-    config = function()
-      return config().retry
-    end,
-    get_player = get_player,
-  })
-  self.retry = retry
-
   local travel = new_travel({
     now = frame_now,
     config = config,
     statuses = resources ~= nil and resources.statuses or nil,
   })
   self.travel = travel
-
-  local wsgate = new_wsgate({
-    config = function()
-      return config().wsgate
-    end,
-    statuses = resources ~= nil and resources.statuses or nil,
-  })
-  self.wsgate = wsgate
 
   --[[ Weapon state: the PLAYER's, never the client's status. `draw` toggles
        it, engaging in game enters drawn, and a mob dying does not leave it -
@@ -585,10 +539,6 @@ local function new(deps)
     return deps.layout_active ~= nil and deps.layout_active() == true
   end
 
-  local function chat_open()
-    return deps.chat_open ~= nil and deps.chat_open() == true
-  end
-
   --[[ Whether `//hud config`'s window is open. Asked rather than told, as
        layout mode is: the window is core's, and a flag kept here would be a
        second opinion of whether it is open. Not an `editing` owner either -
@@ -618,13 +568,13 @@ local function new(deps)
     return mob ~= nil and mob.id or nil
   end
 
-  --[[ The command the cast retry would RE-SEND for a press, or nil for a
-       press it must not watch at all. A pinned token becomes the id it
-       stood for at the press; the suffix is matched literally over a tail
-       of the command's own length, and a command that does not end in the
-       expected `<token>` is not watched - a substitution this cannot prove
-       correct is worse than no retry. ]]
-  local function resend_command(command, target)
+  --[[ The command a deferred use SENDS for a press, or nil for one whose
+       target cannot be pinned. A pinned token becomes the id it stood for
+       at the press; the suffix is matched literally over a tail of the
+       command's own length, and a command that does not end in the
+       expected `<token>` is refused - a substitution this cannot prove
+       correct is worse than no press. ]]
+  local function pinned_command(command, target)
     if type(command) ~= "string" then
       return nil
     end
@@ -645,7 +595,7 @@ local function new(deps)
     end
     return command:sub(1, #command - #suffix) .. " " .. tostring(id)
   end
-  self.resend_command = resend_command
+  self.pinned_command = pinned_command
 
   function self.draw_state()
     local player = get_player()
@@ -749,7 +699,7 @@ local function new(deps)
            disabled behind it. ]]
       local deferred = plan.command
       if plan.target ~= nil then
-        deferred = resend_command(plan.command, plan.target)
+        deferred = pinned_command(plan.command, plan.target)
         if deferred == nil then
           local token = type(plan.target) == "string" and plan.target:lower() or plan.target
           if PINNED_TARGETS[token] then
@@ -1001,30 +951,14 @@ local function new(deps)
   end
 
   --[[ A bar's press, whatever pointed at it - a key or a click. `record` is
-       the bar's resolved binding (nil for an empty slot); `opts` carries
-       what only the bar knows:
+       the bar's resolved binding (nil for an empty slot, which is silent);
+       `opts.flash` is called before the send.
 
-         gate_facts   the weaponskill gate's facts (tp, status, buffs, skill,
-                      distance_squared, model_size), or nil to allow
-         flash        called once the gate has passed, before the send
-         retry_facts  the retry's probe, answering { bound, recast,
-                      affordable, buffs } for the press it is handed; a
-                      press with no probe is never watched
-         owner        the bar's name, so its hide drops its own held cast
-
-       Everything after the resolve - the gate, the flash, the travel
-       countdown, the retry - is the same for every way in, deliberately. ]]
+       Everything after the resolve - the flash and the travel countdown -
+       is the same for every way in, deliberately. ]]
   function self.fire(record, opts)
     opts = opts or {}
     if record == nil then
-      -- An empty slot is silent, but it is still a newer press, so it
-      -- drops whatever the retry was watching.
-      retry.sent(nil)
-      return
-    end
-    -- The gate BEFORE the flash: a press the game could never honour is a
-    -- complete no-op, and the retry keeps whatever it was watching.
-    if not wsgate.allow(record, opts.gate_facts) then
       return
     end
     if opts.flash ~= nil then
@@ -1034,18 +968,6 @@ local function new(deps)
     if not delay_travel(record, plan) then
       execute(plan, hint)
     end
-    -- After the send, never before it: this feature reacts, and a press the
-    -- game accepts is never delayed by it. What is stored is the RE-SEND
-    -- form, target already pinned; the bar's probe rides along.
-    local sent = nil
-    local kind = RETRY_KINDS[record.type]
-    if kind ~= nil and plan ~= nil and plan.kind == "command" and retry.enabled() and opts.retry_facts ~= nil then
-      local resend = resend_command(plan.command, record.target)
-      if resend ~= nil then
-        sent = { record = record, command = resend, kind = kind, probe = opts.retry_facts, owner = opts.owner }
-      end
-    end
-    retry.sent(sent)
   end
 
   -- A built-in by name from the console (`draw`, `mr`, `sneak`, `invisible`,
@@ -1112,17 +1034,11 @@ local function new(deps)
     abort_pending(dropped_line())
   end
 
-  --[[ A bar going off screen. The cast it pressed does not outlive it - the
-       retry is keyed to the OWNER that pressed it, so one bar hiding drops
-       its own held cast and leaves the other's alone. A trip counting down
-       is the player's, not a bar's, and goes only when the moment has gone:
-       suppression (a cutscene, zoning), which hides every bar at once. A
-       user switching one bar off is not a change of mind about a warp. ]]
-  function self.bar_hidden(owner)
-    local held = retry.held()
-    if held ~= nil and held.owner == owner then
-      retry.clear()
-    end
+  --[[ A bar going off screen. A trip counting down is the player's, not a
+       bar's, and goes only when the moment has gone: suppression (a
+       cutscene, zoning), which hides every bar at once. A user switching one
+       bar off is not a change of mind about a warp. ]]
+  function self.bar_hidden()
     if deps.suppressed ~= nil and deps.suppressed() then
       say(travel.cancel())
     end
@@ -1139,7 +1055,7 @@ local function new(deps)
        re-armed here, the config-mode gate runs ahead of the poll (or the
        poll fires the very trip the gate is there to call off), the warp
        poll keeps its own 1s cadence whether or not any bar is on screen,
-       then the countdown, then the retry. ]]
+       then the countdown. ]]
   function self.tick()
     sc_target_read = false
     if (travel.armed() or pending_item ~= nil) and config_mode() ~= nil then
@@ -1151,23 +1067,6 @@ local function new(deps)
     if travelling ~= nil then
       travelling.fire()
     end
-    -- The pending test first, a plain nil check: the guards behind it are
-    -- client calls, and a player who never turns the feature on must not
-    -- pay for one sixty times a second. A re-send is the same press
-    -- arriving late, so it fires only where a press would - never into an
-    -- open chat line, never under a binder, never in layout mode.
-    if retry.pending() ~= nil then
-      if chat_open() or config_mode() ~= nil then
-        retry.clear()
-      else
-        local resend = retry.step(function(entry)
-          return entry.probe(entry)
-        end)
-        if resend ~= nil then
-          send_command(resend.command)
-        end
-      end
-    end
   end
 
   --[[ Events, forwarded by the entry point - never by a bar, or two bars
@@ -1176,12 +1075,9 @@ local function new(deps)
     if roulette ~= nil then
       roulette.on_chunk(id)
     end
-    retry.on_chunk(id, data)
     if id == ZONE_OUT_CHUNK then
-      -- A zone ends the moment a trip belonged to as surely as it ends a
-      -- held cast - the warm-up included, since the ring is coming with
-      -- you and the enchantment is not.
-      retry.clear()
+      -- A zone ends the moment a trip belonged to - the warm-up included,
+      -- since the ring is coming with you and the enchantment is not.
       self.end_trip("cancelled")
     end
     if id == ACTION_CHUNK then
@@ -1195,7 +1091,6 @@ local function new(deps)
 
   function self.on_status(status)
     if DEAD_STATUSES[status] then
-      retry.clear()
       self.end_trip("cancelled")
     end
     -- Resting calls a countdown off, which is the way out the opening line
@@ -1212,9 +1107,7 @@ local function new(deps)
   end
 
   function self.on_job_change()
-    -- A cast held across a job change belongs to the job that pressed it,
-    -- and so does a trip - the warm-up included.
-    retry.clear()
+    -- A trip belongs to the job that pressed it - the warm-up included.
     self.end_trip("cancelled")
     -- Loading a job sheathes you without a transition; the bars' bindings
     -- reset the same way on set_job, and the two must agree or the mirror
@@ -1231,7 +1124,6 @@ local function new(deps)
 
   function self.on_logout()
     self.drop_trip()
-    retry.clear()
     skillchain.reset()
     weapon = "sheathed"
     editing = {}
@@ -1242,13 +1134,12 @@ local function new(deps)
   function self.on_unload()
     travel.clear()
     abort_pending(nil)
-    retry.clear()
   end
 
   -- What core seeds its own config with, so the tuning has a home and a
   -- name before anyone types a verb.
   function self.config_defaults()
-    return { retry = retry.defaults(), wsgate = wsgate.defaults(), delay = travel.defaults().delay }
+    return { delay = travel.defaults().delay }
   end
 
   return self

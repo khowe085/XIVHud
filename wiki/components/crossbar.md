@@ -67,9 +67,7 @@ press them yourself.
 - **On the slots**: recast arcs, MP and TP costs, item and ninja tool counts,
   stratagem counts, and the skillchain property each weaponskill would make
   while a chain is open.
-- **Optional extras**: a cast retry for actions the game refuses as too
-  soon, a weaponskill gate that drops a press the game would refuse, and a
-  countdown before travel actions - settings shared
+- **Optional extras**: a countdown before travel actions - a setting shared
   with the hotbar. A left-click on the sword draws or sheathes.
 - **Controller friendly**: everything is a key, so a Steam Input layout that
   presses those keys gives you a full pad cross hotbar.
@@ -107,8 +105,8 @@ command are also set from the console.
 | `binder_pos` | none | where you last left the binder window; written by the binder, not by hand |
 | `input.*` | see below | the keys the bar reads, as DirectInput key codes |
 
-The cast retry, the weaponskill gate and the travel countdown are settings
-shared with the [hotbar](hotbar.md): `//hud retry`, `//hud wsgate` and `//hud delay`, listed
+The travel countdown is a setting
+shared with the [hotbar](hotbar.md): `//hud delay`, listed
 on the [home page](../Home.md#action-commands).
 
 The default keys (`input`):
@@ -974,61 +972,6 @@ tool itself, **yellow** when it takes your master tools to get there, **red**
 when even together they are fifty or fewer. On main Ninja the
 count includes your master tools; on `/NIN` it counts the plain tool only.
 Corsair cards are counted the same way, including Trump Cards.
-
-**Cast retry** smooths back-to-back casting. Cast two spells in quick
-succession and the game sometimes answers *"Unable to cast spells at this
-time"*, and that press is gone. With retry on, the crossbar sends the spell
-again a moment later, giving up after a few tries. **Abilities and
-weaponskills are retried the same way**, each on the refusal the game answers
-it with. It only ever reacts to
-that refusal, so a press the game accepted is never delayed, and it holds
-nothing for more than a few seconds — press something else, change job, zone,
-die, or take a cutscene, and the held spell is dropped rather than fired at
-whatever you are pointed at by then.
-
-**It fires at the target you pressed against.** A spell bound to `<t>` or
-`<bt>` has that target remembered as you press, and the retry addresses it
-directly rather than re-reading `<t>` — so tabbing to something else in
-between changes nothing, and the retry can never wander onto a new mob. It also drops the spell rather than
-retrying it if the ground has moved under it: the slot has been rebound, the
-MP has gone, or you have been silenced — and it will not re-send into an open
-chat line, the binder, or `//hud layout`. **A spell on cooldown is never
-held**; that press fails as it always did.
-
-**Pet abilities are retried** — blood pacts, ready moves, maneuvers and the
-rest — as of 2026-09-07. They were not before, because nobody had confirmed
-which refusal message a `/pet` carries and the retry would not guess. It now
-treats one as a job ability. If a pet ability never seems to re-send, that
-guess is wrong and nothing else is affected; amnesia is also assumed to stop
-one, so a retry is skipped under it.
-
-**What it will not retry.** Items, chat lines, console commands and the
-built-ins — nothing refuses those in words the crossbar reads. Anything bound to a subtarget (`<stpc>` and the rest), which
-would re-open the selection cursor after you had already answered it. Anything
-aimed at a **party or alliance slot** (`<p3>`, `<a13>`) — a position is
-whoever is standing in it, and someone leaving or zoning would send the retry
-at the wrong person. The retry only ever holds a slot aimed at **`<t>`,
-`<bt>`, `<me>` or `<pet>`**; the other target words (`<ft>`, `<r>`, `<scan>`,
-`<lastst>`, `<stal>`) are left alone too. And **a slot bound with `(no target)`**:
-with no target on the press there is nothing to pin the re-send to.
-
-It **ships off**; turn it on with `//hud retry on`. Switching it off
-takes effect at once, dropping a spell already held rather than letting a last
-one through. If you run Selindrile's GearSwap files, turn **MiniQueue** off
-(`gs c toggle MiniQueue`) before turning this on — otherwise both systems
-retry the same press on different timers.
-
-**Weaponskill gate.** With `//hud wsgate on`, a weaponskill press
-the game would refuse anyway is dropped before it is sent, so a mashed
-button does not queue up refusals. Four checks, each only when the addon is
-sure of the fact: you have at least 1000 TP, you are engaged, you are not
-under amnesia, terror, stun or impairment, and - for a melee weaponskill -
-the target is within reach. Ranged weaponskills skip the distance check.
-Reach is `range` plus however much of the target's model size exceeds
-`pivot`: a bigger mob can be hit from further away. A dropped press is
-silent. **It ships off**; the reach is an estimate, so
-switch it on with `//hud wsgate on` and adjust `wsgate range` if a
-press you could land is being dropped.
 
 **Travel counts down.** `mount`, `mr` and `warp` do not go the moment you
 press them. They count down in chat — five seconds out of the box, `//hud
