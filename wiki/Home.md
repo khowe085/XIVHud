@@ -121,7 +121,7 @@ anywhere: `//hud reset tb` is `//hud reset targetbar`.
 | `//hud buffs active` | list every buff on you right now, with ids |
 | `//hud buffs <component> ...` | a component's buff order and filter settings (see below) |
 | `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise` | actions on the game itself (see Action commands below) |
-| `//hud retry`, `wsgate`, `delay` | settings shared by the crossbar and hotbar (see Action commands below) |
+| `//hud delay` | setting shared by the crossbar and hotbar (see Action commands below) |
 | `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default |
 | `//hud config [<component>]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
@@ -185,8 +185,7 @@ matching command would have answered, including a refusal - the window sets
 exactly what the commands set, with the same limits, so anything you change
 here you can also type.
 
-`global` holds the cast retry, the weaponskill gate with its reach and pivot,
-the travel delay (see [Action commands](#action-commands)) and whether the HUD
+`global` holds the travel delay (see [Action commands](#action-commands)) and whether the HUD
 hides during cutscenes. The components with a page of their own are the
 parameter bar, target bar, party list, status bar, equipment viewer, inventory
 tracker, crossbar and hotbar; each one's page says what is on it. A number that
@@ -225,9 +224,6 @@ or the console too, and their settings are shared by both bars.
 | `//hud warp [all]` | warp home by the best means you have (a Warp spell, a Warp Ring, an Instant Warp, ...); `all` sends your other characters running XIVHud too |
 | `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage: the spell, then Spectral Jig, then the ninjutsu, then an oil or powder. Silenced or muted, the spells and ninjutsu are passed over |
 | `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
-| `//hud retry [on\|off]` | re-send a spell, ability or weaponskill the game refused as "too soon"; off by default |
-| `//hud wsgate [on\|off]` | drop a weaponskill press the game would refuse (too little TP, not engaged, out of reach, or under a status that blocks weaponskills); off by default |
-| `//hud wsgate range <yalms>` / `pivot <yalms>` | tune the gate's idea of melee reach |
 | `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; `0` switches the countdown off |
 
 `mr`, `warp` and a bound mount count down in chat before they act, so a
@@ -285,8 +281,6 @@ file is damaged the component falls back to its defaults and says so in chat.
 | `slot` | `"default"` | the active layout slot |
 | `hideCutscene` | `true` | hide the HUD during cutscenes and the NPC conversations that lock your character (`//hud hidecutscene on\|off`) |
 | `config_pos` | centred | where you last dragged the settings window to |
-| `retry` | off | the cast retry for the crossbar and hotbar |
-| `wsgate` | off, range 4, pivot 1.3 | the weaponskill gate and its reach |
 | `delay` | `5` | seconds a mount or warp counts down before it goes |
 
 ## Auto-hide

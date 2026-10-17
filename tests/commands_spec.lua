@@ -273,7 +273,7 @@ describe("commands", function()
 
   describe("the action verbs", function()
     it("reserves every framework action and tuning word", function()
-      for _, verb in ipairs({ "warp", "mr", "sneak", "invisible", "draw", "retry", "wsgate", "delay" }) do
+      for _, verb in ipairs({ "warp", "mr", "sneak", "invisible", "draw", "delay" }) do
         assert.is_true(commands.reserved[verb], verb .. " must be reserved")
       end
     end)
@@ -300,11 +300,16 @@ describe("commands", function()
       assert_error(parse("reraise", "x"), "takes no arguments")
     end)
 
+    it("no longer knows the removed cast retry and weaponskill gate verbs", function()
+      for _, verb in ipairs({ "retry", "wsgate" }) do
+        assert.is_nil(commands.reserved[verb], verb)
+        assert.are_not.equal("tune", parse(verb).action, verb)
+      end
+    end)
+
     it("passes the tuning verbs through with their words", function()
-      assert.are.same({ action = "tune", verb = "retry", words = {} }, parse("retry"))
-      assert.are.same({ action = "tune", verb = "retry", words = { "on" } }, parse("Retry", "on"))
-      assert.are.same({ action = "tune", verb = "wsgate", words = { "range", "30" } }, parse("wsgate", "range", "30"))
-      assert.are.same({ action = "tune", verb = "delay", words = { "3" } }, parse("delay", "3"))
+      assert.are.same({ action = "tune", verb = "delay", words = {} }, parse("delay"))
+      assert.are.same({ action = "tune", verb = "delay", words = { "3" } }, parse("Delay", "3"))
     end)
 
     it("passes hidecutscene through the same way, and reserves it", function()

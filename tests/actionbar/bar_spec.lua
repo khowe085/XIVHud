@@ -113,8 +113,6 @@ local function world(opts)
     master_level = opts.master_level,
   }
   env.service_config = {
-    retry = require("lib/actionbar/retry")({}).defaults(),
-    wsgate = require("lib/actionbar/wsgate")({}).defaults(),
     delay = 5,
   }
   -- `actions` shares one service between two bars, as the entry point does.
@@ -430,30 +428,6 @@ describe("one bar's state", function()
       assert.is_not_nil(reply:find("edit mode on", 1, true), reply)
       assert.is_true(bar.editing())
       assert.are.same({ true }, env.edits)
-    end)
-
-    it("drops only its own held cast on detach", function()
-      local bar, env, ctx, store = world()
-      env.service_config.retry.enabled = true
-      bar.attach(store)
-      bar.try_scope()
-      ctx.actions.fire({ type = "ma", action = "Cure", target = "t" }, {
-        owner = "crossbar",
-        retry_facts = function()
-          return { bound = true }
-        end,
-      })
-      bar.detach()
-      assert.is_not_nil(ctx.actions.retry.held(), "the crossbar's cast is the crossbar's")
-    end)
-
-    it("names itself as the owner of the press it fires", function()
-      local bar, env, ctx, store = world()
-      env.service_config.retry.enabled = true
-      bar.attach(store)
-      bar.try_scope()
-      bar.fire(1, "row", 3, function() end)
-      assert.are.equal("hotbar", ctx.actions.retry.held().owner)
     end)
 
     it("opens and closes edit mode through the widget's hook, refusing while hidden", function()

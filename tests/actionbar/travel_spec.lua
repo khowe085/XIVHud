@@ -341,8 +341,8 @@ describe("crossbar travel delay", function()
     end)
 
     it("replaces what is counting down, so the newer press is the one that goes", function()
-      -- The same discipline as the cast retry: nothing outlives the moment
-      -- it belonged to, and a newer press means the player has moved on.
+      -- Nothing outlives the moment it belonged to, and a newer press means
+      -- the player has moved on.
       local travel, state = world()
       local warp = { label = "Warp" }
       travel.arm(ENTRY)

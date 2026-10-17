@@ -82,9 +82,8 @@ over it.
 | `text_color` / `text_stroke` | white / dark, width 2 | label colour and outline |
 | `mp_cost_color` / `tp_cost_color` | pink / yellow | the cost text colours |
 
-The cast retry, the weaponskill gate and the travel countdown are settings
-shared with the crossbar: `//hud retry`, `//hud wsgate` and
-`//hud delay`, listed on the [home page](../Home.md#action-commands). Which
+The travel countdown is a setting
+shared with the crossbar: `//hud delay`, listed on the [home page](../Home.md#action-commands). Which
 rows are on is stored with the placement: `//hud show hotbar bar2` switches
 one on, or SHIFT + right-click it in layout mode.
 

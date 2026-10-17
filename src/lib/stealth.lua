@@ -78,8 +78,7 @@ local SPECTRAL_JIG = 196
 local RERAISE, RERAISE_II, RERAISE_III, RERAISE_IV = 135, 141, 142, 848
 -- Buff ids, off lib/buff_order: Reraise is one buff whatever the tier.
 local RERAISE_BUFF, ADDENDUM_WHITE, ENLIGHTENMENT = 113, 401, 416
--- What stops every spell, ninjutsu included - the pair retry.lua blocks a
--- spell retry on.
+-- What stops every spell, ninjutsu included.
 local SILENCE, MUTE = 6, 29
 
 --[[ Spell, jig, ninjutsu, item - and for reraise, gear, which

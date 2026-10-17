@@ -900,9 +900,9 @@ local function new(ctx)
     end
     visible = false
     swallow_left_up = false
-    -- Suppression and a user hide both arrive here: the cast this bar
-    -- pressed does not outlive it; a countdown goes only under suppression.
-    service.bar_hidden("hotbar")
+    -- Suppression and a user hide both arrive here; a countdown goes only
+    -- under suppression.
+    service.bar_hidden()
     bar.close_edit()
     refresh()
   end

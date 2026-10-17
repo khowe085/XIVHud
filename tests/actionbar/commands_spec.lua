@@ -78,12 +78,6 @@ local function build(opts)
          when it has nothing to check against (no resources library). A
          fixture that omitted the closure instead would exercise a branch
          production never takes. ]]
-    --[[ The current target, which the weaponskill gate's readout prints so
-         the reach can be settled by reading rather than guessing. Nil when
-         nothing is selected, as the client answers. ]]
-    get_target = function()
-      return world.target
-    end,
     action_exists = function(kind, name)
       world.asked[#world.asked + 1] = kind .. ":" .. name
       if opts.known == nil then

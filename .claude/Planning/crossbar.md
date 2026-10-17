@@ -375,12 +375,12 @@ is the chat spam this repo treats as a defect elsewhere.
 not the command text — `Sel-Include.lua:2313` does exactly this, cancelling a
 pending item on a status change away from Idle or Engaged, and it catches
 resting however you entered it. Ours cancels on resting and on the transitions
-CB9 already treats as the end of a moment: zone, death, logout, job change and
+that end a moment: zone, death, logout, job change and
 suppression. A cancel says so (`Mount roulette cancelled.`) rather than going
 quiet.
 
 **And on the config modes** (Kevin, 2026-08-19): `//hud layout` and the binder
-(`//hud crossbar edit`) each call a countdown off, on CB9's own reasoning - a
+(`//hud crossbar edit`) each call a countdown off, because a
 late action fires only where a fresh press would, and opening a config mode
 means you are not playing just now. Both directions are covered, from one
 `config_mode()` test used twice: a mode opened while a trip counts down is
@@ -389,15 +389,13 @@ cancelled on the tick, and a trip pressed while a mode is already open is
 the outcome is the same and it is one line to read instead of two that
 contradict each other (`Mount roulette - not while //hud layout is open`). An
 instant trip is unaffected: a dismount is the press itself, not a late action.
-**An open chat line is deliberately NOT one of these**, unlike the cast retry's
-gate: answering a tell while you wait to warp is playing, and a re-send is a
-keypress where this is not.
+**An open chat line is deliberately NOT one of these**: answering a tell while
+you wait to warp is playing.
 
 **A re-attach clears it too, silently** (2026-08-19): core re-attaches without
 detaching for `//hud reset crossbar` and for the reload `//hud copy` does, so a
 countdown armed beforehand would otherwise fire holding a record from the
-configuration just thrown away - and unlike the cast retry there is no `bound`
-identity guard here to notice. Silent because a reset is not a cancellation the
+configuration just thrown away. Silent because a reset is not a cancellation the
 player needs told about.
 
 **Warp skips the delay only when using the item actually entails a wait**
@@ -608,147 +606,6 @@ Two recorded caveats: Kevin has only gotten *some* game UI to open via key
 events, so each new key-event entry needs in-client verification, and the
 sequences assume the client's default keyboard bindings (~85% that's acceptable;
 a per-entry override in config would cover rebinds if it ever matters).
-
-### Cast retry (decided 2026-08-19, Kevin)
-
-Casting several spells back to back, FFXI refuses one sent too soon after the
-last with **"Unable to cast spells at this time"** and the press is simply
-lost. The gap is "usually 1-2 seconds, but" — Kevin's words — and it is worst
-exactly when it hurts most, with a lot to get out quickly.
-
-**This is deliberately not a port of Selindrile's MiniQueue** (read at
-`Selindrile/GearSwap@77d52f5`, `libs/Sel-Utility.lua`, `libs/Sel-Include.lua`).
-Kevin ran it and turned it off. Two things about it decide our shape:
-
-- **It queues on recast, and never expires.** An action blocked by a cooldown
-  is held with no timestamp and fired whenever the tick next runs — after you
-  have moved on, at whatever you are now pointed at. That is the fighting he
-  describes. **We never queue on recast**, and everything we hold has a
-  deadline.
-- **Its real signal is dead code.** Its `0x029` handler compares
-  `action.message`, but Windower's field label is `Message` and the packets
-  library declares no aliases (`fields.lua:1919-1927`, `packets.lua:38-41`),
-  so the branch never runs. Everything therefore falls back to blind timers —
-  a hardcoded per-action-type pacing guess and a 5-second recast heuristic —
-  which is where the queue's bad behaviour comes from. **We use the signal it
-  intended to use.**
-
-**React, do not predict.**
-
-- A slot press **sends immediately, exactly as now**. A press that would have
-  worked is never delayed. This is the reason not to port the pacing model as
-  well: a predicted window is wrong in both directions, and a varying gap is
-  precisely what a predictor gets wrong and a reactor does not notice.
-- The record we sent is remembered with its timestamp.
-- An "unable to cast" for us, arriving within a short window of that send,
-  makes that record **pending**.
-- The tick re-sends after a backoff, bounded by a small attempt cap and a
-  short deadline.
-- **Any newer slot press replaces pending outright**; zone, death, logout, job
-  change and suppression clear it. Nothing can outlive the moment it belonged
-  to.
-
-**The target is pinned at press time** (Kevin, 2026-08-19, correcting a first
-implementation that got this backwards). A record bound with a volatile token —
-`<t>`, `<bt>` — has that token resolved to a **concrete mob id the moment you
-press**, and the retry sends the id in place of the token. The cast then lands
-on what you were aiming at when you pressed, however far your cursor has
-wandered since.
-
-- The **first send is unchanged**: it goes out with the token exactly as it
-  always did, so nothing about an accepted press differs.
-- **Party and alliance slots are not retried at all** (Kevin, 2026-08-19).
-  `<p3>` is whoever is standing third, not a person: a member leaving or
-  zoning inside the deadline shifts everyone below them, and the re-send would
-  land on someone the press never meant. Pinning them by id would need
-  `get_mob_by_target("p3")` to work, which nobody here has read for, so the
-  honest answer is not to hold them. `<me>` and `<pet>` stay watched and
-  re-send verbatim.
-- Only the **re-send** substitutes. Fixed tokens (`<me>` and friends) need no
-  pinning; sub-target prompts (`<st>`, `<stpc>`, `<stnpc>`) are never retried,
-  since re-opening a selection cursor is not a thing to do behind the player.
-- If the pinned target is gone by re-send time the cast simply fails and costs
-  one attempt. We do not spend a second client read proving what the server
-  will say anyway.
-- **This is the one thing the reference implementation got structurally right
-  and we first got wrong.** MiniQueue stores `spell.target.id` and re-sends
-  `/ma "Fire IV" 16941234` — the raw id. Our first pass instead *dropped* the
-  retry when the target changed, which solves the problem backwards: the point
-  is to fire what you meant at what you meant it for, not to give up because
-  you looked elsewhere.
-- **Costs one `get_mob_by_target` per press of a token-targeted spell** — on
-  the keypress path, never per frame, and not at all while the feature is off.
-  That is the one new client read this milestone sanctions, and it buys the
-  behaviour the whole feature exists for.
-- **Open, on the in-client list**: whether FFXI accepts a bare numeric target
-  id in a command. Selindrile's files depend on it and are widely used, which
-  is good evidence and not observation.
-
-**Guards before every retry**, from state the widget already holds:
-
-- still off cooldown (the recast tables the dimming already uses),
-- still affordable (`render.cost`'s MP/TP),
-- not silenced or amnesia'd (the buff list the contexts already re-sync),
-- the slot still holds that record.
-
-A target that has *changed* is deliberately **not** a guard — see the pinning
-rule above.
-
-**Recorded limit (2026-08-19): a slot bound in the binder is never retried.**
-`catalog.lua` builds its records as `{ type = 'ma', action = <name> }` with no
-target word, so CB8’s mouse path — the *primary* authoring surface — produces
-exactly the records the pin cannot hold, and the retry ignores them. Only a
-binding made from the CLI with an explicit target (`bind 1L5 ma "Cure IV" t`)
-is watched. This is deliberately **not** patched by having the retry invent
-`<t>` for a targetless record: what a bare `/ma "Cure IV"` does in game is
-unobserved (in-client question F), and the real question it raises — should
-the binder be writing an explicit target at all? — belongs to CB8, not here.
-
-A failed guard **drops** pending rather than spending an attempt: "unable to
-cast" has non-timing causes (silence, an area that forbids it, no MP), and a
-blind retry would hammer a doomed spell until its deadline.
-
-**Scope: spells, abilities and weaponskills** (Kevin, 2026-08-19 — the
-"spells only in v1" line is lifted). Each is refused in its own words, so the
-trigger is **per kind** and the message ids are not shared: 17/18 for a spell,
-71 for an ability, 72 for a weaponskill. The ability and weaponskill ids are
-the weaker guess of the three — the spell pair at least carries the reference
-addon's citation — and in-client question C now asks for all three to be
-collected in one sitting. A kind with no refusal message is never watched at
-all, which is what keeps items, `ct`, `ex` and the built-ins out. **`pet` is
-deliberately out too**: a blood pact is an ability by every other measure here,
-but it goes out as its own command word and nobody has seen which message
-refuses it.
-
-**Blocking buffs are per kind as well**, and pooling them would be wrong:
-**silence (6) and mute (29)** stop spells, **amnesia (16)** stops abilities and
-weaponskills, and neither set touches the other — a silenced player can still
-Provoke, and throwing that retry away would be a defect, not caution.
-
-**No new plumbing.** `0x29` is already dispatched to the component and already
-parsed by `skillchain.lua:1281` (message 206, the buff wear-off); this reads
-the same chunk for a different message.
-
-Two things are **open, and on the in-client list** — both cheap to observe,
-neither answerable from here:
-
-1. **Confirm 17/18 on `0x029`** really are what a too-soon cast produces, and
-   that the packet carries an actor we can match to the player. The reference's
-   handler has never executed, so nobody has verified this in practice, and a
-   trigger built on an unverified id is a guess wearing a citation.
-2. **The backoff.** Too fast and the retry collects another refusal. A few
-   minutes of casting settles it. It ships configurable and is **tuned
-   in-client, not shipped as settled**.
-
-**Off by default until (1) is confirmed**, and switchable at any time with
-`//hud crossbar retry off` - which drops a pending cast rather than letting a
-last one through. After confirmation the default is Kevin's call — the feature is
-low-risk by construction, but its trigger is the one part nobody has seen fire.
-
-**Interaction with GearSwap**: if Selindrile's files are loaded with MiniQueue
-on, both systems retry the same press on different timers. `gs c toggle
-MiniQueue` off plus this on is the combination that gives the behaviour Kevin
-asked for; the wiki should say so when this ships.
 
 ## XHB reference facts (from SE's UI guide + akhmorning, read 2026-08-05)
 
@@ -1711,7 +1568,7 @@ Bindings live in the per-job files (below), not here.
   },
   delay = 5,                       -- seconds mount / mr / warp count down before
                                    -- they go (Travel delay); 0 is the off switch,
-                                   -- seeded from travel.lua like retry's block
+                                   -- seeded from travel.lua
   -- framework-owned; per-anchor under the multi-anchor contract (touchpoint 2)
   slots = { default = { anchors = { main       = { pos = ..., scale = 1 },
                                     wxhb_left  = { pos = ..., scale = 1 },
@@ -1819,7 +1676,6 @@ one-line hint, consistent chat prefix.
 //hud crossbar list [<set>]                        -- bindings on this job
 //hud crossbar view <wxhb-L|wxhb-R|exp-LR|exp-RL> <set><L|R>   -- repoint a view
 //hud crossbar wxhb [on|off]                      -- WXHB on screen at rest; no argument reports
-//hud crossbar retry [on|off]                     -- cast retry (CB9); no argument reports
 //hud crossbar share <set> on|off                  -- shared (all jobs) vs job-specific
 //hud crossbar cycle <set> drawn|sheathed|both|none -- with args: rotation membership per weapon state
 //hud crossbar swap <address> <address>  -- swap two slots' ENTIRE stacks
@@ -2384,20 +2240,6 @@ Each lands green (`busted` + `luacheck` + `stylua --check`) before the next.
   spells appear in the catalog and bind** — the defect that drove him off the
   reference fork; **and the drag matrix and tooltips behave as specified**
   (all four gestures, the layer-only unbind, tooltips from known data).
-- **CB9 — cast retry.** `retry.lua` + spec (the pending record, the guard set,
-  the attempt cap and deadline), a branch on the `0x29` the component already
-  receives, a check on the tick that already runs, and a
-  **`//hud crossbar retry [on|off]`** toggle (no argument reports, `wxhb`'s
-  shape) that must be able to switch the feature off outright at any time,
-  including with a cast already pending - which it drops rather than firing.
-  **The wiki page is a deliverable of this milestone, not a follow-up**: the
-  command row and the Extras entry land with the code. Adds no touchpoint, and
-  the only new client read is the target pin on a token-targeted press. See
-  **Cast retry** above for the design and the two open in-client questions;
-  **it must never hold an action blocked by a recast** — that is the whole
-  reason the reference's version was abandoned. *Accepts when* Kevin can cast
-  several spells back to back at his own pace with none lost to "unable to
-  cast", and nothing ever fires after he has moved on to something else.
 - **CB10 — travel delay.** The five-second countdown on `mount`, `mr` and
   `warp`, its per-second chat, the resting cancel, and the skip for a warp rung
   whose use entails a wait. Config `delay` in seconds, zero for off. See **Travel delay** above.

@@ -663,7 +663,7 @@ describe("entry point", function()
     it("reads the player and the target through the player service", function()
       assert.are.equal(boot.ctxs.crossbar.get_player, boot.service_deps.get_player)
       assert.are.equal(boot.ctxs.crossbar.get_mob_by_target, boot.service_deps.get_mob_by_target)
-      assert.are.equal(boot.ctxs.crossbar.get_mob_by_target, boot.core_deps.get_mob_by_target)
+      assert.is_nil(boot.core_deps.get_mob_by_target, "core reads no target")
     end)
 
     it("reads its tuning off core's own config", function()
@@ -683,10 +683,10 @@ describe("entry point", function()
         "decode_extdata",
         "random",
         "get_key_items",
-        "chat_open",
       }) do
         assert.is_function(boot.service_deps[name], name .. " missing from the service")
       end
+      assert.is_nil(boot.service_deps.chat_open, "the service asks nothing of the chat line")
       for _, name in ipairs({ "send_ipc", "set_equip", "random", "get_key_items" }) do
         assert.is_nil(boot.ctxs.crossbar[name], name .. " still on the crossbar's ctx")
       end
