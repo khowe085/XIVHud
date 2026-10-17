@@ -59,7 +59,11 @@ local BACKGROUND_HEIGHT = 24
 local FILL_HEIGHT = 8
 local DIM_ALPHA = 180
 local FULL_ALPHA = 255
-local MIN_BAR_WIDTH = 8
+-- Where the troughs sit in each background image, from XIVBar's ffxiv theme.
+-- They are baked into the art, so they are not settings: a fill moved off
+-- them draws beside an empty trough.
+local FULL_BARS = { width = 132, spacing = 18 }
+local COMPACT_BARS = { width = 116, spacing = 16 }
 
 -- Frame padding baked into the background images, from XIVBar's ui:position.
 local BAR_X = { 15, 25, 35 }
@@ -229,16 +233,11 @@ local function new(config)
 
   function self.metrics()
     local compact = compact_mode()
-    local set = compact and config.compact_bar or config.bar
-    -- The defaults merge lets a hand-edited user value win, table or not.
-    if type(set) ~= "table" then
-      set = {}
-    end
+    local bars = compact and COMPACT_BARS or FULL_BARS
     return {
       compact = compact,
-      bar_width = set.width or 0,
-      spacing = set.spacing or 0,
-      offset = set.offset or 0,
+      bar_width = bars.width,
+      spacing = bars.spacing,
       total_width = compact and COMPACT_WIDTH or FULL_WIDTH,
       background = compact and "bar_compact.png" or "bar_bg.png",
     }
@@ -278,7 +277,7 @@ local function new(config)
     local step = metrics.bar_width + metrics.spacing
     -- Clamped at the origin: a negative offset pulls the row back rather
     -- than drawing it outside the box `bounds` reports and core clamps.
-    return math.max(0, (BAR_X[#BARS] + metrics.offset + (#BARS - 1) * step + row.offset) * scale)
+    return math.max(0, (BAR_X[#BARS] + (#BARS - 1) * step + row.offset) * scale)
   end
 
   -- How far right the row reaches from the widget's own x: the widest line
@@ -314,7 +313,7 @@ local function new(config)
     for index = 1, #BARS do
       local shift = (index - 1) * step
       geometry.bars[index] = {
-        x = x + (BAR_X[index] + metrics.offset + shift) * scale,
+        x = x + (BAR_X[index] + shift) * scale,
         y = top + INSET_Y * scale,
         height = FILL_HEIGHT * scale,
       }
@@ -471,29 +470,6 @@ local function new(config)
     return plan
   end
 
-  local METRIC_VERBS = {
-    width = { key = "width", min = MIN_BAR_WIDTH },
-    spacing = { key = "spacing", min = 0 },
-    offset = { key = "offset", min = 0 },
-  }
-
-  local function set_metric(verb, word)
-    local rule = METRIC_VERBS[verb]
-    local value = whole_number(word)
-    if not value or value < rule.min then
-      return string.format("//hud parambar %s needs a whole number of at least %d", verb, rule.min), false
-    end
-
-    local set = compact_mode() and config.compact_bar or config.bar
-    if type(set) ~= "table" then
-      return "parambar's bar metrics are not a table - try '//hud reset parambar'", false
-    end
-    set[rule.key] = value
-    mark_all_dirty()
-    local which = compact_mode() and "compact" or "normal"
-    return string.format("parambar %s %s set to %d", which, verb, value), true
-  end
-
   local function set_compact(word)
     local wanted = word and word:lower()
     if wanted ~= "on" and wanted ~= "off" then
@@ -577,13 +553,9 @@ local function new(config)
   end
 
   local function status()
-    local metrics = self.metrics()
     return string.format(
-      "parambar: width %d, spacing %d, offset %d, compact %s, accuracy %s (%gs)",
-      metrics.bar_width,
-      metrics.spacing,
-      metrics.offset,
-      metrics.compact and "on" or "off",
+      "parambar: compact %s, accuracy %s (%gs)",
+      compact_mode() and "on" or "off",
       accuracy_enabled() and "on" or "off",
       accuracy.window()
     )
@@ -597,41 +569,23 @@ local function new(config)
     if not verb then
       return status(), false
     end
-    if METRIC_VERBS[verb] then
-      return set_metric(verb, args[2])
-    end
     if verb == "compact" then
       return set_compact(args[2])
     end
     if verb == "accuracy" then
       return set_accuracy(args[2], args[3])
     end
-    return string.format("parambar has no '%s' setting (width, spacing, offset, compact, accuracy)", args[1]), false
+    return string.format("parambar has no '%s' setting (compact, accuracy)", args[1]), false
   end
 
   --[[ The same settings as rows of the `//hud config` window, each naming
        the command above that sets it. Every value is read the way `status`
-       reads it: the three metrics from the block compact mode selects, which
-       is the block their verbs write, and the window from the tracker, which
-       falls back over a stored length it refuses. ]]
+       reads it: the window from the tracker, which falls back over a stored
+       length it refuses. ]]
   function self.config_panel()
-    local metrics = self.metrics()
-    local function metric(label, verb, value, step)
-      return {
-        label = label,
-        kind = "stepper",
-        value = value,
-        min = METRIC_VERBS[verb].min,
-        step = step,
-        command = { verb },
-      }
-    end
     return {
       rows = {
-        metric("Bar width", "width", metrics.bar_width, 4),
-        metric("Bar spacing", "spacing", metrics.spacing, 1),
-        metric("Bar offset", "offset", metrics.offset, 1),
-        { label = "Compact", kind = "toggle", value = metrics.compact, command = { "compact" } },
+        { label = "Compact", kind = "toggle", value = compact_mode(), command = { "compact" } },
         { label = "Accuracy row", kind = "toggle", value = accuracy_enabled(), command = { "accuracy" } },
         {
           label = "Accuracy window (s)",
