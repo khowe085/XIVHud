@@ -96,7 +96,7 @@ local function new(deps)
   local self = { reserved = RESERVED }
 
   -- A component answers to its name or to its short alias, everywhere one is
-  -- taken: `//hud show pb` and `//hud pb width 150` read as `parambar`. The
+  -- taken: `//hud show pb` and `//hud pb compact on` read as `parambar`. The
   -- name is tried first, though the registry refuses a collision either way.
   local function resolve_component(name)
     local wanted = name:lower()

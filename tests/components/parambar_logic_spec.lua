@@ -171,13 +171,6 @@ describe("parambar logic", function()
       assert.is_true(logic.tick().hp.dirty)
       assert.is_false(logic.tick().mp.dirty, "only the bar that changed")
     end)
-
-    it("re-eases towards a new width when the metrics change mid-animation", function()
-      set_all({ hp = 1000, hpp = 100 })
-      settle()
-      logic.command({ "width", "40" })
-      assert.are.equal(40, settle().hp.width)
-    end)
   end)
 
   describe("text colouring", function()
@@ -281,12 +274,24 @@ describe("parambar logic", function()
       assert.are.equal("bar_bg.png", metrics.background)
     end)
 
-    it("survives a hand-edited config that put a scalar where a metric set goes", function()
-      config.bar = 5
-      assert.has_no.errors(function()
-        logic.tick()
-      end)
-      assert.are.equal(0, logic.metrics().bar_width)
+    --[[ The troughs are baked into the background art, so the fills are
+         fixed to it: a metric block left in a config.lua from when they
+         were settings must not walk them off it. ]]
+    it("ignores a bar metric block stored in the config", function()
+      config.bar = { width = 40, spacing = 0, offset = 9 }
+      config.compact_bar = 5
+      local metrics = logic.metrics()
+      assert.are.same({ 132, 18 }, { metrics.bar_width, metrics.spacing })
+      local geometry = logic.geometry(100, 200, 1)
+      assert.are.same({ 115, 275, 435 }, { geometry.bars[1].x, geometry.bars[2].x, geometry.bars[3].x })
+      config.compact = true
+      metrics = logic.metrics()
+      assert.are.same({ 116, 16 }, { metrics.bar_width, metrics.spacing })
+    end)
+
+    it("ships no bar metric blocks", function()
+      assert.is_nil(config.bar)
+      assert.is_nil(config.compact_bar)
     end)
 
     it("switches to the compact set and its own image width", function()
@@ -315,11 +320,10 @@ describe("parambar logic", function()
       assert.are.equal(14, geometry.font_size)
     end)
 
-    it("moves the fills with the bar offset and the numbers with the text offset", function()
-      config.bar.offset = 5
+    it("moves the numbers with the text offset, leaving the fills on the art", function()
       config.text_offset = 7
       local geometry = logic.geometry(100, 200, 1)
-      assert.are.equal(120, geometry.bars[1].x)
+      assert.are.equal(115, geometry.bars[1].x)
       assert.are.equal(172, geometry.texts[1].x)
     end)
 
@@ -606,34 +610,19 @@ describe("parambar logic", function()
   end)
 
   describe("commands", function()
-    it("reports the current metrics when asked for nothing", function()
+    it("reports its settings when asked for nothing", function()
       local message = logic.command({})
-      assert.is_not_nil(message:find("132", 1, true))
       assert.is_not_nil(message:lower():find("compact"))
+      assert.is_nil(message:find("width", 1, true), "the bar metrics are not settings")
     end)
 
-    it("sets width, spacing and offset on the active metric set", function()
-      assert.is_true(select(2, logic.command({ "width", "200" })))
-      assert.are.equal(200, config.bar.width)
-      logic.command({ "spacing", "24" })
-      assert.are.equal(24, config.bar.spacing)
-      logic.command({ "offset", "3" })
-      assert.are.equal(3, config.bar.offset)
-      assert.are.equal(132, parambar_defaults(1920, 1080).bar.width, "defaults are untouched")
-    end)
-
-    it("writes to the compact set while compact mode is on", function()
-      config.compact = true
-      logic.command({ "width", "200" })
-      assert.are.equal(200, config.compact_bar.width)
-      assert.are.equal(132, config.bar.width)
-    end)
-
-    it("routes a metric write by the same rule metrics() reads by", function()
-      config.compact = "yes"
-      logic.command({ "width", "200" })
-      assert.are.equal(200, config.bar.width, "only a real boolean means compact")
-      assert.are.equal(116, config.compact_bar.width)
+    it("refuses the bar metrics, which the background art cannot follow", function()
+      for _, verb in ipairs({ "width", "spacing", "offset" }) do
+        local message, changed = logic.command({ verb, "100" })
+        assert.is_false(changed, verb)
+        assert.is_not_nil(message:find("has no '" .. verb .. "'", 1, true), message)
+        assert.is_nil(message:find("width,", 1, true), "the hint does not offer it back: " .. message)
+      end
     end)
 
     it("toggles compact mode", function()
@@ -643,33 +632,12 @@ describe("parambar logic", function()
       assert.is_false(config.compact)
     end)
 
-    it("refuses a width below the minimum", function()
-      local message, changed = logic.command({ "width", "7" })
-      assert.is_false(changed)
-      assert.is_not_nil(message:find("8", 1, true))
-      assert.are.equal(132, config.bar.width)
-    end)
-
-    it("accepts the minimum width", function()
-      assert.is_true(select(2, logic.command({ "width", "8" })))
-    end)
-
-    it("refuses negative spacing and offset", function()
-      assert.is_false(select(2, logic.command({ "spacing", "-1" })))
-      assert.is_false(select(2, logic.command({ "offset", "-1" })))
-      assert.is_true(select(2, logic.command({ "offset", "0" })))
-    end)
-
-    it("refuses values that are not whole numbers", function()
-      assert.is_false(select(2, logic.command({ "width", "abc" })))
-      assert.is_false(select(2, logic.command({ "width", "12.5" })))
-      assert.is_false(select(2, logic.command({ "width" })))
-    end)
-
-    it("refuses numbers that are not plain decimal integers", function()
-      assert.is_false(select(2, logic.command({ "width", "0x84" })))
-      assert.is_false(select(2, logic.command({ "width", "1e2" })))
-      assert.are.equal(132, config.bar.width)
+    it("refuses an accuracy window that is not a whole number", function()
+      for _, word in ipairs({ "abc", "12.5", "0x14", "1e1" }) do
+        assert.is_false(select(2, logic.command({ "accuracy", "window", word })), word)
+      end
+      assert.is_false(select(2, logic.command({ "accuracy", "window" })))
+      assert.are.equal(30, config.accuracy.window_seconds)
     end)
 
     it("refuses anything but on or off for compact", function()
@@ -787,7 +755,7 @@ describe("parambar logic", function()
     end)
 
     it("matches verbs case-insensitively", function()
-      assert.is_true(select(2, logic.command({ "WIDTH", "50" })))
+      assert.is_true(select(2, logic.command({ "COMPACT", "on" })))
     end)
   end)
 end)

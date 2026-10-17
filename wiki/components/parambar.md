@@ -16,7 +16,6 @@ the number beside each, sitting at the bottom centre of the screen.
 - The TP number turns blue at 1000 or more, and the TP bar is dimmed below
   that.
 - A **compact** mode with narrower bars and tighter spacing.
-- Width, spacing and offset can be changed from the console.
 - A **melee accuracy** row above the TP bar - how many of your swings landed
   over the last thirty seconds, with your measured attack delay on the end;
   `//hud parambar accuracy reset` starts a fresh count.
@@ -75,15 +74,16 @@ exists - your own value wins - so a parameter bar set up before 2026-09-28
 keeps `window_seconds = 15` until you change it or reset the component.
 
 `config.lua` in the component's folder. Everything here can be left alone;
-the first four are also set by command.
+`compact`, `accuracy.enabled` and `accuracy.window_seconds` are also set by
+command.
+
+The bar width, spacing and offset are not settings: the troughs and the
+HP/MP/TP labels are part of the background image, so the fills are fixed to
+it. A `bar` or `compact_bar` block left in an older `config.lua` is ignored.
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| `compact` | `false` | use the compact bar art and the `compact_bar` width, spacing and offset |
-| `bar.width` | `132` | width of each bar, in pixels |
-| `bar.spacing` | `18` | gap between bars |
-| `bar.offset` | `0` | shifts the bar fills sideways, in pixels |
-| `compact_bar.width` / `spacing` / `offset` | `116` / `16` / `0` | the same three, used while compact mode is on |
+| `compact` | `false` | use the compact bar art, with narrower bars and tighter spacing |
 | `dim_tp_bar` | `true` | draw the TP bar dimmed until TP reaches 1000 |
 | `font` | `"sans-serif"` | font for the numbers |
 | `font_size` | `14` | font size |
@@ -109,18 +109,12 @@ opens the [settings window](../Home.md#settings-window) on this component.
 
 | Command | What it does |
 | --- | --- |
-| `//hud parambar` | print the current width, spacing, offset and compact state |
-| `//hud parambar width <px>` | set the bar width |
-| `//hud parambar spacing <px>` | set the gap between bars |
-| `//hud parambar offset <px>` | shift the bar fills sideways |
+| `//hud parambar` | print the compact and accuracy state |
 | `//hud parambar compact on\|off` | switch compact mode |
 | `//hud parambar accuracy` | print the row's state, window and current reading |
 | `//hud parambar accuracy on\|off` | show or hide the accuracy row |
 | `//hud parambar accuracy reset` | empty the window and start a fresh count |
 | `//hud parambar accuracy window <seconds>` | set how much history the row counts (1 to 600) |
-
-`width`, `spacing` and `offset` change the metrics of whichever mode is on:
-with compact mode on they change the compact set.
 
 `//hud parambar accuracy reset` is the only way to empty the window: the row
 is text, with nothing on it to click.
