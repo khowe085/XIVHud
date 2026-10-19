@@ -55,10 +55,13 @@ time to see the command list.
 1. Log in on a character. Every component that is on by default comes up in
    its shipped position.
 2. Type `//hud layout` to enter layout mode. Every component gets a
-   highlight box with its name on it.
+   highlight box with its name on it, including the ones you have switched
+   off, which show as a dark box marked `(hidden)` so they can be found and
+   switched back on.
    - **Left-drag** a box to move it. Movement snaps to a grid; hold **CTRL**
      to move freely.
-   - **Mouse wheel** over a box to scale it up or down.
+   - **Mouse wheel** over a box to scale it up or down (no smaller than a
+     quarter of its size).
    - **Right-click** a box to switch that component off or on.
    - **SHIFT + right-click** switches one piece of a component that has
      several off or on: a party list, a status bar, a hotbar row, the subtarget
@@ -73,8 +76,11 @@ does not appear at all, type `//hud`: it reports what went wrong if the addon
 failed to load.
 
 Two components take over keys while a character is loaded. The crossbar
-claims `;` `'` `\` `` ` `` and `=`, and the hotbar the number row `1` to `0`
-under CTRL, ALT and SHIFT (the bare keys stay the game's). If you would
+claims `;` `'` `\` `` ` `` and `=` (and the number row `1` to `8` while one
+of its side keys is held). The hotbar claims the number row `1` to `0` under
+CTRL (row 1), ALT (row 2), SHIFT (row 3), CTRL+SHIFT (row 4), ALT+SHIFT (row 5)
+and CTRL+ALT+SHIFT (row 6), and CTRL+Up / CTRL+Down to change set; the bare
+keys stay the game's. If you would
 rather keep those keys, switch the component off with `//hud hide crossbar`
 or `//hud hide hotbar`; a hotbar row you hide gives its chord back too.
 
@@ -121,15 +127,18 @@ anywhere: `//hud reset tb` is `//hud reset targetbar`.
 | `//hud buffs active` | list every buff on you right now, with ids |
 | `//hud buffs <component> ...` | a component's buff order and filter settings (see below) |
 | `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise` | actions on the game itself (see Action commands below) |
-| `//hud delay` | setting shared by the crossbar and hotbar (see Action commands below) |
-| `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default |
+| `//hud delay [<seconds>]` | the mount and warp countdown, shared by the crossbar and hotbar; without a number it prints the current value (see Action commands below) |
+| `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default. Without a word it prints the current setting |
 | `//hud config [<component>]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
 
 **`show` and `hide` take a piece name** for components made of several
 independently placed parts: `//hud hide partylist alliance2`,
 `//hud show statusbar bar2`, `//hud hide targetbar subtarget`. `//hud list`
-prints the piece names each component has.
+prints the piece names each component has. A piece and its component are
+separate switches: a piece you show stays hidden while the whole component is
+hidden, and `//hud show <component>` brings the component back without
+changing which of its pieces are off.
 
 **`reset` and `copy` have no undo and no confirmation step.** `reset` acts on
 the active slot only; `copy` replaces every slot the destination character
@@ -161,6 +170,9 @@ win. A filter list hides buffs (blacklist mode) or shows only the listed ones
 
 A buff can be named by its id or by its name (`//hud buffs partylist top
 haste`). `//hud buffs active` shows the ids of everything currently on you.
+The party list's buff settings belong to the main party alone, so its only
+piece name here is `main`, and it adds one verb of its own,
+`//hud buffs partylist active [<member>]`, for a party member's buffs.
 See the [party list](components/partylist.md) and [status bar](components/statusbar.md)
 pages for what each one adds.
 
@@ -227,7 +239,8 @@ or the console too, and their settings are shared by both bars.
 | `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; `0` switches the countdown off |
 
 `mr`, `warp` and a bound mount count down in chat before they act, so a
-mis-press costs a few seconds rather than a trip home. Resting (`/heal`)
+mis-press costs a few seconds rather than a trip home. Getting off a mount
+(`mr` or `draw` while mounted) and `draw` itself never wait. Resting (`/heal`)
 cancels the countdown. The crossbar page describes each of these in detail
 under [Built-in actions](components/crossbar.md#built-in-actions) and
 [Extras](components/crossbar.md#extras).
@@ -244,8 +257,9 @@ on/off state and settings. Each character starts with one slot, `default`.
 //hud slot default            switch back
 //hud slot delete events      remove it
 ```
-A slot name is one word of letters, digits and underscores, and cannot be
-`list`, `create` or `delete`. Switch to another slot before deleting the one
+A slot name is one word of letters, digits and underscores, is not
+case-sensitive (it is stored in lower case), and cannot be `list`, `create` or
+`delete`. Switch to another slot before deleting the one
 you are in.
 
 
@@ -262,7 +276,9 @@ Windower4/addons/XIVHud/data/<Character>/core.lua                      general s
 Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/config.lua  the component's settings
 Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/layout.lua  its position, scale and on/off state
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/<JOB>.lua     the crossbar's bindings for that job (the hotbar's sit beside it in hotbar/)
+Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/SHARED.lua    the bindings of the sets marked shared across jobs
 Windower4/addons/XIVHud/cache/items/                                    item icons read from the game (a cache: delete it only with the addon unloaded)
+Windower4/addons/XIVHud/cache/packets/<Character>/                      the last character-stats packet per job, for the experience bar (a cache)
 Windower4/addons/XIVHud/icons/custom/                                   your own crossbar and hotbar art
 ```
 

@@ -14,7 +14,7 @@ opening the equipment menu.
   item in it.
 - Updates as you change gear, including GearSwap swaps.
 - Draws an **X** over any slot that encumbrance has locked.
-- Shows your **ammo count** over the ammo slot.
+- Shows your **ammo count** over the ammo slot when you have more than one.
 - Icons are read straight out of the game's data files the first time an
   item is seen, then cached in `addons/XIVHud/cache/items/` for every character.
   No icon pack to download.

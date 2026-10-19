@@ -139,7 +139,9 @@ The settings that are not about one slot - which sets are shared, which
 rotation each set is in, where the WXHB and Expanded Hold views point, and
 whether the WXHB always shows - can also be changed with the mouse:
 `//hud config crossbar` opens the [settings window](../Home.md#settings-window)
-on this component. Slots themselves are edited in edit mode, not there.
+on this component, in three tabs: `sets` (each set's shared switch and
+rotation), `views` (the four views) and `general` (Always show WXHB). Slots
+themselves are edited in edit mode, not there.
 
 **An address is one word**: `<set><L|R><slot>`, so `1L1` is set 1, left side,
 slot 1, and `2R8` is set 2, right side, slot 8. To work on a layer other than
@@ -231,8 +233,9 @@ quote cannot mark a label — use `alias=` and `icon=` for labels.
 have targeted, `p1`–`p5` for a party member.
 
 **`copy` replaces.** `//hud crossbar copy WHM` puts WHM's bindings on this job
-wholesale — its sets, its subjob overrides and its contexts, over the top of
-whatever this job had. There is no undo and no confirmation step. Shared sets
+wholesale — its sets, its subjob, weapon and context layers, over the top of
+whatever this job had. There is no undo and no confirmation step. It refuses
+the job you are on, and a job that has no bindings to copy. Shared sets
 are not involved either way: they belong to no job, which is why `copy` takes
 a job and refuses `SHARED`.
 
@@ -351,8 +354,8 @@ for the ranged slot `context=wpn:marksmanship`), and `context=buf:<name>` for a
 buff context (`context=buf:light-arts`). It can go anywhere among the labels.
 With none you are editing the job's base layer — except that `bind` puts a
 weaponskill on its own weapon type: `bind 1R1 ws "Leaden Salute" t` lands on
-the Marksmanship layer whatever you are holding. A job ability that belongs to
-a subjob goes to that subjob's layer the same way: on DNC, `bind 1L2 ja
+the Marksmanship layer whatever you are holding. A job ability (or pet
+command) that belongs to a subjob goes to that subjob's layer the same way: on DNC, `bind 1L2 ja
 Provoke` lands on `context=sub:war`, worn or not. A subjob's ability can also
 go under a buff context (`context=buf:light-arts`), but never on the base or a
 weapon layer. `unbind`, `alias` and `icon`
@@ -370,8 +373,9 @@ context=wpn:marksmanship`); without it they say which layers the slot holds. See
 
 Most of this is also bindable by mouse in `//hud crossbar edit`, which is
 usually easier — the binder lists what you actually know rather than asking
-you to spell it. `ct`, `ex` and `pet` are the exceptions: those three are
-command-only. Enchanted gear the binder does list, under **Enchanted** — it
+you to spell it. `ct` and `ex` are the exceptions: those two are
+command-only. Pet commands are in the binder, among the job abilities and in
+menus such as Blood Pact and Ready. Enchanted gear the binder does list, under **Enchanted** — it
 reads your wardrobes as well as your inventory to find it. See
 [What you can bind](#what-you-can-bind) for the fuller picture.
 
@@ -400,7 +404,7 @@ commands, they work with `//bind` and in in-game macros too.
 | --- | --- |
 | `//hud draw` | sheathe / unsheathe — or dismount, if mounted |
 | `//hud mr` | summon a random mount you own, or dismount if you are on one. Summoning counts down first — see **Travel counts down** below |
-| `//hud warp [all]` | warp home by the best means you have, after the same countdown; `all` warps your other characters running XIVHud, and sends them only when this character's own warp actually goes |
+| `//hud warp [all]` | warp home by the best means you have, after the same countdown; `all` warps your other characters running XIVHud, and sends them when this character's own warp actually goes (or at once if this character has no way home) |
 | `//hud sneak` | picks the first way this character has to get the effect, cheapest first: the spell (Sneak / Invisible), then Spectral Jig, then the ninjutsu if you have the tool (Tonko: Ni over Tonko: Ichi; Monomi: Ichi), then a Silent Oil / Prism Powder. Silenced or muted, the spell and the ninjutsu are passed over. The order is the same on every job; what changes is which rungs you qualify for, read from the spells you know and the levels your main and sub have. Self-only rungs stay on you and so does the oil or powder; the spell goes to a targeted party member if you have one selected. |
 | `//hud invisible` | the same ladder for invisible |
 | `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
@@ -897,7 +901,7 @@ These are the same actions as the `//hud` commands under
 | `draw` | sheathe / unsheathe, and dismount when mounted. Its icon follows the state. |
 | `mr` | mount roulette — picks at random from the mounts you actually own, and dismounts if you are already up. In the binder it is filed at the head of **Mounts** rather than under General, and it only appears if you own something to ride. |
 | `mount <name>` | summons that mount, or dismounts if you are already up |
-| `warp` | picks the best warp you have, in order: the Warp or Warp II spell, then a Warp Ring, an Instant Warp, a Warp Cudgel, a Treat Staff II, and a Tavnazian Ring as the last resort. Equips the ring or cudgel for you and waits out the enchantment — though if it has more than about 30 seconds left to charge it gives up rather than waiting. The Tavnazian Ring is allowed longer, because its own warm-up is roughly that. A piece already on your finger is not assumed to be ready either: if its enchantment is still coming up, the crossbar waits it out for you, the same as it would for a ring it equipped itself. `warp all` sends your other characters running XIVHud home — when this character's warp actually fires, so calling the countdown off, or a ring warm-up that gets abandoned, leaves them where they are. |
+| `warp` | picks the best warp you have, in order: the Warp or Warp II spell (Black Mage main or sub, with the MP for it), then a Warp Ring, an Instant Warp, a Warp Cudgel, a Treat Staff II, and a Tavnazian Ring as the last resort. Equips the ring or cudgel for you and waits out the enchantment — though if it has more than about 30 seconds left to charge it gives up rather than waiting. The Tavnazian Ring is allowed longer, because its own warm-up is roughly that. A piece already on your finger is not assumed to be ready either: if its enchantment is still coming up, the crossbar waits it out for you, the same as it would for a ring it equipped itself. `warp all` sends your other characters running XIVHud home — when this character's warp actually fires, so calling the countdown off, or a ring warm-up that gets abandoned, leaves them where they are. If this character has no way home at all, they are sent at once. |
 | `sneak` / `invisible` | the sneak and invisible ladders described under [Built-in actions](#built-in-actions). Both take the White Magic icon whichever rung fires, so the slot's face does not change with your subjob. |
 | `reraise` | the reraise ladder described under [Built-in actions](#built-in-actions), with the Reraise icon whichever rung fires |
 | `open <name>` | opens a game screen |
@@ -913,7 +917,7 @@ forbids it the game turns the summon down itself.
 
 **A press the addon knows will fail does nothing at all**: no
 countdown, no command, no recast — a press while the recast from your last
-summon is still running. It says so in the log once. The greyed icon and the
+summon is still running. It says so in the log, with the seconds left. The greyed icon and the
 dead press follow the same rule, so what you see is what the button will do.
 
 The recast keeps running once you are actually mounted, and keeps the slot
@@ -989,14 +993,15 @@ your Mog House. It reads:
 
 **Resting calls it off**, and `/heal` is the way in — but it is your *status*
 that is watched, not the command, so sitting down by any other means stops it
-just as well. So does zoning, dying, changing job, and anything that takes the
-bar off screen while it counts — a cutscene or a logout. Each of
-them says `[XIVHud] Mount roulette cancelled.` rather than going quiet.
+just as well. So does zoning, dying, changing job, or a cutscene hiding the
+HUD while it counts. Each of them says `[XIVHud] Mount roulette cancelled.`
+rather than going quiet; a logout drops it silently. Hiding the crossbar
+yourself (`//hud hide crossbar`) does not call it off.
 A countdown never carries over a zone, a death or a job change.
 
-**So does opening a config mode.** `//hud layout` and `//hud crossbar edit`
-each call a pending trip off, and one you ask for while either is already open
-is refused outright — `[XIVHud] Mount roulette - not while //hud layout is
+**So does opening a config mode.** `//hud layout`, `//hud config` and
+`//hud crossbar edit` each call a pending trip off, and one you ask for while
+any of them is already open is refused outright — `[XIVHud] Mount roulette - not while //hud layout is
 open` — rather than counting down to nothing. A late action goes only where a
 fresh press would.
 `//hud reset crossbar` drops a countdown too, quietly: after a reset there is
@@ -1030,8 +1035,9 @@ The ladder is walked **once**, when you press. Whatever it names is what
 fires, even if something better turns up during the countdown.
 
 `warp` skips the countdown when the warp it picks is one it has to **equip and
-warm up** — a Warp Ring or Warp Cudgel you are not already wearing; the
-warm-up is the wait. It is never a shorter wait than the countdown, though: a
+warm up** — a Warp Ring, Warp Cudgel, Treat Staff II or Tavnazian Ring,
+including one you are already wearing whose enchantment is still coming up;
+the warm-up is the wait. It is never a shorter wait than the countdown, though: a
 warm-up that finishes early is held until `delay` seconds have passed since
 the press. Everything else fires the moment it is asked, so the countdown is
 its only window.

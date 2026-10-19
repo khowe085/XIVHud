@@ -44,7 +44,9 @@ came to be.
 3. In game, type `//lua load xivhud`. To load it automatically, add
    `lua load xivhud` to `Windower4/scripts/init.txt`.
 4. Type `//hud layout` to arrange the HUD: drag to move, mouse wheel to
-   resize, right-click to switch a widget off or on. Type it again to finish.
+   resize, right-click to switch a widget off or on (SHIFT + right-click
+   switches just the piece under the cursor; hold CTRL to drag off the grid).
+   Type it again to finish.
 
 The [wiki home page](wiki/Home.md) has the full walkthrough, the command list
 and where settings are stored.
@@ -77,8 +79,9 @@ Everything is under `//hud`. The most used:
 //hud show|hide <component>    switch one on or off
 //hud reset <component|all>    back to defaults
 //hud slot <name>              switch to a named layout
-//hud draw | mr | warp | sneak | invisible   act on the game (the same actions a bar slot can hold)
-//hud delay                    setting shared by the crossbar and hotbar
+//hud draw | mr | warp | sneak | invisible | reraise   act on the game (the same actions a bar slot can hold)
+//hud delay [<seconds>]        the mount and warp countdown, shared by the crossbar and hotbar
+//hud hidecutscene [on|off]    hide the HUD during cutscenes
 //hud config                   the settings window: change settings with the mouse
 //hud <component> ...          that component's own settings
 ```

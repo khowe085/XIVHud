@@ -23,7 +23,8 @@ one for the rest.
   are drawn. The order and a per-bar filter list are yours to edit.
 - **Hover** an icon to see the buff's name and id; **right-click** one to
   cancel it (this uses the Windower `cancel` addon, and does nothing if that
-  addon is not loaded).
+  addon is not loaded; either way the game does not see a right-click on an
+  icon).
 - **Drag** an icon onto another on the same bar to move it there in the
   priority order. The order is shared, so every bar follows it. A left-click
   on an icon no longer reaches the game.

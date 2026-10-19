@@ -25,9 +25,13 @@ bind here, and the same layers, contexts, sets and rotations apply.
   `bar4`, ALT+SHIFT for `bar5`, CTRL+ALT+SHIFT for `bar6`. `bar7` and `bar8`
   have no keys and are mouse only. The bare number row is the game's: it
   fires nothing, so a controller cannot set a row off by accident.
-  **CTRL+Up** and **CTRL+Down** cycle the active set (the game's own macro set
-  changes on the same chord).
-- **Left-click a slot** to fire it.
+  **CTRL+Up** moves to the next set in the rotation and **CTRL+Down** to the
+  previous one, with CTRL held on its own (the game's own macro set changes on
+  the same chord, and still sees the arrow).
+- None of the keys fire while the chat line is open, during a cutscene, in
+  layout or edit mode, before a job has loaded, or while the hotbar is hidden.
+- **Left-click a slot** to fire it. The game does not see a click on a drawn
+  slot, even an empty one.
 - The same slot art as the crossbar: icon, name, recast arc, MP or TP cost,
   item and tool counts, and the skillchain property a weaponskill would make
   while a chain is open.

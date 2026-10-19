@@ -18,10 +18,18 @@ master level.
     points** toward the next master level.
 - The status line reads like `WAR99/SAM49 (ML23) JP: 342 MP: 12 EP/hr: 12.6k`:
   your job pair, your master level where you have one, job points, merit
-  points, and the rate you are earning at - `EXP/hr` below the cap, `CP/hr`
-  for limit points, `EP/hr` for exemplar points.
+  points, and the rate you are earning at - `EXP/hr` below the cap, `EP/hr`
+  for exemplar points. In the limit-point mode the rate is `CP/hr`, your
+  **capacity point** rate: limit points move the bar and the merit count but
+  have no per-hour figure of their own.
+- The rates cover the last ten minutes, idle time included, so they fall
+  while you earn nothing; each reads 0 for its first 30 seconds.
 - The fill eases toward each new value.
 - Your job's icon is drawn beside the bar.
+
+The bar's numbers are kept per character and job under
+`addons/XIVHud/cache/packets/<Character>/`, so it has figures straight after a
+login or a reload rather than waiting for the game to send them.
 
 The game only reports merit totals when they change or when you zone, so a
 merit-capped character who is earning nothing may read 0 merits until they

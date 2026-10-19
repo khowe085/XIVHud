@@ -21,9 +21,12 @@ off by default, that you place separately.
   to your liking (see Buffs below).
 - Members out of range are **dimmed**, and a **range indicator** can mark who
   is within a chosen distance of you - as icons, or as the distance in yalms.
-- The targeted member is highlighted.
+- The targeted member is highlighted, and the member under the subtarget cursor
+  is half highlighted. Party and alliance leaders are marked, and a member in another
+  zone shows that zone's name.
 - The **alliance lists** (`alliance1`, `alliance2`) show the other two
-  parties in a compact row layout, each placed on its own.
+  parties as a compact three-by-two grid, each placed on its own: job icon,
+  name, HP and MP, with no TP, levels, buffs or range.
 - Optional: hide the list while solo, show empty rows, align rows to the
   bottom instead of the top, set the row spacing.
 
@@ -78,7 +81,9 @@ order and filters, which stay commands.
 | `//hud partylist hidesolo on\|off` | hide the list while solo |
 | `//hud show partylist <list>` / `//hud hide partylist <list>` | switch one list on or off |
 
-`range` and `hidesolo` apply to the main party only and refuse a list word.
+`range` and `hidesolo` apply to the main party only and refuse an alliance
+list word. In `range <near> <far>`, both are whole yalms, `0` switches a ring
+off, and far cannot be nearer than near.
 
 ### Buffs
 
