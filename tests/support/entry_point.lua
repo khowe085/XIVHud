@@ -298,6 +298,14 @@ local function build_core(boot)
     return boot.settings_open == true
   end
 
+  -- A component's hand-off of its buff order, recorded for a spec to read;
+  -- answers with how many took it, which a spec sets as `buff_order_takers`.
+  boot.buff_orders = {}
+  function core.buff_order_changed(from, priority)
+    boot.buff_orders[#boot.buff_orders + 1] = { from = from, priority = priority }
+    return boot.buff_order_takers
+  end
+
   for _, name in ipairs({
     "suppressed",
     "component_visible",

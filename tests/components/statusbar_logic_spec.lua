@@ -190,6 +190,173 @@ describe("statusbar logic", function()
     end)
   end)
 
+  -- `partyorder`: the party list takes a copy of the one order on every change.
+  describe("handing the order to the party list", function()
+    -- `sent` is what each hand-off held at the moment it was made; `handed`
+    -- the tables themselves; `takers` how many components core answers took
+    -- it.
+    local sent, handed, takers
+
+    before_each(function()
+      sent, handed, takers = {}, {}, 1
+      logic = new_logic({
+        config = config,
+        resources = RESOURCES,
+        share_order = function(priority)
+          local snapshot = {}
+          for id, rank in pairs(priority) do
+            snapshot[id] = rank
+          end
+          sent[#sent + 1] = snapshot
+          handed[#handed + 1] = priority
+          return takers
+        end,
+      })
+    end)
+
+    local function buffs(...)
+      return logic.buff_command({ ... })
+    end
+
+    local function say(...)
+      local lines, changed = logic.command({ ... })
+      return table.concat(lines, "\n"), changed
+    end
+
+    -- A receiver holding the table could otherwise edit this component's
+    -- own config without ever reaching its file.
+    it("hands over a copy, never its own priority table", function()
+      config.party_order = true
+      logic.place(SLEEP, KO)
+      assert.are_not.equal(config.priority, handed[1])
+      handed[1][SLEEP] = 9
+      assert.are.equal(1, config.priority[SLEEP])
+    end)
+
+    it("hands nothing over while off", function()
+      logic.place(SLEEP, KO)
+      buffs("top", "doom")
+      assert.are.same({}, sent)
+    end)
+
+    it("hands the order over after a drag while on", function()
+      config.party_order = true
+      assert.is_true(logic.place(SLEEP, KO))
+      assert.are.equal(1, #sent)
+      assert.are.same({ [SLEEP] = 1 }, sent[1])
+    end)
+
+    it("hands the order over after every order verb that changed it", function()
+      config.party_order = true
+      buffs("top", "doom")
+      assert.are.same({ [DOOM] = 1 }, sent[1])
+      buffs("reset")
+      assert.are.equal(2, #sent)
+      assert.are.same({}, sent[2])
+    end)
+
+    it("hands nothing over for a change that is not the order", function()
+      config.party_order = true
+      buffs("filter", "debuffs")
+      buffs("bar2", "filter", "add", "doom")
+      say("rows", "2")
+      assert.are.same({}, sent)
+    end)
+
+    it("hands nothing over for a drop or a verb that changed nothing", function()
+      config.party_order = true
+      logic.place(KO, KO)
+      buffs("bar2", "top", "doom")
+      buffs("list")
+      buffs("top", "nonsense")
+      assert.are.same({}, sent)
+    end)
+
+    it("is switched on only by an explicit true", function()
+      config.party_order = "yes"
+      logic.place(SLEEP, KO)
+      assert.are.same({}, sent)
+    end)
+
+    it("switches on and hands the order over at once", function()
+      buffs("top", "doom")
+      local said, changed = say("partyorder", "on")
+      assert.is_true(changed)
+      assert.is_true(config.party_order)
+      assert.is_not_nil(said:find("partyorder on", 1, true))
+      assert.are.same({ { [DOOM] = 1 } }, sent)
+    end)
+
+    -- Switching off does not bring the party list's own order back, so the
+    -- reply says it is gone.
+    it("says the party list's order was replaced when it switches on", function()
+      assert.is_not_nil(say("partyorder", "on"):find("replaced", 1, true))
+      assert.is_nil(say("partyorder", "off"):find("replaced", 1, true))
+    end)
+
+    -- No party list loaded, or one whose buff settings are broken: claiming
+    -- a replacement nothing made would send the player looking for one.
+    it("says nothing took the order when nothing did, and switches on regardless", function()
+      takers = 0
+      local said, changed = say("partyorder", "on")
+      assert.is_true(changed)
+      assert.is_true(config.party_order)
+      assert.is_nil(said:find("replaced", 1, true), "said: " .. said)
+      assert.is_not_nil(said:find("nothing took", 1, true), "said: " .. said)
+    end)
+
+    it("switches off and hands nothing over", function()
+      config.party_order = true
+      local _, changed = say("PartyOrder", "OFF")
+      assert.is_true(changed)
+      assert.is_false(config.party_order)
+      assert.are.same({}, sent)
+    end)
+
+    it("refuses anything but on or off", function()
+      local said, changed = say("partyorder", "maybe")
+      assert.is_false(changed)
+      assert.is_not_nil(said:find("on or off", 1, true))
+      assert.is_false(select(2, say("partyorder")))
+      assert.is_nil(config.party_order)
+      assert.are.same({}, sent)
+    end)
+
+    it("refuses a bar word in front of partyorder, which is one switch for all", function()
+      local said, changed = say("bar2", "partyorder", "on")
+      assert.is_false(changed)
+      assert.is_not_nil(said:find("shared by every bar", 1, true))
+      assert.is_nil(config.party_order)
+      assert.are.same({}, sent)
+    end)
+
+    it("reports the switch with the others", function()
+      assert.is_not_nil(say():find("partyorder off", 1, true))
+      config.party_order = true
+      assert.is_not_nil(say():find("partyorder on", 1, true))
+    end)
+
+    it("names partyorder in the unknown-verb hint", function()
+      assert.is_not_nil(say("wobble"):find("partyorder", 1, true))
+    end)
+
+    it("reads a hand-off that answers nothing at all as nothing taken", function()
+      logic = new_logic({ config = config, resources = RESOURCES, share_order = function() end })
+      local said, changed = say("partyorder", "on")
+      assert.is_true(changed)
+      assert.is_not_nil(said:find("nothing took", 1, true), "said: " .. said)
+    end)
+
+    it("hands nothing over without anything to hand it to", function()
+      config.party_order = true
+      logic = new_logic({ config = config, resources = RESOURCES })
+      assert.is_true(logic.place(SLEEP, KO))
+      local said, changed = say("partyorder", "on")
+      assert.is_true(changed)
+      assert.is_not_nil(said:find("nothing took", 1, true), "said: " .. said)
+    end)
+  end)
+
   describe("timers", function()
     before_each(function()
       logic.set_buffs({ HASTE, SLEEP })
