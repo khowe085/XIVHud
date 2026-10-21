@@ -77,6 +77,108 @@ describe("entry point", function()
     end)
   end)
 
+  describe("the gamepad bridge", function()
+    -- A client whose ffi loads, with one pad in the first slot holding
+    -- `buttons` - until a spec changes `pad_buttons`.
+    local pad_buttons
+    local function fake_ffi(buttons)
+      pad_buttons = buttons
+      return {
+        cdef = function() end,
+        load = function()
+          return {
+            XInputGetState = function(index, state)
+              if index ~= 0 then
+                return 1167 -- ERROR_DEVICE_NOT_CONNECTED
+              end
+              state.Gamepad.wButtons = pad_buttons
+              state.Gamepad.bLeftTrigger = 0
+              state.Gamepad.bRightTrigger = 0
+              return 0
+            end,
+          }
+        end,
+        new = function()
+          return { Gamepad = {} }
+        end,
+      }
+    end
+
+    it("is handed to core, saying why it reads nothing without ffi", function()
+      assert.are.equal("gamepad: unavailable - ffi not available", boot.core_deps.gamepad.status())
+      assert.are.same({}, boot.core_deps.gamepad.poll())
+    end)
+
+    it("reads the pad through XInput where ffi loads", function()
+      boot = harness.boot({ ffi = fake_ffi(0x0001) })
+      boot.gamepad_config = { enabled = true }
+      assert.are.same({ { dik = 6, down = true } }, boot.core_deps.gamepad.poll())
+      assert.are.equal("gamepad: on - pad 1 connected", boot.core_deps.gamepad.status())
+    end)
+
+    it("sends a bare face button to the game with setkey, held as long as the button is", function()
+      boot = harness.boot({ ffi = fake_ffi(0x1000) })
+      boot.gamepad_config = { enabled = true }
+      boot.core_deps.gamepad.poll()
+      assert.are.same({ "setkey enter down" }, boot.commands)
+      boot.core_deps.gamepad.poll()
+      assert.are.same({ "setkey enter down" }, boot.commands, "nothing while it stays down")
+      pad_buttons = 0
+      boot.core_deps.gamepad.poll()
+      assert.are.same({ "setkey enter down", "setkey enter up" }, boot.commands)
+    end)
+
+    it("pumps the pad every frame through a handler of its own", function()
+      boot.handlers["prerender"]()
+      assert.are.equal(1, boot.pumps)
+      boot.pump_raises = true
+      local chatted = #boot.chat
+      boot.handlers["prerender"]()
+      assert.are.equal(2, boot.prerenders, "a failing pump leaves the frame tick running")
+      assert.is_true(#boot.chat > chatted)
+      assert.is_not_nil(boot.chat[#boot.chat]:find("gamepad", 1, true))
+    end)
+
+    it("lets core ask the client whether the game has focus", function()
+      assert.is_true(boot.core_deps.has_focus())
+      boot.focused = false
+      assert.is_false(boot.core_deps.has_focus())
+    end)
+
+    it("tells core when the game gains and loses focus", function()
+      boot.handlers["lose focus"]()
+      boot.handlers["gain focus"]()
+      assert.are.same({ false, true }, boot.focus)
+    end)
+
+    it("counts a side held on the keyboard as core saw it", function()
+      boot = harness.boot({ ffi = fake_ffi(0x1000) })
+      boot.gamepad_config = { enabled = true }
+      boot.keys_held = { [39] = true }
+      assert.are.same({ { dik = 4, down = true } }, boot.core_deps.gamepad.poll())
+      assert.are.same({}, boot.commands)
+    end)
+
+    it("takes its settings from core's machine-wide file, and is off without one", function()
+      boot = harness.boot({ ffi = fake_ffi(0x0001) })
+      assert.are.same({}, boot.core_deps.gamepad.poll())
+      boot.gamepad_config = { enabled = false }
+      assert.are.same({}, boot.core_deps.gamepad.poll())
+      assert.are.equal("gamepad: off", boot.core_deps.gamepad.status())
+    end)
+
+    it("traces which XInput library it loaded, or why none", function()
+      assert.is_not_nil(boot.files["addons/XIVHud/load.log"]:find("gamepad unavailable: ffi not available", 1, true))
+      boot = harness.boot({ ffi = fake_ffi(0) })
+      assert.is_not_nil(boot.files["addons/XIVHud/load.log"]:find("gamepad: xinput1_4", 1, true))
+    end)
+
+    it("is not built in safe mode, where nothing would poll it", function()
+      local safe = harness.boot({ ffi = fake_ffi(0), files = { ["addons/XIVHud/safe_mode"] = "" } })
+      assert.is_nil(safe.core_deps.gamepad)
+    end)
+  end)
+
   --[[ The inventory tracker is the only component that reads the WHOLE item
        table, and the only one that reads no packet through the packets
        library: the one field it wants is a byte of the chunk. Neither fact is

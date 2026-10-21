@@ -903,6 +903,41 @@ local action_service = step("building the action service", function()
   })
 end)
 
+--[[ The gamepad bridge (lib/gamepad): an XInput pad read through LuaJIT's
+     ffi, a chorded press handed to the bars as a key by `core.pump_gamepad`
+     (driven from prerender under a guard of its own, below) and a bare one
+     sent to the game with `setkey`. Optional, like the
+     libraries above - a failure here costs the pad, not the addon - and
+     built even when ffi or the XInput DLL is missing, so `//hud gamepad` can
+     say which. Not in safe mode, which has no render loop to poll it. Its
+     reads of core close over the `core` local, which the next step fills
+     in. ]]
+local gamepad = nil
+if not safe_mode then
+  local ok, err = pcall(function()
+    local has_ffi, ffi = pcall(require, "ffi")
+    local reader, unavailable = require("lib/xinput")(has_ffi and ffi or nil)
+    trace(reader and ("gamepad: " .. reader.library) or ("gamepad unavailable: " .. tostring(unavailable)))
+    gamepad = require("lib/gamepad")({
+      read = reader and reader.read or nil,
+      unavailable = unavailable,
+      now = os.clock,
+      inject = function(name, down)
+        send_command("setkey " .. name .. (down and " down" or " up"))
+      end,
+      key_held = function(dik)
+        return core ~= nil and core.key_held(dik)
+      end,
+      config = function()
+        return core and core.gamepad_config() or nil
+      end,
+    })
+  end)
+  if not ok then
+    trace("gamepad bridge unavailable: " .. tostring(err))
+  end
+end
+
 step("building the framework", function()
   core = new_core({
     read_file = read_file,
@@ -938,6 +973,10 @@ step("building the framework", function()
     resources = libraries_error == nil and res or nil,
     -- `//hud warp` and its kin, and the tuning core.lua carries for them.
     actions = action_service,
+    gamepad = gamepad,
+    has_focus = function()
+      return windower.has_focus()
+    end,
     screen = screen,
     now = os.clock,
     chat = chat,
@@ -1517,12 +1556,18 @@ windower.register_event(
 )
 
 if not safe_mode then
+  -- The pad has a guard of its own: a component throwing on one of its keys
+  -- is reported and counted under `gamepad`, and the frame tick carries on.
+  local pump_gamepad = guard.wrap("gamepad", function()
+    core.pump_gamepad()
+  end)
   windower.register_event(
     "prerender",
     guard.wrap("prerender", function()
       -- Before core touches a component: the mob memo is good for one frame,
       -- and a component reading a target must not see the previous frame's.
       player_service.begin_frame()
+      pump_gamepad()
       core.on_prerender()
     end)
   )
@@ -1709,6 +1754,11 @@ for _, event in ipairs({ "gain focus", "lose focus", "gain buff", "lose buff", "
              about fifty attempts, and the binding reload lands up to ~200ms
              later than it used to on a change that takes a menu to make. ]]
         player_service.invalidate("player")
+      end
+      -- Focus reaches core whether or not a character is scoped, which
+      -- dispatch does not: the keys it strands are not a character's.
+      if event == "gain focus" or event == "lose focus" then
+        core.on_focus(event == "gain focus")
       end
       -- The service before the bars: a job change ends the trip it was
       -- holding, and `warp all` is answered here rather than by a bar.

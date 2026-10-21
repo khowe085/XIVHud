@@ -206,6 +206,32 @@ local function new(deps)
     return claim(name, handle)
   end
 
+  --[[ The machine-wide namespace: one file, `data/<name>.lua`, outside every
+       character - read with none scoped and the same whoever logs in. It
+       claims no `character_scoped`, so a slot switch never re-reads it; a
+       change of character re-reads it with everything else. ]]
+  function self.register_global(name, defaults)
+    local handle = { name = name, defaults = deep_copy(defaults or {}) }
+
+    function handle.path()
+      return "data/" .. name .. ".lua"
+    end
+
+    function handle.load()
+      handle._config = merged_from(handle.path(), handle.defaults)
+    end
+
+    function handle.get()
+      return handle._config
+    end
+
+    function handle.save()
+      return write(handle.path(), handle._config, name .. " config")
+    end
+
+    return claim(name, handle)
+  end
+
   --[[ A component's namespace: the directory
        `data/<Character>/<slot>/<name>/`. `defaults.layout` seeds layout.lua and
        is taken out of what seeds config.lua, so a component never sees its own
