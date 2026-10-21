@@ -176,7 +176,7 @@ for _, mode in ipairs(MODES) do
 end
 
 -- What each bar's mode row is called in the settings window.
-local PANEL_LABEL = { main = "Target mode", subtarget = "Subtarget mode" }
+local PANEL_LABEL = { main = "Target mode", subtarget = "Subtarget mode", focus = "Focus mode" }
 
 --[[ In casting range, or not. The dead branches in the source
      (`floor(model_size * 10) == 44` and `== 53`) are not reproduced: they sit
@@ -256,12 +256,12 @@ local function band_for(percent)
   return "normal"
 end
 
---[[ `variant` is the anchor this instance draws - "main" or "subtarget" - and
-     is used for one thing: naming the bar in what the commands say back, since
-     two bars answering identically would leave the user unable to tell which
-     one they had just changed. It defaults to the target bar rather than to a
-     nameless one: the widget always passes it, and a bar with no name in its
-     own replies is not a state worth carrying code for.
+--[[ `variant` is the anchor this instance draws - "main", "subtarget" or
+     "focus" - and is used for one thing: naming the bar in what the commands
+     say back, since bars answering identically would leave the user unable to
+     tell which one they had just changed. It defaults to the target bar rather
+     than to a nameless one: the widget always passes it, and a bar with no
+     name in its own replies is not a state worth carrying code for.
 
      `treasure` answers a mob id with its treasure hunter level, or nil; the
      widget hands every bar the one tracker. Absent, no level is ever shown. ]]
@@ -611,6 +611,29 @@ local function new(initial_config, resources, variant, treasure)
     return line
   end
 
+  -- Each verb `command` answers, by its lower-case word.
+  local verbs = {}
+
+  function verbs.mode(args)
+    local wanted = args[2] and args[2]:lower() or nil
+    if not wanted or not IS_MODE[wanted] then
+      return ("%s mode needs one of: %s"):format(command_prefix(), mode_list()), false
+    end
+    -- Replaced outright when mangled: assigning into a user's scalar would
+    -- throw inside the addon command handler.
+    if type(config.distance) ~= "table" then
+      config.distance = {}
+    end
+    config.distance.mode = wanted
+    return ("%s range mode set to %s"):format(label(), wanted), true
+  end
+
+  -- Whether a word is one of this bar's verbs. The widget asks before reading
+  -- `focus <word>` as a name, so a verb always wins over a mob's name.
+  function self.has_verb(word)
+    return type(word) == "string" and verbs[word:lower()] ~= nil
+  end
+
   -- `//hud targetbar ...`. Returns the line to say and whether anything
   -- changed, so the widget knows when to re-lay out and save.
   function self.command(args)
@@ -620,18 +643,8 @@ local function new(initial_config, resources, variant, treasure)
       return status(), false
     end
 
-    if verb == "mode" then
-      local wanted = args[2] and args[2]:lower() or nil
-      if not wanted or not IS_MODE[wanted] then
-        return ("%s mode needs one of: %s"):format(command_prefix(), mode_list()), false
-      end
-      -- Replaced outright when mangled: assigning into a user's scalar would
-      -- throw inside the addon command handler.
-      if type(config.distance) ~= "table" then
-        config.distance = {}
-      end
-      config.distance.mode = wanted
-      return ("%s range mode set to %s"):format(label(), wanted), true
+    if verbs[verb] then
+      return verbs[verb](args)
     end
 
     return ("%s has no '%s' setting (mode %s)"):format(label(), tostring(args[1]), mode_list()), false

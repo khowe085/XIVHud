@@ -9,14 +9,22 @@ list's art: a row reading `HP% | distance | name` above a bar that fills to
 the target's HP, with a smaller cast bar beneath it while the target is
 casting or readying a TP move. A second, smaller copy of the whole bar follows
 the game's **subtarget cursor** - the `<st>` selection you move through the
-party or the nearby mobs while choosing a target for a spell or ability.
+party or the nearby mobs while choosing a target for a spell or ability - and
+a third, the **focus bar**, stays on one mob you name, whatever you target.
 
 ## Features
 
-- **Two bars**, placed separately: `main` follows your target and
-  `subtarget` follows the `<st>` cursor. The subtarget bar is the same bar at
-  60% size, seeded directly under the main one, and shows only while a
-  subtarget cursor is up.
+- **Three bars**, placed separately: `main` follows your target,
+  `subtarget` follows the `<st>` cursor and `focus` follows your focus
+  target. The subtarget and focus bars are the same bar at 60% size, seeded
+  under the main one, and each shows only while it has something to draw.
+- A **focus target**: `//hud targetbar focus <name>` takes the mob with that
+  full name (any case) - your current target if it has that name, otherwise
+  the nearest one - and `focus <t>`, `<st>` or `<bt>` takes that target. The
+  focus bar then stays on that one mob until it dies or despawns, you zone,
+  you type `//hud targetbar clear focus` (or `focus clear`), or you switch
+  slot, reset the component or log out. While the mob is out of range the
+  bar hides, and it comes back with the mob. The focus is never saved.
 - HP percentage, distance and name for whatever is targeted - a monster, a
   player or an NPC.
 - The **HP number** turns yellow, orange and red as the target drops below
@@ -39,8 +47,8 @@ party or the nearby mobs while choosing a target for a spell or ability.
 
 ## Configuration options
 
-Every option is per bar, under `bars.main` and `bars.subtarget` in
-`config.lua`. Only `distance.mode` is set by command.
+Every option is per bar, under `bars.main`, `bars.subtarget` and
+`bars.focus` in `config.lua`. Only `distance.mode` is set by command.
 
 | Option | Default | What it does |
 | --- | --- | --- |
@@ -67,15 +75,19 @@ Every option is per bar, under `bars.main` and `bars.subtarget` in
 | `cast.name_max_chars` | `20` | longest cast name drawn before it is cut |
 | `cast.tp_move_sweep` | `2` | seconds a TP move's bar takes to fill (the game reports no duration for them) |
 
-The subtarget bar's smaller size is its scale in layout mode (0.6 out of the
-box), so resize it there with the mouse wheel like any other piece. Which
-bars are on is stored with the placement: `//hud hide targetbar subtarget`
-switches one off, or SHIFT + right-click it in layout mode.
+The subtarget and focus bars' smaller size is their scale in layout mode
+(0.6 out of the box), so resize them there with the mouse wheel like any
+other piece. Layout mode shows the focus bar with a sample mob, so it can be
+placed with nothing focused. Which bars are on is stored with the placement:
+`//hud hide targetbar subtarget` switches one off, or SHIFT + right-click it
+in layout mode.
 
 ## Commands
 
 Every command takes an optional bar word in front of the verb: `main` (the
-default) or `subtarget`.
+default), `subtarget` or `focus`. `focus` followed by `mode` addresses the
+focus bar, `focus clear` drops the focus, and `focus` followed by anything
+else is the name of a mob to focus.
 
 Each bar's range mode can also be changed with the mouse: `//hud config
 targetbar` opens the [settings window](../Home.md#settings-window) on this
@@ -83,7 +95,7 @@ component.
 
 | Command | What it does |
 | --- | --- |
-| `//hud targetbar` | print both bars and the range mode each is in |
+| `//hud targetbar` | print every bar and the range mode each is in, and what the focus bar holds |
 | `//hud targetbar [<bar>]` | print one bar's range mode |
 | `//hud targetbar [<bar>] mode auto` | pick the range table from your main job |
 | `//hud targetbar [<bar>] mode default` | no range colouring; the distance stays white |
@@ -92,6 +104,9 @@ component.
 | `//hud targetbar [<bar>] mode gun` | gun range |
 | `//hud targetbar [<bar>] mode bow` | bow range |
 | `//hud targetbar [<bar>] mode xbow` | crossbow range |
+| `//hud targetbar focus <name>` | focus the mob with that name: your target if it has it, otherwise the nearest |
+| `//hud targetbar focus <t>` (or `<st>`, `<bt>`) | focus that target |
+| `//hud targetbar clear focus` (or `focus clear`) | drop the focus target |
 | `//hud show targetbar <bar>` / `//hud hide targetbar <bar>` | switch one bar on or off |
 
 `auto` picks `magic` for RDM, BLM, WHM, SCH, GEO and BRD, `ninjutsu` for NIN
