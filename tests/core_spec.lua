@@ -490,6 +490,311 @@ describe("core", function()
     end)
   end)
 
+  --[[ The gamepad bridge: a pad's buttons reach the components as keys, so
+       all core owns is the poll, the config and the verb. ]]
+  describe("the gamepad bridge", function()
+    local pad
+
+    local function fake_gamepad()
+      pad = { queued = {}, polls = 0, releases = 0, held = {}, reader = true }
+      function pad.config_defaults()
+        return { enabled = false }
+      end
+      function pad.poll()
+        pad.polls = pad.polls + 1
+        local edges = pad.queued
+        pad.queued = {}
+        return edges
+      end
+      function pad.release()
+        pad.releases = pad.releases + 1
+        local edges = pad.held
+        pad.held = {}
+        return edges
+      end
+      function pad.available()
+        return pad.reader
+      end
+      function pad.enabled()
+        return core.gamepad_config().enabled == true
+      end
+      function pad.status()
+        return pad.enabled() and "gamepad: on - pad 1 connected" or "gamepad: off"
+      end
+      return pad
+    end
+
+    -- `files` are on disk before core is built; `overrides` are further deps.
+    local function pad_core(files, overrides)
+      overrides = overrides or {}
+      overrides.gamepad = fake_gamepad()
+      deps, env = fakes.core_deps(overrides)
+      for path, contents in pairs(files or {}) do
+        env.fs.files[path] = contents
+      end
+      core = new_core(deps)
+    end
+
+    local function keyboard_widget()
+      local widget = bar()
+      widget.keys = {}
+      widget.on_keyboard = function(key, down, flags, blocked)
+        widget.keys[#widget.keys + 1] = { key, down, flags, blocked }
+        return true
+      end
+      return widget
+    end
+
+    it("hands every edge of a poll to the components as a key, in order", function()
+      pad_core()
+      local widget = core.register(keyboard_widget())
+      login()
+      pad.queued = { { dik = 39, down = true }, { dik = 2, down = true } }
+      core.pump_gamepad()
+      assert.are.same({ { 39, true, 0, false }, { 2, true, 0, false } }, widget.keys)
+      core.pump_gamepad()
+      assert.are.equal(2, #widget.keys, "an edge is delivered once")
+    end)
+
+    it("leaves the pad to its own pump, out of the frame tick", function()
+      pad_core()
+      login()
+      core.on_prerender()
+      assert.are.equal(0, pad.polls)
+    end)
+
+    it("does not count a key the pad holds as one the keyboard holds", function()
+      pad_core()
+      pad.queued = { { dik = 39, down = true } }
+      core.pump_gamepad()
+      assert.is_false(core.key_held(39))
+    end)
+
+    it("does not let the pad's key up clear the keyboard's", function()
+      pad_core()
+      core.on_keyboard(39, true, 0, false)
+      pad.queued = { { dik = 39, down = false } }
+      core.pump_gamepad()
+      assert.is_true(core.key_held(39))
+    end)
+
+    it("polls while logged out, as keyboard delivery runs", function()
+      pad_core()
+      local widget = core.register(keyboard_widget())
+      pad.queued = { { dik = 39, down = false } }
+      core.pump_gamepad()
+      assert.are.equal(1, pad.polls)
+      assert.are.same({ { 39, false, 0, false } }, widget.keys)
+    end)
+
+    it("delivers every edge when a component throws on one, then raises the first error", function()
+      pad_core()
+      local widget = core.register(keyboard_widget())
+      widget.on_keyboard = function(key, down)
+        widget.keys[#widget.keys + 1] = { key, down }
+        if key == 39 then
+          error("broken on 39", 0)
+        end
+        return true
+      end
+      pad.queued = { { dik = 39, down = true }, { dik = 2, down = true } }
+      assert.has_error(core.pump_gamepad, "broken on 39")
+      assert.are.same({ { 39, true }, { 2, true } }, widget.keys)
+    end)
+
+    describe("focus", function()
+      it("stops polling while the game is out of focus, and starts again with it", function()
+        pad_core()
+        core.on_focus(false)
+        core.pump_gamepad()
+        assert.are.equal(0, pad.polls)
+        core.on_focus(true)
+        core.pump_gamepad()
+        assert.are.equal(1, pad.polls)
+      end)
+
+      it("lets go of what the pad held as focus goes", function()
+        pad_core()
+        local widget = core.register(keyboard_widget())
+        pad.held = { { dik = 39, down = false } }
+        core.on_focus(false)
+        assert.are.equal(1, pad.releases)
+        assert.are.same({ { 39, false, 0, false } }, widget.keys)
+      end)
+
+      it("forgets the keyboard's keys as focus goes, their ups never coming", function()
+        pad_core()
+        core.on_keyboard(39, true, 0, false)
+        core.on_focus(false)
+        assert.is_false(core.key_held(39))
+      end)
+
+      it("starts out of focus where the game says it has none", function()
+        pad_core(nil, {
+          has_focus = function()
+            return false
+          end,
+        })
+        core.pump_gamepad()
+        assert.are.equal(0, pad.polls)
+        core.on_focus(true)
+        core.pump_gamepad()
+        assert.are.equal(1, pad.polls)
+      end)
+
+      it("starts in focus where asking the game fails", function()
+        pad_core(nil, {
+          has_focus = function()
+            error("no such call")
+          end,
+        })
+        core.pump_gamepad()
+        assert.are.equal(1, pad.polls)
+      end)
+
+      it("goes out of focus even when a component throws on the pad's key-up", function()
+        pad_core()
+        local widget = core.register(keyboard_widget())
+        widget.on_keyboard = function(key, down)
+          if key == 39 and not down then
+            error("broken key-up", 0)
+          end
+          return false
+        end
+        core.on_keyboard(40, true, 0, false)
+        pad.held = { { dik = 39, down = false } }
+        assert.has_no.errors(function()
+          core.on_focus(false)
+        end)
+        assert.is_false(core.key_held(40))
+        core.pump_gamepad()
+        assert.are.equal(0, pad.polls)
+      end)
+
+      it("goes out of focus even when the pad's own release throws", function()
+        pad_core()
+        function pad.release()
+          error("send failed", 0)
+        end
+        core.on_keyboard(40, true, 0, false)
+        assert.has_no.errors(function()
+          core.on_focus(false)
+        end)
+        assert.is_false(core.key_held(40))
+        core.pump_gamepad()
+        assert.are.equal(0, pad.polls)
+      end)
+
+      it("says the bridge is paused while the game is out of focus", function()
+        pad_core(nil, {
+          has_focus = function()
+            return false
+          end,
+        })
+        core.on_command({ "gamepad" })
+        assert.is_nil(env.said():find("paused", 1, true), "not while it is off")
+        core.on_command({ "gamepad", "on" })
+        assert.is_not_nil(env.said():find("paused - the game is not in focus", 1, true))
+        env.forget()
+        core.on_focus(true)
+        core.on_command({ "gamepad" })
+        assert.is_nil(env.said():find("paused", 1, true))
+      end)
+
+      it("forgets the keyboard's keys without a bridge too", function()
+        core.on_keyboard(39, true, 0, false)
+        core.on_focus(false)
+        assert.is_false(core.key_held(39))
+      end)
+    end)
+
+    it("tears down on unload even when a component throws on the pad's key-up", function()
+      pad_core()
+      local widget = core.register(keyboard_widget())
+      login()
+      widget.on_keyboard = function()
+        error("broken key-up", 0)
+      end
+      pad.held = { { dik = 39, down = false } }
+      assert.has_no.errors(core.on_unload)
+      assert.are.equal(1, widget.destroyed)
+    end)
+
+    it("tears down on unload even when the pad's own release throws", function()
+      pad_core()
+      local widget = core.register(keyboard_widget())
+      login()
+      function pad.release()
+        error("send failed", 0)
+      end
+      assert.has_no.errors(core.on_unload)
+      assert.are.equal(1, widget.destroyed)
+    end)
+
+    it("lets go of what the pad held on unload, before the components go", function()
+      pad_core()
+      local widget = core.register(keyboard_widget())
+      login()
+      pad.held = { { dik = 39, down = false } }
+      core.on_unload()
+      assert.are.equal(1, pad.releases)
+      assert.are.same({ 39, false, 0, false }, widget.keys[#widget.keys])
+    end)
+
+    it("reads the bridge's settings from data/gamepad.lua before any login", function()
+      pad_core({ ["data/gamepad.lua"] = "return { enabled = true }" })
+      assert.is_true(core.gamepad_config().enabled)
+    end)
+
+    it("starts switched off where there is no file", function()
+      pad_core()
+      assert.is_false(core.gamepad_config().enabled)
+    end)
+
+    it("leaves them out of a character's core.lua", function()
+      pad_core()
+      login()
+      assert.is_nil(core.config().gamepad)
+    end)
+
+    it("says how the bridge stands, logged out", function()
+      pad_core()
+      core.on_command({ "gamepad" })
+      assert.is_not_nil(env.said():find("gamepad: off", 1, true))
+    end)
+
+    it("switches the bridge for every character, writing data/gamepad.lua at once", function()
+      pad_core()
+      core.on_command({ "gamepad", "ON" })
+      assert.is_true(core.gamepad_config().enabled)
+      assert.is_not_nil(env.fs.files["data/gamepad.lua"]:find("enabled = true", 1, true))
+      assert.is_not_nil(env.said():find("gamepad: on", 1, true))
+      login("Azureblood")
+      assert.is_true(core.gamepad_config().enabled, "a login does not change it")
+      core.on_command({ "gamepad", "off" })
+      assert.is_false(core.gamepad_config().enabled)
+    end)
+
+    it("answers its form for a word that is neither on nor off, and changes nothing", function()
+      pad_core()
+      core.on_command({ "gamepad", "maybe" })
+      assert.is_not_nil(env.said():find("gamepad [on|off]", 1, true))
+      core.on_command({ "gamepad", "on", "now" })
+      assert.is_false(core.gamepad_config().enabled)
+    end)
+
+    it("says so when the bridge did not load", function()
+      login()
+      core.on_command({ "gamepad" })
+      assert.is_not_nil(env.said():find("the gamepad bridge did not load", 1, true))
+    end)
+
+    it("is listed in help", function()
+      core.on_command({ "help" })
+      assert.is_not_nil(env.said():find("//hud gamepad", 1, true))
+    end)
+  end)
+
   describe("the render loop", function()
     it("ticks every attached component once per frame", function()
       local widget = core.register(bar())
@@ -1380,6 +1685,15 @@ describe("core", function()
       login()
       core.on_keyboard(39, true, 4, false)
       assert.are.same({ 39, true, 4, false }, widget.keys[1])
+    end)
+
+    it("remembers which keys are down, for the gamepad bridge to ask", function()
+      assert.is_false(core.key_held(39))
+      core.on_keyboard(39, true, 0, false)
+      core.on_keyboard(39, true, 0, false)
+      assert.is_true(core.key_held(39), "an auto-repeat changes nothing")
+      core.on_keyboard(39, false, 0, false)
+      assert.is_false(core.key_held(39))
     end)
 
     it("propagates a component's true return out to Windower", function()
@@ -2354,6 +2668,50 @@ describe("core", function()
         core.on_command({ "config" })
         assert.is_not_nil(live_text("Hide in cutscenes"))
         assert.is_nil(live_text("Travel delay (seconds)"))
+      end)
+
+      it("carries no gamepad switch where the bridge did not load", function()
+        login()
+        core.on_command({ "config" })
+        assert.is_nil(live_text("Gamepad"))
+      end)
+
+      local function pad_core(reader)
+        local pad = {}
+        function pad.config_defaults()
+          return { enabled = false }
+        end
+        function pad.poll()
+          return {}
+        end
+        function pad.available()
+          return reader
+        end
+        function pad.enabled()
+          return core.gamepad_config().enabled == true
+        end
+        function pad.status()
+          return pad.enabled() and "gamepad: on" or "gamepad: off"
+        end
+        deps, env = fakes.core_deps({ gamepad = pad })
+        core = new_core(deps)
+      end
+
+      it("carries the gamepad switch where the bridge can read a pad, through its own verb", function()
+        pad_core(true)
+        login()
+        core.on_command({ "config" })
+        assert.is_true(click_control("Gamepad", "[ off ]"))
+        assert.is_true(core.gamepad_config().enabled)
+        assert.is_not_nil(live_text("gamepad: on"), "the answer is on the status line")
+        assert.is_not_nil(live_text("[ on ]", live_text("Gamepad").y))
+      end)
+
+      it("carries no gamepad switch where the bridge has nothing to read with", function()
+        pad_core(false)
+        login()
+        core.on_command({ "config" })
+        assert.is_nil(live_text("Gamepad"))
       end)
 
       it("carries the service's tuning beside it", function()

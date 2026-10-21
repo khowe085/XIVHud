@@ -317,6 +317,12 @@ describe("commands", function()
       assert.are.same({ action = "tune", verb = "hidecutscene", words = {} }, parse("hidecutscene"))
       assert.are.same({ action = "tune", verb = "hidecutscene", words = { "off" } }, parse("HideCutscene", "off"))
     end)
+
+    it("passes gamepad through the same way, and reserves it", function()
+      assert.is_true(commands.reserved.gamepad)
+      assert.are.same({ action = "tune", verb = "gamepad", words = {} }, parse("gamepad"))
+      assert.are.same({ action = "tune", verb = "gamepad", words = { "off" } }, parse("GamePad", "off"))
+    end)
   end)
 
   describe("config", function()

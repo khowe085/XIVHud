@@ -28,6 +28,8 @@
          parser, never the decode itself (partylist_packets_spec owns that).
        - `io` is in memory. The addon traces every load step to load.log, and
          a spec must not put that on disk.
+       - `ffi` never loads unless a spec hands one in as `options.ffi`, so
+         the gamepad bridge boots unavailable by default.
        - lib/core and every component factory are stubs, so this exercises the
          wiring alone: what the entry point registers, what it builds each ctx
          out of, and what it dispatches. Component behaviour belongs in the
@@ -118,6 +120,14 @@ local function build_stubs(boot, options)
     boot.require_fails[name] = failure
   end
 
+  -- LuaJIT's ffi: whatever a spec hands in, and otherwise a load failure,
+  -- whichever Lua the specs happen to run on.
+  if options.ffi ~= nil then
+    stubs.ffi = options.ffi
+  elseif boot.require_fails.ffi == nil then
+    boot.require_fails.ffi = "module 'ffi' not found"
+  end
+
   return stubs
 end
 
@@ -184,7 +194,13 @@ local function build_windower(boot)
     get_windower_settings = function()
       return { ui_x_res = 1920, ui_y_res = 1080 }
     end,
-    send_command = function() end,
+    send_command = function(command)
+      boot.commands[#boot.commands + 1] = command
+    end,
+    -- Focused unless a spec sets `boot.focused = false`.
+    has_focus = function()
+      return boot.focused ~= false
+    end,
     send_ipc_message = function() end,
     -- Core API, not a library: available even when resources/packets did not
     -- load, which is why the action packet can be parsed at all in that case.
@@ -273,6 +289,7 @@ local function build_core(boot)
        `core.on_prerender`: a component must never see the memo a key press
        filled during the previous frame. ]]
   function core.on_prerender()
+    boot.prerenders = boot.prerenders + 1
     local component = boot.ctxs.targetbar
     if component ~= nil and component.get_mob_by_target ~= nil then
       boot.prerender_targets[#boot.prerender_targets + 1] = component.get_mob_by_target("t")
@@ -281,6 +298,29 @@ local function build_core(boot)
 
   function core.wants_keyboard()
     return false
+  end
+
+  -- The keys core has seen go down and not yet come up: a spec sets
+  -- `boot.keys_held`.
+  function core.key_held(dik)
+    return boot.keys_held ~= nil and boot.keys_held[dik] == true
+  end
+
+  -- The bridge's machine-wide settings: a spec sets `boot.gamepad_config`.
+  function core.gamepad_config()
+    return boot.gamepad_config
+  end
+
+  -- `pump_raises` stands in for a component throwing on a pad's key.
+  function core.pump_gamepad()
+    boot.pumps = boot.pumps + 1
+    if boot.pump_raises then
+      error("pump failed", 0)
+    end
+  end
+
+  function core.on_focus(focused)
+    boot.focus[#boot.focus + 1] = focused
   end
 
   function core.wants_mouse()
@@ -325,7 +365,8 @@ end
 --[[ Runs the entry point and returns the recorder. `options`:
        files         - seeded in-memory files (an entry named
                        "addons/XIVHud/safe_mode" boots the addon in safe mode)
-       require_fails - module name -> message, for a library that will not load ]]
+       require_fails - module name -> message, for a library that will not load
+       ffi           - what `require("ffi")` answers; absent, it fails ]]
 -- `options.logged_out` boots at the character screen (get_info reports
 -- logged_in = false); `require_fails` maps a module to the error it raises.
 function M.boot(options)
@@ -342,6 +383,12 @@ function M.boot(options)
     built = {},
     registered = {},
     dispatches = {},
+    -- Every windower.send_command, in order.
+    commands = {},
+    -- core.pump_gamepad and core.on_prerender calls, and every core.on_focus.
+    pumps = 0,
+    prerenders = 0,
+    focus = {},
     service_calls = {},
     parsed_packets = {},
     action_parses = {},

@@ -106,6 +106,8 @@ local HELP = {
   "  //hud delay [<seconds>]    the countdown before a mount or a warp goes",
   "  //hud hidecutscene [on|off]",
   "                            hide the HUD during cutscenes",
+  "  //hud gamepad [on|off]     whether an XInput pad's buttons reach the bars",
+  "                            as keys, and which pad is being read",
   "  //hud config [<name>]      the settings window: the options above and the",
   "                            components' own, changed with a click; name a",
   "                            component, or global, to open on its panel",
@@ -123,6 +125,31 @@ local function new(deps)
   local config_window
   local next_character_check = nil
   local awaiting_login = false
+  -- DIK -> true while down on the keyboard.
+  local keys_down = {}
+  -- Asked of the client once, at load - an addon (re)loaded in a background
+  -- client must not read the pad - and told by the focus events after. One
+  -- that cannot be asked is taken as focused, as it was before the asking.
+  local focused = true
+  if deps.has_focus ~= nil then
+    local asked, answer = pcall(deps.has_focus)
+    focused = not asked or answer ~= false
+  end
+  -- Hands a list of the pad's edges to the components; defined beside the
+  -- keyboard dispatch, far below, and used by the unload above it.
+  local deliver_pad
+
+  -- Lets go of everything the pad holds, bar keys and game keys alike, on the
+  -- paths that must finish whatever a component or the injection does: a
+  -- lost focus has the bars still to tell, and an unload a teardown still to
+  -- run.
+  local function release_pad()
+    if deps.gamepad ~= nil then
+      pcall(function()
+        deliver_pad(deps.gamepad.release())
+      end)
+    end
+  end
 
   local function say(message)
     deps.chat(message)
@@ -152,6 +179,17 @@ local function new(deps)
     return core_handle and core_handle.get() or nil
   end
   self.config = core_config
+
+  --[[ The gamepad bridge's settings belong to the machine, not a character
+       (Kevin, 2026-10-20): one file, data/gamepad.lua, read before any login
+       so the pad works at the character screen, and the same for everyone
+       who logs in. ]]
+  local gamepad_handle = deps.gamepad ~= nil and settings.register_global("gamepad", deps.gamepad.config_defaults())
+    or nil
+
+  function self.gamepad_config()
+    return gamepad_handle and gamepad_handle.get() or nil
+  end
 
   --[[ The action service's tuning lives in core.lua beside snap and
        hideCutscene: the travel delay was never meant to vary by slot, and a
@@ -649,6 +687,8 @@ local function new(deps)
       set_layout_mode(false)
     end
     config_window.close()
+    -- A game key held through `setkey` would stay down after the addon goes.
+    release_pad()
     overlay.destroy_all()
     registry.destroy_all()
     handles = {}
@@ -764,7 +804,7 @@ local function new(deps)
        in the component's own input module, not in dispatch going quiet. The
        full signature is forwarded; `blocked` in particular feeds the
        inbound-blocked guard. ]]
-  function self.on_keyboard(key, down, flags, blocked)
+  local function deliver_key(key, down, flags, blocked)
     layout_mode.key(key, down)
     --[[ The block ACCUMULATES through the walk (2026-09-06): a later
          component sees a key an earlier one took as already blocked, exactly
@@ -782,6 +822,56 @@ local function new(deps)
       end
     end
     return block
+  end
+
+  -- The keyboard's events: a pad's keys go through `pump_gamepad` instead,
+  -- so `keys_down` is the keyboard's alone and the bridge, which knows its
+  -- own, never reads one of them back a frame late.
+  function self.on_keyboard(key, down, flags, blocked)
+    keys_down[key] = down and true or nil
+    return deliver_key(key, down, flags, blocked)
+  end
+
+  --- Whether `key` is down on the keyboard: the bridge asks so a side held
+  --- there - or a back button mapped to one - still chords a face button.
+  function self.key_held(key)
+    return keys_down[key] == true
+  end
+
+  --[[ Every edge is delivered even when a component throws on one - a lost
+       key-up would leave a side held - and the first error is raised after,
+       for the entry point's own guard to report: the pad has a handler of
+       its own, so a failure here never counts against the frame tick. ]]
+  deliver_pad = function(edges)
+    local failure = nil
+    for _, edge in ipairs(edges) do
+      local ok, err = pcall(deliver_key, edge.dik, edge.down, 0, false)
+      if not ok and failure == nil then
+        failure = err
+      end
+    end
+    if failure ~= nil then
+      error(failure, 0)
+    end
+  end
+
+  --- One poll of the pad, its edges handed to the components as keys - logged
+  --- in or not, as keyboard delivery runs, but never out of focus: XInput
+  --- reads the pad whichever window has it.
+  function self.pump_gamepad()
+    if deps.gamepad ~= nil and focused then
+      deliver_pad(deps.gamepad.poll())
+    end
+  end
+
+  --- A lost focus strands every key held: the keyboard's ups never come, so
+  --- they are forgotten, and the pad lets go of its own.
+  function self.on_focus(gained)
+    focused = gained
+    if not gained then
+      keys_down = {}
+      release_pad()
+    end
   end
 
   -- Whether the keyboard handler is worth registering at all: the entry point
@@ -1346,11 +1436,48 @@ local function new(deps)
     return "hide in cutscenes: " .. (on and "on" or "off")
   end
 
-  local TUNERS = { delay = tune_delay, hidecutscene = tune_hidecutscene }
+  -- The switch alone: what the bridge reads with is the poll's own business,
+  -- and a key held when it goes off is let go by the next poll.
+  local function tune_gamepad(words)
+    if #words > 1 then
+      return "gamepad [on|off]"
+    end
+    if words[1] ~= nil then
+      local on = parse_switch(words[1])
+      if on == nil then
+        return "gamepad [on|off]"
+      end
+      gamepad_handle.get().enabled = on
+      gamepad_handle.save()
+    end
+    -- Said, because the pump's silence would otherwise read as a missing pad -
+    -- and the focus answer read at load is the least proven link.
+    if deps.gamepad.enabled() and not focused then
+      return deps.gamepad.status() .. " - paused - the game is not in focus"
+    end
+    return deps.gamepad.status()
+  end
+
+  local function require_gamepad()
+    if deps.gamepad ~= nil then
+      return true
+    end
+    say("the gamepad bridge did not load")
+    return false
+  end
+
+  local TUNERS = { delay = tune_delay, hidecutscene = tune_hidecutscene, gamepad = tune_gamepad }
   -- The one that is the action service's own tuning, and needs it loaded.
   local SERVICE_TUNERS = { delay = true }
 
   local function run_tune(action)
+    -- The bridge's file is no character's, so it needs none scoped.
+    if action.verb == "gamepad" then
+      if require_gamepad() then
+        say(tune_gamepad(action.words))
+      end
+      return
+    end
     if not require_character() then
       return
     end
@@ -1362,7 +1489,7 @@ local function new(deps)
 
   --[[ The settings window ---------------------------------------------------
        Core's third config mode, beside layout mode and the bars' binders.
-       It lists `global` - the options core.lua carries - and every
+       It lists `global` - the framework's own options - and every
        component declaring `config_panel()`, an opt-in member detected
        exactly as `handle_buffs` is, and every click goes back out through
        the handler the same words reach when they are typed. ]]
@@ -1401,6 +1528,14 @@ local function new(deps)
       value = core_config().hideCutscene ~= false,
       command = { "hidecutscene" },
     }
+    if deps.gamepad ~= nil and deps.gamepad.available() then
+      rows[#rows + 1] = {
+        label = "Gamepad",
+        kind = "toggle",
+        value = deps.gamepad.enabled(),
+        command = { "gamepad" },
+      }
+    end
     return { rows = rows }
   end
 
@@ -1417,7 +1552,11 @@ local function new(deps)
   local function config_apply(name, words, route)
     if name == GLOBAL_PANEL then
       local tuner = TUNERS[words[1]]
-      if tuner == nil or (SERVICE_TUNERS[words[1]] and deps.actions == nil) then
+      if
+        tuner == nil
+        or (SERVICE_TUNERS[words[1]] and deps.actions == nil)
+        or (words[1] == "gamepad" and deps.gamepad == nil)
+      then
         return nil
       end
       local rest = {}
