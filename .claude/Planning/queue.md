@@ -197,11 +197,14 @@ cursor OK that goes out and is refused, is gone now that OK is held too.
 - **The other two releases were Savage Blade**, which sent nothing. Both came
   straight after a weaponskill, so GearSwap's TP guard is the likely cause, and no
   TP was spent. Not confirmed.
-- **Two cursors got no OK** (Distract III, Frazzle III). Another spell followed each,
-  which reads as cancelled rather than lost.
-- **Weaponskill and ability hints, one sample each:** a spell went out +2.32 after a
-  weaponskill finish and was accepted, as an ability did at +1.28 after an ability.
-  Not enough to move either constant. Item, ranged and interrupted have no data yet.
+- **Cursors with no OK** were ones Kevin cancelled.
+- **Weaponskill and ability hints:** a spell went out +2.32 after a weaponskill finish
+  and was accepted, once in each of two sessions, as an ability did at +1.28 after
+  an ability. Not enough to move either constant. The weaponskills in these runs
+  were GearSwap's own, not bar presses. Item, ranged and interrupted have no data.
+
+The second session added 23 releases, none refused, and 24 OKs, 3 of them after the
+lock had cleared (row 15).
 
 ## Review gate
 
@@ -209,7 +212,10 @@ Four blind rounds, clean on the fourth. Round 1 caught a stratagem with charges 
 hand reading as on recast, the GearSwap notice, and `going` surviving its answer.
 Round 2 caught the charged recasts applying to spells on the same numbers. Round 3
 caught a press GearSwap cancels stalling the next one for the full 2s, which is
-what the 0.6s and the recast check at the top of `press` are for.
+what the 0.6s and the recast check at the top of `press` are for. A fifth round
+over the whole feature, after the cursor work and `debug.log`, was clean; its note
+on a closed cursor taking the next `/ta` as its OK is why a token line after the
+arrow now ends one.
 
 ## Measuring in a live client
 
@@ -240,3 +246,5 @@ start bracket the true lock. Every line is in `debug.log` too.
 | 17 | During a cast, a `<stpc>` slot whose recast is up by OK | No `on recast` line, it casts | Judged at OK |
 | 18 | Mash a `<t>` slot from before the press lands | One cast, `swallowed` lines, the midcast set stays on | The mash |
 | 19 | Precast gear on a cursor slot held through a lock | The spell casts in Fast Cast gear | GearSwap's numeric path runs precast at the release |
+| 20 | Double-tap a `<stpc>` slot during a lock, then OK | One `OK`, cast at who you picked, target unchanged | The count assumes one arrow per `/ta <stpc>`. Pressed with the arrow already up, if no new arrow comes, OK reads as the arrow and the `/ta` runs |
+| 21 | ESC a cursor, then run a `/ta <stnpc>` macro | The macro's cursor works, and nothing casts | A closed cursor must not take another's line as its OK |

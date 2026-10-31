@@ -327,6 +327,12 @@ local function new(deps)
     end
     local id = text:match("^/ta%a*%s+(%d+)%s*$")
     if id == nil then
+      -- A token after our arrow is a cursor of something else's opening, so
+      -- ours has gone, by ESC or otherwise, and its numbers are not ours.
+      if cursor.numbers > 0 and text:match("^/ta%a*%s+<") then
+        note("no OK for " .. cursor.name)
+        cursor = nil
+      end
       return false
     end
     cursor.numbers = cursor.numbers + 1
