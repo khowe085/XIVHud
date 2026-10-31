@@ -2129,6 +2129,60 @@ describe("core", function()
       assert.are.equal(0, core.config().delay)
     end)
 
+    describe("the queue verb", function()
+      local function queue_core()
+        service_core()
+        service.queue = {
+          modes = { "off", "on", "debug" },
+          mode = function()
+            return core.config().queue or "off"
+          end,
+        }
+        login()
+      end
+
+      it("is in help", function()
+        queue_core()
+        core.on_command({ "help" })
+        assert.is_not_nil(env.said():find("//hud queue [on|debug|off]", 1, true))
+      end)
+
+      it("reports the mode", function()
+        queue_core()
+        env.forget()
+        core.on_command({ "queue" })
+        assert.is_not_nil(env.said():find("action queue: off", 1, true))
+      end)
+
+      it("sets each mode, in any case, and saves it", function()
+        queue_core()
+        for _, word in ipairs({ "on", "DEBUG", "off" }) do
+          env.forget()
+          core.on_command({ "queue", word })
+          assert.are.equal(word:lower(), core.config().queue)
+          assert.is_not_nil(env.said():find("action queue: " .. word:lower(), 1, true))
+          assert.is_not_nil(env.fs.files["data/Azureblood/core.lua"]:find('queue = "' .. word:lower(), 1, true))
+        end
+      end)
+
+      it("refuses any other word and changes nothing", function()
+        queue_core()
+        core.on_command({ "queue", "on" })
+        env.forget()
+        core.on_command({ "queue", "maybe" })
+        assert.is_not_nil(env.said():find("queue [on|debug|off]", 1, true))
+        assert.are.equal("on", core.config().queue)
+      end)
+
+      it("refuses a second word and changes nothing", function()
+        queue_core()
+        env.forget()
+        core.on_command({ "queue", "on", "now" })
+        assert.is_not_nil(env.said():find("queue [on|debug|off]", 1, true))
+        assert.is_nil(core.config().queue)
+      end)
+    end)
+
     it("ticks the service once per frame, before any component", function()
       service_core()
       local widget = bar("bar")
@@ -2381,6 +2435,38 @@ describe("core", function()
         assert.is_not_nil(env.fs.files["data/Azureblood/core.lua"]:find("delay = 4", 1, true))
         assert.is_not_nil(live_text("travel delay: 4 seconds"), "the answer is on the status line")
         assert.are.equal("", env.said(), "and not in chat")
+      end)
+
+      describe("the queue row", function()
+        local function queue_core()
+          service_core()
+          service.queue = {
+            modes = { "off", "on", "debug" },
+            mode = function()
+              return core.config().queue or "off"
+            end,
+          }
+          login()
+          core.on_command({ "config" })
+          env.forget()
+        end
+
+        it("shows the mode in force", function()
+          queue_core()
+          assert.is_not_nil(live_text("off", live_text("Action queue").y))
+        end)
+
+        it("walks the modes through the command's own handler", function()
+          queue_core()
+          assert.is_true(click_control("Action queue", "[>]"))
+          assert.are.equal("on", core.config().queue)
+          assert.is_not_nil(live_text("action queue: on"), "the answer is on the status line")
+          assert.is_true(click_control("Action queue", "[>]"))
+          assert.are.equal("debug", core.config().queue)
+          assert.is_true(click_control("Action queue", "[>]"))
+          assert.are.equal("off", core.config().queue)
+          assert.are.equal("", env.said(), "and not in chat")
+        end)
       end)
 
       it("switches the cutscene hiding, at once", function()

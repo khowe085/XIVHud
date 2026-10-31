@@ -60,6 +60,7 @@ local RESERVED = {
   draw = true,
   delay = true,
   hidecutscene = true,
+  queue = true,
 }
 
 -- The settings window's panel for what is not a component's.
@@ -70,7 +71,7 @@ local ACTION_VERBS = { mr = true, sneak = true, invisible = true, reraise = true
 -- The options core.lua carries - the service's tuning and the framework's
 -- own: the words after the verb go through untouched, and core answers them
 -- over its own config.
-local TUNING_VERBS = { delay = true, hidecutscene = true }
+local TUNING_VERBS = { delay = true, hidecutscene = true, queue = true }
 
 local SLOT_OPS = { list = true, create = true, delete = true }
 

@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      with the addon's, and a warp is nobody's bar's in particular. ]]
 
 local new_actions = require("lib/actionbar/actions")
+local new_queue = require("lib/actionbar/queue")
 local new_travel = require("lib/actionbar/travel")
 local new_enchanteditem = require("lib/actionbar/enchanteditem")
 local enchanted = require("lib/actionbar/enchanted")
@@ -112,8 +113,9 @@ local PENDING_PRESS_SLOP = 2
 -- The buff the client raises while mounted; the draw built-in dismounts on it.
 local MOUNTED_BUFF = 252
 local ACTION_CHUNK = 0x028
+local MESSAGE_CHUNK = 0x029
 local ZONE_OUT_CHUNK = 0x0B
-local SC_CHUNKS = { [0x29] = true, [0x63] = true, [ZONE_OUT_CHUNK] = true }
+local SC_CHUNKS = { [MESSAGE_CHUNK] = true, [0x63] = true, [ZONE_OUT_CHUNK] = true }
 local DEAD_STATUSES = { [2] = true, [3] = true }
 
 --[[ A deferred use's target pinning. A command's target is resolved by the
@@ -123,6 +125,12 @@ local DEAD_STATUSES = { [2] = true, [3] = true }
      no pin; anything else cannot be pinned and the press is refused. ]]
 local FIXED_TARGETS = { me = true, pet = true }
 local PINNED_TARGETS = { t = true, bt = true }
+
+--[[ The ability recasts a family with charges shares: stratagems, Quick Draw
+     and the two of Ready. The timer running there says a charge was spent, not
+     that none is left. The same four Selindrile's check_recast skips; spells
+     number their recasts apart, so these say nothing about one. ]]
+local CHARGED_ABILITY_RECASTS = { [102] = true, [195] = true, [231] = true, [255] = true }
 
 local function new(deps)
   local self = { ipc_warp_message = IPC_WARP_MESSAGE }
@@ -597,6 +605,48 @@ local function new(deps)
   end
   self.pinned_command = pinned_command
 
+  -- What the action's own recast has left. Only ever compared with zero, so
+  -- a spell's frames and an ability's seconds need no converting. Anything
+  -- the tables cannot answer reads as no recast: the game has the last word.
+  local function recast_left(record)
+    local entry, recasts
+    if record.type == "ma" then
+      entry = self.find_resource("spells", record.action)
+      recasts = deps.get_spell_recasts ~= nil and deps.get_spell_recasts() or nil
+    elseif record.type == "ja" or record.type == "pet" then
+      entry = self.find_resource("job_abilities", record.action)
+      recasts = deps.get_ability_recasts ~= nil and deps.get_ability_recasts() or nil
+      if entry ~= nil and CHARGED_ABILITY_RECASTS[entry.recast_id] then
+        return 0
+      end
+    end
+    if entry == nil or recasts == nil then
+      return 0
+    end
+    return recasts[entry.recast_id] or 0
+  end
+
+  local queue = new_queue({
+    now = frame_now,
+    config = config,
+    get_player = get_player,
+    say = say,
+    log = function(line)
+      if deps.debug_log ~= nil then
+        deps.debug_log(line)
+      end
+    end,
+    recast_left = recast_left,
+    pin = pinned_command,
+    blocked = function()
+      if deps.suppressed ~= nil and deps.suppressed() then
+        return "suppressed"
+      end
+      return config_mode()
+    end,
+  })
+  self.queue = queue
+
   function self.draw_state()
     local player = get_player()
     local mounted = false
@@ -965,6 +1015,9 @@ local function new(deps)
       opts.flash()
     end
     local plan, hint = actions.resolve(record, self.draw_state())
+    if plan ~= nil and plan.kind == "command" and queue.press(record, plan.command) then
+      return
+    end
     if not delay_travel(record, plan) then
       execute(plan, hint)
     end
@@ -1032,6 +1085,7 @@ local function new(deps)
   function self.drop_trip()
     travel.clear()
     abort_pending(dropped_line())
+    queue.drop("re-attach")
   end
 
   --[[ A bar going off screen. A trip counting down is the player's, not a
@@ -1067,6 +1121,10 @@ local function new(deps)
     if travelling ~= nil then
       travelling.fire()
     end
+    local release = queue.step()
+    if release ~= nil then
+      send_command(release)
+    end
   end
 
   --[[ Events, forwarded by the entry point - never by a bar, or two bars
@@ -1079,19 +1137,29 @@ local function new(deps)
       -- A zone ends the moment a trip belonged to - the warm-up included,
       -- since the ring is coming with you and the enchantment is not.
       self.end_trip("cancelled")
+      queue.clear("zone")
     end
     if id == ACTION_CHUNK then
       if parsed ~= nil then
         skillchain.on_action(parsed)
+        queue.on_action(parsed)
       end
     elseif SC_CHUNKS[id] then
       skillchain.on_chunk(id, data, parsed)
     end
+    if id == MESSAGE_CHUNK then
+      queue.on_message(data)
+    end
+  end
+
+  function self.on_outgoing(id, data)
+    queue.on_outgoing(id, data)
   end
 
   function self.on_status(status)
     if DEAD_STATUSES[status] then
       self.end_trip("cancelled")
+      queue.clear("death")
     end
     -- Resting calls a countdown off, which is the way out the opening line
     -- names; and a warm-up, which offers the same way out.
@@ -1109,6 +1177,7 @@ local function new(deps)
   function self.on_job_change()
     -- A trip belongs to the job that pressed it - the warm-up included.
     self.end_trip("cancelled")
+    queue.clear("job change")
     -- Loading a job sheathes you without a transition; the bars' bindings
     -- reset the same way on set_job, and the two must agree or the mirror
     -- would put the drawn rotation straight back.
@@ -1124,6 +1193,7 @@ local function new(deps)
 
   function self.on_logout()
     self.drop_trip()
+    queue.clear("logout")
     skillchain.reset()
     weapon = "sheathed"
     editing = {}
@@ -1134,12 +1204,13 @@ local function new(deps)
   function self.on_unload()
     travel.clear()
     abort_pending(nil)
+    queue.clear("unload")
   end
 
   -- What core seeds its own config with, so the tuning has a home and a
   -- name before anyone types a verb.
   function self.config_defaults()
-    return { delay = travel.defaults().delay }
+    return { delay = travel.defaults().delay, queue = queue.defaults().queue }
   end
 
   return self

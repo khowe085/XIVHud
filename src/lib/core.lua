@@ -106,6 +106,10 @@ local HELP = {
   "  //hud delay [<seconds>]    the countdown before a mount or a warp goes",
   "  //hud hidecutscene [on|off]",
   "                            hide the HUD during cutscenes",
+  "  //hud queue [on|debug|off]",
+  "                            hold a bar press made during a cast or the lock",
+  "                            after it, and send it when the lock clears; debug",
+  "                            says each step in chat and in debug.log",
   "  //hud config [<name>]      the settings window: the options above and the",
   "                            components' own, changed with a click; name a",
   "                            component, or global, to open on its panel",
@@ -1346,9 +1350,28 @@ local function new(deps)
     return "hide in cutscenes: " .. (on and "on" or "off")
   end
 
-  local TUNERS = { delay = tune_delay, hidecutscene = tune_hidecutscene }
-  -- The one that is the action service's own tuning, and needs it loaded.
-  local SERVICE_TUNERS = { delay = true }
+  local function tune_queue(words)
+    local usage = "queue [on|debug|off]"
+    if #words > 1 then
+      return usage
+    end
+    if words[1] == nil then
+      return "action queue: " .. deps.actions.queue.mode()
+    end
+    local wanted = words[1]:lower()
+    for _, mode in ipairs(deps.actions.queue.modes) do
+      if mode == wanted then
+        core_config().queue = mode
+        core_handle.save()
+        return "action queue: " .. mode
+      end
+    end
+    return usage
+  end
+
+  local TUNERS = { delay = tune_delay, hidecutscene = tune_hidecutscene, queue = tune_queue }
+  -- The ones that are the action service's own tuning, and need it loaded.
+  local SERVICE_TUNERS = { delay = true, queue = true }
 
   local function run_tune(action)
     if not require_character() then
@@ -1394,6 +1417,15 @@ local function new(deps)
           command = { "delay" },
         },
       }
+      if deps.actions.queue ~= nil then
+        rows[#rows + 1] = {
+          label = "Action queue",
+          kind = "choice",
+          value = deps.actions.queue.mode(),
+          options = deps.actions.queue.modes,
+          command = { "queue" },
+        }
+      end
     end
     rows[#rows + 1] = {
       label = "Hide in cutscenes",

@@ -14,8 +14,18 @@ local function resources()
     spells = {
       [1] = { id = 1, en = "Cure", type = "WhiteMagic", recast_id = 1, mp_cost = 8 },
       [261] = { id = 261, en = "Warp", type = "BlackMagic", recast_id = 261, mp_cost = 100 },
+      -- Spells and abilities number their recasts apart: this is not a stratagem.
+      [231] = { id = 231, en = "Bio II", type = "BlackMagic", recast_id = 231, mp_cost = 36 },
     },
-    job_abilities = { [605] = { id = 605, en = "Provoke", recast_id = 5, tp_cost = 0 } },
+    job_abilities = {
+      [605] = { id = 605, en = "Provoke", recast_id = 5, tp_cost = 0 },
+      [700] = { id = 700, en = "Fight", recast_id = 100 },
+      -- One from each family that shares a charged recast.
+      [215] = { id = 215, en = "Penury", recast_id = 231 },
+      [131] = { id = 131, en = "Fire Shot", recast_id = 195 },
+      [688] = { id = 688, en = "Foot Kick", recast_id = 102 },
+      [251] = { id = 251, en = "Ready", recast_id = 255 },
+    },
     weapon_skills = { [42] = { id = 42, en = "Savage Blade", skill = 4 } },
     skills = { [4] = { id = 4, en = "Sword" } },
     items = {
@@ -48,6 +58,7 @@ local function world(opts)
   end
   local env = {
     chat = {},
+    debug_log = {},
     commands = {},
     ipc = {},
     equips = {},
@@ -66,6 +77,8 @@ local function world(opts)
       status = 1,
     },
     known_spells = { [261] = true, [1] = true },
+    spell_recasts = {},
+    ability_recasts = {},
     items = { [0] = {} },
     ext = nil,
     target = { id = 99 },
@@ -77,6 +90,9 @@ local function world(opts)
     say = function(line)
       env.chat[#env.chat + 1] = line
     end,
+    debug_log = not opts.no_debug_log and function(line)
+      env.debug_log[#env.debug_log + 1] = line
+    end or nil,
     send_command = function(command)
       env.commands[#env.commands + 1] = command
     end,
@@ -107,6 +123,12 @@ local function world(opts)
     end,
     get_key_items = function()
       return {}
+    end,
+    get_spell_recasts = function()
+      return env.spell_recasts
+    end,
+    get_ability_recasts = function()
+      return env.ability_recasts
     end,
     -- The client puts the piece on: the poll reads that status back. A test
     -- holds it off (a GearSwap swap in flight) with `equip_lands = false`.
@@ -950,6 +972,369 @@ describe("the action service", function()
       assert.are.equal(5, defaults.delay)
       assert.is_nil(defaults.retry, "the cast retry is gone")
       assert.is_nil(defaults.wsgate, "the weaponskill gate is gone")
+    end)
+  end)
+
+  describe("the action queue", function()
+    local ACTION, ZONE_OUT, MESSAGE = 0x028, 0x0B, 0x029
+    local CURE = { type = "ma", action = "Cure", target = "me" }
+    local CURE_COMMAND = 'input /ma "Cure" <me>'
+
+    local function queued(mode)
+      local service, env = world()
+      env.config.queue = mode or "on"
+      return service, env
+    end
+
+    local function act(category, param)
+      return { actor_id = 777, category = category, param = param or 0, targets = {} }
+    end
+
+    local function start_cast(service)
+      service.on_chunk(ACTION, "raw", act(8, 24931))
+    end
+
+    local function finish_cast(service)
+      service.on_chunk(ACTION, "raw", act(4, 1))
+    end
+
+    -- Past the 3s a spell locks for.
+    local function past_the_lock(service, env)
+      env.now = env.now + 3.01
+      service.tick()
+    end
+
+    it("names its mode among the tuning core seeds, shipping off", function()
+      local service = world()
+      assert.are.equal("off", service.config_defaults().queue)
+    end)
+
+    it("reads its mode off the config core keeps", function()
+      local service, env = world()
+      assert.are.equal("off", service.queue.mode())
+      env.config.queue = "debug"
+      assert.are.equal("debug", service.queue.mode())
+    end)
+
+    it("hands its debug lines to the log as well as to chat", function()
+      local service, env = queued("debug")
+      start_cast(service)
+      assert.is_not_nil(table.concat(env.debug_log, "\n"):find("start spell", 1, true))
+      assert.is_not_nil(said(env):find("start spell", 1, true))
+    end)
+
+    it("copes with no log, as a spec's ctx has none", function()
+      local service, env = world({ no_debug_log = true })
+      env.config.queue = "debug"
+      assert.has_no.errors(function()
+        start_cast(service)
+      end)
+    end)
+
+    it("sends a press at once while off, whatever is casting", function()
+      local service, env = world()
+      start_cast(service)
+      service.fire(CURE, {})
+      assert.are.same({ CURE_COMMAND }, env.commands)
+    end)
+
+    it("sends a press at once while nothing is busy", function()
+      local service, env = queued()
+      service.fire(CURE, {})
+      assert.are.same({ CURE_COMMAND }, env.commands)
+    end)
+
+    it("holds a press through the cast and sends it the tick the lock clears", function()
+      local service, env = queued()
+      start_cast(service)
+      service.fire(CURE, {})
+      assert.are.same({}, env.commands)
+      finish_cast(service)
+      service.tick()
+      assert.are.same({}, env.commands, "the lock is still running")
+      past_the_lock(service, env)
+      assert.are.same({ CURE_COMMAND }, env.commands)
+    end)
+
+    it("flashes a held press, which is the only sign it was taken", function()
+      local service = queued()
+      start_cast(service)
+      local flashed = false
+      service.fire(CURE, {
+        flash = function()
+          flashed = true
+        end,
+      })
+      assert.is_true(flashed)
+    end)
+
+    it("pins a target at the press", function()
+      local service, env = queued()
+      env.target = { id = 99 }
+      start_cast(service)
+      service.fire({ type = "ma", action = "Cure", target = "t" }, {})
+      env.target = { id = 5 }
+      finish_cast(service)
+      past_the_lock(service, env)
+      assert.are.same({ 'input /ma "Cure" 99' }, env.commands)
+    end)
+
+    it("holds a slot with no target and sends it verbatim", function()
+      local service, env = queued()
+      start_cast(service)
+      service.fire({ type = "ma", action = "Cure" }, {})
+      finish_cast(service)
+      past_the_lock(service, env)
+      assert.are.same({ 'input /ma "Cure"' }, env.commands)
+    end)
+
+    it("sends a target it cannot pin as it always did", function()
+      local service, env = queued()
+      start_cast(service)
+      service.fire({ type = "ma", action = "Cure", target = "stpc" }, {})
+      assert.are.same({ 'input /ma "Cure" <stpc>' }, env.commands)
+    end)
+
+    it("leaves a spell on its own recast to the game", function()
+      local service, env = queued()
+      env.spell_recasts[1] = 120
+      start_cast(service)
+      service.fire(CURE, {})
+      assert.are.same({ CURE_COMMAND }, env.commands)
+    end)
+
+    it("sends the next press at once after one on its own recast, which GearSwap may have cancelled", function()
+      local service, env = queued()
+      env.spell_recasts[1] = 120
+      service.fire(CURE, {})
+      env.commands = {}
+      service.fire({ type = "ja", action = "Provoke", target = "t" }, {})
+      assert.are.same({ 'input /ja "Provoke" <t>' }, env.commands)
+    end)
+
+    it("reads a recast table the client did not answer as no recast", function()
+      local service, env = queued()
+      env.spell_recasts = nil
+      start_cast(service)
+      service.fire(CURE, {})
+      assert.are.same({}, env.commands)
+      assert.are.equal(CURE_COMMAND, service.queue.held().command)
+    end)
+
+    it("reads an ability's recast from the ability table", function()
+      local service, env = queued()
+      env.ability_recasts[5] = 30
+      start_cast(service)
+      service.fire({ type = "ja", action = "Provoke", target = "t" }, {})
+      assert.are.same({ 'input /ja "Provoke" <t>' }, env.commands)
+    end)
+
+    --[[ These share one recast across a family with charges, so the timer
+         running says a charge was spent, not that none is left: the slot stays
+         bright under it, and a chain of them is what the queue is for. ]]
+    for _, charged in ipairs({
+      { type = "ja", name = "Penury", recast_id = 231 },
+      { type = "ja", name = "Fire Shot", recast_id = 195 },
+      { type = "pet", name = "Foot Kick", recast_id = 102 },
+      { type = "pet", name = "Ready", recast_id = 255 },
+    }) do
+      it("holds " .. charged.name .. " under its shared recast, and sends it", function()
+        local service, env = queued()
+        env.ability_recasts[charged.recast_id] = 48
+        start_cast(service)
+        service.fire({ type = charged.type, action = charged.name, target = "me" }, {})
+        assert.are.same({}, env.commands)
+        finish_cast(service)
+        past_the_lock(service, env)
+        assert.are.same({ "input /" .. charged.type .. ' "' .. charged.name .. '" <me>' }, env.commands)
+      end)
+    end
+
+    it("keeps that to abilities: a spell on the same number is on its own recast", function()
+      local service, env = queued()
+      env.spell_recasts[231] = 120
+      start_cast(service)
+      service.fire(CURE, {})
+      service.fire({ type = "ma", action = "Bio II", target = "me" }, {})
+      assert.are.same({ 'input /ma "Bio II" <me>' }, env.commands)
+      assert.are.equal(CURE_COMMAND, service.queue.held().command, "and what was held survives it")
+    end)
+
+    it("reads a pet command's recast from the ability table", function()
+      local service, env = queued()
+      env.ability_recasts[100] = 10
+      start_cast(service)
+      service.fire({ type = "pet", action = "Fight", target = "t" }, {})
+      assert.are.same({ 'input /pet "Fight" <t>' }, env.commands)
+    end)
+
+    it("drops a held press whose recast is running when the lock clears", function()
+      local service, env = queued()
+      start_cast(service)
+      service.fire(CURE, {})
+      finish_cast(service)
+      env.spell_recasts[1] = 120
+      past_the_lock(service, env)
+      env.spell_recasts[1] = 0
+      env.now = env.now + 5
+      service.tick()
+      assert.are.same({}, env.commands)
+    end)
+
+    it("reads no recast for a weaponskill, which has none", function()
+      local service, env = queued()
+      start_cast(service)
+      service.fire({ type = "ws", action = "Savage Blade", target = "t" }, {})
+      assert.are.same({}, env.commands)
+    end)
+
+    it("holds a spell the resources do not know, having no recast to read", function()
+      local service, env = queued()
+      start_cast(service)
+      service.fire({ type = "ma", action = "Nonesuch", target = "me" }, {})
+      assert.are.same({}, env.commands)
+    end)
+
+    it("leaves a travel press to the countdown", function()
+      local service, env = queued()
+      start_cast(service)
+      service.fire({ type = "mount", action = "Chocobo" }, {})
+      assert.is_true(service.travel.armed())
+      assert.is_nil(service.queue.held())
+      assert.are.same({}, env.commands)
+    end)
+
+    it("hears what goes out, whoever sent it", function()
+      local service, env = queued()
+      service.on_outgoing(0x01A, string.rep("\0", 10) .. string.char(3, 0) .. string.rep("\0", 16))
+      service.fire(CURE, {})
+      assert.are.same({}, env.commands)
+    end)
+
+    it("hears a refusal off the action message", function()
+      local service, env = queued()
+      service.on_outgoing(0x037, "item use")
+      local actor = string.char(777 % 256, math.floor(777 / 256), 0, 0)
+      service.on_chunk(MESSAGE, string.rep("\0", 4) .. actor .. string.rep("\0", 16) .. string.char(17, 0, 0, 0), nil)
+      service.fire(CURE, {})
+      assert.are.same({ CURE_COMMAND }, env.commands)
+    end)
+
+    it("still feeds the skillchain engine the action message", function()
+      local service, env = queued()
+      local fed = {}
+      service.skillchain.on_chunk = function(id)
+        fed[#fed + 1] = id
+      end
+      service.on_chunk(MESSAGE, "short", nil)
+      assert.are.same({ MESSAGE }, fed)
+      assert.are.same({}, env.commands)
+    end)
+
+    describe("what ends a held press", function()
+      local function holding()
+        local service, env = queued()
+        finish_cast(service)
+        service.fire(CURE, {})
+        return service, env
+      end
+
+      local function nothing_goes(service, env)
+        past_the_lock(service, env)
+        assert.are.same({}, env.commands)
+      end
+
+      it("a zone", function()
+        local service, env = holding()
+        service.on_chunk(ZONE_OUT, "raw", nil)
+        assert.is_false(service.queue.busy(), "the lock goes with it")
+        nothing_goes(service, env)
+      end)
+
+      it("a death", function()
+        local service, env = holding()
+        service.on_status(2)
+        assert.is_false(service.queue.busy(), "the lock goes with it")
+        nothing_goes(service, env)
+      end)
+
+      it("a job change", function()
+        local service, env = holding()
+        service.on_job_change()
+        assert.is_false(service.queue.busy(), "the lock goes with it")
+        nothing_goes(service, env)
+      end)
+
+      it("a logout", function()
+        local service, env = holding()
+        service.on_logout()
+        assert.is_false(service.queue.busy(), "the lock goes with it")
+        nothing_goes(service, env)
+      end)
+
+      it("an unload", function()
+        local service, env = holding()
+        service.on_unload()
+        assert.is_false(service.queue.busy(), "the lock goes with it")
+        nothing_goes(service, env)
+      end)
+
+      it("a bar's re-attach, which replaced what it was bound to", function()
+        local service, env = holding()
+        service.drop_trip()
+        assert.is_true(service.queue.busy(), "the lock is the player's")
+        nothing_goes(service, env)
+      end)
+
+      it("layout mode", function()
+        local service, env = holding()
+        env.layout = true
+        service.tick()
+        env.layout = false
+        nothing_goes(service, env)
+      end)
+
+      it("the settings window", function()
+        local service, env = holding()
+        env.settings_open = true
+        service.tick()
+        env.settings_open = false
+        nothing_goes(service, env)
+      end)
+
+      it("suppression", function()
+        local service, env = holding()
+        env.suppressed = true
+        service.tick()
+        env.suppressed = false
+        nothing_goes(service, env)
+      end)
+
+      it("the queue being switched off", function()
+        local service, env = holding()
+        env.config.queue = "off"
+        nothing_goes(service, env)
+      end)
+    end)
+
+    it("does not hold a press under a config mode, which goes out as it always did", function()
+      local service, env = queued()
+      env.layout = true
+      start_cast(service)
+      service.fire(CURE, {})
+      assert.are.same({ CURE_COMMAND }, env.commands)
+    end)
+
+    it("does not end a trip for a held press, or the reverse", function()
+      local service, env = queued()
+      start_cast(service)
+      service.fire(CURE, {})
+      service.warp(false)
+      assert.is_true(service.travel.armed())
+      service.on_chunk(ACTION, "raw", act(4, 1))
+      assert.is_true(service.travel.armed())
+      assert.are.equal(CURE_COMMAND, service.queue.held().command)
+      assert.are.same({}, env.commands)
     end)
   end)
 

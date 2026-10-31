@@ -79,6 +79,7 @@ Everything is under `//hud`. The most used:
 //hud slot <name>              switch to a named layout
 //hud draw | mr | warp | sneak | invisible   act on the game (the same actions a bar slot can hold)
 //hud delay                    setting shared by the crossbar and hotbar
+//hud queue [on|debug|off]     hold a bar press through a cast and send it when you can act
 //hud config                   the settings window: change settings with the mouse
 //hud <component> ...          that component's own settings
 ```

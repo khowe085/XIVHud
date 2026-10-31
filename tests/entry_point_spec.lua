@@ -702,6 +702,60 @@ describe("entry point", function()
       assert.are.equal(boot.last_dispatch("chunk")[3], call[3], "the same parsed table, not a second decode")
     end)
 
+    it("hears what the client sends, and answers it nothing", function()
+      local answer = boot.fire("outgoing chunk", 0x01A, "raw out", "modified", false, false)
+      local call = boot.service_calls[#boot.service_calls]
+      assert.are.equal("on_outgoing", call.name)
+      assert.are.equal(0x01A, call[1])
+      assert.are.equal("raw out", call[2])
+      assert.is_nil(answer, "a returned value would replace the packet")
+    end)
+
+    it("hears an action GearSwap injected", function()
+      boot.fire("outgoing chunk", 0x01A, "injected", "injected", true, false)
+      assert.are.equal("injected", boot.service_calls[#boot.service_calls][2])
+    end)
+
+    it("does not hear a packet another addon blocked, which never left", function()
+      local before = #boot.service_calls
+      boot.fire("outgoing chunk", 0x01A, "raw out", "modified", false, true)
+      assert.are.equal(before, #boot.service_calls)
+    end)
+
+    it("appends the queue's debug lines to debug.log, dated, beside load.log", function()
+      boot.service_deps.debug_log("queue 1.00: start spell")
+      boot.service_deps.debug_log("queue 2.00: finish spell, lock 3.00s")
+      local written = boot.files["addons/XIVHud/debug.log"]
+      assert.is_not_nil(written:find("queue 1.00: start spell\n", 1, true))
+      assert.is_not_nil(written:find("queue 2.00: finish spell, lock 3.00s\n", 1, true))
+      assert.is_not_nil(written:match("^%d%d%d%d%-%d%d%-%d%d %d%d:%d%d:%d%d queue"))
+    end)
+
+    it("carries on when debug.log cannot be written, being inside the chunk handlers", function()
+      boot.env.io.open = function()
+        error("disk full")
+      end
+      assert.has_no.errors(function()
+        boot.service_deps.debug_log("queue 1.00: start spell")
+      end)
+      boot.env.io.open = function()
+        return nil, "denied"
+      end
+      assert.has_no.errors(function()
+        boot.service_deps.debug_log("queue 1.00: start spell")
+      end)
+    end)
+
+    it("reads the recasts the crossbar reads", function()
+      assert.are.equal(boot.ctxs.crossbar.get_spell_recasts, boot.service_deps.get_spell_recasts)
+      assert.are.equal(boot.ctxs.crossbar.get_ability_recasts, boot.service_deps.get_ability_recasts)
+    end)
+
+    it("registers nothing on the outgoing path in safe mode", function()
+      local safe = harness.boot({ files = { ["addons/XIVHud/safe_mode"] = "" } })
+      assert.is_nil(safe.handlers["outgoing chunk"])
+    end)
+
     it("hears the status, the job change, the ipc message and the unload", function()
       boot.handlers["status change"](7, 0)
       boot.handlers["job change"](1, 99, 20, 49)
