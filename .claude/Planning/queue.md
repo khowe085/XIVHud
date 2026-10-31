@@ -32,7 +32,8 @@ net never runs: the `0x029` handler compares `action.message`, the field is
   GearSwap for `outgoing text`.
 - **Held through the whole cast and the lock**, not FFXIV's last half second.
 - **One held action**, the newest press replacing it.
-- **A press while free sends at once**, exactly as it did.
+- **A press while free sends at once**, exactly as it did. A cursor slot still opens
+  its cursor at once, over `/ta`.
 - **One shot.** A release is never re-sent, refused or not.
 - **Never held on a recast.** A press whose own recast is running goes out as
   it always did, and the game refuses it. An action whose recast is running
@@ -104,13 +105,25 @@ acts on a `/ma` inside its `outgoing text` handler, gear and packet together, so
 
 What ships uses `/ta`, which GearSwap ignores. Byrth's account of the cursor: the
 game sends `/ta <your id>` at once, which raises the arrow, then `/ta <chosen id>`
-on OK. GearSwap's `st_flag` skips the first of these the same way. So while busy a
-cursor slot opens the same cursor over `/ta <token>`, and the queue counts the
+on OK. GearSwap's `st_flag` skips the first of these the same way. So a cursor slot
+opens the same cursor over `/ta <token>`, free or busy, and the queue counts the
 numbers: the first goes through, the second is OK. That line is blocked, so the
 target never moves, and the real `/ma "..." <id>` is held, or sent at once when the
-lock has cleared or the recast is running. A press while free goes as it always
-did. If the second number ever failed to come, the `/ta` would run: the target
-moves and nothing casts.
+lock has cleared or the recast is running. If the second number ever failed to
+come, the `/ta` would run: the target moves and nothing casts.
+
+**Free counts too.** It went as it always did until a run showed the hole: a Sleep II
+opened while free, then GearSwap sent a weaponskill, and the OK went out at +1.80 and
+was refused. The cost is `pretarget`, which no longer runs for a cursor slot while
+the queue is on.
+
+**An arrow already up.** The double-tap failure was real (row 20): Kevin's Dia III and
+Sleep II, where a second press raised no arrow, OK was counted as one, the `/ta` ran
+and nothing cast. A press 1.8s later did raise one, because that cursor had gone.
+So a press asks `get_mob_by_target("st")`, which Kevin confirmed answers nothing with
+no cursor (the subtarget bar disappears): with an arrow up nothing is sent, and the
+press only changes what OK will cast. That also ends the game's "You cannot perform
+that action on the selected sub-target", which is what the resent token drew.
 
 ## The state machine
 
@@ -163,7 +176,7 @@ unverified**, the longer of two sources with ranged rounded up from its one.
 | ability | 1.0, 2.0 before auto-attack | 0.8 | 1.0 |
 | item | none | 1.5 | 1.5 |
 | ranged | none | 0.85 | 1.0 |
-| interrupted | none | 1.75 | 1.75 |
+| interrupted | none | 1.75 | 2.7, 1.75 was refused at +2.23 |
 
 bg-wiki's spell lock runs from the cast finishing at 75% of the gauge, and its
 example lands the effect 0.33s later, so the finish packet comes after the lock
@@ -228,6 +241,21 @@ It showed three more things:
 Two releases of Savage Blade sent nothing, as before. One Stun at 82180.65 went out
 and got no answer at all.
 
+Two more runs on the same day, the second on the 2.4 lock:
+
+- **No release refused** in 34 more, 30 of which went out. The 4 that sent nothing
+  were all Savage Blade straight after a weaponskill, which makes 8 of 8 across every
+  run, while the one that followed a spell went out. GearSwap's TP guard, almost
+  certainly.
+- **The first release at 2.4:** a Sleep II went out at +2.43 and started at +2.78, a
+  beat earlier than the 2.7 lock gave. One sample.
+- **`interrupted` was too short.** A Sleepga went out +2.23 after a real interrupt,
+  once the 1.75 lock had cleared, and was refused. A weaponskill +2.35 after a
+  paralyzed cast's interrupt was accepted, so it lies around there. It takes the
+  spell's 2.7 until someone measures it, since too short loses the press.
+- A weaponskill +2.12 after a spell finish was refused (message 90), which agrees
+  with the spell lock.
+
 ## Review gate
 
 Four blind rounds, clean on the fourth. Round 1 caught a stratagem with charges in
@@ -268,5 +296,8 @@ start bracket the true lock. Every line is in `debug.log` too.
 | 17 | During a cast, a `<stpc>` slot whose recast is up by OK | No `on recast` line, it casts | Judged at OK |
 | 18 | Mash a `<t>` slot from before the press lands | One cast, `swallowed` lines, the midcast set stays on | The mash |
 | 19 | Precast gear on a cursor slot held through a lock | The spell casts in Fast Cast gear | GearSwap's numeric path runs precast at the release |
-| 20 | Double-tap a `<stpc>` slot during a lock, then OK | One `OK`, cast at who you picked, target unchanged | The count assumes one arrow per `/ta <stpc>`. Pressed with the arrow already up, if no new arrow comes, OK reads as the arrow and the `/ta` runs |
+| 20 | Double-tap a `<stpc>` slot during a lock, then OK | `cursor up, OK takes ...`, one `OK`, cast at who you picked, target unchanged | FAILED before the fix, as predicted. A second press raised no arrow, OK read as one and the `/ta` ran |
+| 22 | Press a `<stpc>` slot while free, let a weaponskill go, press OK in its lock | `hold`, then `release` at the lock's end | The refused Sleep II |
+| 23 | Keep the cursor up and press a different cursor slot, then OK | The newer spell casts | The press only changes what OK casts |
+| 24 | Press a cursor slot during a macro's own `<st>` cursor | The game's usual answer, and the macro's spell on OK | An arrow this did not open is left alone |
 | 21 | ESC a cursor, then run a `/ta <stnpc>` macro | The macro's cursor works, and nothing casts | A closed cursor must not take another's line as its OK |

@@ -652,6 +652,11 @@ local function new(deps)
       local entry = book ~= nil and book[id] or nil
       return entry ~= nil and entry.en or nil
     end,
+    -- `<st>` answers only while a cursor is up: the subtarget bar reads the same
+    -- and disappears without one (Kevin, 2026-10-31).
+    arrow_up = function()
+      return selected_id("st") ~= nil
+    end,
   })
   self.queue = queue
 

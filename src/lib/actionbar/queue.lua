@@ -55,6 +55,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      four, which is Selindrile's own timing (2.7 - .5 + a .1 tick), bg-wiki says
      2.0, and nothing was tried shorter.
 
+     `interrupted` takes the spell's until it is measured: a spell +2.23 after a
+     real interrupt was refused, where Selindrile's 1.75 had just let it go.
+
      The rest are UNVERIFIED: the longer of bg-wiki and Selindrile's aftercast,
      and ranged, which only Selindrile gives, is rounded up to a second.
      `//hud queue debug` brackets the real ones. ]]
@@ -64,7 +67,7 @@ local LOCK_SECONDS = {
   ability = 1,
   item = 1.5,
   ranged = 1,
-  interrupted = 1.75,
+  interrupted = 2.7,
 }
 
 --[[ How long a press may take to be seen leaving. A GearSwap filter cancels a
@@ -265,18 +268,30 @@ local function new(deps)
   end
 
   --[[ A cursor slot is judged at OK, when the command is really sent. Nothing
-       can be said of it at the press: its target does not exist yet, and its
-       recast may be up by then. Free, it goes as it always did. Busy, the same
-       cursor opens over /ta, because GearSwap acts on a /ma the moment OK sends
-       it and nothing after that can stop it, where it ignores a /ta. ]]
+       can be said of it at the press: its target does not exist yet, its recast
+       may be up by then, and a lock may have begun, since GearSwap sends
+       weaponskills of its own. So the same cursor opens over /ta, free or busy,
+       because GearSwap acts on a /ma the moment OK sends it and nothing after
+       that can stop it, where it ignores a /ta.
+
+       With an arrow already up the token raises no new one, and the game answers
+       it "You cannot perform that action on the selected sub-target". OK would
+       then be counted as the arrow, the /ta would run and nothing would cast, so
+       nothing is sent and the press only changes what OK will cast. An arrow
+       this did not open is a macro's, and its OK sends its own command. ]]
   local function open_cursor(record, command, name)
-    if not self.busy() then
-      return false
-    end
     local blocked = deps.blocked()
     if blocked ~= nil then
       note("not held: " .. name .. ", " .. blocked)
       return false
+    end
+    if deps.arrow_up() then
+      if cursor == nil then
+        return false
+      end
+      note("cursor up, OK takes " .. name)
+      cursor.record, cursor.command, cursor.name, cursor.at = record, command, name, now()
+      return true
     end
     note("cursor " .. name .. " <" .. record.target .. ">")
     cursor = { record = record, command = command, name = name, numbers = 0, at = now() }

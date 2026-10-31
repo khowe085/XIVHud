@@ -109,6 +109,9 @@ local function world(opts)
       return env.player
     end,
     get_mob_by_target = function(token)
+      if token == "st" then
+        return env.subtarget
+      end
       env.asked_token = token
       return env.target
     end,
@@ -1116,8 +1119,22 @@ describe("the action service", function()
     describe("a cursor slot", function()
       local SHELL = { type = "ma", action = "Cure", target = "stpc" }
 
-      it("goes as it always did while nothing is busy", function()
+      it("opens over /ta while nothing is busy too", function()
         local service, env = queued()
+        service.fire(SHELL, {})
+        assert.are.same({ "input /ta <stpc>" }, env.commands)
+      end)
+
+      it("sends nothing for a press with the arrow up, reading it off <st>", function()
+        local service, env = queued()
+        service.fire(SHELL, {})
+        env.subtarget = { id = 5 }
+        service.fire(SHELL, {})
+        assert.are.same({ "input /ta <stpc>" }, env.commands)
+      end)
+
+      it("goes as it always did with the queue off", function()
+        local service, env = world()
         service.fire(SHELL, {})
         assert.are.same({ 'input /ma "Cure" <stpc>' }, env.commands)
       end)

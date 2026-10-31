@@ -325,16 +325,22 @@ a number where the token was: your own id at once, which raises the arrow, then
 the chosen id on OK (Byrth, and GearSwap's `st_flag` skips the first the same
 way). GearSwap acts on a `/ma` the moment OK sends it, gear and packet inside one
 handler, and blocking the packet afterwards would leave it `midaction` for good.
-So while busy the press opens the same cursor over `/ta <token>`, which GearSwap
+So the press opens the same cursor over `/ta <token>`, free or busy, which GearSwap
 ignores, and `queue.on_text` takes the second number: the line is blocked, so
 your target never moves, and the real `/ma "..." <id>` is held, or sent at once
 if the lock has cleared or the recast is running. GearSwap sees nothing until
 then, and its numeric path runs precast as it does after any OK. No load order
-is needed. A press while nothing is busy goes as it always did, so `pretarget`
-is skipped only for a cursor opened during a cast or a lock. Confirmed in a live
-client (Kevin, 2026-10-31): fifteen OKs on `<stpc>` and `<stnpc>` slots, each one
-caught, held and cast, with nothing refused. Were the second number ever not to
-come, the `/ta` would run, which moves your target and casts nothing.
+is needed. Free counts too because a lock can begin after the press: GearSwap
+sends weaponskills of its own, and a Sleep II opened free and OK'd in one went
+out and was refused. It costs `pretarget`, which never runs for a cursor slot
+while the queue is on. With an arrow already up (`get_mob_by_target("st")`, which
+answers nil with no cursor, Kevin, 2026-10-31) a press sends nothing and only
+changes what OK will cast: the token raises no new arrow, the game answers it
+"You cannot perform that action on the selected sub-target", and resending it
+had OK counted as the arrow, so the `/ta` ran and nothing cast (his Dia III and
+Sleep II). Confirmed in a live client over five runs (Kevin, 2026-10-31): on a
+single press every OK on a `<stpc>` or `<stnpc>` slot was caught, and none was
+refused by the lock. The free press and the arrow check are not yet confirmed.
 
 A press gets 0.6s to leave the client before anything counts it as gone,
 and a press on its own recast counts for nothing: GearSwap filters cancel both

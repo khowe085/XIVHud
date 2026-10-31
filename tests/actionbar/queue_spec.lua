@@ -54,6 +54,9 @@ local function world(opts)
     name_of = function(_, id)
       return env.names[id]
     end,
+    arrow_up = function()
+      return env.arrow_up == true
+    end,
   })
   return queue, env
 end
@@ -368,12 +371,84 @@ describe("the action queue", function()
       return taken, instead
     end
 
-    it("goes as it always did while nothing is busy, and starts no wait", function()
+    --[[ Kevin's Sleep II, pressed while free and OK'd in a lock nobody could have
+         seen coming: GearSwap had sent a weaponskill in between. It went out at
+         +1.80 and was refused. ]]
+    it("opens over /ta while nothing is busy too, so OK is caught whenever it comes", function()
       local queue = world()
+      local taken, instead = queue.press(SHELL, SHELL_COMMAND)
+      assert.is_true(taken)
+      assert.are.equal("input /ta <stpc>", instead)
+    end)
+
+    it("starts no wait at the press, since nothing has been sent", function()
+      local queue = world()
+      queue.press(SHELL, SHELL_COMMAND)
+      assert.is_false(queue.busy())
+    end)
+
+    it("holds at OK when the lock began after the press", function()
+      local queue = world()
+      cursor_up(queue)
+      finish_cast(queue)
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.is_nil(send)
+      assert.are.equal(AIMED, queue.held().command)
+    end)
+
+    --[[ Kevin's Dia III and Sleep II: a second press raised no arrow, so OK was
+         counted as one, the /ta ran and nothing cast. The game answers such a
+         press "You cannot perform that action on the selected sub-target". ]]
+    it("sends nothing for a press with the arrow already up", function()
+      local queue, env = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      env.arrow_up = true
+      local taken, instead = queue.press(SHELL, SHELL_COMMAND)
+      assert.is_true(taken)
+      assert.is_nil(instead)
+    end)
+
+    it("still reads OK as OK after one", function()
+      local queue, env = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      env.arrow_up = true
+      queue.press(SHELL, SHELL_COMMAND)
+      queue.press(SHELL, SHELL_COMMAND)
+      assert.is_true((queue.on_text("/ta 12345")))
+      assert.are.equal(AIMED, queue.held().command)
+    end)
+
+    it("casts the newest press at OK when another slot is pressed with the arrow up", function()
+      local queue, env = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      env.arrow_up = true
+      queue.press(spell("Protect V", "stpc"), 'input /ma "Protect V" <stpc>')
+      queue.on_text("/ta 12345")
+      assert.are.equal('input /ma "Protect V" 12345', queue.held().command)
+    end)
+
+    it("gives a mashed cursor its full wait for OK", function()
+      local queue, env = world()
+      start_cast(queue)
+      cursor_up(queue)
+      env.arrow_up = true
+      env.now = env.now + 20
+      queue.press(SHELL, SHELL_COMMAND)
+      env.now = env.now + 20
+      queue.step()
+      assert.is_true((queue.on_text("/ta 12345")))
+    end)
+
+    it("leaves an arrow it did not open to the game: a macro's OK is its own", function()
+      local queue, env = world()
+      env.arrow_up = true
       local taken, instead = queue.press(SHELL, SHELL_COMMAND)
       assert.is_false(taken)
       assert.is_nil(instead)
-      assert.is_false(queue.busy())
     end)
 
     it("opens the same cursor over /ta while busy, which GearSwap ignores", function()
@@ -486,11 +561,12 @@ describe("the action queue", function()
       assert.are.equal(AIMED, queue.held().command)
     end)
 
-    it("starts over for a newer cursor press", function()
+    it("starts over for a press once the arrow has gone", function()
       local queue = world()
       finish_cast(queue)
       cursor_up(queue)
-      queue.press(spell("Protect V", "stpc"), 'input /ma "Protect V" <stpc>')
+      local _, instead = queue.press(spell("Protect V", "stpc"), 'input /ma "Protect V" <stpc>')
+      assert.are.equal("input /ta <stpc>", instead)
       assert.is_false(queue.on_text("/ta 777"), "the new cursor's arrow")
       queue.on_text("/ta 12345")
       assert.are.equal('input /ma "Protect V" 12345', queue.held().command)
@@ -596,9 +672,9 @@ describe("the action queue", function()
         local queue, env = world()
         queue.on_action(action(category, STARTING))
         queue.on_action(action(category, INTERRUPTED))
-        env.now = env.now + 1.7
+        env.now = env.now + 2.69
         assert.is_true(queue.busy(), category .. " still locked")
-        env.now = env.now + 0.06
+        env.now = env.now + 0.02
         assert.is_false(queue.busy(), category .. " lock over")
       end
     end)
@@ -710,7 +786,7 @@ describe("the action queue", function()
       start_cast(queue)
       queue.on_action(action(4, 1))
       queue.on_action(action(8, INTERRUPTED))
-      env.now = env.now + 1.76
+      env.now = env.now + 2.71
       assert.is_false(queue.busy())
     end)
 
@@ -719,7 +795,7 @@ describe("the action queue", function()
       start_cast(queue)
       queue.on_action(action(8, INTERRUPTED))
       queue.on_action(action(4, 1))
-      env.now = env.now + 1.76
+      env.now = env.now + 2.71
       assert.is_false(queue.busy())
     end)
 
@@ -923,7 +999,7 @@ describe("the action queue", function()
       queue.press(spell(), command())
       queue.on_action(action(8, INTERRUPTED))
       assert.is_nil(queue.step())
-      env.now = env.now + 1.76
+      env.now = env.now + 2.71
       assert.are.equal(command(), queue.step())
     end)
 
@@ -1099,7 +1175,7 @@ describe("the action queue", function()
       assert.is_not_nil(said(env):find("finish spell, lock 2.70s", 1, true))
       queue.on_action(action(7, STARTING))
       queue.on_action(action(7, INTERRUPTED))
-      assert.is_not_nil(said(env):find("interrupted weaponskill, lock 1.75s", 1, true))
+      assert.is_not_nil(said(env):find("interrupted weaponskill, lock 2.70s", 1, true))
     end)
 
     it("says a start's distance from the last finish, the other half of the bracket", function()
@@ -1171,6 +1247,14 @@ describe("the action queue", function()
       queue.on_text("/ta 12345")
       assert.is_not_nil(said(env):find("OK Shell V at 12345", 1, true))
       assert.is_not_nil(said(env):find("hold Shell V", 1, true))
+    end)
+
+    it("says a press that only changed what OK casts", function()
+      local queue, env = world({ mode = "debug" })
+      queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+      env.arrow_up = true
+      queue.press(spell("Protect V", "stpc"), 'input /ma "Protect V" <stpc>')
+      assert.is_not_nil(said(env):find("cursor up, OK takes Protect V", 1, true))
     end)
 
     it("says a cursor given up for another", function()
