@@ -331,9 +331,10 @@ your target never moves, and the real `/ma "..." <id>` is held, or sent at once
 if the lock has cleared or the recast is running. GearSwap sees nothing until
 then, and its numeric path runs precast as it does after any OK. No load order
 is needed. A press while nothing is busy goes as it always did, so `pretarget`
-is skipped only for a cursor opened during a cast or a lock. **Unverified in a
-live client**: all of it, and if the second number never comes the `/ta` runs,
-which moves your target and casts nothing.
+is skipped only for a cursor opened during a cast or a lock. Confirmed in a live
+client (Kevin, 2026-10-31): fifteen OKs on `<stpc>` and `<stnpc>` slots, each one
+caught, held and cast, with nothing refused. Were the second number ever not to
+come, the `/ta` would run, which moves your target and casts nothing.
 
 A press gets 0.6s to leave the client before anything counts it as gone,
 and a press on its own recast counts for nothing: GearSwap filters cancel both
@@ -351,8 +352,9 @@ edge at a time from `debug` alone, so nothing traces from the render loop.
 **The lock lengths are constants** at the top of `queue.lua`. `spell` is measured
 at 2.7 (Kevin's logs, 2026-10-31): the server answers on a 0.4s beat, a send
 reaching the beat near +2.8 is a coin toss (refused up to +2.58, accepted down to
-+2.48), and every send from +2.66 on made the next beat and was accepted. **The
-others are unverified**, the longer of bg-wiki and Selindrile's aftercast. Mash
++2.48), and every send from +2.66 on made the next beat and was accepted. At 2.7,
+27 releases went out and none was refused. **The others are unverified**, the
+longer of bg-wiki and Selindrile's aftercast. Mash
 an in-game macro through a lock in `debug` - bar presses are held and never test
 the edge - and the last refusal and the first start bracket the real one. The
 in-client rows are in the plan.

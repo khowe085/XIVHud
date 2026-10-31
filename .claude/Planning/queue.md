@@ -109,8 +109,8 @@ cursor slot opens the same cursor over `/ta <token>`, and the queue counts the
 numbers: the first goes through, the second is OK. That line is blocked, so the
 target never moves, and the real `/ma "..." <id>` is held, or sent at once when the
 lock has cleared or the recast is running. A press while free goes as it always
-did. If the second number never comes, the `/ta` runs: the target moves and nothing
-casts. That is the failure to look for first.
+did. If the second number ever failed to come, the `/ta` would run: the target
+moves and nothing casts.
 
 ## The state machine
 
@@ -185,6 +185,23 @@ One thing the logs leave open: of seven releases, one (Stoneskin, straight after
 refused Shell V) printed `nothing went out for the last press`. Whatever dropped
 it is outside this queue, and the case behind it, a held press waiting behind a
 cursor OK that goes out and is refused, is gone now that OK is held too.
+
+## First live session at 2.7 (Kevin, 2026-10-31: "This felt good")
+
+- **29 releases, none refused.** 27 went out at +2.72 to +2.74 and started by +3.4,
+  so the +3.6 starts the 3.0 lock kept losing are gone.
+- **15 cursor OKs**, on `<stpc>` and `<stnpc>`: all caught, held and cast. Row 14
+  passes, and `outgoing text` does bring two numbers.
+- **The mash works** (row 18): a run of twelve `hold` lines then one cast, with
+  `swallowed` while it was unanswered.
+- **The other two releases were Savage Blade**, which sent nothing. Both came
+  straight after a weaponskill, so GearSwap's TP guard is the likely cause, and no
+  TP was spent. Not confirmed.
+- **Two cursors got no OK** (Distract III, Frazzle III). Another spell followed each,
+  which reads as cancelled rather than lost.
+- **Weaponskill and ability hints, one sample each:** a spell went out +2.32 after a
+  weaponskill finish and was accepted, as an ability did at +1.28 after an ability.
+  Not enough to move either constant. Item, ranged and interrupted have no data yet.
 
 ## Review gate
 
