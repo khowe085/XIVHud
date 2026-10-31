@@ -110,6 +110,9 @@ local HELP = {
   "                            hold a bar press made during a cast or the lock",
   "                            after it, and send it when the lock clears; debug",
   "                            says each step in chat and in debug.log",
+  "  //hud queue lock [<kind> <seconds>]",
+  "                            how long the queue waits after an action: spell,",
+  "                            weaponskill, ability, item, ranged or interrupted",
   "  //hud config [<name>]      the settings window: the options above and the",
   "                            components' own, changed with a click; name a",
   "                            component, or global, to open on its panel",
@@ -1350,7 +1353,55 @@ local function new(deps)
     return "hide in cutscenes: " .. (on and "on" or "off")
   end
 
+  --[[ Written only when set, so a lock nobody has touched follows the shipped
+       length, and in tenths, which is what the settings window steps in. ]]
+  local function tune_queue_lock(words)
+    local queue = deps.actions.queue
+    local range = queue.lock_range
+    local usage = ("queue lock [<kind> <seconds>] - %s, %g to %g seconds"):format(
+      table.concat(queue.lock_kinds, ", "),
+      range.min,
+      range.max
+    )
+    local function said(kind, seconds)
+      return kind .. " lock: " .. tostring(seconds) .. (seconds == 1 and " second" or " seconds")
+    end
+    if words[1] == nil then
+      local locks = {}
+      for _, kind in ipairs(queue.lock_kinds) do
+        locks[#locks + 1] = kind .. " " .. tostring(queue.lock(kind))
+      end
+      return "queue locks: " .. table.concat(locks, ", ")
+    end
+    local wanted = words[1]:lower()
+    local known = false
+    for _, kind in ipairs(queue.lock_kinds) do
+      known = known or kind == wanted
+    end
+    if not known or #words > 2 then
+      return usage
+    end
+    if words[2] == nil then
+      return said(wanted, queue.lock(wanted))
+    end
+    local seconds = tonumber(words[2])
+    if seconds == nil or not (seconds >= range.min and seconds <= range.max) then
+      return usage
+    end
+    local tenths = 1 / range.step
+    seconds = math.floor(seconds * tenths + 0.5) / tenths
+    if type(core_config().queue_locks) ~= "table" then
+      core_config().queue_locks = {}
+    end
+    core_config().queue_locks[wanted] = seconds
+    core_handle.save()
+    return said(wanted, seconds)
+  end
+
   local function tune_queue(words)
+    if words[1] ~= nil and words[1]:lower() == "lock" then
+      return tune_queue_lock({ unpack(words, 2) })
+    end
     local usage = "queue [on|debug|off]"
     if #words > 1 then
       return usage
@@ -1425,6 +1476,18 @@ local function new(deps)
           options = deps.actions.queue.modes,
           command = { "queue" },
         }
+        local range = deps.actions.queue.lock_range
+        for _, lock in ipairs(deps.actions.queue.lock_kinds) do
+          rows[#rows + 1] = {
+            label = lock:sub(1, 1):upper() .. lock:sub(2) .. " lock (seconds)",
+            kind = "stepper",
+            value = deps.actions.queue.lock(lock),
+            min = range.min,
+            max = range.max,
+            step = range.step,
+            command = { "queue", "lock", lock },
+          }
+        end
       end
     end
     rows[#rows + 1] = {

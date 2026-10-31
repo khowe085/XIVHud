@@ -25,7 +25,7 @@ local function world(opts)
       return env.now
     end,
     config = function()
-      return { queue = env.mode }
+      return { queue = env.mode, queue_locks = env.locks }
     end,
     get_player = function()
       return env.player
@@ -142,6 +142,94 @@ describe("the action queue", function()
     it("offers the words its mode reads", function()
       local queue = world()
       assert.are.same({ "off", "on", "debug" }, queue.modes)
+    end)
+  end)
+
+  describe("the lock lengths", function()
+    it("lists its kinds in the order the settings window shows them", function()
+      local queue = world()
+      assert.are.same({ "spell", "weaponskill", "ability", "item", "ranged", "interrupted" }, queue.lock_kinds)
+    end)
+
+    it("answers the shipped length with nothing stored", function()
+      local queue = world()
+      assert.are.equal(2.7, queue.lock("spell"))
+      assert.are.equal(2.4, queue.lock("weaponskill"))
+      assert.are.equal(1, queue.lock("ability"))
+      assert.are.equal(1.5, queue.lock("item"))
+      assert.are.equal(1, queue.lock("ranged"))
+      assert.are.equal(2.7, queue.lock("interrupted"))
+    end)
+
+    it("answers a stored length over the shipped one, kind by kind", function()
+      local queue, env = world()
+      env.locks = { spell = 2.5 }
+      assert.are.equal(2.5, queue.lock("spell"))
+      assert.are.equal(2.4, queue.lock("weaponskill"))
+    end)
+
+    it("takes zero as a length, since it is one", function()
+      local queue, env = world()
+      env.locks = { ability = 0 }
+      assert.are.equal(0, queue.lock("ability"))
+    end)
+
+    for name, broken in pairs({
+      text = "soon",
+      negative = -1,
+      ["too long"] = 5.1,
+      infinite = math.huge,
+      ["not a number"] = 0 / 0,
+    }) do
+      it("reads a stored length that is " .. name .. " as the shipped one", function()
+        local queue, env = world()
+        env.locks = { spell = broken }
+        assert.are.equal(2.7, queue.lock("spell"))
+      end)
+    end
+
+    it("reads a stored table that is not one as nothing stored", function()
+      local queue, env = world()
+      env.locks = "broken"
+      assert.are.equal(2.7, queue.lock("spell"))
+    end)
+
+    it("locks for the stored length", function()
+      local queue, env = world()
+      env.locks = { spell = 1.2 }
+      finish_cast(queue)
+      env.now = env.now + 1.19
+      assert.is_true(queue.busy())
+      env.now = env.now + 0.02
+      assert.is_false(queue.busy())
+    end)
+
+    it("locks an interrupt for its own stored length", function()
+      local queue, env = world()
+      env.locks = { interrupted = 0.5 }
+      start_cast(queue)
+      queue.on_action(action(8, INTERRUPTED))
+      env.now = env.now + 0.51
+      assert.is_false(queue.busy())
+    end)
+
+    it("reads the length at the finish, so a change takes on the next one", function()
+      local queue, env = world()
+      finish_cast(queue)
+      env.locks = { spell = 1 }
+      assert.are.equal(1, queue.lock("spell"))
+      env.now = env.now + 1.01
+      assert.is_true(queue.busy(), "the lock already running keeps its length")
+      finish_cast(queue)
+      env.now = env.now + 1.01
+      assert.is_false(queue.busy())
+    end)
+
+    it("says the length in force in debug", function()
+      local queue, env = world({ mode = "debug" })
+      env.locks = { spell = 2.5 }
+      finish_cast(queue)
+      assert.is_not_nil(said(env):find("finish spell, lock 2.50s", 1, true))
     end)
   end)
 

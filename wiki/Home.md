@@ -186,7 +186,7 @@ matching command would have answered, including a refusal - the window sets
 exactly what the commands set, with the same limits, so anything you change
 here you can also type.
 
-`global` holds the travel delay and the action queue (see
+`global` holds the travel delay, the action queue and its waits (see
 [Action commands](#action-commands)) and whether the HUD hides during cutscenes. The components with a page of their own are the
 parameter bar, target bar, party list, status bar, equipment viewer, inventory
 tracker, crossbar and hotbar; each one's page says what is on it. A number that
@@ -227,6 +227,7 @@ or the console too, and their settings are shared by both bars.
 | `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
 | `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; `0` switches the countdown off |
 | `//hud queue [on\|debug\|off]` | the action queue, below; `debug` also says each step in chat and adds it to `debug.log` in the addon's folder |
+| `//hud queue lock [<kind> <seconds>]` | how long the queue waits after each kind of action: `spell`, `weaponskill`, `ability`, `item`, `ranged` or `interrupted`, 0 to 5 seconds in tenths; alone, lists them all |
 
 **The action queue.** After a spell, a weapon skill or a job ability the game
 refuses your next action for a moment, and a press made in that moment is lost.
@@ -302,6 +303,7 @@ file is damaged the component falls back to its defaults and says so in chat.
 | `config_pos` | centred | where you last dragged the settings window to |
 | `delay` | `5` | seconds a mount or warp counts down before it goes |
 | `queue` | `"off"` | the action queue: `"off"`, `"on"` or `"debug"` (`//hud queue`) |
+| `queue_locks` | none | your own queue waits, by kind (`//hud queue lock`); a kind not listed uses the shipped length |
 
 ## Auto-hide
 

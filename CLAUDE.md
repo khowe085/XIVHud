@@ -147,7 +147,7 @@ tests/
 
 Per-component isolation: every component owns its own configuration file and can never reach another's.
 
-- **Storage:** every component owns the directory `data/<Character>/<slot>/<component>/`, relative to the addon root, holding two files core writes — `config.lua` (the component's own settings) and `layout.lua` (its placement, which core alone writes) — plus whatever else the component adds beside them. Framework options live in `data/<Character>/core.lua` (`snap`, `slot`, `hideCutscene`, `config_pos` - where the settings window was dragged to - and since 2026-09-06 the action service's tuning - `delay` and `queue` - which was never meant to vary by slot (`retry` and `wsgate` sat beside it until 2026-10-16, when the cast retry and the weaponskill gate were removed outright, Kevin; a `core.lua` still carrying either block carries dead weight the settings merge preserves - nothing migrates) and would otherwise need a settings handle for something that is not a component; a slot switch therefore does not switch them and no `//hud reset` reaches them), **outside every slot**: it holds the active-slot pointer, which cannot live in the thing it names. The extra files are the **store**: a component setting `wants_store = true` is handed `store` as `attach`'s third argument, `load(name)` / `save(name, table)` over `<component>/<name>.lua`, same sandboxed read and serialized write as the two core files. A name must be a plain word (`^[%w_]+$`) — it becomes a path segment, so anything else is refused rather than composed — and `config`/`layout` are reserved, case-insensitively, because they are core's and sit in the same directory. Found files are cached until the config is re-read; a *missing* one is re-read from disk on every call, so callers load on their own events (an attach, a job change) and never per frame. `//hud reset <component>` empties that directory (non-recursively — it is flat by construction) **in the active slot only**, and every re-read drops the cache, so `//hud copy`'s reload cannot leave copied bindings stale in memory. `crossbar` and `hotbar` use the store (per-job bindings, `<MAIN>.lua` plus `SHARED.lua`, each in its own directory: a crossbar set and a hotbar set are different things, sixteen slots against ten, and "shared" means shared across jobs, never across bars).
+- **Storage:** every component owns the directory `data/<Character>/<slot>/<component>/`, relative to the addon root, holding two files core writes — `config.lua` (the component's own settings) and `layout.lua` (its placement, which core alone writes) — plus whatever else the component adds beside them. Framework options live in `data/<Character>/core.lua` (`snap`, `slot`, `hideCutscene`, `config_pos` - where the settings window was dragged to - and since 2026-09-06 the action service's tuning - `delay`, `queue` and `queue_locks` - which was never meant to vary by slot (`retry` and `wsgate` sat beside it until 2026-10-16, when the cast retry and the weaponskill gate were removed outright, Kevin; a `core.lua` still carrying either block carries dead weight the settings merge preserves - nothing migrates) and would otherwise need a settings handle for something that is not a component; a slot switch therefore does not switch them and no `//hud reset` reaches them), **outside every slot**: it holds the active-slot pointer, which cannot live in the thing it names. The extra files are the **store**: a component setting `wants_store = true` is handed `store` as `attach`'s third argument, `load(name)` / `save(name, table)` over `<component>/<name>.lua`, same sandboxed read and serialized write as the two core files. A name must be a plain word (`^[%w_]+$`) — it becomes a path segment, so anything else is refused rather than composed — and `config`/`layout` are reserved, case-insensitively, because they are core's and sit in the same directory. Found files are cached until the config is re-read; a *missing* one is re-read from disk on every call, so callers load on their own events (an attach, a job change) and never per frame. `//hud reset <component>` empties that directory (non-recursively — it is flat by construction) **in the active slot only**, and every re-read drops the cache, so `//hud copy`'s reload cannot leave copied bindings stale in memory. `crossbar` and `hotbar` use the store (per-job bindings, `<MAIN>.lua` plus `SHARED.lua`, each in its own directory: a crossbar set and a hotbar set are different things, sixteen slots against ten, and "shared" means shared across jobs, never across bars).
 - **Format: Lua, not XML.** Windower's `config` lib can only serialize XML and the bundled `json` lib has no encoder, so `lib/settings` owns persistence itself: files are read with `loadstring` in an **empty environment** behind a `pcall` (config files are code — a broken or hostile one degrades to defaults plus a warning), and written by `lib/serialize` with stable key order for clean diffs.
 - **Defaults merge:** user values win; default keys the user has never seen are added; keys the defaults do not mention are preserved. A component's `defaults.layout` is split off at registration to seed `layout.lua`, and is kept out of what seeds `config.lua` — so a component never sees its own placement in the table it is handed.
 - **Character scoping:** the character name is unknown until login, so components are attached on login and detached on logout, and nothing renders while logged out. Core scopes on the **name alone** — anything else a component needs from the client it waits for itself, because the client fills the player in field by field and no single field vouches for the rest (see `parambar` below). The `login` event is a one-shot that can fire before `get_player()` can name the player, so `on_prerender` keeps looking: every 0.05s while the client says we are logged in, every 1s at character select, re-armed by each login event. A login that cannot be resolved leaves the character already scoped alone — dropping one is the logout's job — and keeps the search running, so logging in as someone else without a logout event still switches.
@@ -177,6 +177,8 @@ Per-component isolation: every component owns its own configuration file and can
 //hud delay [<seconds>]        -- the countdown before a mount or a warp goes (0 = off)
 //hud hidecutscene [on|off]    -- hide the HUD during cutscenes (core.lua's hideCutscene)
 //hud queue [on|debug|off]     -- hold a bar press through a cast and its lock (below)
+//hud queue lock [<kind> <seconds>] -- how long it waits: spell, weaponskill, ability,
+                                  item, ranged, interrupted
 //hud config [<component>|global] -- the settings window, opened on that panel
 //hud <component> [...]        -- passthrough to the component's handle_command
 ```
@@ -214,8 +216,8 @@ command }` plus `min`/`max`/`step` for a stepper, `options` (and optional
 that follow the value) and an optional `route`. The component builds it fresh
 on every call, so the values are always current, and builds it in its pure
 `logic` module, where its command parser already lives - the widget only
-delegates. `global` is core's own: `delay` and `queue` (only where the action
-service loaded) and `hidecutscene`.
+delegates. `global` is core's own: `delay`, `queue` and a row per queue lock (only
+where the action service loaded) and `hidecutscene`.
 
 Eight components declare one: `parambar`, `targetbar`, `statusbar` and
 `equipviewer` on one page each; `partylist` on a tab per list (`hidesolo` and
@@ -357,8 +359,14 @@ went out, started or was refused says how long after the last finish it did. The
 same lines are appended, dated, to `<addon>/debug.log` with raw `io` (Kevin: the
 client runs on another computer). It is never truncated, and it is written from
 `debug` alone, a line when something happens and never one per frame.
-**The lock lengths are constants** at the top of `queue.lua`. `spell` is measured
-at 2.7 (Kevin's logs, 2026-10-31): the server answers on a 0.4s beat, a send
+**The lock lengths are settings** (`//hud queue lock [<kind> <seconds>]`, 0 to 5 in
+tenths, and a row each on the settings window's `global` panel, Kevin, 2026-10-31).
+`core.lua`'s `queue_locks` holds only the kinds that have been set, deliberately
+unseeded, so a kind never touched follows the shipped length at the top of
+`queue.lua` - seeding them would freeze every install on today's numbers, nothing
+migrating. A length a hand edit has broken reads as the shipped one, and a change
+takes at the next finish. Shipped: `spell` is measured at 2.7 (Kevin's logs,
+2026-10-31): the server answers on a 0.4s beat, a send
 reaching the beat near +2.8 is a coin toss (refused up to +2.58, accepted down to
 +2.48), and every send from +2.66 on made the next beat and was accepted. Over about
 120 releases at 2.7, none was refused by the lock. `weaponskill` is 2.4, on thinner

@@ -55,9 +55,12 @@ Four that came out of building it, all kept by Kevin the same day:
   Pressed again once the first is on its way it is an ordinary press, so mashing
   one through the lock still uses it a second time. It went out as it always did
   until Kevin said he mashes `<t>` slots.
-- **The lock lengths are constants, not settings.** Debug mode brackets them with
-  a macro, so nothing needs changing in game to measure them, and a stored default
-  would outlive the measured one: nothing migrates.
+- **The lock lengths were constants, and are settings now** (Kevin, reversing this
+  the same day): `//hud queue lock [<kind> <seconds>]`, 0 to 5 in tenths, with a
+  stepper row each on the settings window's `global` panel. The original worry was
+  a stored default outliving a measured one, since nothing migrates, so `queue_locks`
+  is unseeded: it holds only what has been set, and a kind never touched follows
+  the shipped length.
 
 - **A dropped press is silent outside `debug`.** It flashed when pressed, and
   going quiet is the opposite of the trips' "a cancel is never silent". Chat lines
@@ -165,9 +168,10 @@ the lock is still running.
 
 ## Lock lengths
 
-Constants in `queue.lua`, because too long costs a moment and too short loses the
-press. `spell` is measured from Kevin's logs below; **every other one is
-unverified**, the longer of two sources with ranged rounded up from its one.
+The shipped lengths, at the top of `queue.lua`, because too long costs a moment and
+too short loses the press. `spell` is measured from Kevin's logs below; **every other
+one is unverified**, the longer of two sources with ranged rounded up from its one.
+`//hud queue lock` and the settings window override any of them.
 
 | After | bg-wiki | Selindrile's aftercast | Shipped |
 | --- | --- | --- | --- |

@@ -44,7 +44,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      rather than at the press. ]]
 
 --[[ The seconds after a finish before the next action goes: too long costs a
-     moment and too short loses the press.
+     moment and too short loses the press. These are the shipped lengths, and
+     `//hud queue lock` stores a player's own over them, one kind at a time.
 
      `spell` is measured (Kevin's logs, 2026-10-31). The server answers on a 0.4s
      beat. A send that makes the beat near +2.8 after the finish is a coin toss
@@ -69,6 +70,10 @@ local LOCK_SECONDS = {
   ranged = 1,
   interrupted = 2.7,
 }
+-- The order `//hud queue lock` and the settings window list them in.
+local LOCK_KINDS = { "spell", "weaponskill", "ability", "item", "ranged", "interrupted" }
+-- What the command takes, the window steps through and a stored length is held to.
+local LOCK_RANGE = { min = 0, max = 5, step = 0.1 }
 
 --[[ How long a press may take to be seen leaving. A GearSwap filter cancels a
      press with no packet at all, and the next press must not wait out an answer
@@ -152,7 +157,7 @@ local function first_message(act)
 end
 
 local function new(deps)
-  local self = { modes = MODES }
+  local self = { modes = MODES, lock_kinds = LOCK_KINDS, lock_range = LOCK_RANGE }
 
   local held = nil
   -- The press that last went out, for as long as nothing has answered it.
@@ -183,6 +188,18 @@ local function new(deps)
 
   function self.enabled()
     return self.mode() ~= "off"
+  end
+
+  --- The length in force. Nothing is seeded, so a kind never set follows the
+  --- shipped length, and a hand-broken one reads as it.
+  function self.lock(kind)
+    local live = deps.config()
+    local stored = type(live) == "table" and live.queue_locks or nil
+    local seconds = type(stored) == "table" and stored[kind] or nil
+    if type(seconds) == "number" and seconds >= LOCK_RANGE.min and seconds <= LOCK_RANGE.max then
+      return seconds
+    end
+    return LOCK_SECONDS[kind]
   end
 
   local function note(line)
@@ -413,7 +430,7 @@ local function new(deps)
       lock_until = nil
       return
     end
-    local lock = finished ~= nil and LOCK_SECONDS[finished] or LOCK_SECONDS.interrupted
+    local lock = self.lock(finished or "interrupted")
     note(("%s, lock %.2fs"):format(finished ~= nil and "finish " .. finished or "interrupted " .. started, lock))
     acting_until = nil
     finished_at = now()

@@ -1,4 +1,5 @@
 local new_core = require("lib/core")
+local new_queue = require("lib/actionbar/queue")
 local fakes = require("tests/support/fakes")
 
 local MOVE, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, WHEEL = 0, 1, 2, 4, 10
@@ -2132,12 +2133,14 @@ describe("core", function()
     describe("the queue verb", function()
       local function queue_core()
         service_core()
-        service.queue = {
-          modes = { "off", "on", "debug" },
-          mode = function()
-            return core.config().queue or "off"
+        service.queue = new_queue({
+          now = function()
+            return 0
           end,
-        }
+          config = function()
+            return core.config()
+          end,
+        })
         login()
       end
 
@@ -2180,6 +2183,114 @@ describe("core", function()
         core.on_command({ "queue", "on", "now" })
         assert.is_not_nil(env.said():find("queue [on|debug|off]", 1, true))
         assert.is_nil(core.config().queue)
+      end)
+
+      describe("lock", function()
+        local USAGE = "queue lock [<kind> <seconds>]"
+
+        it("is in help", function()
+          queue_core()
+          core.on_command({ "help" })
+          assert.is_not_nil(env.said():find("//hud queue lock", 1, true))
+        end)
+
+        it("lists every lock in force", function()
+          queue_core()
+          env.forget()
+          core.on_command({ "queue", "lock" })
+          for _, expected in ipairs({
+            "spell 2.7",
+            "weaponskill 2.4",
+            "ability 1",
+            "item 1.5",
+            "ranged 1",
+            "interrupted 2.7",
+          }) do
+            assert.is_not_nil(env.said():find(expected, 1, true), expected)
+          end
+        end)
+
+        it("reports one", function()
+          queue_core()
+          env.forget()
+          core.on_command({ "queue", "lock", "spell" })
+          assert.is_not_nil(env.said():find("spell lock: 2.7 seconds", 1, true))
+        end)
+
+        it("sets one, in any case, and saves it", function()
+          queue_core()
+          env.forget()
+          core.on_command({ "queue", "lock", "SPELL", "2.4" })
+          assert.are.equal(2.4, core.config().queue_locks.spell)
+          assert.is_not_nil(env.said():find("spell lock: 2.4 seconds", 1, true))
+          assert.is_not_nil(env.fs.files["data/Azureblood/core.lua"]:find("queue_locks", 1, true))
+        end)
+
+        it("seeds nothing, so a lock never set follows the shipped length", function()
+          queue_core()
+          assert.is_nil(core.config().queue_locks)
+        end)
+
+        it("leaves the others alone", function()
+          queue_core()
+          core.on_command({ "queue", "lock", "spell", "2.4" })
+          core.on_command({ "queue", "lock", "item", "1.2" })
+          assert.are.same({ spell = 2.4, item = 1.2 }, core.config().queue_locks)
+        end)
+
+        it("rounds to a tenth, what the window steps in", function()
+          queue_core()
+          core.on_command({ "queue", "lock", "spell", "2.46" })
+          assert.are.equal(2.5, core.config().queue_locks.spell)
+        end)
+
+        it("takes both ends of its range", function()
+          queue_core()
+          core.on_command({ "queue", "lock", "spell", "0" })
+          assert.are.equal(0, core.config().queue_locks.spell)
+          core.on_command({ "queue", "lock", "spell", "5" })
+          assert.are.equal(5, core.config().queue_locks.spell)
+        end)
+
+        for _, bad in ipairs({ "soon", "-0.1", "5.1", "inf", "nan" }) do
+          it("refuses " .. bad .. " and changes nothing", function()
+            queue_core()
+            env.forget()
+            core.on_command({ "queue", "lock", "spell", bad })
+            assert.is_not_nil(env.said():find(USAGE, 1, true))
+            assert.is_nil(core.config().queue_locks)
+          end)
+        end
+
+        it("refuses a kind it does not know", function()
+          queue_core()
+          env.forget()
+          core.on_command({ "queue", "lock", "magic", "2" })
+          assert.is_not_nil(env.said():find(USAGE, 1, true))
+          assert.is_nil(core.config().queue_locks)
+        end)
+
+        it("refuses a further word", function()
+          queue_core()
+          env.forget()
+          core.on_command({ "queue", "lock", "spell", "2", "now" })
+          assert.is_not_nil(env.said():find(USAGE, 1, true))
+          assert.is_nil(core.config().queue_locks)
+        end)
+
+        it("replaces a stored table that is not one", function()
+          queue_core()
+          core.config().queue_locks = "broken"
+          core.on_command({ "queue", "lock", "spell", "2.4" })
+          assert.are.same({ spell = 2.4 }, core.config().queue_locks)
+        end)
+
+        it("leaves the mode alone", function()
+          queue_core()
+          core.on_command({ "queue", "debug" })
+          core.on_command({ "queue", "lock", "spell", "2.4" })
+          assert.are.equal("debug", core.config().queue)
+        end)
       end)
     end)
 
@@ -2440,16 +2551,66 @@ describe("core", function()
       describe("the queue row", function()
         local function queue_core()
           service_core()
-          service.queue = {
-            modes = { "off", "on", "debug" },
-            mode = function()
-              return core.config().queue or "off"
+          service.queue = new_queue({
+            now = function()
+              return 0
             end,
-          }
+            config = function()
+              return core.config()
+            end,
+          })
           login()
           core.on_command({ "config" })
           env.forget()
         end
+
+        for _, row in ipairs({
+          { label = "Spell lock (seconds)", value = "2.7" },
+          { label = "Weaponskill lock (seconds)", value = "2.4" },
+          { label = "Ability lock (seconds)", value = "1" },
+          { label = "Item lock (seconds)", value = "1.5" },
+          { label = "Ranged lock (seconds)", value = "1" },
+          { label = "Interrupted lock (seconds)", value = "2.7" },
+        }) do
+          it("shows " .. row.label .. " in force", function()
+            queue_core()
+            assert.is_not_nil(live_text(row.value, live_text(row.label).y))
+          end)
+        end
+
+        it("shows a lock set by hand once the panel is read again", function()
+          queue_core()
+          core.on_command({ "queue", "lock", "spell", "2.4" })
+          assert.is_not_nil(live_text("2.4", live_text("Spell lock (seconds)").y))
+        end)
+
+        it("steps a lock by a tenth through the command's own handler", function()
+          queue_core()
+          assert.is_true(click_control("Spell lock (seconds)", "[-]"))
+          assert.are.equal(2.6, core.config().queue_locks.spell)
+          assert.is_not_nil(live_text("spell lock: 2.6 seconds"), "the answer is on the status line")
+          assert.is_true(click_control("Spell lock (seconds)", "[+]"))
+          assert.is_true(click_control("Spell lock (seconds)", "[+]"))
+          assert.are.equal(2.8, core.config().queue_locks.spell)
+          assert.is_not_nil(live_text("2.8", live_text("Spell lock (seconds)").y))
+          assert.are.equal("", env.said(), "and not in chat")
+        end)
+
+        it("stops at the top of the range", function()
+          queue_core()
+          core.on_command({ "queue", "lock", "spell", "5" })
+          env.forget()
+          click_control("Spell lock (seconds)", "[+]")
+          assert.are.equal(5, core.config().queue_locks.spell)
+        end)
+
+        it("stops at the bottom of the range", function()
+          queue_core()
+          core.on_command({ "queue", "lock", "spell", "0" })
+          env.forget()
+          click_control("Spell lock (seconds)", "[-]")
+          assert.are.equal(0, core.config().queue_locks.spell)
+        end)
 
         it("shows the mode in force", function()
           queue_core()
