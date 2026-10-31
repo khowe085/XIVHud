@@ -994,7 +994,9 @@ describe("the action service", function()
       service.on_chunk(ACTION, "raw", act(8, 24931))
     end
 
+    -- A cast's finish, with the start the game always sends ahead of one.
     local function finish_cast(service)
+      start_cast(service)
       service.on_chunk(ACTION, "raw", act(4, 1))
     end
 
@@ -1015,6 +1017,22 @@ describe("the action service", function()
       env.config.queue = "debug"
       assert.are.equal("debug", service.queue.mode())
     end)
+
+    for _, named in ipairs({
+      { category = 3, id = 1, name = "Cure", kind = "spell" },
+      { category = 7, id = 42, name = "Savage Blade", kind = "weaponskill" },
+      { category = 9, id = 605, name = "Provoke", kind = "ability" },
+    }) do
+      it("names a " .. named.kind .. " going out in its debug line", function()
+        local service, env = queued("debug")
+        local param = string.char(named.id % 256, math.floor(named.id / 256))
+        service.on_outgoing(
+          0x01A,
+          string.rep("\0", 10) .. string.char(named.category, 0) .. param .. string.rep("\0", 14)
+        )
+        assert.is_not_nil(said(env):find("out " .. named.kind .. " " .. named.name, 1, true))
+      end)
+    end
 
     it("hands its debug lines to the log as well as to chat", function()
       local service, env = queued("debug")

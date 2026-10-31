@@ -120,7 +120,7 @@ moves and nothing casts.
 | --- | --- | --- | --- |
 | `sent`: something went out, nothing back yet | a bar press or release, outgoing `0x01A` (3 magic, 7 ws, 9 ja, 16 ranged, 25 monster skill), outgoing `0x037` (item) | any `0x028` start or finish of ours, a refusal | 0.6s until the packet is seen, 2s after |
 | `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787) | 30s |
-| `lock_until`: the lock's end | a finish (2, 3, 4, 5, 6, 11, 14, 15 of ours), an interrupt | time | none needed |
+| `lock_until`: the lock's end | a finish (2, 3, 5, 6, 11, 14, 15 of ours, and 4 while a cast is running), an interrupt | time | none needed |
 
 Busy is any of the three. A held press goes on the first tick nothing is busy.
 
@@ -159,7 +159,7 @@ unverified**, the longer of two sources with ranged rounded up from its one.
 | After | bg-wiki | Selindrile's aftercast | Shipped |
 | --- | --- | --- | --- |
 | spell | 3.0 | 2.9 | 2.7, measured |
-| weaponskill | 2.0 | 2.7 | 2.7 |
+| weaponskill | 2.0 | 2.7 | 2.4, four accepted at 2.32 |
 | ability | 1.0, 2.0 before auto-attack | 0.8 | 1.0 |
 | item | none | 1.5 | 1.5 |
 | ranged | none | 0.85 | 1.0 |
@@ -206,6 +206,28 @@ cursor OK that goes out and is refused, is gone now that OK is held too.
 The second session added 23 releases, none refused, and 24 OKs, 3 of them after the
 lock had cleared (row 15).
 
+The third added 73 releases, none refused by the lock. Its two message 17s were both
+sent on recast. Its other refusals were range (78, 313, 219) and one interrupt (16).
+It showed three more things:
+
+- **A false lock, now fixed.** `finish spell` with no `out` or `start`, a melee round
+  apart (82602.79, 82604.42, 82605.64) while Kevin was paralyzed. That it is a
+  paralyzed round is inferred: the new debug line prints the message, which should
+  read 84 or 29. Sends +0.68, +1.23 and +1.49 after one were accepted, so nothing
+  locks, and each was starting a false 2.7s that held bar presses for nothing. A
+  category 4 with no cast running is now ignored, which also means the interrupt's
+  lock stands when an interrupt's finish arrives just after it. That covers
+  atom0s' weaponskill-out-of-range category 4 too (row 13): no lock.
+- **The weaponskill lock is 2.4.** All four sends at +2.32 after a weaponskill were
+  accepted. The exact figure is Selindrile's timing, 2.7 - .5 + a .1 tick, so these
+  were GearSwap's own actions, and it means nothing was tried shorter. bg-wiki says
+  2.0. It should turn the +3.2 starts after a weaponskill into +2.8.
+- **After an interrupt** the shortest accepted send was +2.36, and nothing was tried
+  between that and 1.75, so `interrupted` stays as it was.
+
+Two releases of Savage Blade sent nothing, as before. One Stun at 82180.65 went out
+and got no answer at all.
+
 ## Review gate
 
 Four blind rounds, clean on the fourth. Round 1 caught a stratagem with charges in
@@ -239,7 +261,7 @@ start bracket the true lock. Every line is in `debug.log` too.
 | 10 | Macro casts in `queue on` | Lines only in `debug`, bar presses hold behind them | Packets count whoever sent them |
 | 11 | Mash a bar press faster than the ping, then watch for `nothing went out for the last press` on a press that did go | The line never appears on a press that went | Whether 0.6s covers the gap between a press and `outgoing chunk`, which may fire at the client's next send |
 | 12 | A pet command and a blood pact | A `sent` that ends on an answer, not the 2s backstop | Which packet answers `/pet` |
-| 13 | A weaponskill out of range | `finish spell` for category 4 and a spell's lock | atom0s says that failure arrives as category 4; if the lock is wrong it needs its own case |
+| 13 | A weaponskill out of range | `ignored a finish with no cast running` and no lock | atom0s says that failure arrives as category 4 |
 | 14 | During a cast press a `<stpc>` slot, pick a target and press OK inside the lock | `cursor`, `OK ... at <id>`, `hold`, `release`, and the cast lands on who you picked with your target unchanged | The whole of the cursor path |
 | 15 | The same, pressing OK after the lock clears | `OK`, then `out` at once, no `hold` | OK while free |
 | 16 | Press a `<stpc>` slot during a lock, then ESC | Nothing goes, the next press works | A cursor abandoned |

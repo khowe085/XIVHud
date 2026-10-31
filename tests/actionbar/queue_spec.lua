@@ -16,6 +16,7 @@ local function world(opts)
     chat = {},
     log = {},
     recast = {},
+    names = {},
     blocked = nil,
     pins = {},
   }
@@ -50,6 +51,9 @@ local function world(opts)
     blocked = function()
       return env.blocked
     end,
+    name_of = function(_, id)
+      return env.names[id]
+    end,
   })
   return queue, env
 end
@@ -74,14 +78,27 @@ local function start_cast(queue)
   queue.on_action(action(8, STARTING))
 end
 
+-- A cast's finish, with the start the game always sends ahead of one.
 local function finish_cast(queue)
+  start_cast(queue)
   queue.on_action(action(4, 1))
 end
 
--- A raw outgoing 0x01A with its category at 0x0A.
-local function outgoing_action(category)
+-- What the game sends for a melee round lost to paralysis, or for no cast at all.
+local function paralyzed_round(message)
+  local round = action(4, 0)
+  round.targets = { { actions = { { message = message or 84 } } } }
+  return round
+end
+
+-- A raw outgoing 0x01A with its category at 0x0A and its param at 0x0C.
+local function outgoing_action(category, param)
+  param = param or 0
   local low, high = category % 256, math.floor(category / 256)
-  return string.rep("\0", 10) .. string.char(low, high) .. string.rep("\0", 16)
+  return string.rep("\0", 10)
+    .. string.char(low, high)
+    .. string.char(param % 256, math.floor(param / 256))
+    .. string.rep("\0", 14)
 end
 
 -- A raw incoming 0x029: the actor at 0x04, the message at 0x18.
@@ -642,17 +659,18 @@ describe("the action queue", function()
 
     local LOCKS = {
       { category = 2, seconds = 1.0, name = "ranged" },
-      { category = 3, seconds = 2.7, name = "weaponskill" },
+      { category = 3, seconds = 2.4, name = "weaponskill" },
       { category = 4, seconds = 2.7, name = "spell" },
       { category = 5, seconds = 1.5, name = "item" },
       { category = 6, seconds = 1.0, name = "ability" },
-      { category = 11, seconds = 2.7, name = "weaponskill" },
+      { category = 11, seconds = 2.4, name = "weaponskill" },
       { category = 14, seconds = 1.0, name = "ability" },
       { category = 15, seconds = 1.0, name = "ability" },
     }
     for _, lock in ipairs(LOCKS) do
       it("locks " .. lock.seconds .. "s after category " .. lock.category, function()
         local queue, env = world()
+        start_cast(queue)
         queue.on_action(action(lock.category, 1))
         env.now = env.now + lock.seconds - 0.01
         assert.is_true(queue.busy())
@@ -660,6 +678,56 @@ describe("the action queue", function()
         assert.is_false(queue.busy())
       end)
     end
+
+    --[[ Three of Kevin's sends went out +0.68, +1.23 and +1.49 after a category 4
+         that had no start, all accepted, so nothing locks after one. They came
+         a melee round apart while he was paralyzed. ]]
+    it("reads a category 4 with no cast running as no finish at all", function()
+      local queue = world()
+      queue.on_action(paralyzed_round())
+      assert.is_false(queue.busy())
+    end)
+
+    it("leaves a held press alone through one", function()
+      local queue, env = world()
+      finish_cast(queue)
+      queue.press(spell(), command())
+      env.now = env.now + 2
+      queue.on_action(paralyzed_round())
+      env.now = env.now + 0.71
+      assert.are.equal(command(), queue.step(), "the lock it did not extend has cleared")
+    end)
+
+    it("goes on waiting for an answer through one", function()
+      local queue = world()
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      queue.on_action(paralyzed_round())
+      assert.is_true(queue.busy())
+    end)
+
+    it("takes the interrupt's lock when a paralyzed cast's finish comes first", function()
+      local queue, env = world()
+      start_cast(queue)
+      queue.on_action(action(4, 1))
+      queue.on_action(action(8, INTERRUPTED))
+      env.now = env.now + 1.76
+      assert.is_false(queue.busy())
+    end)
+
+    it("keeps the interrupt's lock when the finish comes after it", function()
+      local queue, env = world()
+      start_cast(queue)
+      queue.on_action(action(8, INTERRUPTED))
+      queue.on_action(action(4, 1))
+      env.now = env.now + 1.76
+      assert.is_false(queue.busy())
+    end)
+
+    it("still takes a weaponskill's finish with no start to its name", function()
+      local queue = world()
+      queue.on_action(action(3, 42))
+      assert.is_true(queue.busy())
+    end)
 
     it("measures the lock from the finish, whatever the cast took", function()
       local queue, env = world()
@@ -955,10 +1023,45 @@ describe("the action queue", function()
 
     it("writes every line to the log too, for a client nobody is sitting at", function()
       local queue, env = world({ mode = "debug" })
-      start_cast(queue)
       finish_cast(queue)
       assert.are.equal(2, #env.log)
       assert.are.same(env.chat, env.log)
+    end)
+
+    it("names what went out", function()
+      local queue, env = world({ mode = "debug" })
+      env.names[143] = "Cure IV"
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC, 143))
+      assert.is_not_nil(said(env):find("out spell Cure IV", 1, true))
+    end)
+
+    it("says the id of what it cannot name", function()
+      local queue, env = world({ mode = "debug" })
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC, 143))
+      assert.is_not_nil(said(env):find("out spell 143", 1, true))
+    end)
+
+    it("says a category 4 it ignored, with the message that explains it", function()
+      local queue, env = world({ mode = "debug" })
+      queue.on_action(paralyzed_round(84))
+      assert.is_not_nil(said(env):find("ignored a finish with no cast running, message 84", 1, true))
+      assert.is_nil(said(env):find("lock", 1, true))
+    end)
+
+    it("copes with one that carries no message", function()
+      local queue, env = world({ mode = "debug" })
+      assert.has_no.errors(function()
+        queue.on_action(action(4, 0))
+      end)
+      assert.is_not_nil(said(env):find("ignored a finish with no cast running", 1, true))
+    end)
+
+    it("says the arrow, so a cursor that never raised one shows", function()
+      local queue, env = world({ mode = "debug" })
+      start_cast(queue)
+      queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+      queue.on_text("/ta 777")
+      assert.is_not_nil(said(env):find("arrow 777", 1, true))
     end)
 
     it("writes nothing to the log in on or off", function()

@@ -51,12 +51,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      (refused up to +2.58, accepted down to +2.48), and every send from +2.66 on
      makes the next one and was accepted. 3.0 lost a further beat as often as not.
 
+     `weaponskill` is thinner: a spell +2.32 after one was accepted four times of
+     four, which is Selindrile's own timing (2.7 - .5 + a .1 tick), bg-wiki says
+     2.0, and nothing was tried shorter.
+
      The rest are UNVERIFIED: the longer of bg-wiki and Selindrile's aftercast,
      and ranged, which only Selindrile gives, is rounded up to a second.
      `//hud queue debug` brackets the real ones. ]]
 local LOCK_SECONDS = {
   spell = 2.7,
-  weaponskill = 2.7,
+  weaponskill = 2.4,
   ability = 1,
   item = 1.5,
   ranged = 1,
@@ -98,6 +102,7 @@ local FINISH_KINDS = {
 }
 -- A start-shaped packet carrying this param is the interrupt of that start.
 local INTERRUPT_PARAM = 28787
+local SPELL_FINISH = 4
 
 local ACTION_OUT = 0x01A
 local ITEM_OUT = 0x037
@@ -105,6 +110,7 @@ local ITEM_OUT = 0x037
 local OUTGOING_KINDS = { [3] = "spell", [7] = "weaponskill", [9] = "ability", [16] = "ranged", [25] = "monster skill" }
 -- 1-based, header included.
 local CATEGORY_OFFSET = 11
+local PARAM_OFFSET = 13
 local ACTOR_OFFSET = 5
 local MESSAGE_OFFSET = 25
 
@@ -133,6 +139,13 @@ end
 local function u32(data, offset)
   local b1, b2, b3, b4 = data:byte(offset, offset + 3)
   return b1 + b2 * 256 + b3 * 65536 + b4 * 16777216
+end
+
+local function first_message(act)
+  local target = type(act.targets) == "table" and act.targets[1] or nil
+  local actions = type(target) == "table" and target.actions or nil
+  local action = type(actions) == "table" and actions[1] or nil
+  return type(action) == "table" and action.message or nil
 end
 
 local function new(deps)
@@ -337,6 +350,7 @@ local function new(deps)
     end
     cursor.numbers = cursor.numbers + 1
     if cursor.numbers < NUMBERS_AT_OK then
+      note("arrow " .. id)
       return false
     end
     local open = cursor
@@ -367,6 +381,14 @@ local function new(deps)
     end
     local player = deps.get_player()
     if player == nil or act.actor_id ~= player.id then
+      return
+    end
+    --[[ A spell finish with no cast running is not one: a cast always sends its
+         start first. These came a melee round apart while Kevin was paralyzed,
+         and sends straight after them were accepted, so nothing locks. ]]
+    if act.category == SPELL_FINISH and not running(acting_until) then
+      local message = first_message(act)
+      note("ignored a finish with no cast running" .. (message ~= nil and ", message " .. message or ""))
       return
     end
     answered()
@@ -406,7 +428,7 @@ local function new(deps)
     if (id ~= ACTION_OUT and id ~= ITEM_OUT) or not self.enabled() then
       return
     end
-    local kind = "item"
+    local kind, name = "item", ""
     if id == ACTION_OUT then
       if type(data) ~= "string" or #data < CATEGORY_OFFSET + 1 then
         return
@@ -415,8 +437,12 @@ local function new(deps)
       if kind == nil then
         return
       end
+      local action = #data > PARAM_OFFSET and u16(data, PARAM_OFFSET) or 0
+      if action ~= 0 then
+        name = " " .. tostring(deps.name_of(kind, action) or action)
+      end
     end
-    note("out " .. kind .. since_finish())
+    note("out " .. kind .. name .. since_finish())
     sent_until, sent_left = now() + ANSWER_BACKSTOP, true
   end
 

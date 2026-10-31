@@ -132,6 +132,9 @@ local PINNED_TARGETS = { t = true, bt = true }
      number their recasts apart, so these say nothing about one. ]]
 local CHARGED_ABILITY_RECASTS = { [102] = true, [195] = true, [231] = true, [255] = true }
 
+-- The resource each kind of action the queue sees going out is named from.
+local KIND_BOOKS = { spell = "spells", weaponskill = "weapon_skills", ability = "job_abilities" }
+
 local function new(deps)
   local self = { ipc_warp_message = IPC_WARP_MESSAGE }
 
@@ -643,6 +646,11 @@ local function new(deps)
         return "suppressed"
       end
       return config_mode()
+    end,
+    name_of = function(kind, id)
+      local book = resources ~= nil and resources[KIND_BOOKS[kind]] or nil
+      local entry = book ~= nil and book[id] or nil
+      return entry ~= nil and entry.en or nil
     end,
   })
   self.queue = queue

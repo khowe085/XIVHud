@@ -342,7 +342,9 @@ without a packet, and the next press must not wait on an answer that cannot
 come. A config mode, suppression and a re-attach drop what is
 held; a zone, a death, a job change, a logout, an unload and `off` forget the
 lock too, and a newer finish replaces a lock, since an action the server accepted
-proves the old one over.
+proves the old one over. A spell finish with no cast running is ignored: a cast
+always sends its start first, these arrived a melee round apart while Kevin was
+paralyzed, and sends straight after them were accepted, so nothing locks.
 
 `debug` is `on` plus a chat line per edge, each stamped with the clock, and what
 went out, started or was refused says how long after the last finish it did. The
@@ -352,9 +354,11 @@ client runs on another computer). It is never truncated, and it is written from
 **The lock lengths are constants** at the top of `queue.lua`. `spell` is measured
 at 2.7 (Kevin's logs, 2026-10-31): the server answers on a 0.4s beat, a send
 reaching the beat near +2.8 is a coin toss (refused up to +2.58, accepted down to
-+2.48), and every send from +2.66 on made the next beat and was accepted. At 2.7,
-27 releases went out and none was refused. **The others are unverified**, the
-longer of bg-wiki and Selindrile's aftercast. Mash
++2.48), and every send from +2.66 on made the next beat and was accepted. Over about
+120 releases at 2.7, none was refused by the lock. `weaponskill` is 2.4, on thinner
+evidence: a spell +2.32 after one was accepted four times of four, and bg-wiki
+says 2.0. **The others are unverified**, the longer of bg-wiki and Selindrile's
+aftercast. Mash
 an in-game macro through a lock in `debug` - bar presses are held and never test
 the edge - and the last refusal and the first start bracket the real one. The
 in-client rows are in the plan.
