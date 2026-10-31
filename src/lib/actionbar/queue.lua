@@ -39,14 +39,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      It holds ONE press, the newest, and sends it once. It never waits on a
      recast, which is the defect that made Selindrile's MiniQueue unusable: a
      press on recast goes out as it always did and the game refuses it, and a
-     held press whose recast is running when the lock clears is dropped. ]]
+     held press whose recast is running when the lock clears is dropped. A
+     cursor slot is judged the same way at OK, when its command is really sent,
+     rather than at the press. ]]
 
---[[ The seconds after a finish before the next action goes. UNVERIFIED: each
-     is the longer of bg-wiki and Selindrile's aftercast, and ranged, which only
-     Selindrile gives, is rounded up to a second: too long costs a moment and
-     too short loses the press. `//hud queue debug` brackets the real ones. ]]
+--[[ The seconds after a finish before the next action goes: too long costs a
+     moment and too short loses the press.
+
+     `spell` is measured (Kevin's logs, 2026-10-31). The server answers on a 0.4s
+     beat. A send that makes the beat near +2.8 after the finish is a coin toss
+     (refused up to +2.58, accepted down to +2.48), and every send from +2.66 on
+     makes the next one and was accepted. 3.0 lost a further beat as often as not.
+
+     The rest are UNVERIFIED: the longer of bg-wiki and Selindrile's aftercast,
+     and ranged, which only Selindrile gives, is rounded up to a second.
+     `//hud queue debug` brackets the real ones. ]]
 local LOCK_SECONDS = {
-  spell = 3,
+  spell = 2.7,
   weaponskill = 2.7,
   ability = 1,
   item = 1.5,
@@ -68,6 +77,11 @@ local KNOWN_MODES = { off = true, on = true, debug = true }
 
 -- What can be held: the bar types that are the game's own actions.
 local HELD_TYPES = { ma = true, ja = true, ws = true, pet = true, item = true, ra = true }
+
+-- GearSwap's st_targs: the targets the player picks with a cursor.
+local CURSOR_TARGETS = { st = true, stpc = true, stal = true, stnpc = true, stpt = true }
+-- The numbers the game has sent back when OK is pressed: see on_text.
+local NUMBERS_AT_OK = 2
 
 -- The 0x028 categories, as atom0s' GP_SERV_COMMAND_BATTLE2 notes number them.
 local START_KINDS = { [7] = "weaponskill", [8] = "spell", [9] = "item", [12] = "ranged" }
@@ -127,6 +141,8 @@ local function new(deps)
   local held = nil
   -- The press that last went out, for as long as nothing has answered it.
   local going = nil
+  -- A cursor this opened, waiting for OK.
+  local cursor = nil
   -- Each nil until its packet sets it, and the moment it stops counting after.
   local sent_until, acting_until, lock_until = nil, nil, nil
   -- Whether what `sent_until` waits on has been seen leaving the client.
@@ -190,10 +206,12 @@ local function new(deps)
     sent_until, going = nil, nil
   end
 
-  --[[ A double tap: a weaponskill or an item has no recast to stop it, and held,
-       the second tap would spend the TP or the item a second time. Asked only
-       while the first is unanswered, so the same action pressed again once it
-       is on its way is an ordinary press. ]]
+  --[[ A mash. Held, a second tap would spend a weaponskill's TP or an item
+       again, since neither has a recast to stop it. Sent, it could only be
+       refused, and GearSwap takes that refusal for the end of the cast and
+       swaps out of the midcast set. So it goes nowhere. Asked only while the
+       first is unanswered: the same action pressed again once it is on its way
+       is an ordinary press. ]]
   local function already_going(record)
     return running(sent_until)
       and going ~= nil
@@ -203,7 +221,13 @@ local function new(deps)
   end
 
   local function forget()
-    held, going, sent_until, acting_until, lock_until, finished_at = nil, nil, nil, nil, nil, nil
+    held, going, cursor = nil, nil, nil
+    sent_until, acting_until, lock_until, finished_at = nil, nil, nil, nil
+  end
+
+  local function hold(name, record, command)
+    note("hold " .. name .. (held ~= nil and ", replacing " .. held.name or ""))
+    held = { name = name, record = record, command = command, at = now() }
   end
 
   --- What is held, or nil. Introspection.
@@ -227,14 +251,37 @@ local function new(deps)
     forget()
   end
 
+  --[[ A cursor slot is judged at OK, when the command is really sent. Nothing
+       can be said of it at the press: its target does not exist yet, and its
+       recast may be up by then. Free, it goes as it always did. Busy, the same
+       cursor opens over /ta, because GearSwap acts on a /ma the moment OK sends
+       it and nothing after that can stop it, where it ignores a /ta. ]]
+  local function open_cursor(record, command, name)
+    if not self.busy() then
+      return false
+    end
+    local blocked = deps.blocked()
+    if blocked ~= nil then
+      note("not held: " .. name .. ", " .. blocked)
+      return false
+    end
+    note("cursor " .. name .. " <" .. record.target .. ">")
+    cursor = { record = record, command = command, name = name, numbers = 0, at = now() }
+    return true, "input /ta <" .. record.target .. ">"
+  end
+
   --[[ A bar's press, with the command it resolved to. Answers whether it was
-       held: false sends it as it always was, which is every press made while
-       nothing is busy. A press that is not held leaves one that is alone. ]]
+       taken: false sends it as it always was, which is every press made while
+       nothing is busy, and a second answer is what to send in its place. A
+       press that is not held leaves one that is alone. ]]
   function self.press(record, command)
     if not self.enabled() or not HELD_TYPES[record.type] then
       return false
     end
     local name = record.action or record.type
+    if type(record.target) == "string" and CURSOR_TARGETS[record.target:lower()] then
+      return open_cursor(record, command, name)
+    end
     -- Asked first because it counts for nothing either way: a GearSwap filter
     -- may well cancel it, and nothing that follows should wait on that.
     if deps.recast_left(record) > 0 then
@@ -253,8 +300,8 @@ local function new(deps)
       return false
     end
     if already_going(record) then
-      note("not held: " .. name .. ", already going")
-      return false
+      note("swallowed " .. name .. ", already going")
+      return true
     end
     local pinned = command
     if record.target ~= nil then
@@ -264,8 +311,42 @@ local function new(deps)
         return false
       end
     end
-    note("hold " .. name .. (held ~= nil and ", replacing " .. held.name or ""))
-    held = { name = name, record = record, command = pinned, at = now() }
+    hold(name, record, pinned)
+    return true
+  end
+
+  --[[ The outgoing text, for a cursor this opened. The game puts a cursor command
+       back through here with a number where the token was: your own id at once,
+       which raises the arrow and must reach the game, then the chosen id on OK
+       (Byrth; GearSwap's st_flag skips the first the same way). Answers true to
+       keep the line from the game, so a /ta never moves your target, and a
+       second answer is what to send now. ]]
+  function self.on_text(text)
+    if cursor == nil or type(text) ~= "string" then
+      return false
+    end
+    local id = text:match("^/ta%a*%s+(%d+)%s*$")
+    if id == nil then
+      return false
+    end
+    cursor.numbers = cursor.numbers + 1
+    if cursor.numbers < NUMBERS_AT_OK then
+      return false
+    end
+    local open = cursor
+    cursor = nil
+    note("OK " .. open.name .. " at " .. id)
+    local aimed = open.command:gsub("<[^<>]*>$", id)
+    if deps.recast_left(open.record) > 0 then
+      note("not held: " .. open.name .. " on recast")
+      return true, aimed
+    end
+    if not self.busy() then
+      self.drop("replaced by " .. open.name)
+      leaving(open.record)
+      return true, aimed
+    end
+    hold(open.name, open.record, aimed)
     return true
   end
 
@@ -347,6 +428,10 @@ local function new(deps)
     if lock_until ~= nil and clock >= lock_until then
       lock_until = nil
       note("lock over")
+    end
+    if cursor ~= nil and clock - cursor.at >= FINISH_BACKSTOP then
+      note("no OK for " .. cursor.name)
+      cursor = nil
     end
   end
 

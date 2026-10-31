@@ -95,6 +95,7 @@ local function build_stubs(boot, options)
         "tick",
         "on_chunk",
         "on_outgoing",
+        "on_text",
         "on_status",
         "on_job_change",
         "on_ipc",

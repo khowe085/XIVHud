@@ -1015,8 +1015,14 @@ local function new(deps)
       opts.flash()
     end
     local plan, hint = actions.resolve(record, self.draw_state())
-    if plan ~= nil and plan.kind == "command" and queue.press(record, plan.command) then
-      return
+    if plan ~= nil and plan.kind == "command" then
+      local taken, instead = queue.press(record, plan.command)
+      if instead ~= nil then
+        send_command(instead)
+      end
+      if taken then
+        return
+      end
     end
     if not delay_travel(record, plan) then
       execute(plan, hint)
@@ -1154,6 +1160,15 @@ local function new(deps)
 
   function self.on_outgoing(id, data)
     queue.on_outgoing(id, data)
+  end
+
+  --- Answers true for a line that must not reach the game.
+  function self.on_text(text)
+    local taken, send = queue.on_text(text)
+    if send ~= nil then
+      send_command(send)
+    end
+    return taken
   end
 
   function self.on_status(status)

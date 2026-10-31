@@ -194,21 +194,21 @@ describe("the action queue", function()
 
     --[[ A double tap on a weaponskill or an item has no recast to stop it, and
          held, the second tap would spend the TP or the item a second time. ]]
-    it("does not hold a second press of what is still unanswered", function()
+    it("swallows a second press of what is still unanswered, and sends nothing", function()
       local queue = world()
       local blade = { type = "ws", action = "Savage Blade", target = "t" }
       queue.press(blade, 'input /ws "Savage Blade" <t>')
-      assert.is_false(queue.press(blade, 'input /ws "Savage Blade" <t>'))
+      assert.is_true(queue.press(blade, 'input /ws "Savage Blade" <t>'))
       assert.is_nil(queue.held())
     end)
 
-    it("does not hold a second press of what was just released", function()
+    it("swallows a second press of what was just released", function()
       local queue, env = world()
       finish_cast(queue)
       queue.press(spell("Cure"), command("Cure"))
       env.now = env.now + 3.01
       queue.step()
-      assert.is_false(queue.press(spell("Cure"), command("Cure")))
+      assert.is_true(queue.press(spell("Cure"), command("Cure")))
       assert.is_nil(queue.held())
     end)
 
@@ -314,7 +314,7 @@ describe("the action queue", function()
     it("does not hold a target it cannot pin", function()
       local queue = world()
       start_cast(queue)
-      assert.is_false(queue.press(spell("Stone", "stpc"), 'input /ma "Stone" <stpc>'))
+      assert.is_false(queue.press(spell("Stone", "ft"), 'input /ma "Stone" <ft>'))
       assert.is_nil(queue.held())
     end)
 
@@ -331,6 +331,208 @@ describe("the action queue", function()
       env.blocked = "edit mode"
       assert.is_false(queue.press(spell(), command()))
       assert.is_nil(queue.held())
+    end)
+  end)
+
+  --[[ A cursor slot is judged at OK, when the command is really sent. The game
+       puts a cursor command back through the outgoing text twice with a number
+       where the token was: your own id at once, which raises the arrow, and the
+       chosen id on OK. ]]
+  describe("a cursor slot", function()
+    local SHELL = spell("Shell V", "stpc")
+    local SHELL_COMMAND = 'input /ma "Shell V" <stpc>'
+    local AIMED = 'input /ma "Shell V" 12345'
+
+    -- The press and the arrow, leaving the cursor waiting for OK.
+    local function cursor_up(queue)
+      local taken, instead = queue.press(SHELL, SHELL_COMMAND)
+      queue.on_text("/ta <stpc>")
+      queue.on_text("/ta 777")
+      return taken, instead
+    end
+
+    it("goes as it always did while nothing is busy, and starts no wait", function()
+      local queue = world()
+      local taken, instead = queue.press(SHELL, SHELL_COMMAND)
+      assert.is_false(taken)
+      assert.is_nil(instead)
+      assert.is_false(queue.busy())
+    end)
+
+    it("opens the same cursor over /ta while busy, which GearSwap ignores", function()
+      local queue = world()
+      start_cast(queue)
+      local taken, instead = queue.press(SHELL, SHELL_COMMAND)
+      assert.is_true(taken)
+      assert.are.equal("input /ta <stpc>", instead)
+      assert.is_nil(queue.held())
+    end)
+
+    for _, token in ipairs({ "st", "stpc", "stnpc", "stal", "stpt" }) do
+      it("treats <" .. token .. "> as a cursor", function()
+        local queue = world()
+        start_cast(queue)
+        local _, instead = queue.press(spell("Shell V", token), 'input /ma "Shell V" <' .. token .. ">")
+        assert.are.equal("input /ta <" .. token .. ">", instead)
+      end)
+    end
+
+    it("matches a token in any case", function()
+      local queue = world()
+      start_cast(queue)
+      local _, instead = queue.press(spell("Shell V", "STPC"), 'input /ma "Shell V" <STPC>')
+      assert.are.equal("input /ta <STPC>", instead)
+    end)
+
+    it("asks no recast at the press, since it may be up by OK", function()
+      local queue, env = world()
+      start_cast(queue)
+      env.recast["Shell V"] = 4
+      assert.is_true((queue.press(SHELL, SHELL_COMMAND)))
+    end)
+
+    it("lets the token and the arrow reach the game, or no cursor opens", function()
+      local queue = world()
+      start_cast(queue)
+      queue.press(SHELL, SHELL_COMMAND)
+      assert.is_false(queue.on_text("/ta <stpc>"))
+      assert.is_false(queue.on_text("/ta 777"))
+    end)
+
+    it("takes OK, so the /ta never changes your target, and holds the action at the chosen id", function()
+      local queue = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.is_nil(send)
+      assert.are.equal(AIMED, queue.held().command)
+    end)
+
+    it("reads the long form of the command too", function()
+      local queue = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      assert.is_true((queue.on_text("/target 12345")))
+    end)
+
+    it("takes yourself, whose id is the arrow's too", function()
+      local queue = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      assert.is_true((queue.on_text("/ta 777")))
+      assert.are.equal('input /ma "Shell V" 777', queue.held().command)
+    end)
+
+    it("releases what OK held the tick the lock clears", function()
+      local queue, env = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      queue.on_text("/ta 12345")
+      env.now = env.now + 2.69
+      assert.is_nil(queue.step())
+      env.now = env.now + 0.02
+      assert.are.equal(AIMED, queue.step())
+    end)
+
+    it("sends at OK if the lock has already cleared", function()
+      local queue, env = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      env.now = env.now + 3.01
+      queue.step()
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.are.equal(AIMED, send)
+      assert.is_nil(queue.held())
+      assert.is_true(queue.busy(), "and waits for its answer")
+    end)
+
+    it("judges the recast at OK, sending it to be refused as any press on recast is", function()
+      local queue, env = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      env.recast["Shell V"] = 4
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.are.equal(AIMED, send)
+      assert.is_nil(queue.held())
+    end)
+
+    it("replaces what was held at OK, not at the press: the newest command wins", function()
+      local queue = world()
+      finish_cast(queue)
+      queue.press(spell("Cure"), command("Cure"))
+      cursor_up(queue)
+      assert.are.equal(command("Cure"), queue.held().command)
+      queue.on_text("/ta 12345")
+      assert.are.equal(AIMED, queue.held().command)
+    end)
+
+    it("starts over for a newer cursor press", function()
+      local queue = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      queue.press(spell("Protect V", "stpc"), 'input /ma "Protect V" <stpc>')
+      assert.is_false(queue.on_text("/ta 777"), "the new cursor's arrow")
+      queue.on_text("/ta 12345")
+      assert.are.equal('input /ma "Protect V" 12345', queue.held().command)
+    end)
+
+    it("takes one OK and goes back to leaving /ta alone", function()
+      local queue = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      queue.on_text("/ta 12345")
+      assert.is_false(queue.on_text("/ta 67890"))
+    end)
+
+    it("ignores every other line while a cursor is up", function()
+      local queue = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      assert.is_false(queue.on_text("/p hello 12345"))
+      assert.is_false(queue.on_text("/ta <t>"))
+      assert.is_false(queue.on_text("/ta 12345 now"))
+      assert.is_false(queue.on_text(nil))
+    end)
+
+    it("leaves /ta alone when no cursor of ours is up", function()
+      local queue = world()
+      assert.is_false(queue.on_text("/ta 12345"))
+    end)
+
+    it("forgets a cursor nobody confirmed", function()
+      local queue, env = world()
+      start_cast(queue)
+      cursor_up(queue)
+      env.now = env.now + 30.01
+      queue.step()
+      assert.is_false(queue.on_text("/ta 12345"))
+    end)
+
+    it("forgets the cursor on a clear", function()
+      local queue = world()
+      start_cast(queue)
+      cursor_up(queue)
+      queue.clear("zone")
+      assert.is_false(queue.on_text("/ta 12345"))
+    end)
+
+    it("does not open one under a config mode or suppression", function()
+      local queue, env = world()
+      start_cast(queue)
+      env.blocked = "edit mode"
+      local taken, instead = queue.press(SHELL, SHELL_COMMAND)
+      assert.is_false(taken)
+      assert.is_nil(instead)
+    end)
+
+    it("does nothing while off", function()
+      local queue = world({ mode = "off" })
+      local taken, instead = queue.press(SHELL, SHELL_COMMAND)
+      assert.is_false(taken)
+      assert.is_nil(instead)
     end)
   end)
 
@@ -411,7 +613,7 @@ describe("the action queue", function()
     local LOCKS = {
       { category = 2, seconds = 1.0, name = "ranged" },
       { category = 3, seconds = 2.7, name = "weaponskill" },
-      { category = 4, seconds = 3.0, name = "spell" },
+      { category = 4, seconds = 2.7, name = "spell" },
       { category = 5, seconds = 1.5, name = "item" },
       { category = 6, seconds = 1.0, name = "ability" },
       { category = 11, seconds = 2.7, name = "weaponskill" },
@@ -434,7 +636,7 @@ describe("the action queue", function()
       start_cast(queue)
       env.now = env.now + 12
       finish_cast(queue)
-      env.now = env.now + 2.99
+      env.now = env.now + 2.69
       assert.is_true(queue.busy())
       env.now = env.now + 0.02
       assert.is_false(queue.busy())
@@ -589,7 +791,7 @@ describe("the action queue", function()
       local queue, env = world()
       finish_cast(queue)
       queue.press(spell(), command())
-      env.now = env.now + 2.99
+      env.now = env.now + 2.69
       assert.is_nil(queue.step())
       env.now = env.now + 0.02
       assert.are.equal(command(), queue.step())
@@ -761,7 +963,7 @@ describe("the action queue", function()
       start_cast(queue)
       assert.is_not_nil(said(env):find("start spell", 1, true))
       finish_cast(queue)
-      assert.is_not_nil(said(env):find("finish spell, lock 3.00s", 1, true))
+      assert.is_not_nil(said(env):find("finish spell, lock 2.70s", 1, true))
       queue.on_action(action(7, STARTING))
       queue.on_action(action(7, INTERRUPTED))
       assert.is_not_nil(said(env):find("interrupted weaponskill, lock 1.75s", 1, true))
@@ -813,8 +1015,8 @@ describe("the action queue", function()
       env.recast.Cure = 4
       queue.press(spell("Cure"), command("Cure"))
       assert.is_not_nil(said(env):find("not held: Cure on recast", 1, true))
-      queue.press(spell("Stone", "stpc"), 'input /ma "Stone" <stpc>')
-      assert.is_not_nil(said(env):find("not held: Stone, <stpc> cannot be pinned", 1, true))
+      queue.press(spell("Stone", "ft"), 'input /ma "Stone" <ft>')
+      assert.is_not_nil(said(env):find("not held: Stone, <ft> cannot be pinned", 1, true))
       env.blocked = "edit mode"
       queue.press(spell("Stone"), command("Stone"))
       assert.is_not_nil(said(env):find("not held: Stone, edit mode", 1, true))
@@ -824,7 +1026,27 @@ describe("the action queue", function()
       local queue, env = world({ mode = "debug" })
       queue.press(spell("Cure"), command("Cure"))
       queue.press(spell("Cure"), command("Cure"))
-      assert.is_not_nil(said(env):find("not held: Cure, already going", 1, true))
+      assert.is_not_nil(said(env):find("swallowed Cure, already going", 1, true))
+    end)
+
+    it("says what a cursor did", function()
+      local queue, env = world({ mode = "debug" })
+      start_cast(queue)
+      queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+      assert.is_not_nil(said(env):find("cursor Shell V <stpc>", 1, true))
+      queue.on_text("/ta 777")
+      queue.on_text("/ta 12345")
+      assert.is_not_nil(said(env):find("OK Shell V at 12345", 1, true))
+      assert.is_not_nil(said(env):find("hold Shell V", 1, true))
+    end)
+
+    it("says a cursor nobody confirmed", function()
+      local queue, env = world({ mode = "debug" })
+      start_cast(queue)
+      queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+      env.now = env.now + 30.01
+      queue.step()
+      assert.is_not_nil(said(env):find("no OK for Shell V", 1, true))
     end)
 
     it("says a release lost to its recast", function()

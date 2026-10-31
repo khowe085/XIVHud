@@ -298,8 +298,9 @@ Selindrile's `check_recast` skips), since the timer running there says a charge 
 not that none is left, so a press with none left is held and the game refuses
 its release - spells number their recasts apart, and a spell on one of those
 numbers is an ordinary recast; a second press of an action still unanswered is
-not held, since a weaponskill or an item has no recast to stop a double tap
-spending it twice (mashing one through the lock still uses it again); and a
+swallowed, since held it would spend a weaponskill's TP or an item again and
+sent it could only be refused, which GearSwap takes for the end of the cast
+(mashing one through the lock, once it has started, still uses it again); and a
 dropped press says nothing outside `debug`.
 
 **No packet says a lock is over** (atom0s' `0x0028` notes and LandSandBoat's
@@ -313,9 +314,28 @@ anchor and aims early. Everything else is a packet, whoever caused it: outgoing
 `unable_to_use` list). Macros and typed commands are never held, but their
 packets count towards the lock. `<t>` and `<bt>` are pinned at the press with
 `pinned_command`; `<me>`, `<pet>` and a slot with no target are sent verbatim;
-what cannot be pinned (`<st>` and its kin, `<ft>`, `<pN>`) is not held, and nor
-are the `sneak`, `invisible` and `reraise` built-ins, which walk a ladder at the
-press. A press gets 0.6s to leave the client before anything counts it as gone,
+what cannot be pinned (`<ft>`, `<pN>`) is not held, and nor are the `sneak`,
+`invisible` and `reraise` built-ins, which walk a ladder at the press.
+
+**A cursor slot (`<st>` and its kin) is judged at OK, not at the press** (Kevin,
+2026-10-31: he pre-selects a target and presses OK when the cast is done, and a
+press said nothing about a target that did not exist yet or a recast that might
+be up by then). The game puts a cursor command back through `outgoing text` with
+a number where the token was: your own id at once, which raises the arrow, then
+the chosen id on OK (Byrth, and GearSwap's `st_flag` skips the first the same
+way). GearSwap acts on a `/ma` the moment OK sends it, gear and packet inside one
+handler, and blocking the packet afterwards would leave it `midaction` for good.
+So while busy the press opens the same cursor over `/ta <token>`, which GearSwap
+ignores, and `queue.on_text` takes the second number: the line is blocked, so
+your target never moves, and the real `/ma "..." <id>` is held, or sent at once
+if the lock has cleared or the recast is running. GearSwap sees nothing until
+then, and its numeric path runs precast as it does after any OK. No load order
+is needed. A press while nothing is busy goes as it always did, so `pretarget`
+is skipped only for a cursor opened during a cast or a lock. **Unverified in a
+live client**: all of it, and if the second number never comes the `/ta` runs,
+which moves your target and casts nothing.
+
+A press gets 0.6s to leave the client before anything counts it as gone,
 and a press on its own recast counts for nothing: GearSwap filters cancel both
 without a packet, and the next press must not wait on an answer that cannot
 come. A config mode, suppression and a re-attach drop what is
@@ -328,11 +348,14 @@ went out, started or was refused says how long after the last finish it did. The
 same lines are appended, dated, to `<addon>/debug.log` with raw `io` (Kevin: the
 client runs on another computer). It is never truncated, and it is written an
 edge at a time from `debug` alone, so nothing traces from the render loop.
-**The lock lengths are unverified constants** at the top of `queue.lua`, the
-longer of bg-wiki and Selindrile's aftercast. Mash an in-game macro through a
-lock in `debug` - bar presses are held and never test the edge - and the last
-refusal and the first start bracket the real one. The in-client rows are in the
-plan.
+**The lock lengths are constants** at the top of `queue.lua`. `spell` is measured
+at 2.7 (Kevin's logs, 2026-10-31): the server answers on a 0.4s beat, a send
+reaching the beat near +2.8 is a coin toss (refused up to +2.58, accepted down to
++2.48), and every send from +2.66 on made the next beat and was accepted. **The
+others are unverified**, the longer of bg-wiki and Selindrile's aftercast. Mash
+an in-game macro through a lock in `debug` - bar presses are held and never test
+the edge - and the last refusal and the first start bracket the real one. The
+in-client rows are in the plan.
 
 Buffs. The order and filter verbs of every component that draws buff icons
 sit behind ONE framework word (2026-09-05), so the grammar is the same on each

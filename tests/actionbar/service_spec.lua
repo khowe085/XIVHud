@@ -998,7 +998,7 @@ describe("the action service", function()
       service.on_chunk(ACTION, "raw", act(4, 1))
     end
 
-    -- Past the 3s a spell locks for.
+    -- Past what a spell locks for.
     local function past_the_lock(service, env)
       env.now = env.now + 3.01
       service.tick()
@@ -1091,8 +1091,53 @@ describe("the action service", function()
     it("sends a target it cannot pin as it always did", function()
       local service, env = queued()
       start_cast(service)
-      service.fire({ type = "ma", action = "Cure", target = "stpc" }, {})
-      assert.are.same({ 'input /ma "Cure" <stpc>' }, env.commands)
+      service.fire({ type = "ma", action = "Cure", target = "ft" }, {})
+      assert.are.same({ 'input /ma "Cure" <ft>' }, env.commands)
+    end)
+
+    describe("a cursor slot", function()
+      local SHELL = { type = "ma", action = "Cure", target = "stpc" }
+
+      it("goes as it always did while nothing is busy", function()
+        local service, env = queued()
+        service.fire(SHELL, {})
+        assert.are.same({ 'input /ma "Cure" <stpc>' }, env.commands)
+      end)
+
+      it("opens over /ta while busy, holds at OK and casts when the lock clears", function()
+        local service, env = queued()
+        finish_cast(service)
+        service.fire(SHELL, {})
+        assert.are.same({ "input /ta <stpc>" }, env.commands)
+        assert.is_falsy(service.on_text("/ta <stpc>"))
+        assert.is_falsy(service.on_text("/ta 777"))
+        assert.is_true(service.on_text("/ta 12345"), "OK never reaches the game")
+        assert.are.same({ "input /ta <stpc>" }, env.commands, "held")
+        past_the_lock(service, env)
+        assert.are.same({ "input /ta <stpc>", 'input /ma "Cure" 12345' }, env.commands)
+      end)
+
+      it("sends at OK when the lock cleared first", function()
+        local service, env = queued()
+        finish_cast(service)
+        service.fire(SHELL, {})
+        service.on_text("/ta 777")
+        past_the_lock(service, env)
+        assert.is_true(service.on_text("/ta 12345"))
+        assert.are.same({ "input /ta <stpc>", 'input /ma "Cure" 12345' }, env.commands)
+      end)
+
+      it("still flashes, the only sign the press was taken", function()
+        local service = queued()
+        finish_cast(service)
+        local flashed = false
+        service.fire(SHELL, {
+          flash = function()
+            flashed = true
+          end,
+        })
+        assert.is_true(flashed)
+      end)
     end)
 
     it("leaves a spell on its own recast to the game", function()

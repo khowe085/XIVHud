@@ -722,6 +722,26 @@ describe("entry point", function()
       assert.are.equal(before, #boot.service_calls)
     end)
 
+    it("hands it the outgoing text as the upstream addons left it", function()
+      boot.fire("outgoing text", "/ta <stpc>", "/ta 12345", false)
+      local call = boot.service_calls[#boot.service_calls]
+      assert.are.equal("on_text", call.name)
+      assert.are.equal("/ta 12345", call[1])
+    end)
+
+    it("blocks the text only when the service takes it", function()
+      assert.is_nil(boot.fire("outgoing text", "/p hello", "/p hello", false))
+      boot.service.on_text = function()
+        return true
+      end
+      assert.is_true(boot.fire("outgoing text", "/ta 12345", "/ta 12345", false))
+    end)
+
+    it("registers nothing on the outgoing text in safe mode", function()
+      local safe = harness.boot({ files = { ["addons/XIVHud/safe_mode"] = "" } })
+      assert.is_nil(safe.handlers["outgoing text"])
+    end)
+
     it("appends the queue's debug lines to debug.log, dated, beside load.log", function()
       boot.service_deps.debug_log("queue 1.00: start spell")
       boot.service_deps.debug_log("queue 2.00: finish spell, lock 3.00s")

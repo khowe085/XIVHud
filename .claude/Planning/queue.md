@@ -48,11 +48,12 @@ net never runs: the `0x029` handler compares `action.message`, the field is
 
 Four that came out of building it, all kept by Kevin the same day:
 
-- **A second press of an action still unanswered is not held.** It goes out as
-  it always did and the game refuses it. A weaponskill or an item has no recast
-  to stop a double tap, and held, the second tap would spend the TP or the item
-  again. Pressed again once the first is on its way, it is an ordinary press, so
-  mashing one through the lock still uses it a second time.
+- **A second press of an action still unanswered is swallowed.** Held, it would
+  spend a weaponskill's TP or an item again, and sent, it could only be refused,
+  which GearSwap takes for the end of the cast and swaps out of the midcast set.
+  Pressed again once the first is on its way it is an ordinary press, so mashing
+  one through the lock still uses it a second time. It went out as it always did
+  until Kevin said he mashes `<t>` slots.
 - **The lock lengths are constants, not settings.** Debug mode brackets them with
   a macro, so nothing needs changing in game to measure them, and a stored default
   would outlive the measured one: nothing migrates.
@@ -76,12 +77,40 @@ Four that came out of building it, all kept by Kevin the same day:
 - A slot with **no target** is held and sent verbatim, so whatever the game does
   with a bare command it does at the release. `(no target)` is the binder's
   default row, so refusing these would leave most mouse-bound slots unqueued.
-- Everything else goes out as it always did: `<st>` and its kin are a cursor,
-  `<ft>` cannot be pinned, and `<pN>` is whoever stands there at the release
-  (Kevin's own rule from the cast retry, 2026-08-19). Pinning `<pN>` by id would
-  let them back in, and needs `get_mob_by_target("p3")` read in a client first.
+- `<st>` and its kin are judged at OK, not at the press (below).
+- Everything else goes out as it always did: `<ft>` cannot be pinned, and `<pN>`
+  is whoever stands there at the release (Kevin's own rule from the cast retry,
+  2026-08-19). Pinning `<pN>` by id would let them back in, and needs
+  `get_mob_by_target("p3")` read in a client first.
 - The `sneak`, `invisible` and `reraise` built-ins are not held: each walks a
   ladder at the press, and what it found would be stale by the release.
+
+## Cursor slots: judged at OK (Kevin, 2026-10-31)
+
+The first live logs held nothing he cared about: his buffs are `<stpc>` slots, he
+pre-selects a target and presses OK when the cast is done, and every OK inside
+the lock went straight out and was refused (message 17). Being judged at the press
+also said "on recast" of a slot whose recast was up by OK.
+
+The hold has to happen when the command is sent, which is the hard part. GearSwap
+acts on a `/ma` inside its `outgoing text` handler, gear and packet together, so:
+
+- **Blocking the packet** leaves its registry entry `midaction` until it ages out,
+  which stops Selindrile's idle gear, and the set stays on through the hold.
+- **Catching the `/ma` text first** needs XIVHud ahead of GearSwap in an event
+  order Windower does not document, and fails silently behind it.
+- **Asking GearSwap to cancel** means changing the fork and a protocol between two
+  addons.
+
+What ships uses `/ta`, which GearSwap ignores. Byrth's account of the cursor: the
+game sends `/ta <your id>` at once, which raises the arrow, then `/ta <chosen id>`
+on OK. GearSwap's `st_flag` skips the first of these the same way. So while busy a
+cursor slot opens the same cursor over `/ta <token>`, and the queue counts the
+numbers: the first goes through, the second is OK. That line is blocked, so the
+target never moves, and the real `/ma "..." <id>` is held, or sent at once when the
+lock has cleared or the recast is running. A press while free goes as it always
+did. If the second number never comes, the `/ta` runs: the target moves and nothing
+casts. That is the failure to look for first.
 
 ## The state machine
 
@@ -123,13 +152,13 @@ the lock is still running.
 
 ## Lock lengths
 
-Constants in `queue.lua`, the longer of two sources, with ranged rounded up from
-its one source, because too long costs a moment and too short loses the press.
-**Every one is unverified.**
+Constants in `queue.lua`, because too long costs a moment and too short loses the
+press. `spell` is measured from Kevin's logs below; **every other one is
+unverified**, the longer of two sources with ranged rounded up from its one.
 
 | After | bg-wiki | Selindrile's aftercast | Shipped |
 | --- | --- | --- | --- |
-| spell | 3.0 | 2.9 | 3.0 |
+| spell | 3.0 | 2.9 | 2.7, measured |
 | weaponskill | 2.0 | 2.7 | 2.7 |
 | ability | 1.0, 2.0 before auto-attack | 0.8 | 1.0 |
 | item | none | 1.5 | 1.5 |
@@ -137,9 +166,25 @@ its one source, because too long costs a moment and too short loses the press.
 | interrupted | none | 1.75 | 1.75 |
 
 bg-wiki's spell lock runs from the cast finishing at 75% of the gauge, and its
-example lands the effect 0.33s later. If the finish packet comes with the
-effect, the true remainder is nearer 2.7. Kevin's own "usually 1-2 seconds"
-disagrees with all of it.
+example lands the effect 0.33s later, so the finish packet comes after the lock
+has started. Kevin's logs of 2026-10-31 agree. Of about 70 sends:
+
+- Answers arrive on a 0.4s beat: near +2.8, +3.2 and +3.6 after the finish.
+- A send that makes the +2.8 beat is a coin toss: refused at +2.45, 2.48, 2.52,
+  2.54 and 2.58, accepted at +2.48, 2.49, 2.50, 2.51, 2.52 and 2.53. Which one
+  depends on where the cast finished inside its beat.
+- Nothing from +2.66 up was refused: those make the +3.2 beat.
+- A release at 3.0 went out at +3.03 and often missed that beat too, starting at
+  +3.6 instead.
+
+2.7 sits inside the safe range, not at its edge. A release leaves 0.02-0.03s after
+it is sent, in six of six samples, so it goes out at about +2.73. Everything up to
+about +3.0 makes the same beat, which is why nothing is gained by shaving it.
+
+One thing the logs leave open: of seven releases, one (Stoneskin, straight after a
+refused Shell V) printed `nothing went out for the last press`. Whatever dropped
+it is outside this queue, and the case behind it, a held press waiting behind a
+cursor OK that goes out and is refused, is gone now that OK is held too.
 
 ## Review gate
 
@@ -171,4 +216,10 @@ start bracket the true lock. Every line is in `debug.log` too.
 | 10 | Macro casts in `queue on` | Lines only in `debug`, bar presses hold behind them | Packets count whoever sent them |
 | 11 | Mash a bar press faster than the ping, then watch for `nothing went out for the last press` on a press that did go | The line never appears on a press that went | Whether 0.6s covers the gap between a press and `outgoing chunk`, which may fire at the client's next send |
 | 12 | A pet command and a blood pact | A `sent` that ends on an answer, not the 2s backstop | Which packet answers `/pet` |
-| 13 | A weaponskill out of range | `finish spell` for category 4 and a 3s lock | atom0s says that failure arrives as category 4; if the lock is wrong it needs its own case |
+| 13 | A weaponskill out of range | `finish spell` for category 4 and a spell's lock | atom0s says that failure arrives as category 4; if the lock is wrong it needs its own case |
+| 14 | During a cast press a `<stpc>` slot, pick a target and press OK inside the lock | `cursor`, `OK ... at <id>`, `hold`, `release`, and the cast lands on who you picked with your target unchanged | The whole of the cursor path |
+| 15 | The same, pressing OK after the lock clears | `OK`, then `out` at once, no `hold` | OK while free |
+| 16 | Press a `<stpc>` slot during a lock, then ESC | Nothing goes, the next press works | A cursor abandoned |
+| 17 | During a cast, a `<stpc>` slot whose recast is up by OK | No `on recast` line, it casts | Judged at OK |
+| 18 | Mash a `<t>` slot from before the press lands | One cast, `swallowed` lines, the midcast set stays on | The mash |
+| 19 | Precast gear on a cursor slot held through a lock | The spell casts in Fast Cast gear | GearSwap's numeric path runs precast at the release |

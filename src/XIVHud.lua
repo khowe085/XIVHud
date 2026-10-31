@@ -1670,6 +1670,18 @@ if not safe_mode and not libraries_error then
     end)
   )
 
+  --[[ The OK of a cursor the action queue opened, read off `modified` as GearSwap
+       reads it. Only ever a /ta line is taken, which GearSwap has no interest
+       in, so this does not care which of the two addons hears the text first. ]]
+  windower.register_event(
+    "outgoing text",
+    guard.wrap("outgoing text", function(_original, modified)
+      if action_service.on_text(modified) then
+        return true
+      end
+    end)
+  )
+
   -- Gil entering or leaving a bag is the cheap signal that something moved; the
   -- expensive read waits for the inventory to settle.
   for _, movement in ipairs({ "add item", "remove item" }) do
