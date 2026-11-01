@@ -539,12 +539,23 @@ an ability or an item, so it adds nothing to those two lengths.
   That is the one-held-press rule working as written.
 - **A second `suppressed` drop (01:33:18),** a held Savage Blade, with 20s of nothing
   after it. `cleared: zone` did not print, so that is status 4, a cutscene. The mob ids
-  decode to zone 165, the Throne Room, whose fight changes phase with one. Inferred.
+  decode to zone 165, the Throne Room. Kevin confirms a mid-fight cutscene.
 - **An OK became an item (01:33:38).** `OK Dia III` was followed 0.04s later by `out
-  item`, and Dia III went 4s later. GearSwap turning a silenced cast into Echo Drops
-  would fit. Unconfirmed, since the log does not name the item.
+  item`, and Dia III went 4s later. Kevin confirms Echo Drops for silence.
+- **Cherukiki at 01:26:58** came from the menu, so that refusal was never the queue's.
 - **The false lock again (01:33:18).** An item 0.82s before the cutscene read as an
   interrupt with no start, and its 2.7 ran 0.73s past the weaponskill's lock.
+
+## A third RDM run at 0.5 (Kevin, 2026-11-01)
+
+10 minutes, 45 releases, all answered, none refused by a lock. Nothing went unanswered,
+and the second cutscene dropped a held Savage Blade at 01:45:57 as the first did.
+
+- **`ability` at 0.5, 2 of 2:** Haste II went at +0.53 and started at +1.21.
+- **An arrow survives a bar press.** At 01:44:53 Utsusemi: Ni went out and cast with a
+  Cure IV arrow up, and OK then held and released the Cure IV.
+- **Kevin is pressing ahead of the one held press,** by his account. Cure IV replaced a
+  held Convert at 01:41:38, so it went first and he pressed Convert again.
 
 ## Open: left targeting a Trust
 
