@@ -937,8 +937,8 @@ describe("crossbar binder", function()
       assert.is_not_nil(entry_named(env, "Spell 01"), "the wheel needs a direction to move")
       local first = view.entries[1]
       binder.mouse(WHEEL, first.x + 1, first.y + 1, -1)
-      assert.are.equal(2, binder.catalog_view().page)
-      assert.is_nil(entry_named(env, "Spell 01"), "page two starts past it")
+      assert.are.equal("Spell 04", binder.catalog_view().entries[1].label)
+      assert.is_nil(entry_named(env, "Spell 01"), "scrolled past it")
       local categories = binder.catalog_view().categories
       click(binder, centre(categories[2]))
       assert.are.equal("General", binder.catalog_view().category)
@@ -1159,15 +1159,76 @@ describe("crossbar binder", function()
       click(binder, centre(row_named(env, "base")))
       local window = binder.window()
       local pages = binder.catalog_view().pages
+      local rows = #binder.catalog_view().entries
       assert.is_true(pages > 1, "a list worth scrolling")
       binder.mouse(WHEEL, window.x + 10, window.y + 10, 1)
-      assert.are.equal(1, binder.catalog_view().page, "up from the first page stays on it")
-      for _ = 1, pages + 3 do
+      assert.are.equal("Spell 01", binder.catalog_view().entries[1].label, "up from the top stays there")
+      for _ = 1, #long do
         binder.mouse(WHEEL, window.x + 10, window.y + 10, -1)
       end
-      assert.are.equal(pages, binder.catalog_view().page, "and down stops on the last, never round to the top")
+      local view = binder.catalog_view()
+      assert.are.equal("Spell 60", view.entries[rows].label, "and down stops on the last, never round to the top")
+      assert.are.equal(pages, view.page)
       binder.mouse(WHEEL, window.x + 10, window.y + 10, 1)
-      assert.are.equal(pages - 1, binder.catalog_view().page, "up still steps back")
+      local stepped = ("Spell %02d"):format(#long - rows - 3 + 1)
+      assert.are.equal(stepped, binder.catalog_view().entries[1].label, "up still steps back")
+    end)
+
+    it("scrolls three rows a notch, keeping the list full", function()
+      local long = {}
+      for index = 1, 40 do
+        long[index] = { label = ("Spell %02d"):format(index), record = { type = "ma", action = "Spell" } }
+      end
+      local binder, env = build({ catalog = { { name = "White Magic", entries = long } } })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local window = binder.window()
+      local rows = #binder.catalog_view().entries
+      binder.mouse(WHEEL, window.x + 10, window.y + 10, -1)
+      local view = binder.catalog_view()
+      assert.are.equal("Spell 04", view.entries[1].label)
+      assert.are.equal(rows, #view.entries, "a full list, not a short page")
+      assert.are.same({ 1, 2 }, { view.page, view.pages }, "the page the top row is on")
+      assert.is_not_nil(shown_text(env, "page 1/2 - wheel to scroll"))
+      binder.mouse(WHEEL, window.x + 10, window.y + 10, 1)
+      assert.are.equal("Spell 01", binder.catalog_view().entries[1].label, "and back up by three")
+    end)
+
+    it("comes back from the target step to the row it was scrolled to", function()
+      local long = {}
+      for index = 1, 40 do
+        long[index] = { label = ("Spell %02d"):format(index), record = { type = "ma", action = "Spell" } }
+      end
+      local binder, env = build({ catalog = { { name = "White Magic", entries = long } } })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local window = binder.window()
+      binder.mouse(WHEEL, window.x + 10, window.y + 10, -1)
+      click(binder, centre(binder.catalog_view().entries[1]))
+      assert.is_not_nil(binder.target_view())
+      back(binder, env)
+      assert.are.equal("Spell 04", binder.catalog_view().entries[1].label, "mid-list, not the top or the bottom")
+    end)
+
+    it("jumps the pager a whole list from where the wheel left it, then wraps", function()
+      local long = {}
+      for index = 1, 60 do
+        long[index] = { label = ("Spell %02d"):format(index), record = { type = "ma", action = "Spell" } }
+      end
+      local binder, env = build({ catalog = { { name = "White Magic", entries = long } } })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local window = binder.window()
+      local rows = #binder.catalog_view().entries
+      binder.mouse(WHEEL, window.x + 10, window.y + 10, -1)
+      click(binder, centre(binder.catalog_view().pager))
+      assert.are.equal(("Spell %02d"):format(3 + rows + 1), binder.catalog_view().entries[1].label)
+      click(binder, centre(binder.catalog_view().pager))
+      local view = binder.catalog_view()
+      assert.are.equal("Spell 60", view.entries[rows].label, "clamped to a full last list")
+      assert.are.equal(view.pages, view.page)
+      click(binder, centre(binder.catalog_view().pager))
+      assert.are.equal("Spell 01", binder.catalog_view().entries[1].label, "and round to the top")
     end)
 
     it("echoes the bind in the plan's own shape, with no type token", function()
@@ -2045,6 +2106,23 @@ describe("crossbar binder", function()
       assert.is_not_nil(text:find("base", 1, true), text)
     end)
 
+    it("describes the row a wheel notch brings under a still cursor", function()
+      local long = {}
+      for index = 1, 40 do
+        local name = ("Spell %02d"):format(index)
+        long[index] = { label = name, record = { type = "ma", action = name } }
+      end
+      local binder, env = build({ catalog = { { name = "White Magic", entries = long } } })
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base")))
+      local x, y = centre(binder.catalog_view().entries[1])
+      binder.mouse(MOVE, x, y, 0)
+      assert.is_not_nil(table.concat(binder.details().lines, "\n"):find("Spell 01", 1, true))
+      binder.mouse(WHEEL, x, y, -1)
+      local text = table.concat(binder.details().lines, "\n")
+      assert.is_not_nil(text:find("Spell 04", 1, true), text)
+    end)
+
     it("follows the cursor between targets and clears when it leaves", function()
       local binder, env = build()
       open_stack(binder, env, "left", 3)
@@ -2666,15 +2744,12 @@ describe("crossbar binder", function()
       click(binder, centre(row_named(env, "base")))
       click(binder, centre(entry_named(env, "Berserk")))
       local seen = {}
-      local view = binder.target_view()
-      for page = 1, view.pages do
+      local window = binder.window()
+      for _ = 1, 30 do
         for _, row in ipairs(binder.target_view().targets) do
           seen[row.label] = true
         end
-        if page < view.pages then
-          local window = binder.window()
-          binder.mouse(WHEEL, window.x + 10, window.y + 10, -1)
-        end
+        binder.mouse(WHEEL, window.x + 10, window.y + 10, -1)
       end
       for _, label in ipairs({ "(no target)", "<t>", "<me>", "<bt>", "<st>", "<pet>", "<p5>", "<a15>", "<a25>" }) do
         assert.is_true(seen[label] == true, "missing " .. label)
@@ -3039,7 +3114,9 @@ describe("crossbar binder", function()
       open_stack(binder, env, "left", 3)
       click(binder, centre(row_named(env, "base")))
       local window = binder.window()
-      binder.mouse(WHEEL, window.x + 10, window.y + 10, -1)
+      for _ = 1, 40 do
+        binder.mouse(WHEEL, window.x + 10, window.y + 10, -1)
+      end
       assert.are.equal(2, binder.catalog_view().page)
       click(binder, centre(binder.catalog_view().entries[1]))
       assert.is_not_nil(binder.target_view(), "on the target step, with page two remembered")
@@ -3513,7 +3590,7 @@ describe("crossbar binder", function()
       click(binder, centre(entry_named(env, "Stratagems")))
       local x, y = centre(binder.catalog_view().entries[1])
       binder.mouse(WHEEL, x, y, -1)
-      assert.are.equal(2, binder.catalog_view().page)
+      assert.are.equal("Stratagem 04", binder.catalog_view().entries[1].label)
       assert.are.equal("Stratagems", binder.catalog_view().submenu, "still nested")
     end)
 
