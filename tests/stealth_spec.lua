@@ -345,6 +345,53 @@ describe("crossbar stealth", function()
     end)
   end)
 
+  describe("what a picked rung amounts to", function()
+    it("names a spell as the action a slot would bind", function()
+      local stealth = build({
+        player = { main_job = "WHM", main_job_id = 3, main_job_level = 99 },
+        spells = { [SNEAK] = true },
+      })
+      local _, _, action = stealth.plan("sneak")
+      assert.are.same({ type = "ma", action = "Sneak", target = "me" }, action)
+    end)
+
+    it("names the target the rung aims at", function()
+      local stealth = build({
+        player = { main_job = "WHM", main_job_id = 3, main_job_level = 99 },
+        spells = { [SNEAK] = true },
+        target = { in_party = true, is_npc = false },
+      })
+      local _, _, action = stealth.plan("sneak")
+      assert.are.equal("t", action.target)
+    end)
+
+    it("names the jig as an ability", function()
+      local stealth = build({
+        player = { main_job = "DNC", main_job_id = 19, main_job_level = 99 },
+        abilities = { job_abilities = { JIG } },
+      })
+      local _, _, action = stealth.plan("invisible")
+      assert.are.same({ type = "ja", action = "Spectral Jig", target = "me" }, action)
+    end)
+
+    it("names the consumable as an item", function()
+      local stealth = build()
+      local _, _, action = stealth.plan("invisible")
+      assert.are.same({ type = "item", action = "Prism Powder", target = "me" }, action)
+    end)
+
+    it("names nothing for a gear rung, which is a plan of its own", function()
+      local stealth = build({
+        items = { ["Super Reraiser"] = 0, ["Hi-Reraiser"] = 0, ["Reraiser"] = 0, ["Instant Reraise"] = 0 },
+        gear = { ["Reraise Ring"] = { type = "equip" } },
+        gear_items = { ["Reraise Ring"] = {} },
+      })
+      local plan, _, action = stealth.plan("reraise")
+      assert.are.equal("table", type(plan))
+      assert.is_nil(action)
+    end)
+  end)
+
   describe("degraded input", function()
     it("hints on an unknown stealth name", function()
       local stealth = build()

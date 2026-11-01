@@ -91,7 +91,17 @@ local function build_stubs(boot, options)
     ["lib/actionbar/service"] = function(deps)
       boot.service_deps = deps
       local service = {}
-      for _, name in ipairs({ "tick", "on_chunk", "on_status", "on_job_change", "on_ipc", "on_logout", "on_unload" }) do
+      for _, name in ipairs({
+        "tick",
+        "on_chunk",
+        "on_outgoing",
+        "on_text",
+        "on_status",
+        "on_job_change",
+        "on_ipc",
+        "on_logout",
+        "on_unload",
+      }) do
         service[name] = function(...)
           boot.service_calls[#boot.service_calls + 1] = { name = name, n = select("#", ...), ... }
         end

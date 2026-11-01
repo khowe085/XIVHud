@@ -317,6 +317,12 @@ describe("commands", function()
       assert.are.same({ action = "tune", verb = "hidecutscene", words = {} }, parse("hidecutscene"))
       assert.are.same({ action = "tune", verb = "hidecutscene", words = { "off" } }, parse("HideCutscene", "off"))
     end)
+
+    it("passes queue through the same way, and reserves it", function()
+      assert.is_true(commands.reserved.queue)
+      assert.are.same({ action = "tune", verb = "queue", words = {} }, parse("queue"))
+      assert.are.same({ action = "tune", verb = "queue", words = { "debug" } }, parse("Queue", "debug"))
+    end)
   end)
 
   describe("config", function()

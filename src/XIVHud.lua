@@ -73,7 +73,20 @@ local function say(lines)
   end
 end
 
---[[ Load trace, written straight to <addon>/load.log with raw io.
+-- One dated line, straight to a file beside the addon with raw io. pcall'd
+-- because its callers run where a throw would cost more than the line.
+local function log_line(file_name, message, mode)
+  pcall(function()
+    local file = io.open(windower.addon_path .. file_name, mode or "a")
+    if not file then
+      return
+    end
+    file:write(os.date("%Y-%m-%d %H:%M:%S ") .. message .. "\n")
+    file:close()
+  end)
+end
+
+--[[ Load trace, written straight to <addon>/load.log.
 
      Chat is not a reliable diagnostic channel here: if the main chunk dies
      before its handlers register, the addon is silent no matter what it wanted
@@ -82,14 +95,7 @@ end
      the process going down. The last line in the file is the last thing that
      ran. ]]
 local function trace(message, mode)
-  pcall(function()
-    local file = io.open(windower.addon_path .. "load.log", mode or "a")
-    if not file then
-      return
-    end
-    file:write(os.date("%Y-%m-%d %H:%M:%S ") .. message .. "\n")
-    file:close()
-  end)
+  log_line("load.log", message, mode)
 end
 
 trace("---- chunk started, version " .. _addon.version, "w")
@@ -866,7 +872,14 @@ local action_service = step("building the action service", function()
   -- same mount sequence every client start.
   math.randomseed(os.time())
   return new_action_service({
+    -- The queue's packets come through handlers the libraries gate, below.
+    no_packets = libraries_error ~= nil,
     say = say,
+    -- `//hud queue debug`'s lines, for a client nobody is sitting at. Only that
+    -- mode writes here, an edge at a time, and it is never truncated.
+    debug_log = function(line)
+      log_line("debug.log", line)
+    end,
     send_command = send_command,
     send_ipc = function(message)
       windower.send_ipc_message(message)
@@ -883,6 +896,8 @@ local action_service = step("building the action service", function()
     get_key_items = function()
       return windower.ffxi.get_key_items()
     end,
+    get_spell_recasts = get_spell_recasts,
+    get_ability_recasts = get_ability_recasts,
     -- Argument-agnostic on purpose: set_equip's exact arity is an in-client
     -- question, and a wrapper must not encode a guess.
     set_equip = function(...)
@@ -1657,6 +1672,32 @@ if not safe_mode and not libraries_error then
       -- roulette read from here and nowhere else.
       action_service.on_chunk(id, original, parsed)
       core.dispatch("chunk", id, original, parsed)
+    end)
+  )
+
+  --[[ What the client sends, for the action queue: the half of "is anything in
+       flight" no incoming packet can answer, and the only sight of a macro's
+       action or one GearSwap injected. It sees every packet the client sends,
+       so the service asks of the id alone, and like the handler above this
+       must return nothing. A packet another addon blocked never left. ]]
+  windower.register_event(
+    "outgoing chunk",
+    guard.wrap("outgoing chunk", function(id, original, _modified, _injected, blocked)
+      if not blocked then
+        action_service.on_outgoing(id, original)
+      end
+    end)
+  )
+
+  --[[ The OK of a cursor the action queue opened, read off `modified` as GearSwap
+       reads it. Only ever a /ta line is taken, which GearSwap has no interest
+       in, so this does not care which of the two addons hears the text first. ]]
+  windower.register_event(
+    "outgoing text",
+    guard.wrap("outgoing text", function(_original, modified)
+      if action_service.on_text(modified) then
+        return true
+      end
     end)
   )
 
