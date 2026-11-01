@@ -459,6 +459,26 @@ this is the baseline for trying it at 0.4.
 - **A send soon after a refusal,** recounted over seven logs: 8 of 25 under 0.9s got no
   answer, against 12 of 1399 after that.
 
+## A short RDM run (Kevin, 2026-11-01, on `ebb8088`, `ability` still at 1.0)
+
+12 minutes, 49 releases, all answered and none refused by a lock, and no send went
+unanswered. Kevin cannot say whether a mob was in reach for the two stretches of
+`nothing went out` in the run before, so those stay open.
+
+- **A held press rescued a refused weaponskill (01:24:19).** GearSwap's Black Halo at
+  +2.13 was refused with 90, the longest send after a weaponskill refused so far. The
+  press held behind it went 0.03s after the refusal and started at +3.40. It dated
+  from before the last weaponskill, whose TP had come back by the release.
+- **A second death, nothing held.** `cleared: death` came with a free press on its way,
+  then four `nothing went out` while Kevin stayed down, TP still reading 1000 or more.
+  That is the same shape as those two stretches, so a client that cannot act fits them
+  as well as a target out of reach. A press held through a death is still unseen.
+- **One slow exchange.** Composure took 1.68s to finish at 01:16:51, the slowest of 43
+  abilities, and Haste II held behind it went at +1.02 and started at +2.08 rather than
+  +1.65. The next such pair, at 01:21:37, started at +1.64.
+- **`item` at 1.0 is still untested.** Eight items, and the soonest send after one was
+  +1.72.
+
 ## Open: left targeting a Trust
 
 Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he
