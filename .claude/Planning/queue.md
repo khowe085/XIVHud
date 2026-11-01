@@ -169,18 +169,19 @@ the lock is still running.
 ## Lock lengths
 
 The shipped lengths, at the top of `queue.lua`, because too long costs a moment and
-too short loses the press. `spell` is measured from Kevin's logs below; **every other
-one is unverified**, the longer of two sources with ranged rounded up from its one.
+too short loses the press. `spell` and `weaponskill` are measured from Kevin's logs
+below and `interrupted` is bracketed by them; **the other three are unverified**,
+the longer of two sources with ranged rounded up from its one.
 `//hud queue lock` and the settings window override any of them.
 
 | After | bg-wiki | Selindrile's aftercast | Shipped |
 | --- | --- | --- | --- |
 | spell | 3.0 | 2.9 | 2.7, measured |
-| weaponskill | 2.0 | 2.7 | 2.4, four accepted at 2.32 |
+| weaponskill | 2.0 | 2.7 | 2.4, measured |
 | ability | 1.0, 2.0 before auto-attack | 0.8 | 1.0 |
 | item | none | 1.5 | 1.5 |
 | ranged | none | 0.85 | 1.0 |
-| interrupted | none | 1.75 | 2.7, 1.75 was refused at +2.23 |
+| interrupted | none | 1.75 | 2.7, the spell's, bracketed at +2.23 to +2.37 |
 
 bg-wiki's spell lock runs from the cast finishing at 75% of the gauge, and its
 example lands the effect 0.33s later, so the finish packet comes after the lock
@@ -260,6 +261,61 @@ Two more runs on the same day, the second on the 2.4 lock:
 - A weaponskill +2.12 after a spell finish was refused (message 90), which agrees
   with the spell lock.
 
+## A full run of endgame content (Kevin, 2026-10-31, on `f8f1a0e`)
+
+71 minutes, 165 releases that went out, and the first run long enough to bracket
+more than the spell lock.
+
+- **163 of the 165 started.** 136 after a spell, at +2.71 to +2.74, and 27 after a
+  weaponskill, from +2.42. The other two went +1.78 after an interrupt on the old
+  1.75 lock and were refused, which `8bb87b2` already answers.
+- **`spell` stays 2.7.** Sends the queue never held were refused at +1.83, 1.85, 1.86,
+  2.36 and 2.38 and accepted at +2.19, 2.21, 2.51, 2.57 and 2.65. The coin toss is
+  wider than the first logs said, and nothing from +2.66 up has been refused in any
+  run.
+- **`weaponskill` stays 2.4, now measured.** Refused at +1.44, 1.51, 1.76, 1.80 and
+  2.09, accepted at +2.09, and one at +2.01 got no answer. Every release from +2.42
+  was accepted.
+- **`interrupted` is bracketed.** Refused at +1.78 twice and +2.23, accepted at +2.37,
+  2.56, 2.65 and 2.69. 2.7 is safe and may be long.
+- **`ability` has its first edge:** +1.04 after Convert was accepted, and nothing
+  shorter was tried. Item and ranged have no data.
+- **The nukes came from the in-game menu**, quicker than switching bars, so the queue
+  never saw them. Kevin wants that left as it is. The Trust summons went unheld too.
+- **A weaponskill held across a weaponskill never went: 73 of 73**, after 8 of 8 in
+  the runs before. No packet left, so the queue sat out its 0.6s for one, and the next
+  action went late 6 times (+3.03 to +3.05 rather than +2.43). A free press with no
+  TP armed the same wait 11 times.
+- **142 OKs were caught.** Two double-tapped `<stnpc>` OKs reached the game as `/ta`,
+  at 18:50:44 and 18:53:26, which `8bb87b2` answers.
+- **Still unexplained:** five sends got no answer at all, and twice (19:44:41 and
+  19:48:17) a weaponskill's start was followed by a category 4 finish, so it took the
+  2.7 lock. Paralysis would fit.
+
+**So a weaponskill under 1000 TP goes nowhere** (Kevin, on this run). At the press,
+free or busy, nothing is sent and what is held stays. A cursor's is judged the same
+way at OK. Held, it is dropped at the release, since the TP only reads as spent by
+then. The trade is a press that shows nothing, not even the game's refusal, and only
+while the queue is on.
+
+## Open: left targeting a Trust
+
+Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he
+could not target, with no Switch Target or Disengage in the menu, until the crossbar's
+disengage (`/attack off`) and a re-engage. He thinks his target died while he was
+picking a cure target. It happened before the queue too, though he usually ended up
+on a battle target then.
+
+- **Likely moment, 19:17:55.** Savage Blade was refused twice with message 446, "You
+  cannot attack that target", the only two of the run, then 23s with nothing sent,
+  then it worked. Two Trust cursors came before it, at 19:17:24 and 19:17:27, but Fire
+  V started at 19:17:40, so it may have begun after them.
+- **Ruled out:** his pick reaching the game as a `/ta`. Every `<stpc>` OK was caught.
+- **Not ruled out:** what the game does with a `/ta` arrow up as the target dies. A
+  `/ma` arrow cannot set your target and a `/ta` one can, which would fit landing on a
+  Trust rather than a battle target. `8bb87b2` opens every cursor over `/ta`, so if
+  that is the cause it now happens more often. Row 26 settles it.
+
 ## Review gate
 
 Four blind rounds, clean on the fourth. Round 1 caught a stratagem with charges in
@@ -305,3 +361,5 @@ start bracket the true lock. Every line is in `debug.log` too.
 | 23 | Keep the cursor up and press a different cursor slot, then OK | The newer spell casts | The press only changes what OK casts |
 | 24 | Press a cursor slot during a macro's own `<st>` cursor | The game's usual answer, and the macro's spell on OK | An arrow this did not open is left alone |
 | 21 | ESC a cursor, then run a `/ta <stnpc>` macro | The macro's cursor works, and nothing casts | A closed cursor must not take another's line as its OK |
+| 25 | Mash a weaponskill through its own lock, then press a spell as the lock ends | `swallowed ... no TP` or `dropped ... no TP`, no `nothing went out`, and the spell goes at about +2.43 | The TP check |
+| 26 | Hold a `<stpc>` arrow on a Trust as your target dies, opening it during a lock. Repeat with `//hud queue off` | Which run leaves you on the Trust | Whether a `/ta` arrow is what strands you |

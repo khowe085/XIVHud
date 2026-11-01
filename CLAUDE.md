@@ -303,7 +303,12 @@ numbers is an ordinary recast; a second press of an action still unanswered is
 swallowed, since held it would spend a weaponskill's TP or an item again and
 sent it could only be refused, which GearSwap takes for the end of the cast
 (mashing one through the lock, once it has started, still uses it again); and a
-dropped press says nothing outside `debug`.
+dropped press says nothing outside `debug`. **A weaponskill under 1000 TP goes
+nowhere** (Kevin, 2026-10-31): pressed, free or busy, nothing is sent, not even to
+be refused, and what is held stays; a cursor's is judged the same way at OK; held,
+it is dropped at the release, since the TP only reads as spent by then. No packet
+leaves for one, so it used to sit out the 0.6s below and make the next action late:
+a weaponskill held across another went nowhere 73 times of 73.
 
 **No packet says a lock is over** (atom0s' `0x0028` notes and LandSandBoat's
 server packets show none), so the lock's LENGTH is the one constant, and it is
@@ -323,7 +328,7 @@ what cannot be pinned (`<ft>`, `<pN>`) is not held, and nor are the `sneak`,
 2026-10-31: he pre-selects a target and presses OK when the cast is done, and a
 press said nothing about a target that did not exist yet or a recast that might
 be up by then). The game puts a cursor command back through `outgoing text` with
-a number where the token was: your own id at once, which raises the arrow, then
+a number where the token was: the arrow's first id at once, which raises it, then
 the chosen id on OK (Byrth, and GearSwap's `st_flag` skips the first the same
 way). GearSwap acts on a `/ma` the moment OK sends it, gear and packet inside one
 handler, and blocking the packet afterwards would leave it `midaction` for good.
@@ -340,9 +345,13 @@ answers nil with no cursor, Kevin, 2026-10-31) a press sends nothing and only
 changes what OK will cast: the token raises no new arrow, the game answers it
 "You cannot perform that action on the selected sub-target", and resending it
 had OK counted as the arrow, so the `/ta` ran and nothing cast (his Dia III and
-Sleep II). Confirmed in a live client over five runs (Kevin, 2026-10-31): on a
+Sleep II). Confirmed in a live client over six runs (Kevin, 2026-10-31): on a
 single press every OK on a `<stpc>` or `<stnpc>` slot was caught, and none was
 refused by the lock. The free press and the arrow check are not yet confirmed.
+**Open:** Kevin was left locked onto a Trust with weapons out, swinging at a monster
+he could not target, until he disengaged (2026-10-31). It predates the queue, but a
+`/ta` arrow can set your target where a `/ma` arrow cannot, so whether a target dying
+under one is what strands you is row 26 of the plan.
 
 A press gets 0.6s to leave the client before anything counts it as gone,
 and a press on its own recast counts for nothing: GearSwap filters cancel both
@@ -368,10 +377,12 @@ migrating. A length a hand edit has broken reads as the shipped one, and a chang
 takes at the next finish. Shipped: `spell` is measured at 2.7 (Kevin's logs,
 2026-10-31): the server answers on a 0.4s beat, a send
 reaching the beat near +2.8 is a coin toss (refused up to +2.58, accepted down to
-+2.48), and every send from +2.66 on made the next beat and was accepted. Over about
-120 releases at 2.7, none was refused by the lock. `weaponskill` is 2.4, on thinner
-evidence: a spell +2.32 after one was accepted four times of four, and bg-wiki
-says 2.0. **The others are unverified**, the longer of bg-wiki and Selindrile's
++2.19), and every send from +2.66 on made the next beat and was accepted. Over about
+250 releases at 2.7, none was refused by the lock. `weaponskill` is measured at 2.4:
+sends at +2.09 went one each way, shorter ones were refused, and all 27 releases
+were accepted, where bg-wiki
+says 2.0. `interrupted` takes the spell's 2.7, refused up to +2.23 and accepted from
++2.37. **The others are unverified**, the longer of bg-wiki and Selindrile's
 aftercast. Mash
 an in-game macro through a lock in `debug` - bar presses are held and never test
 the edge - and the last refusal and the first start bracket the real one. The

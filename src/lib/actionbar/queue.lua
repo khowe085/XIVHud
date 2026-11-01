@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      recast, which is the defect that made Selindrile's MiniQueue unusable: a
      press on recast goes out as it always did and the game refuses it, and a
      held press whose recast is running when the lock clears is dropped. A
+     weaponskill under its TP goes nowhere, for want of anything to wait on. A
      cursor slot is judged the same way at OK, when its command is really sent,
      rather than at the press. ]]
 
@@ -49,15 +50,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
      `spell` is measured (Kevin's logs, 2026-10-31). The server answers on a 0.4s
      beat. A send that makes the beat near +2.8 after the finish is a coin toss
-     (refused up to +2.58, accepted down to +2.48), and every send from +2.66 on
+     (refused up to +2.58, accepted down to +2.19), and every send from +2.66 on
      makes the next one and was accepted. 3.0 lost a further beat as often as not.
 
-     `weaponskill` is thinner: a spell +2.32 after one was accepted four times of
-     four, which is Selindrile's own timing (2.7 - .5 + a .1 tick), bg-wiki says
-     2.0, and nothing was tried shorter.
+     `weaponskill` is measured too: sends at +2.09 went one each way, shorter ones
+     were refused, and all 27 releases at 2.4 were accepted.
 
-     `interrupted` takes the spell's until it is measured: a spell +2.23 after a
-     real interrupt was refused, where Selindrile's 1.75 had just let it go.
+     `interrupted` takes the spell's: after a real interrupt a spell was refused up
+     to +2.23 and accepted from +2.37, and Selindrile's 1.75 lost the press.
 
      The rest are UNVERIFIED: the longer of bg-wiki and Selindrile's aftercast,
      and ranged, which only Selindrile gives, is rounded up to a second.
@@ -94,6 +94,8 @@ local HELD_TYPES = { ma = true, ja = true, ws = true, pet = true, item = true, r
 local CURSOR_TARGETS = { st = true, stpc = true, stal = true, stnpc = true, stpt = true }
 -- The numbers the game has sent back when OK is pressed: see on_text.
 local NUMBERS_AT_OK = 2
+-- What any weaponskill takes.
+local WEAPONSKILL_TP = 1000
 
 -- The 0x028 categories, as atom0s' GP_SERV_COMMAND_BATTLE2 notes number them.
 local START_KINDS = { [7] = "weaponskill", [8] = "spell", [9] = "item", [12] = "ranged" }
@@ -253,6 +255,19 @@ local function new(deps)
       and going.target == record.target
   end
 
+  --[[ No packet leaves for a weaponskill under its TP, so there is no answer to
+       wait out, and held across one that spent the TP it cannot go (73 of 73 in
+       Kevin's logs). A client that reports no TP leaves it to the game. ]]
+  local function no_tp(record)
+    if record.type ~= "ws" then
+      return false
+    end
+    local player = deps.get_player()
+    local vitals = player ~= nil and player.vitals or nil
+    local tp = type(vitals) == "table" and vitals.tp or nil
+    return type(tp) == "number" and tp < WEAPONSKILL_TP
+  end
+
   local function forget()
     held, going, cursor = nil, nil, nil
     sent_until, acting_until, lock_until, finished_at = nil, nil, nil, nil
@@ -327,6 +342,10 @@ local function new(deps)
     if type(record.target) == "string" and CURSOR_TARGETS[record.target:lower()] then
       return open_cursor(record, command, name)
     end
+    if no_tp(record) then
+      note("swallowed " .. name .. ", no TP")
+      return true
+    end
     -- Asked first because it counts for nothing either way: a GearSwap filter
     -- may well cancel it, and nothing that follows should wait on that.
     if deps.recast_left(record) > 0 then
@@ -361,7 +380,7 @@ local function new(deps)
   end
 
   --[[ The outgoing text, for a cursor this opened. The game puts a cursor command
-       back through here with a number where the token was: your own id at once,
+       back through here with a number for the token: the arrow's first id at once,
        which raises the arrow and must reach the game, then the chosen id on OK
        (Byrth; GearSwap's st_flag skips the first the same way). Answers true to
        keep the line from the game, so a /ta never moves your target, and a
@@ -388,6 +407,10 @@ local function new(deps)
     local open = cursor
     cursor = nil
     note("OK " .. open.name .. " at " .. id)
+    if no_tp(open.record) then
+      note("swallowed " .. open.name .. ", no TP")
+      return true
+    end
     local aimed = open.command:gsub("<[^<>]*>$", id)
     if deps.recast_left(open.record) > 0 then
       note("not held: " .. open.name .. " on recast")
@@ -524,6 +547,10 @@ local function new(deps)
     end
     if deps.recast_left(held.record) > 0 then
       self.drop("on recast")
+      return nil
+    end
+    if no_tp(held.record) then
+      self.drop("no TP")
       return nil
     end
     local release = held

@@ -444,7 +444,7 @@ describe("the action queue", function()
 
   --[[ A cursor slot is judged at OK, when the command is really sent. The game
        puts a cursor command back through the outgoing text twice with a number
-       where the token was: your own id at once, which raises the arrow, and the
+       where the token was: the arrow's first id at once, which raises it, and the
        chosen id on OK. ]]
   describe("a cursor slot", function()
     local SHELL = spell("Shell V", "stpc")
@@ -1125,6 +1125,134 @@ describe("the action queue", function()
     end)
   end)
 
+  describe("a weaponskill under 1000 TP", function()
+    local BLADE = { type = "ws", action = "Savage Blade", target = "t" }
+    local BLADE_COMMAND = 'input /ws "Savage Blade" <t>'
+
+    local function finish_weaponskill(queue)
+      queue.on_action(action(7, STARTING))
+      queue.on_action(action(3, 1))
+    end
+
+    it("goes nowhere while nothing is busy", function()
+      local queue, env = world()
+      env.player.vitals = { tp = 999 }
+      local taken, instead = queue.press(BLADE, BLADE_COMMAND)
+      assert.is_true(taken)
+      assert.is_nil(instead)
+    end)
+
+    it("starts no wait, so the next press goes at once", function()
+      local queue, env = world()
+      env.player.vitals = { tp = 999 }
+      queue.press(BLADE, BLADE_COMMAND)
+      assert.is_false(queue.busy())
+      assert.is_false(queue.press(spell(), command()))
+    end)
+
+    it("goes nowhere while busy, and leaves what was held alone", function()
+      local queue, env = world()
+      env.player.vitals = { tp = 500 }
+      start_cast(queue)
+      queue.press(spell("Stone"), command("Stone"))
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+      assert.are.equal(command("Stone"), queue.held().command)
+    end)
+
+    it("goes as any press does at 1000", function()
+      local queue, env = world()
+      env.player.vitals = { tp = 1000 }
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      assert.is_true(queue.busy())
+    end)
+
+    it("is held as any press is at 1000", function()
+      local queue, env = world()
+      env.player.vitals = { tp = 1000 }
+      start_cast(queue)
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+      assert.are.equal('input /ws "Savage Blade" 12345', queue.held().command)
+    end)
+
+    it("is left to the game while the client reports no TP", function()
+      local queue = world()
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("asks nothing of anything but a weaponskill", function()
+      local queue, env = world()
+      env.player.vitals = { tp = 0 }
+      assert.is_false(queue.press(spell(), command()))
+      assert.is_true(queue.busy())
+    end)
+
+    it("is dropped at the release when the weaponskill before it spent the TP", function()
+      local queue, env = world()
+      env.player.vitals = { tp = 3000 }
+      start_cast(queue)
+      queue.press(BLADE, BLADE_COMMAND)
+      queue.on_action(action(3, 1))
+      env.player.vitals.tp = 100
+      env.now = env.now + 2.41
+      assert.is_nil(queue.step())
+      assert.is_nil(queue.held())
+    end)
+
+    it("starts no wait when dropped, so the next press goes at once", function()
+      local queue, env = world()
+      env.player.vitals = { tp = 3000 }
+      start_cast(queue)
+      queue.press(BLADE, BLADE_COMMAND)
+      queue.on_action(action(3, 1))
+      env.player.vitals.tp = 100
+      env.now = env.now + 2.41
+      queue.step()
+      assert.is_false(queue.busy())
+    end)
+
+    it("is released as any press is with the TP still there", function()
+      local queue, env = world()
+      env.player.vitals = { tp = 3000 }
+      finish_weaponskill(queue)
+      queue.press(BLADE, BLADE_COMMAND)
+      env.player.vitals.tp = 1000
+      env.now = env.now + 2.41
+      assert.are.equal('input /ws "Savage Blade" 12345', queue.step())
+    end)
+
+    describe("on a cursor", function()
+      local AIMED_BLADE = { type = "ws", action = "Savage Blade", target = "stnpc" }
+      local AIMED_COMMAND = 'input /ws "Savage Blade" <stnpc>'
+
+      local function cursor_up(queue)
+        queue.press(AIMED_BLADE, AIMED_COMMAND)
+        queue.on_text("/ta <stnpc>")
+        queue.on_text("/ta 777")
+      end
+
+      it("goes nowhere at OK, and the /ta stays from the game", function()
+        local queue, env = world()
+        env.player.vitals = { tp = 999 }
+        cursor_up(queue)
+        local swallowed, send = queue.on_text("/ta 12345")
+        assert.is_true(swallowed)
+        assert.is_nil(send)
+        assert.is_nil(queue.held())
+        assert.is_false(queue.busy())
+      end)
+
+      it("is judged at OK, since the TP may be there by then", function()
+        local queue, env = world()
+        env.player.vitals = { tp = 999 }
+        cursor_up(queue)
+        env.player.vitals.tp = 1000
+        local swallowed, send = queue.on_text("/ta 12345")
+        assert.is_true(swallowed)
+        assert.are.equal('input /ws "Savage Blade" 12345', send)
+      end)
+    end)
+  end)
+
   describe("dropping", function()
     it("drops what is held under a config mode or suppression, and keeps the lock", function()
       local queue, env = world()
@@ -1317,6 +1445,21 @@ describe("the action queue", function()
       env.blocked = "edit mode"
       queue.press(spell("Stone"), command("Stone"))
       assert.is_not_nil(said(env):find("not held: Stone, edit mode", 1, true))
+    end)
+
+    it("says a weaponskill that had no TP, at the press and at the release", function()
+      local queue, env = world({ mode = "debug" })
+      local blade = { type = "ws", action = "Savage Blade", target = "me" }
+      env.player.vitals = { tp = 3000 }
+      start_cast(queue)
+      queue.press(blade, 'input /ws "Savage Blade" <me>')
+      queue.on_action(action(3, 1))
+      env.player.vitals.tp = 100
+      queue.press(blade, 'input /ws "Savage Blade" <me>')
+      assert.truthy(said(env):find("swallowed Savage Blade, no TP", 1, true))
+      env.now = env.now + 2.41
+      queue.step()
+      assert.truthy(said(env):find("dropped Savage Blade: no TP", 1, true))
     end)
 
     it("says a press was already going", function()
