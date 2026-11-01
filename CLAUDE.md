@@ -321,8 +321,12 @@ anchor and aims early. Everything else is a packet, whoever caused it: outgoing
 `unable_to_use` list). Macros and typed commands are never held, but their
 packets count towards the lock. `<t>` and `<bt>` are pinned at the press with
 `pinned_command`; `<me>`, `<pet>` and a slot with no target are sent verbatim;
-what cannot be pinned (`<ft>`, `<pN>`) is not held, and nor are the `sneak`,
-`invisible` and `reraise` built-ins, which walk a ladder at the press.
+what cannot be pinned (`<ft>`, `<pN>`) is not held. A `sneak`, `invisible` or
+`reraise` slot walks its ladder at the press and the rung it picks is held exactly
+as a slot bound to that action would be (Kevin, 2026-10-31: an Invisible pressed in
+Sneak's lock was refused), so a rung gone stale by the release is the game's to
+refuse. A gear rung has its own wait and is not held, and `//hud sneak` and its
+kin are typed commands.
 
 **A cursor slot (`<st>` and its kin) is judged at OK, not at the press** (Kevin,
 2026-10-31: he pre-selects a target and presses OK when the cast is done, and a
@@ -347,7 +351,8 @@ changes what OK will cast: the token raises no new arrow, the game answers it
 had OK counted as the arrow, so the `/ta` ran and nothing cast (his Dia III and
 Sleep II). Confirmed in a live client over six runs (Kevin, 2026-10-31): on a
 single press every OK on a `<stpc>` or `<stnpc>` slot was caught, and none was
-refused by the lock. The free press and the arrow check are not yet confirmed.
+refused by the lock. A seventh run confirmed the free press; the arrow check is not
+yet confirmed.
 **Open:** Kevin was left locked onto a Trust with weapons out, swinging at a monster
 he could not target, until he disengaged (2026-10-31). It predates the queue, but a
 `/ta` arrow can set your target where a `/ma` arrow cannot, so whether a target dying

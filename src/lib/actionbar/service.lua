@@ -1029,7 +1029,7 @@ local function new(deps)
     end
     local plan, hint = actions.resolve(record, self.draw_state())
     if plan ~= nil and plan.kind == "command" then
-      local taken, instead = queue.press(record, plan.command)
+      local taken, instead = queue.press(plan.held_as or record, plan.command)
       if instead ~= nil then
         send_command(instead)
       end

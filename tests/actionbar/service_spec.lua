@@ -16,6 +16,8 @@ local function resources()
       [261] = { id = 261, en = "Warp", type = "BlackMagic", recast_id = 261, mp_cost = 100 },
       -- Spells and abilities number their recasts apart: this is not a stratagem.
       [231] = { id = 231, en = "Bio II", type = "BlackMagic", recast_id = 231, mp_cost = 36 },
+      [136] = { id = 136, en = "Invisible", prefix = "/magic", targets = 5, levels = { [4] = 25 }, recast_id = 136 },
+      [137] = { id = 137, en = "Sneak", prefix = "/magic", targets = 5, levels = { [4] = 20 }, recast_id = 137 },
     },
     job_abilities = {
       [605] = { id = 605, en = "Provoke", recast_id = 5, tp_cost = 0 },
@@ -1309,6 +1311,92 @@ describe("the action service", function()
       service.on_chunk(MESSAGE, "short", nil)
       assert.are.same({ MESSAGE }, fed)
       assert.are.same({}, env.commands)
+    end)
+
+    describe("a ladder slot", function()
+      local INVISIBLE = { type = "invisible" }
+      local INVISIBLE_LINE = 'input /magic "Invisible" <me>'
+
+      local function knows_invisible(env)
+        env.known_spells[136] = true
+      end
+
+      it("holds the rung it picked through a lock, and sends it when the lock clears", function()
+        local service, env = queued()
+        knows_invisible(env)
+        finish_cast(service)
+        service.fire(INVISIBLE)
+        assert.are.same({}, env.commands)
+        past_the_lock(service, env)
+        assert.are.same({ INVISIBLE_LINE }, env.commands)
+      end)
+
+      it("goes at once with nothing busy", function()
+        local service, env = queued()
+        knows_invisible(env)
+        service.fire(INVISIBLE)
+        assert.are.same({ INVISIBLE_LINE }, env.commands)
+      end)
+
+      it("names the rung, not the slot", function()
+        local service, env = queued("debug")
+        knows_invisible(env)
+        finish_cast(service)
+        service.fire(INVISIBLE)
+        assert.is_not_nil(said(env):find("hold Invisible", 1, true))
+      end)
+
+      it("leaves a rung on its recast to the game, as any slot of it", function()
+        local service, env = queued()
+        knows_invisible(env)
+        env.spell_recasts[136] = 300
+        finish_cast(service)
+        service.fire(INVISIBLE)
+        assert.are.same({ INVISIBLE_LINE }, env.commands)
+      end)
+
+      it("pins a party member it aims at, as any held press", function()
+        local service, env = queued()
+        knows_invisible(env)
+        env.target = { id = 99, in_party = true }
+        finish_cast(service)
+        service.fire(INVISIBLE)
+        past_the_lock(service, env)
+        assert.are.same({ 'input /magic "Invisible" 99' }, env.commands)
+      end)
+
+      it("holds a consumable the ladder fell through to", function()
+        local service, env = queued()
+        finish_cast(service)
+        service.fire(INVISIBLE)
+        assert.are.same({}, env.commands)
+        past_the_lock(service, env)
+        assert.are.same({ 'input /item "Prism Powder" <me>' }, env.commands)
+      end)
+
+      it("says the ladder's hint at once when it finds nothing", function()
+        local service, env = queued()
+        env.player.buffs = { 113 }
+        finish_cast(service)
+        service.fire({ type = "reraise" })
+        assert.is_not_nil(said(env):find("Reraise is already active", 1, true))
+      end)
+
+      it("goes as it always did with the queue off", function()
+        local service, env = queued("off")
+        knows_invisible(env)
+        finish_cast(service)
+        service.fire(INVISIBLE)
+        assert.are.same({ INVISIBLE_LINE }, env.commands)
+      end)
+
+      it("leaves the typed verb alone, as every typed command is", function()
+        local service, env = queued()
+        knows_invisible(env)
+        finish_cast(service)
+        service.builtin("invisible")
+        assert.are.same({ INVISIBLE_LINE }, env.commands)
+      end)
     end)
 
     describe("what ends a held press", function()

@@ -86,8 +86,12 @@ Four that came out of building it, all kept by Kevin the same day:
   is whoever stands there at the release (Kevin's own rule from the cast retry,
   2026-08-19). Pinning `<pN>` by id would let them back in, and needs
   `get_mob_by_target("p3")` read in a client first.
-- The `sneak`, `invisible` and `reraise` built-ins are not held: each walks a
-  ladder at the press, and what it found would be stale by the release.
+- A `sneak`, `invisible` or `reraise` slot walks its ladder at the press, and the
+  rung it picks is held as a slot of that action, with that action's recast and pin.
+  They were not held at first, on the grounds that what the ladder found would be
+  stale by the release, until an Invisible pressed in Sneak's lock was refused
+  (Kevin, 2026-10-31). A rung gone stale, say to silence, is the game's to refuse.
+  A gear rung runs its own equip and wait and is not held.
 
 ## Cursor slots: judged at OK (Kevin, 2026-10-31)
 
@@ -298,6 +302,25 @@ way at OK. Held, it is dropped at the release, since the TP only reads as spent 
 then. The trade is a press that shows nothing, not even the game's refusal, and only
 while the queue is on.
 
+## A shorter run on the TP check (Kevin, 2026-10-31, on `faf53c6`)
+
+24 minutes and 37 releases, none refused by a lock.
+
+- **The TP check holds.** `nothing went out` went from 89 lines to none, with 46
+  presses swallowed and 8 dropped at a release.
+- **`ability` has a release:** Haste II at +1.04 after Composure started at +1.66.
+- **Message 84 is confirmed:** five `ignored` lines while Kevin was paralyzed.
+- **Invisible straight after Sneak was refused**, at +0.83 and +1.80, from the ladder
+  slots, which were not held then. That is what changed the rule under Targets.
+- **One real finish was ignored.** A Sleep released at 21:22:13 finished with message
+  236 and no start was seen, so it took no lock, and a weaponskill 0.5s later was
+  refused. It is the only ignored finish in two runs that was not paralysis, so the
+  rule stands.
+- The range refusals (78, 313) were the mob moving, and the nukes were the menu again.
+- **The free press works** (row 22): 73 OKs, all caught, some with a weaponskill's
+  lock beginning after the press. Rows 20 and 23 are still open: no press met an
+  arrow already up.
+
 ## Open: left targeting a Trust
 
 Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he
@@ -315,6 +338,8 @@ on a battle target then.
   `/ma` arrow cannot set your target and a `/ta` one can, which would fit landing on a
   Trust rather than a battle target. `8bb87b2` opens every cursor over `/ta`, so if
   that is the cause it now happens more often. Row 26 settles it.
+- **Not reproduced.** Kevin tried on `faf53c6` and could not get it to stick, which
+  he is clear is no evidence that it is fixed.
 - **One real way into that state is closed.** The sixth review round found that an
   arrow held past 30s lost its cursor, so OK ran as a `/ta` and moved the target. That
   was not this run's cause: no `<stpc>` cursor timed out.
@@ -380,3 +405,4 @@ start bracket the true lock. Every line is in `debug.log` too.
 | 25 | Mash a weaponskill through its own lock, then press a spell as the lock ends | `swallowed ... no TP` or `dropped ... no TP`, no `nothing went out`, and the spell goes at about +2.43 | The TP check |
 | 26 | Hold a `<stpc>` arrow on a Trust as your target dies, opening it during a lock. Repeat with `//hud queue off` | Which run leaves you on the Trust | Whether a `/ta` arrow is what strands you |
 | 27 | Hold a cursor up past 30s, then OK | It casts at who you picked, target unchanged | A long pre-select |
+| 28 | Press a `sneak` slot, then an `invisible` slot inside its cast or lock | `hold Invisible`, `release`, and it casts with no refusal | A ladder slot held |

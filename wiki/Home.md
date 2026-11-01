@@ -243,8 +243,9 @@ with no target takes whatever the game gives it when it goes. A slot that opens 
 cursor (`<st>`, `<stpc>` and the like) is decided when you press OK rather than
 when you press the slot, so you can pick your target during a cast and press OK
 whenever you like: if the game would still refuse it, it is held until it can go.
-`<ft>` and party targets are not held and go at once, as they always did, and so
-do the `sneak`, `invisible` and `reraise` slots. Macros and
+`<ft>` and party targets are not held and go at once, as they always did. A
+`sneak`, `invisible` or `reraise` slot picks its best way when you press it and holds
+that, unless the best way is gear to put on, which has a wait of its own. Macros and
 typed commands are not held, but they do count towards the wait. If you use
 Selindrile's GearSwap files, leave their MiniQueue off.
 
