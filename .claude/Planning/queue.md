@@ -570,7 +570,36 @@ time. A press is now held when its recast ends inside the lock running, at the p
 or at OK. That takes a lock: nothing says when a cast will end, so a press on recast
 during a cast goes out as before. The release still asks the recast and drops one still
 running, and a longer recast, Utsusemi: Ni or Cocoon, is refused as it was. `recast_left`
-answers in seconds now, a spell's coming in sixtieths. This has not run in a client.
+answers in seconds now, a spell's coming in sixtieths.
+
+## The recast hold in a client (Kevin, 2026-11-01, on `2e4fb77`)
+
+Row 33 passes. All 10 presses of Cure IV OK'd in its own lock, from +0.34 to +2.10 after
+its finish, were held, went at +2.72 to +2.74 and started at +3.18 to +3.31, with no `not
+held` and no refusal. One replaced a held Convert, newest wins. Utsusemi: Ni was not run,
+so a recast that outlasts the lock has not been seen on this commit. The six OKs before
+those went nowhere because a GearSwap feature of Kevin's was stopping cures on himself,
+which is the `nothing went out` the 0.6s exists for.
+
+## A long BLU run at 0.5 (Kevin, 2026-11-01, before `2e4fb77`)
+
+1 hour 45 minutes. With the run above, 45 releases, none refused.
+
+- **A cast that never finished stalled the bar (16:08:31).** Tail Slap, after Chain
+  Affinity and Efflux, started at 7132.43 and nothing ended it. There was no finish or
+  interrupt, no `cleared`, so no death or zone, and no `suppressed`, so no cutscene.
+  Nothing left the client for 69s, GearSwap's sends included. Six presses from 7132.86 to
+  7143.90 were held, the seventh found no `<t>`, and the last held one was dropped at the
+  30s backstop. Tail Slap's casts take under 0.8s, and this is the first such stall in 17
+  logs. What ended the cast is unknown.
+- **`ability` at 0.5 is safe rather than tight.** GearSwap put 26 more sends inside it,
+  from +0.14 to +0.39, and all were accepted. The one refusal, at +0.13, was Efflux's own
+  recast (88).
+- **Automated Trust sends at +2.48 to +2.64:** 7 accepted, 6 refused with 17, each of those
+  accepted at about +6.15. That is the spell lock's coin toss, and none was a bar press.
+- **Four of 321 sends went unanswered,** against a slowest answer of 1.08s. One cost
+  something (16:05:36): a Burst Affinity held behind an unanswered Black Halo was replaced
+  by Anvil Lightning inside the 2s, so the spell went without it.
 
 ## Open: left targeting a Trust
 
@@ -658,7 +687,7 @@ start bracket the true lock. Every line is in `debug.log` too.
 | 27 | Hold a cursor up past 30s, then OK | It casts at who you picked, target unchanged | A long pre-select |
 | 28 | Press a `sneak` slot, then an `invisible` slot inside its cast or lock | `hold Invisible`, `release`, and it casts with no refusal | A ladder slot held |
 | 29 | Use an item, then press a bar spell at once | `finish item, lock 1.00s`, `release`, `out` at about +1.02, then `start` | Whether `item` at 1.0 can hold a press |
-| 30 | Dropped: an ability or weaponskill held behind an ability | | GearSwap's own sends put 9 there at +0.23 to +0.37, all accepted |
+| 30 | Dropped: an ability or weaponskill held behind an ability | | GearSwap's own sends put 35 there at +0.14 to +0.39, all accepted |
 | 31 | Press a `<st>` slot, pick a target, press OK | `cursor`, `arrow`, `OK`, the cast lands on who you picked, target unchanged | Only `<stpc>` and `<stnpc>` have run live |
 | 32 | Press a bar spell during a cast, then type `//hud layout` | `dropped ...: //hud layout`, nothing goes | Only `suppressed` has dropped a press for this reason |
-| 33 | Press Cure IV again late in its own lock, about +1.8 after its finish | `hold Cure IV`, `release`, and it casts at about +2.72, with no `not held` and no refusal | A short recast inside a lock is held |
+| 33 | Press Cure IV again late in its own lock, about +1.8 after its finish | `hold Cure IV`, `release`, and it casts at about +2.72, with no `not held` and no refusal | A short recast inside a lock is held. Passes, 10 of 10 on `2e4fb77` |
