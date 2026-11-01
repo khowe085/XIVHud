@@ -37,7 +37,8 @@ net never runs: the `0x029` handler compares `action.message`, the field is
 - **One shot.** A release is never re-sent, refused or not.
 - **Never held on a recast.** A press whose own recast is running goes out as
   it always did, and the game refuses it. An action whose recast is running
-  when the lock clears is dropped, never waited on.
+  when the lock clears is dropped, never waited on. A press whose recast ends inside
+  the lock running is held (Kevin, 2026-11-01), since it waits on the lock alone.
 - **An interrupted cast keeps the held action**, released after the interrupt's
   lock.
 - **No highlight on a held slot** in the first version.
@@ -557,6 +558,20 @@ and the second cutscene dropped a held Savage Blade at 01:45:57 as the first did
 - **Kevin is pressing ahead of the one held press,** by his account. Cure IV replaced a
   held Convert at 01:41:38, so it went first and he pressed Convert again.
 
+## Holding a press behind a short recast (Kevin, 2026-11-01)
+
+From a 50-minute RDM run at 0.5, with 118 releases and none refused by a lock. Spells
+held behind an ability now stand at 7 of 7, and behind an item at 11 of 11.
+
+**All 16 presses of Cure IV made in its own lock were refused with 17**, 10 of them in
+that run. The recast was asked first, so a press on recast went out whatever the lock
+was doing, and the lock refused it, though Cure IV has started again from +2.72 every
+time. A press is now held when its recast ends inside the lock running, at the press
+or at OK. That takes a lock: nothing says when a cast will end, so a press on recast
+during a cast goes out as before. The release still asks the recast and drops one still
+running, and a longer recast, Utsusemi: Ni or Cocoon, is refused as it was. `recast_left`
+answers in seconds now, a spell's coming in sixtieths. This has not run in a client.
+
 ## Open: left targeting a Trust
 
 Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he
@@ -646,3 +661,4 @@ start bracket the true lock. Every line is in `debug.log` too.
 | 30 | Dropped: an ability or weaponskill held behind an ability | | GearSwap's own sends put 9 there at +0.23 to +0.37, all accepted |
 | 31 | Press a `<st>` slot, pick a target, press OK | `cursor`, `arrow`, `OK`, the cast lands on who you picked, target unchanged | Only `<stpc>` and `<stnpc>` have run live |
 | 32 | Press a bar spell during a cast, then type `//hud layout` | `dropped ...: //hud layout`, nothing goes | Only `suppressed` has dropped a press for this reason |
+| 33 | Press Cure IV again late in its own lock, about +1.8 after its finish | `hold Cure IV`, `release`, and it casts at about +2.72, with no `not held` and no refusal | A short recast inside a lock is held |

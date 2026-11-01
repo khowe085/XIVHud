@@ -40,7 +40,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      recast, which is the defect that made Selindrile's MiniQueue unusable: a
      press on recast goes out as it always did and the game refuses it, and a
      held press whose recast is running when the lock clears is dropped. A
-     weaponskill under its TP goes nowhere, for want of anything to wait on. A
+     press whose recast ends inside the lock is held, since it waits on the lock
+     alone and sent it could only be refused. A weaponskill under its TP goes
+     nowhere, for want of anything to wait on. A
      cursor slot is judged the same way at OK, when its command is really sent,
      rather than at the press. ]]
 
@@ -274,6 +276,14 @@ local function new(deps)
     return type(tp) == "number" and tp < WEAPONSKILL_TP
   end
 
+  --[[ Only a lock counts: nothing says when a cast will end. All 16 presses of
+       Cure IV in its own lock went out on a recast that was over by +2.72, and
+       the lock refused them. ]]
+  local function outlasts_lock(record)
+    local lock_left = running(lock_until) and lock_until - now() or 0
+    return deps.recast_left(record) > lock_left
+  end
+
   local function forget()
     held, going, cursor = nil, nil, nil
     sent_until, acting_until, lock_until, finished_at = nil, nil, nil, nil
@@ -354,7 +364,7 @@ local function new(deps)
     end
     -- Asked first because it counts for nothing either way: a GearSwap filter
     -- may well cancel it, and nothing that follows should wait on that.
-    if deps.recast_left(record) > 0 then
+    if outlasts_lock(record) then
       note("not held: " .. name .. " on recast")
       return false
     end
@@ -419,7 +429,7 @@ local function new(deps)
       return true
     end
     local aimed = open.command:gsub("<[^<>]*>$", id)
-    if deps.recast_left(open.record) > 0 then
+    if outlasts_lock(open.record) then
       note("not held: " .. open.name .. " on recast")
       return true, aimed
     end

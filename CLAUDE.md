@@ -293,7 +293,10 @@ one held press, the newest; a press while nothing is busy goes at once, as it
 always did; a release is sent once and never again, refused or not. **It never
 waits on a recast**, which is what made Selindrile's MiniQueue unusable: a press
 on its own recast goes out and the game refuses it, and a held press whose
-recast is running when the lock clears is dropped. Three rules beside that one
+recast is running when the lock clears is dropped. A press whose recast ends inside
+the lock running is held all the same (Kevin, 2026-11-01): the wait is then the
+lock's, and sent it could only be refused, as all 16 of Cure IV's were. It takes a
+lock, since nothing says when a cast will end. Three rules beside that one
 (Kevin, 2026-10-31): the four ABILITY recasts a charged family shares read as no
 recast at all (231 stratagems, 195 Quick Draw, 102 and 255 Ready, the ids
 Selindrile's `check_recast` skips), since the timer running there says a charge was spent,

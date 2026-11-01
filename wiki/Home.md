@@ -235,7 +235,9 @@ With the queue on, a crossbar or hotbar press made during a cast or that moment
 is held, and goes by itself as soon as you can act, as in FFXIV. Only one press
 is held, and a newer one replaces it. A press made while you are free goes at
 once. A held press is sent once, and is never waiting on a recast: if the action
-is still on its own recast when you could act, it is dropped. A weapon skill you
+is still on its own recast when you could act, it is dropped. A press made during
+that moment is held if its recast ends first, and otherwise goes out as it always
+did. A weapon skill you
 have too little TP for does nothing at all, not even the game's usual message, and
 one held is dropped if the TP is gone when you could act. A held press aimed
 at `<t>` or `<bt>` stays on the target you had when you pressed, and a slot bound

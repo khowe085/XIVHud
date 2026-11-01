@@ -1185,6 +1185,32 @@ describe("the action service", function()
       assert.are.same({ CURE_COMMAND }, env.commands)
     end)
 
+    it("reads a spell's recast in seconds, from the frames the client reports", function()
+      local service, env = queued()
+      finish_cast(service)
+      env.spell_recasts[1] = 120
+      service.fire(CURE, {})
+      assert.are.same({}, env.commands, "two seconds ends inside the lock")
+      assert.are.equal(CURE_COMMAND, service.queue.held().command)
+    end)
+
+    it("leaves a spell whose recast outlasts the lock to the game", function()
+      local service, env = queued()
+      finish_cast(service)
+      env.spell_recasts[1] = 180
+      service.fire(CURE, {})
+      assert.are.same({ CURE_COMMAND }, env.commands)
+    end)
+
+    it("reads an ability's recast in seconds as it comes", function()
+      local service, env = queued()
+      finish_cast(service)
+      env.ability_recasts[5] = 2
+      service.fire({ type = "ja", action = "Provoke", target = "t" }, {})
+      assert.are.same({}, env.commands, "held")
+      assert.is_not_nil(service.queue.held())
+    end)
+
     it("sends the next press at once after one on its own recast, which GearSwap may have cancelled", function()
       local service, env = queued()
       env.spell_recasts[1] = 120

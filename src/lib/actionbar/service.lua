@@ -608,14 +608,16 @@ local function new(deps)
   end
   self.pinned_command = pinned_command
 
-  -- What the action's own recast has left. Only ever compared with zero, so
-  -- a spell's frames and an ability's seconds need no converting. Anything
+  -- What the action's own recast has left, in seconds: a spell's comes in
+  -- sixtieths, as render reads it, and an ability's as it is. Anything
   -- the tables cannot answer reads as no recast: the game has the last word.
   local function recast_left(record)
+    local per_second = 1
     local entry, recasts
     if record.type == "ma" then
       entry = self.find_resource("spells", record.action)
       recasts = deps.get_spell_recasts ~= nil and deps.get_spell_recasts() or nil
+      per_second = 60
     elseif record.type == "ja" or record.type == "pet" then
       entry = self.find_resource("job_abilities", record.action)
       recasts = deps.get_ability_recasts ~= nil and deps.get_ability_recasts() or nil
@@ -626,7 +628,7 @@ local function new(deps)
     if entry == nil or recasts == nil then
       return 0
     end
-    return recasts[entry.recast_id] or 0
+    return (recasts[entry.recast_id] or 0) / per_second
   end
 
   local queue = new_queue({

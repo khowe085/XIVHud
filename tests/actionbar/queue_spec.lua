@@ -412,6 +412,77 @@ describe("the action queue", function()
       assert.is_nil(queue.held())
     end)
 
+    --[[ Cure IV went again at +2.72 every time, and all 16 presses made in its own
+         lock went out on its recast and were refused. ]]
+    describe("whose recast ends inside the lock", function()
+      it("is held, the wait being the lock's", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 1
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("goes when the lock clears", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 1
+        queue.press(spell("Cure"), command("Cure"))
+        env.recast.Cure = 0
+        env.now = env.now + 2.71
+        assert.are.equal(command("Cure"), queue.step())
+      end)
+
+      it("is dropped if its recast is still running then", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 1
+        queue.press(spell("Cure"), command("Cure"))
+        env.now = env.now + 2.71
+        assert.is_nil(queue.step())
+        assert.is_nil(queue.held())
+      end)
+
+      it("is held when the two end together", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 2.7
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+      end)
+
+      it("measures against what is left of the lock", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.now = env.now + 2
+        env.recast.Cure = 1
+        assert.is_false(queue.press(spell("Cure"), command("Cure")))
+        assert.is_nil(queue.held())
+      end)
+
+      it("replaces what was held, as any held press does", function()
+        local queue, env = world()
+        finish_cast(queue)
+        queue.press(spell("Stone"), command("Stone"))
+        env.recast.Cure = 1
+        queue.press(spell("Cure"), command("Cure"))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("is not held during a cast, whose end nothing says", function()
+        local queue, env = world()
+        start_cast(queue)
+        env.recast.Cure = 1
+        assert.is_false(queue.press(spell("Cure"), command("Cure")))
+      end)
+
+      it("is not held with no lock running", function()
+        local queue, env = world()
+        env.recast.Cure = 1
+        assert.is_false(queue.press(spell("Cure"), command("Cure")))
+        assert.is_false(queue.busy())
+      end)
+    end)
+
     it("pins the target at the press", function()
       local queue = world()
       start_cast(queue)
@@ -638,6 +709,17 @@ describe("the action queue", function()
       assert.is_true(swallowed)
       assert.are.equal(AIMED, send)
       assert.is_nil(queue.held())
+    end)
+
+    it("holds at OK a spell whose recast ends inside the lock", function()
+      local queue, env = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      env.recast["Shell V"] = 1
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.is_nil(send)
+      assert.are.equal(AIMED, queue.held().command)
     end)
 
     it("replaces what was held at OK, not at the press: the newest command wins", function()
