@@ -529,6 +529,23 @@ unanswered. Kevin cannot say whether a mob was in reach for the two stretches of
   The cost is the 2s a press behind one would wait.
 - **Row 32 has not been run,** and nothing else testable is left.
 
+## A second RDM run at 0.5 (Kevin, 2026-11-01)
+
+10 minutes, 22 releases, all started, and nothing unanswered. No press was held behind
+an ability or an item, so it adds nothing to those two lengths.
+
+- **Newest wins cost a Protect V (01:28:37).** It was held for one Trust when the OK for
+  Shell V arrived as the lock ended, so Shell V went and that Trust got no Protect V.
+  That is the one-held-press rule working as written.
+- **A second `suppressed` drop (01:33:18),** a held Savage Blade, with 20s of nothing
+  after it. `cleared: zone` did not print, so that is status 4, a cutscene. The mob ids
+  decode to zone 165, the Throne Room, whose fight changes phase with one. Inferred.
+- **An OK became an item (01:33:38).** `OK Dia III` was followed 0.04s later by `out
+  item`, and Dia III went 4s later. GearSwap turning a silenced cast into Echo Drops
+  would fit. Unconfirmed, since the log does not name the item.
+- **The false lock again (01:33:18).** An item 0.82s before the cutscene read as an
+  interrupt with no start, and its 2.7 ran 0.73s past the weaponskill's lock.
+
 ## Open: left targeting a Trust
 
 Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he
