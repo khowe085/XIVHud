@@ -591,7 +591,8 @@ which is the `nothing went out` the 0.6s exists for.
   Nothing left the client for 69s, GearSwap's sends included. Six presses from 7132.86 to
   7143.90 were held, the seventh found no `<t>`, and the last held one was dropped at the
   30s backstop. Tail Slap's casts take under 0.8s, and this is the first such stall in 17
-  logs. What ended the cast is unknown.
+  logs. What ended the cast is unknown. Kevin left the backstop at 30s rather than bound
+  it by the cast's own length.
 - **`ability` at 0.5 is safe rather than tight.** GearSwap put 26 more sends inside it,
   from +0.14 to +0.39, and all were accepted. The one refusal, at +0.13, was Efflux's own
   recast (88).
