@@ -122,7 +122,7 @@ anywhere: `//hud reset tb` is `//hud reset targetbar`.
 | `//hud buffs <component> ...` | a component's buff order and filter settings (see below) |
 | `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise` | actions on the game itself (see Action commands below) |
 | `//hud delay` | setting shared by the crossbar and hotbar (see Action commands below) |
-| `//hud queue [on\|debug\|off]` | hold a bar press made during a cast, and send it when you can act (see Action commands below); off by default |
+| `//hud queue [on\|debug\|off]` | hold a bar press made during a cast, and send it when you can act (see Action commands below); on by default |
 | `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default |
 | `//hud config [<component>]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
@@ -245,6 +245,7 @@ with no target takes whatever the game gives it when it goes. A slot that opens 
 cursor (`<st>`, `<stpc>` and the like) is decided when you press OK rather than
 when you press the slot, so you can pick your target during a cast and press OK
 whenever you like: if the game would still refuse it, it is held until it can go.
+GearSwap's `pretarget` does not run for such a slot.
 `<ft>` and party targets are not held and go at once, as they always did. A
 `sneak`, `invisible` or `reraise` slot picks its best way when you press it and holds
 that, unless the best way is gear to put on, which has a wait of its own. Macros and
@@ -307,7 +308,7 @@ file is damaged the component falls back to its defaults and says so in chat.
 | `hideCutscene` | `true` | hide the HUD during cutscenes and the NPC conversations that lock your character (`//hud hidecutscene on\|off`) |
 | `config_pos` | centred | where you last dragged the settings window to |
 | `delay` | `5` | seconds a mount or warp counts down before it goes |
-| `queue` | `"off"` | the action queue: `"off"`, `"on"` or `"debug"` (`//hud queue`) |
+| `queue` | `"on"` | the action queue: `"off"`, `"on"` or `"debug"` (`//hud queue`) |
 | `queue_locks` | none | your own queue waits, by kind (`//hud queue lock`); a kind not listed uses the shipped length |
 
 ## Auto-hide

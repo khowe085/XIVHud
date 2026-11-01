@@ -2157,6 +2157,23 @@ describe("core", function()
         assert.is_not_nil(env.said():find("action queue: off", 1, true))
       end)
 
+      it("answers with the mode in force, which is off with no packets coming", function()
+        queue_core()
+        service.queue = new_queue({
+          no_packets = true,
+          now = function()
+            return 0
+          end,
+          config = function()
+            return core.config()
+          end,
+        })
+        env.forget()
+        core.on_command({ "queue", "on" })
+        assert.is_not_nil(env.said():find("action queue: off", 1, true))
+        assert.are.equal("on", core.config().queue, "what was asked for waits for a repaired install")
+      end)
+
       it("sets each mode, in any case, and saves it", function()
         queue_core()
         for _, word in ipairs({ "on", "DEBUG", "off" }) do

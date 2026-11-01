@@ -632,6 +632,7 @@ local function new(deps)
   end
 
   local queue = new_queue({
+    no_packets = deps.no_packets,
     now = frame_now,
     config = config,
     get_player = get_player,

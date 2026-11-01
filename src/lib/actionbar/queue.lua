@@ -185,12 +185,17 @@ local function new(deps)
   end
 
   function self.defaults()
-    return { queue = "off" }
+    return { queue = "on" }
   end
 
-  --- A hand-broken value reads as off: this holds presses back, so it has to
-  --- be asked for.
+  --- The mode in force. A value that is not a mode reads as off, since this holds
+  --- presses back, and so does a queue with no packets coming, whatever the file
+  --- says: it would see no cast and no lock, and a cursor slot's OK would reach
+  --- the game as a /ta.
   function self.mode()
+    if deps.no_packets then
+      return "off"
+    end
     local live = deps.config()
     local mode = type(live) == "table" and live.queue or nil
     return KNOWN_MODES[mode] and mode or "off"

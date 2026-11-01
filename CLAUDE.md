@@ -286,7 +286,8 @@ handler would unregister itself mid-dispatch, which nobody has watched
 Windower do.
 
 Action queue. `//hud queue on|debug|off` (Kevin, 2026-10-31, plan in
-`.claude/Planning/queue.md`), `core.lua`'s `queue`, shipping off: FFXIV's
+`.claude/Planning/queue.md`), `core.lua`'s `queue`, shipping on (Kevin, 2026-11-01;
+nothing migrates, so a file already holding `off` stays off): FFXIV's
 queue, in `lib/actionbar/queue`. A crossbar or hotbar press made during a cast
 or the lock after it is held and goes as invoked when the lock clears. There is
 one held press, the newest; a press while nothing is busy goes at once, as it
@@ -321,7 +322,10 @@ late, never early - where MiniQueue takes a guessed `latency = .5` off the same
 anchor and aims early. Everything else is a packet, whoever caused it: outgoing
 `0x01A`/`0x037` (the only sight of a macro or of what GearSwap injects),
 `0x028` starts, finishes and interrupts, `0x029` refusals (GearSwap's
-`unable_to_use` list). Macros and typed commands are never held, but their
+`unable_to_use` list), all through handlers the resource libraries gate, so with
+the libraries failed the queue reads as off whatever `core.lua` says (the entry
+point's `no_packets`): it would see no cast and no lock, and a cursor slot's OK
+would reach the game as a `/ta`. Macros and typed commands are never held, but their
 packets count towards the lock. `<t>` and `<bt>` are pinned at the press with
 `pinned_command`; `<me>`, `<pet>` and a slot with no target are sent verbatim;
 what cannot be pinned (`<ft>`, `<pN>`) is not held. A `sneak`, `invisible` or

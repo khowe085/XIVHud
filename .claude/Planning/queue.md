@@ -42,7 +42,8 @@ net never runs: the `0x029` handler compares `action.message`, the field is
 - **An interrupted cast keeps the held action**, released after the interrupt's
   lock.
 - **No highlight on a held slot** in the first version.
-- **`//hud queue on|debug|off`, shipping off**, in `core.lua` beside `delay`.
+- **`//hud queue on|debug|off`, shipping on** (it shipped off until 2026-11-01, Kevin),
+  in `core.lua` beside `delay`.
   `debug` is `on` plus a line per edge, which is what replaced the
   `queue.log` probe proposed first (Kevin). The lines go only to `debug.log`
   beside `load.log`, dated and never truncated, because the client runs on
@@ -656,6 +657,18 @@ macro's numeric `/ta` could read as ours for up to 30s, which it put at 50% reac
 
 A ninth round, over `debug` leaving chat alone, came back clean. Its note that stands:
 a failed write to `debug.log` now leaves no trace, chat having been the only other place.
+
+A tenth round, over shipping on, made the seventh round's note on the libraries
+blocking: a fresh character on a broken install would have lost every cursor slot, OK
+running as a plain `/ta`. The queue now reads as off with no packets coming, whatever
+the file says, and `//hud queue` answers with the mode in force. The wiki now says a
+cursor slot costs `pretarget`. Its notes that stand: a value that is not a mode reads as
+off where other settings read as shipped, kept so a typo cannot hold presses back, and
+core's specs seed no `queue`, so they still start from off.
+
+An eleventh round, over shipping on with that fix, came back clean. Its notes that
+stand: `//hud queue on` on a broken install answers off with no reason, and shipping on
+puts rows 26 and 31 on everyone's path, so row 31 is worth running before a release.
 
 ## Measuring in a live client
 

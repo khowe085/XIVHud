@@ -866,6 +866,8 @@ local action_service = step("building the action service", function()
   -- same mount sequence every client start.
   math.randomseed(os.time())
   return new_action_service({
+    -- The queue's packets come through handlers the libraries gate, below.
+    no_packets = libraries_error ~= nil,
     say = say,
     -- `//hud queue debug`'s lines, for a client nobody is sitting at. Only that
     -- mode writes here, an edge at a time, and it is never truncated.

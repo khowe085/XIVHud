@@ -737,6 +737,12 @@ describe("entry point", function()
       assert.is_true(boot.fire("outgoing text", "/ta 12345", "/ta 12345", false))
     end)
 
+    it("tells the service no packets are coming when the libraries failed", function()
+      assert.is_false(boot.service_deps.no_packets)
+      local without = harness.boot({ require_fails = { packets = "no packets library" } })
+      assert.is_true(without.service_deps.no_packets)
+    end)
+
     it("registers nothing on the outgoing text in safe mode", function()
       local safe = harness.boot({ files = { ["addons/XIVHud/safe_mode"] = "" } })
       assert.is_nil(safe.handlers["outgoing text"])

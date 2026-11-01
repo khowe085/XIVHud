@@ -20,6 +20,7 @@ local function world(opts)
     pins = {},
   }
   local queue = new_queue({
+    no_packets = opts.no_packets,
     now = function()
       return env.now
     end,
@@ -114,9 +115,9 @@ end
 
 describe("the action queue", function()
   describe("its mode", function()
-    it("ships off, and reads a broken value as off", function()
+    it("ships on, and reads a broken value as off", function()
       local queue, env = world({ mode = "off" })
-      assert.are.same({ queue = "off" }, queue.defaults())
+      assert.are.same({ queue = "on" }, queue.defaults())
       assert.are.equal("off", queue.mode())
       assert.is_false(queue.enabled())
       env.mode = "sometimes"
@@ -124,6 +125,12 @@ describe("the action queue", function()
       assert.is_false(queue.enabled())
       env.mode = 1
       assert.are.equal("off", queue.mode())
+    end)
+
+    it("is off with no packets coming, whatever the file says", function()
+      local queue = world({ mode = "on", no_packets = true })
+      assert.are.equal("off", queue.mode())
+      assert.is_false(queue.enabled())
     end)
 
     it("is on in on and in debug", function()

@@ -1414,7 +1414,7 @@ local function new(deps)
       if mode == wanted then
         core_config().queue = mode
         core_handle.save()
-        return "action queue: " .. mode
+        return "action queue: " .. deps.actions.queue.mode()
       end
     end
     return usage

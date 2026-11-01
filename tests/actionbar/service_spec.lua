@@ -92,6 +92,7 @@ local function world(opts)
     say = function(line)
       env.chat[#env.chat + 1] = line
     end,
+    no_packets = opts.no_packets,
     debug_log = not opts.no_debug_log and function(line)
       env.debug_log[#env.debug_log + 1] = line
     end or nil,
@@ -1015,9 +1016,17 @@ describe("the action service", function()
       service.tick()
     end
 
-    it("names its mode among the tuning core seeds, shipping off", function()
+    it("names its mode among the tuning core seeds, shipping on", function()
       local service = world()
-      assert.are.equal("off", service.config_defaults().queue)
+      assert.are.equal("on", service.config_defaults().queue)
+    end)
+
+    it("stays off with no packets coming, so a cursor slot goes as bound", function()
+      local service, env = world({ no_packets = true })
+      env.config.queue = "on"
+      assert.are.equal("off", service.queue.mode())
+      service.fire({ type = "ma", action = "Cure", target = "stpc" }, {})
+      assert.are.same({ 'input /ma "Cure" <stpc>' }, env.commands)
     end)
 
     it("reads its mode off the config core keeps", function()
