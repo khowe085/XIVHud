@@ -576,10 +576,10 @@ answers in seconds now, a spell's coming in sixtieths.
 
 Row 33 passes. All 10 presses of Cure IV OK'd in its own lock, from +0.34 to +2.10 after
 its finish, were held, went at +2.72 to +2.74 and started at +3.18 to +3.31, with no `not
-held` and no refusal. One replaced a held Convert, newest wins. Utsusemi: Ni was not run,
-so a recast that outlasts the lock has not been seen on this commit. The six OKs before
-those went nowhere because a GearSwap feature of Kevin's was stopping cures on himself,
-which is the `nothing went out` the 0.6s exists for.
+held` and no refusal. One replaced a held Convert, newest wins. Utsusemi: Ni, whose recast
+outlasts the lock, was `not held` and refused with 17, 2 of 2, and a third press, past the
+lock, sent nothing. The six OKs before those went nowhere because a GearSwap feature of
+Kevin's was stopping self-cures, which is the `nothing went out` the 0.6s exists for.
 
 ## A long BLU run at 0.5 (Kevin, 2026-11-01, before `2e4fb77`)
 
