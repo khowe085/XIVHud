@@ -515,6 +515,20 @@ unanswered. Kevin cannot say whether a mob was in reach for the two stretches of
   against a median of 0.44. Of 917 casts across the logs, 362 of them held, the only
   other one that slow was a free Cure IV, so nothing ties it to the hold.
 
+## `ability` at 0.5 (Kevin, 2026-11-01)
+
+17 minutes on RDM, 37 releases, all answered and none refused by a lock.
+
+- **0.5 works.** The one spell held behind an ability, Cure IV after Convert, went at
+  +0.53 and started at +0.78. The other two abilities were followed by cursors OK'd
+  after the lock had ended, so they held nothing.
+- **`item` at 1.0, twice more:** both went at +1.02 and started at +1.66, which makes 8 of
+  8.
+- **Four Trust summons went unanswered.** Yoran-Oran (UC) at 01:21:03 to 01:21:16, none of
+  them held, with no refusal the queue knows, and the same summon worked at 01:24:19.
+  The cost is the 2s a press behind one would wait.
+- **Row 32 has not been run,** and nothing else testable is left.
+
 ## Open: left targeting a Trust
 
 Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he
