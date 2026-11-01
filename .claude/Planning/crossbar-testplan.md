@@ -174,6 +174,7 @@ their passes are gone and F36-F38 are new.
 | F14 | Look for **Refresh III**, or any merit spell you know | It is listed and binds | [x] | [ ] | Unchanged by the rewrite - the catalog content did not move |
 | F15 | Look for an **Enchanted** category | It exists and lists your enchanted gear | [x] | [ ] |  |
 | F16 | Open a long category and scroll to its last page, then keep scrolling down | It **stops** on the last page. It must not wrap round to the top | [x] | [ ] |  |
+| F16a | Open a long category and scroll down one notch at a time | Each notch moves the list **three** actions, and at the bottom the last action sits on the last row with the list still full | [ ] | [ ] |  |
 | F17 | Scroll up past the first page | It stops there too | [x] | [ ] |  |
 | F18 | Get to the target step, then press back | Back to the action list | [x] | [ ] |  |
 | F19 | Press back again | Back to the layer list, with the layer choice released | [x] | [ ] |  |

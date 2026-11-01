@@ -104,7 +104,7 @@ local STEP_LAYER, STEP_CATALOG, STEP_TARGET = "layer", "catalog", "target"
      It reuses the CATALOG view rather than owning one of its own: the rows,
      the pager and the category column are the catalog's, at the same rects.
      Two lists that look identical must not be laid out by two code paths -
-     the rule `paged` already keeps for the catalog and target steps. ]]
+     the rule `scrolled` already keeps for the catalog and target steps. ]]
 local STEP_SUBMENU = "submenu"
 
 --[[ The window itself - its rows, its controls, how it scales with the
@@ -263,6 +263,7 @@ local function new(deps)
   local BODY_ROWS = metrics.body_rows
   local ENTRY_ROWS = BODY_ROWS - 1
   local CATEGORY_ROWS = BODY_ROWS
+  local ROWS_PER_WHEEL_NOTCH = 3
   local DETAIL_ROWS = BODY_ROWS
 
   local active = false
@@ -278,26 +279,27 @@ local function new(deps)
   local pending = nil
   -- The catalog entry whose children are on screen, nil at every other step.
   -- It outlives the target step so back can return to it, and carries the
-  -- catalog page it was opened from: the listing does not move while you are
-  -- nested, so coming back out to page 1 would only lose your place.
+  -- catalog scroll it was opened from: the listing does not move while you
+  -- are nested, so coming back out at the top would only lose your place.
   local submenu = nil
-  local submenu_page = 1
+  local submenu_scroll = 0
   --[[ Where the layer step stands in its tree: the menu keys from the top
        (`{ "job", "SCH", "Storms" }`), empty at the top. Keys, not nodes,
        because the tree is rebuilt from the model on every read and a job
        change can take a menu away; whatever no longer resolves is cut. ]]
   local layer_path = {}
   --[[ The menus a nested one was opened from, outermost first, each with the
-       page it was left on (General -> Job Change -> WAR). Reset whenever a
+       scroll it was left at (General -> Job Change -> WAR). Reset whenever a
        menu is opened from the catalog itself, so a trail left behind by any
        of the routes that drop `submenu` is never climbed. ]]
   local submenu_trail = {}
-  -- The page the target step was reached from, restored when backing out of
-  -- it: the list behind it has not moved, and on a 91-row blood pact submenu
-  -- landing back at page 1 is six pages of finding your place again.
-  local target_page = 1
+  -- The scroll the target step was reached from, restored when backing out
+  -- of it: the list behind it has not moved, and on a 91-row blood pact
+  -- submenu landing back at the top is pages of finding your place again.
+  local target_scroll = 0
   local catalog_groups = nil
-  local category_index, page = 1, 1
+  -- How many rows the list on screen has scrolled past, and how far it can.
+  local category_index, scroll, scroll_limit = 1, 0, 0
   --[[ Where the player dragged the window to, or nil for dead centre. Read
        from the config on open and written back on the drop, so it survives
        a reload - the window is a working surface, and having to shove it
@@ -427,7 +429,7 @@ local function new(deps)
     local view
     view, catalog_layer = layer_view_for(cursor ~= nil and cursor.source or nil)
     catalog_groups = deps.catalog ~= nil and deps.catalog.build(view) or {}
-    category_index, page = 1, 1
+    category_index, scroll = 1, 0
     --[[ The submenu is the one piece of picker state that outlives a rebuild:
          the catalog step self-heals, because its rows come from the groups
          just replaced, but a nested view holds the entry it was opened from
@@ -549,13 +551,18 @@ local function new(deps)
     return frame
   end
 
-  --[[ One page of a list, laid into a column. Shared by the catalog's
-       entries and the target tokens, so the pager, the clamp and the row
-       rects cannot drift apart between two steps that look the same. ]]
-  local function paged(items, column, rows_per_page)
-    local rows, pages
-    rows, pages, page = chrome.paged(items, column, rows_per_page, page)
-    return rows, pages
+  --[[ The scrolled run of a list, laid into a column. Shared by the
+       catalog's entries and the target tokens, so the pager, the clamp and
+       the row rects cannot drift apart between two steps that look the same.
+       The page it reports is the one the top row is on - except at the
+       bottom of the list, which reads as the last page however it was
+       reached, or a 40-row list would never say 2/2. ]]
+  local function scrolled(items, column, rows_per_page)
+    local rows
+    rows, scroll, scroll_limit = chrome.scrolled(items, column, rows_per_page, scroll)
+    local pages = math.max(1, math.ceil(#items / rows_per_page))
+    local page = scroll == scroll_limit and pages or math.floor(scroll / rows_per_page) + 1
+    return rows, page, pages
   end
 
   --[[ The stack ------------------------------------------------------------- ]]
@@ -741,7 +748,7 @@ local function new(deps)
     return { rows = rows }
   end
 
-  --- Step two: what goes there. Categories left, one page of entries right.
+  --- Step two: what goes there. Categories left, a scrolled column of entries right.
   local function build_catalog_view(frame)
     if catalog_groups == nil or #catalog_groups == 0 then
       return nil
@@ -760,7 +767,7 @@ local function new(deps)
     }
     -- The last row of the column belongs to the pager, so the list itself
     -- stops one short of the body.
-    local rows, pages = paged(rows_source or {}, column, ENTRY_ROWS)
+    local rows, page, pages = scrolled(rows_source or {}, column, ENTRY_ROWS)
     local built = {
       category = group.name,
       submenu = submenu ~= nil and submenu.label or nil,
@@ -804,7 +811,7 @@ local function new(deps)
 
   --- Step three: what it aims at, for a type that takes a target.
   local function build_target_view(frame)
-    local rows, pages = paged(TARGET_ROWS, frame.list, ENTRY_ROWS)
+    local rows, page, pages = scrolled(TARGET_ROWS, frame.list, ENTRY_ROWS)
     local built = {
       page = page,
       pages = pages,
@@ -1416,7 +1423,7 @@ local function new(deps)
       apply_preview()
     end
     slot = { set = target.set, side = target.side, slot = target.slot, rect = target.rect }
-    step, page, submenu, layer_path = STEP_LAYER, 1, nil, {}
+    step, scroll, submenu, layer_path = STEP_LAYER, 0, nil, {}
     -- The window is this binder's now: any other bar's stands down.
     if deps.window_opened ~= nil then
       deps.window_opened()
@@ -1436,7 +1443,7 @@ local function new(deps)
   --- slot carries on from where this one started.
   local function commit(record)
     write_bind(record, window ~= nil and window.address or slot)
-    step, page, pending, submenu = STEP_LAYER, 1, nil, nil
+    step, scroll, pending, submenu = STEP_LAYER, 0, nil, nil
     details, hovered = nil, nil
   end
 
@@ -1448,15 +1455,15 @@ local function new(deps)
     if step == STEP_TARGET then
       -- Back to whichever list the action was picked from: the children where
       -- one was nested, the catalog where it was not.
-      step, page, pending = submenu ~= nil and STEP_SUBMENU or STEP_CATALOG, target_page, nil
+      step, scroll, pending = submenu ~= nil and STEP_SUBMENU or STEP_CATALOG, target_scroll, nil
     elseif step == STEP_SUBMENU and #submenu_trail > 0 then
       local parent = table.remove(submenu_trail)
-      submenu, page = parent.entry, parent.page
+      submenu, scroll = parent.entry, parent.scroll
     elseif step == STEP_SUBMENU then
-      step, page, submenu = STEP_CATALOG, submenu_page, nil
+      step, scroll, submenu = STEP_CATALOG, submenu_scroll, nil
     elseif step == STEP_CATALOG then
       -- To the menu the layer was picked from: the path is still where it was.
-      cursor, step, page = nil, STEP_LAYER, 1
+      cursor, step, scroll = nil, STEP_LAYER, 0
       apply_preview()
     elseif step == STEP_LAYER and #layer_path > 0 then
       layer_path[#layer_path] = nil
@@ -1498,13 +1505,13 @@ local function new(deps)
           end
         end
         step = STEP_CATALOG
-        -- The category the user last picked survives; the page does not,
+        -- The category the user last picked survives; the scroll does not,
         -- since the listing itself may have changed under it. Nor does the
         -- submenu: every route INTO the catalog step clears it, so
         -- "`submenu` is set only while nested" holds by construction rather
         -- than by each exit remembering to tidy up - which is how a subjob
         -- change came to strand a stale one behind the catalog's own rows.
-        page, submenu = 1, nil
+        scroll, submenu = 0, nil
         apply_preview()
       end
     elseif target.kind == "entry" then
@@ -1516,11 +1523,11 @@ local function new(deps)
         -- A menu, not an action: its children are the step, and binding the
         -- parent would write a command the game refuses.
         if step == STEP_SUBMENU then
-          submenu_trail[#submenu_trail + 1] = { entry = submenu, page = page }
+          submenu_trail[#submenu_trail + 1] = { entry = submenu, scroll = scroll }
         else
-          submenu_trail, submenu_page = {}, page
+          submenu_trail, submenu_scroll = {}, scroll
         end
-        submenu, step, page = target.entry, STEP_SUBMENU, 1
+        submenu, step, scroll = target.entry, STEP_SUBMENU, 0
         details, hovered = nil, nil
       elseif type(record) ~= "table" then
         -- Neither a menu nor an action. Nothing here builds one, but this is a
@@ -1530,7 +1537,7 @@ local function new(deps)
         return
       elseif TARGETED_TYPES[record.type] then
         pending = copy_record(record)
-        step, target_page, page = STEP_TARGET, page, 1
+        step, target_scroll, scroll = STEP_TARGET, scroll, 0
         details, hovered = nil, nil
       else
         commit(record)
@@ -1545,19 +1552,17 @@ local function new(deps)
       -- The column stays live while nested (Kevin, 2026-09-07), so switching
       -- category is also the way out of a submenu: a visible column that
       -- ignored clicks is what every other step here avoids.
-      category_index, page, submenu = target.index, 1, nil
+      category_index, scroll, submenu = target.index, 0, nil
       if step == STEP_SUBMENU then
         step = STEP_CATALOG
       end
     elseif target.kind == "pager" then
-      --[[ The pager CLICK still wraps, deliberately, where the wheel now
-           clamps: its own label says "wheel to scroll", so it reads as a
-           button that keeps moving rather than a position on the list. The
-           spec argues the same. The two are inconsistent and a reviewer
-           has said so - left alone because the wrap is what the existing
-           test pins, and that is Kevin's call rather than a review's. ]]
-      local pages = (catalog_view or target_view or {}).pages or 1
-      page = page % pages + 1
+      --[[ The pager CLICK jumps a whole list and wraps, where the wheel steps
+           three rows and clamps (Kevin, 2026-10-19): its own label says
+           "wheel to scroll", so it reads as a button that keeps moving
+           rather than a position on the list. The jump is clamped on the
+           next build, like any scroll. ]]
+      scroll = scroll >= scroll_limit and 0 or scroll + ENTRY_ROWS
     end
     redraw()
   end
@@ -1758,7 +1763,7 @@ local function new(deps)
       -- belongs to the "every route out of a nested view clears it" rule, so
       -- no assertion can isolate it.
       cursor, pending, submenu = nil, nil, nil
-      step, page = STEP_LAYER, 1
+      step, scroll = STEP_LAYER, 0
       details, hovered = nil, nil
       apply_preview()
     end
@@ -1844,6 +1849,28 @@ local function new(deps)
     return ""
   end
 
+  local function hover_at(x, y)
+    local target = hit(x, y)
+    --[[ Keyed on the TARGET, not on the text: edit mode draws every side,
+         so two slots holding the same action are ordinary, and a text-only
+         gate would leave the column describing the slot the cursor has
+         left.
+
+         Against what is HOVERED rather than against the details built from
+         it: a row with nothing to describe leaves `details` nil, so a gate
+         reading `details.key` never matched itself and repainted the whole
+         window on every mouse-move it rested there. That is an empty slot
+         as much as it is a menu row - `build_details` answers nil for
+         both. `hovered` is set from the same target and cleared wherever
+         `details` is, so the two can only agree. ]]
+    if target_key(target) == target_key(hovered) then
+      return
+    end
+    hovered = target
+    details = build_details(target)
+    redraw()
+  end
+
   function self.mouse(kind, x, y, delta)
     if not active then
       return false
@@ -1882,25 +1909,7 @@ local function new(deps)
         -- would freeze the camera on every button-down.
         return press.drag
       end
-      local target = hit(x, y)
-      --[[ Keyed on the TARGET, not on the text: edit mode draws every side,
-           so two slots holding the same action are ordinary, and a text-only
-           gate would leave the column describing the slot the cursor has
-           left.
-
-           Against what is HOVERED rather than against the details built from
-           it: a row with nothing to describe leaves `details` nil, so a gate
-           reading `details.key` never matched itself and repainted the whole
-           window on every mouse-move it rested there. That is an empty slot
-           as much as it is a menu row - `build_details` answers nil for
-           both. `hovered` is set from the same target and cleared wherever
-           `details` is, so the two can only agree. ]]
-      if target_key(target) == target_key(hovered) then
-        return false
-      end
-      hovered = target
-      details = build_details(target)
-      redraw()
+      hover_at(x, y)
       return false
     end
     if kind == LEFT_DOWN then
@@ -1958,15 +1967,17 @@ local function new(deps)
       if window == nil or slot_drag() or not inside(x, y, window) then
         return false
       end
-      local pages = (catalog_view or target_view or {}).pages
-      if pages ~= nil and type(delta) == "number" and delta ~= 0 then
-        --[[ Wheel down is forward, and BOTH ends clamp (Kevin,
-             2026-08-22): they used to wrap, so scrolling off the end of a
-             long list silently threw you back to the top and it read as the
-             list having reset. ]]
-        local move = delta < 0 and 1 or -1
-        page = math.max(1, math.min(pages, page + move))
+      if (catalog_view or target_view) ~= nil and type(delta) == "number" and delta ~= 0 then
+        --[[ Wheel down is forward, three rows a notch (Kevin, 2026-10-19 -
+             it was a page), and BOTH ends clamp (Kevin, 2026-08-22): they
+             used to wrap, so scrolling off the end of a long list silently
+             threw you back to the top and it read as the list having
+             reset. ]]
+        local move = delta < 0 and ROWS_PER_WHEEL_NOTCH or -ROWS_PER_WHEEL_NOTCH
+        scroll = math.max(0, math.min(scroll_limit, scroll + move))
         redraw()
+        -- The rows moved under a still cursor, so what it is over has too.
+        hover_at(x, y)
       end
       return true
     end

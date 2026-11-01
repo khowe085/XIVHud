@@ -28,10 +28,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --[[ Target Bar configuration defaults.
 
-     TWO bars, under `bars.main` and `bars.subtarget`: the target and the
-     `<st>` selection cursor. The two ship identical - the subtarget's smaller
-     size is its anchor's scale, not a smaller font - but they are separate
-     tables, because a command edits the bar it names.
+     THREE bars, under `bars.main`, `bars.subtarget` and `bars.focus`: the
+     target, the `<st>` selection cursor and the focus target. They ship
+     identical - the smaller two's size is their anchors' scale, not a smaller
+     font - but they are separate tables, because a command edits the bar it
+     names.
 
      Colours come from three separate sources and are deliberately kept apart:
      the text colour and stroke are partylist's (this widget is styled to match
@@ -41,12 +42,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local new_logic = require("components/targetbar/logic")
 
-local ANCHORS = { "main", "subtarget" }
+local ANCHORS = { "main", "subtarget", "focus" }
 
 -- Roughly the reference's 300 against the target bar's 600. The art is the
 -- same at either size; only the framework's scale differs.
 local SUBTARGET_SCALE = 0.6
--- Between the target bar's box and the subtarget's, at the first-run slots.
+-- Between one bar's box and the next one's, at the first-run slots.
 -- The boxes take in the art's bottom padding, so the drawn gap reads wider.
 local BAR_GAP = 8
 -- The target bar's own first-run row, unchanged.
@@ -131,7 +132,8 @@ return function(screen_width, _screen_height)
   end
 
   local main_width, main_height = box("main", 1)
-  local sub_width = box("subtarget", SUBTARGET_SCALE)
+  local sub_width, sub_height = box("subtarget", SUBTARGET_SCALE)
+  local sub_y = math.floor(MAIN_Y + main_height + BAR_GAP)
 
   local function centred(width)
     return math.max(0, math.floor(((screen_width or 0) - width) / 2))
@@ -141,13 +143,17 @@ return function(screen_width, _screen_height)
     bars = bars,
     -- No top-level pos or scale: layout.repair keys the anchored branch off
     -- the defaults, and would shed a stray pair from every file it repaired
-    -- anyway. Neither anchor carries `visible` - absent means shown, and both
-    -- bars ship on.
+    -- anyway. No anchor carries `visible` - absent means shown, and every bar
+    -- ships on. The focus bar draws nothing until something is focused.
     layout = {
       anchors = {
         main = { pos = { x = centred(main_width), y = MAIN_Y }, scale = 1 },
         subtarget = {
-          pos = { x = centred(sub_width), y = math.floor(MAIN_Y + main_height + BAR_GAP) },
+          pos = { x = centred(sub_width), y = sub_y },
+          scale = SUBTARGET_SCALE,
+        },
+        focus = {
+          pos = { x = centred(sub_width), y = math.floor(sub_y + sub_height + BAR_GAP) },
           scale = SUBTARGET_SCALE,
         },
       },
