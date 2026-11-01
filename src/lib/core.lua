@@ -109,7 +109,7 @@ local HELP = {
   "  //hud queue [on|debug|off]",
   "                            hold a bar press made during a cast or the lock",
   "                            after it, and send it when the lock clears; debug",
-  "                            says each step in chat and in debug.log",
+  "                            writes each step to debug.log",
   "  //hud queue lock [<kind> <seconds>]",
   "                            how long the queue waits after an action: spell,",
   "                            weaponskill, ability, item, ranged or interrupted",

@@ -214,9 +214,7 @@ local function new(deps)
 
   local function note(line)
     if self.mode() == "debug" then
-      local stamped = ("queue %.2f: %s"):format(now(), line)
-      deps.say(stamped)
-      deps.log(stamped)
+      deps.log(("queue %.2f: %s"):format(now(), line))
     end
   end
 

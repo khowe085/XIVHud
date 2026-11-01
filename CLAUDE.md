@@ -370,11 +370,11 @@ proves the old one over. A spell finish with no cast running is ignored: a cast
 always sends its start first, these arrived a melee round apart while Kevin was
 paralyzed, and sends straight after them were accepted, so nothing locks.
 
-`debug` is `on` plus a chat line per edge, each stamped with the clock, and what
-went out, started or was refused says how long after the last finish it did. The
-same lines are appended, dated, to `<addon>/debug.log` with raw `io` (Kevin: the
-client runs on another computer). It is never truncated, and it is written from
-`debug` alone, a line when something happens and never one per frame.
+`debug` is `on` plus a line per edge in `<addon>/debug.log`, appended with raw `io`,
+dated and stamped with the clock, and never in chat (Kevin, 2026-11-01; the client
+runs on another computer). What went out, started or was refused says how long after
+the last finish it did. The file is never truncated, and it is written from `debug`
+alone, a line when something happens and never one per frame.
 **The lock lengths are settings** (`//hud queue lock [<kind> <seconds>]`, 0 to 5 in
 tenths, and a row each on the settings window's `global` panel, Kevin, 2026-10-31).
 `core.lua`'s `queue_locks` holds only the kinds that have been set, deliberately

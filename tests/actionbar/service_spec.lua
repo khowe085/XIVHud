@@ -176,6 +176,10 @@ local function said(env)
   return table.concat(env.chat, "\n")
 end
 
+local function logged(env)
+  return table.concat(env.debug_log, "\n")
+end
+
 -- A ring in the bag whose enchantment is still warming: the equip -> wait ->
 -- use path, exactly as the widget spec drives it.
 local function ring_in_bag(env)
@@ -1035,15 +1039,15 @@ describe("the action service", function()
           0x01A,
           string.rep("\0", 10) .. string.char(named.category, 0) .. param .. string.rep("\0", 14)
         )
-        assert.is_not_nil(said(env):find("out " .. named.kind .. " " .. named.name, 1, true))
+        assert.is_not_nil(logged(env):find("out " .. named.kind .. " " .. named.name, 1, true))
       end)
     end
 
-    it("hands its debug lines to the log as well as to chat", function()
+    it("hands its debug lines to the log and never to chat", function()
       local service, env = queued("debug")
       start_cast(service)
-      assert.is_not_nil(table.concat(env.debug_log, "\n"):find("start spell", 1, true))
-      assert.is_not_nil(said(env):find("start spell", 1, true))
+      assert.is_not_nil(logged(env):find("start spell", 1, true))
+      assert.are.equal("", said(env))
     end)
 
     it("copes with no log, as a spec's ctx has none", function()
@@ -1377,7 +1381,7 @@ describe("the action service", function()
         knows_invisible(env)
         finish_cast(service)
         service.fire(INVISIBLE)
-        assert.is_not_nil(said(env):find("hold Invisible", 1, true))
+        assert.is_not_nil(logged(env):find("hold Invisible", 1, true))
       end)
 
       it("leaves a rung on its recast to the game, as any slot of it", function()

@@ -43,8 +43,8 @@ net never runs: the `0x029` handler compares `action.message`, the field is
   lock.
 - **No highlight on a held slot** in the first version.
 - **`//hud queue on|debug|off`, shipping off**, in `core.lua` beside `delay`.
-  `debug` is `on` plus a chat line per edge, which is what replaced the
-  `queue.log` probe proposed first (Kevin). The same lines go to `debug.log`
+  `debug` is `on` plus a line per edge, which is what replaced the
+  `queue.log` probe proposed first (Kevin). The lines go only to `debug.log`
   beside `load.log`, dated and never truncated, because the client runs on
   another computer (Kevin).
 
@@ -64,8 +64,8 @@ Four that came out of building it, all kept by Kevin the same day:
   the shipped length.
 
 - **A dropped press is silent outside `debug`.** It flashed when pressed, and
-  going quiet is the opposite of the trips' "a cancel is never silent". Chat lines
-  are what `debug` is for.
+  going quiet is the opposite of the trips' "a cancel is never silent". The log
+  is what `debug` is for.
 - **A charged family's shared ability recast reads as no recast**: 231 stratagems,
   195 Quick Draw, 102 and 255 Ready, the ids Selindrile's `check_recast` skips. It
   relaxes "never held on a recast". The timer running there says a charge was
@@ -654,13 +654,16 @@ tests it said could not fail and a line of wording the hold left stale were fixe
 it. Its note that stands: a token that raises no arrow leaves a cursor open, so a
 macro's numeric `/ta` could read as ours for up to 30s, which it put at 50% reachable.
 
+A ninth round, over `debug` leaving chat alone, came back clean. Its note that stands:
+a failed write to `debug.log` now leaves no trace, chat having been the only other place.
+
 ## Measuring in a live client
 
 `//hud queue debug`, then cast back to back and mash an in-game **macro** through
 the lock: bar presses are held and so never test the edge, macros are not. Each
 action going out prints how long after the last finish it left, and the next
 line says whether it started or was refused. The last refusal and the first
-start bracket the true lock. Every line is in `debug.log` too.
+start bracket the true lock. Every line is in `debug.log`.
 
 | # | Do | Expect | Why |
 | --- | --- | --- | --- |

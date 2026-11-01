@@ -13,7 +13,6 @@ local function world(opts)
     now = 100,
     mode = opts.mode or "on",
     player = { id = ME },
-    chat = {},
     log = {},
     recast = {},
     names = {},
@@ -29,9 +28,6 @@ local function world(opts)
     end,
     get_player = function()
       return env.player
-    end,
-    say = function(line)
-      env.chat[#env.chat + 1] = line
     end,
     log = function(line)
       env.log[#env.log + 1] = line
@@ -61,8 +57,8 @@ local function world(opts)
   return queue, env
 end
 
-local function said(env)
-  return table.concat(env.chat, "\n")
+local function logged(env)
+  return table.concat(env.log, "\n")
 end
 
 local function spell(name, target)
@@ -229,7 +225,7 @@ describe("the action queue", function()
       local queue, env = world({ mode = "debug" })
       env.locks = { spell = 2.5 }
       finish_cast(queue)
-      assert.is_not_nil(said(env):find("finish spell, lock 2.50s", 1, true))
+      assert.is_not_nil(logged(env):find("finish spell, lock 2.50s", 1, true))
     end)
   end)
 
@@ -1420,7 +1416,7 @@ describe("the action queue", function()
       finish_cast(queue)
       env.now = env.now + 3.01
       queue.step()
-      assert.are.same({}, env.chat)
+      assert.are.same({}, env.log)
     end)
 
     it("says nothing in off", function()
@@ -1428,34 +1424,33 @@ describe("the action queue", function()
       queue.on_outgoing(0x01A, outgoing_action(MAGIC))
       start_cast(queue)
       finish_cast(queue)
-      assert.are.same({}, env.chat)
+      assert.are.same({}, env.log)
     end)
 
-    it("writes every line to the log too, for a client nobody is sitting at", function()
+    it("writes every line to the log, for a client nobody is sitting at", function()
       local queue, env = world({ mode = "debug" })
       finish_cast(queue)
       assert.are.equal(2, #env.log)
-      assert.are.same(env.chat, env.log)
     end)
 
     it("names what went out", function()
       local queue, env = world({ mode = "debug" })
       env.names[143] = "Cure IV"
       queue.on_outgoing(0x01A, outgoing_action(MAGIC, 143))
-      assert.is_not_nil(said(env):find("out spell Cure IV", 1, true))
+      assert.is_not_nil(logged(env):find("out spell Cure IV", 1, true))
     end)
 
     it("says the id of what it cannot name", function()
       local queue, env = world({ mode = "debug" })
       queue.on_outgoing(0x01A, outgoing_action(MAGIC, 143))
-      assert.is_not_nil(said(env):find("out spell 143", 1, true))
+      assert.is_not_nil(logged(env):find("out spell 143", 1, true))
     end)
 
     it("says a category 4 it ignored, with the message that explains it", function()
       local queue, env = world({ mode = "debug" })
       queue.on_action(paralyzed_round(84))
-      assert.is_not_nil(said(env):find("ignored a finish with no cast running, message 84", 1, true))
-      assert.is_nil(said(env):find("lock", 1, true))
+      assert.is_not_nil(logged(env):find("ignored a finish with no cast running, message 84", 1, true))
+      assert.is_nil(logged(env):find("lock", 1, true))
     end)
 
     it("copes with one that carries no message", function()
@@ -1463,7 +1458,7 @@ describe("the action queue", function()
       assert.has_no.errors(function()
         queue.on_action(action(4, 0))
       end)
-      assert.is_not_nil(said(env):find("ignored a finish with no cast running", 1, true))
+      assert.is_not_nil(logged(env):find("ignored a finish with no cast running", 1, true))
     end)
 
     it("says the arrow, so a cursor that never raised one shows", function()
@@ -1471,85 +1466,76 @@ describe("the action queue", function()
       start_cast(queue)
       queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
       queue.on_text("/ta 777")
-      assert.is_not_nil(said(env):find("arrow 777", 1, true))
-    end)
-
-    it("writes nothing to the log in on or off", function()
-      for _, mode in ipairs({ "on", "off" }) do
-        local queue, env = world({ mode = mode })
-        start_cast(queue)
-        finish_cast(queue)
-        assert.are.same({}, env.log)
-      end
+      assert.is_not_nil(logged(env):find("arrow 777", 1, true))
     end)
 
     it("stamps every line with the clock", function()
       local queue, env = world({ mode = "debug" })
       env.now = 123.456
       start_cast(queue)
-      assert.is_not_nil(said(env):find("queue 123.46: ", 1, true))
+      assert.is_not_nil(logged(env):find("queue 123.46: ", 1, true))
     end)
 
     it("says what went out and how long after the last finish", function()
       local queue, env = world({ mode = "debug" })
       queue.on_outgoing(0x01A, outgoing_action(MAGIC))
-      assert.is_not_nil(said(env):find("out spell", 1, true))
+      assert.is_not_nil(logged(env):find("out spell", 1, true))
       finish_cast(queue)
-      env.chat = {}
+      env.log = {}
       env.now = env.now + 2.41
       queue.on_outgoing(0x01A, outgoing_action(ABILITY))
-      assert.is_not_nil(said(env):find("out ability +2.41s after finish", 1, true))
+      assert.is_not_nil(logged(env):find("out ability +2.41s after finish", 1, true))
     end)
 
     it("says what started, finished and was interrupted", function()
       local queue, env = world({ mode = "debug" })
       start_cast(queue)
-      assert.is_not_nil(said(env):find("start spell", 1, true))
+      assert.is_not_nil(logged(env):find("start spell", 1, true))
       finish_cast(queue)
-      assert.is_not_nil(said(env):find("finish spell, lock 2.70s", 1, true))
+      assert.is_not_nil(logged(env):find("finish spell, lock 2.70s", 1, true))
       queue.on_action(action(7, STARTING))
       queue.on_action(action(7, INTERRUPTED))
-      assert.is_not_nil(said(env):find("interrupted weaponskill, lock 2.70s", 1, true))
+      assert.is_not_nil(logged(env):find("interrupted weaponskill, lock 2.70s", 1, true))
     end)
 
     it("says a start's distance from the last finish, the other half of the bracket", function()
       local queue, env = world({ mode = "debug" })
       finish_cast(queue)
-      env.chat = {}
+      env.log = {}
       env.now = env.now + 2.8
       start_cast(queue)
-      assert.is_not_nil(said(env):find("start spell +2.80s after finish", 1, true))
+      assert.is_not_nil(logged(env):find("start spell +2.80s after finish", 1, true))
     end)
 
     it("says a refusal's message and distance from the last finish", function()
       local queue, env = world({ mode = "debug" })
       finish_cast(queue)
-      env.chat = {}
+      env.log = {}
       env.now = env.now + 2.4
       queue.on_message(battle_message(ME, 17))
-      assert.is_not_nil(said(env):find("refused, message 17 +2.40s after finish", 1, true))
+      assert.is_not_nil(logged(env):find("refused, message 17 +2.40s after finish", 1, true))
     end)
 
     it("stays quiet about a message that is not a refusal", function()
       local queue, env = world({ mode = "debug" })
       queue.on_message(battle_message(ME, 94))
-      assert.are.same({}, env.chat)
+      assert.are.same({}, env.log)
     end)
 
     it("says what it held, replaced, released and dropped", function()
       local queue, env = world({ mode = "debug" })
       finish_cast(queue)
       queue.press(spell("Cure"), command("Cure"))
-      assert.is_not_nil(said(env):find("hold Cure", 1, true))
+      assert.is_not_nil(logged(env):find("hold Cure", 1, true))
       env.now = env.now + 1
       queue.press(spell("Stone"), command("Stone"))
-      assert.is_not_nil(said(env):find("hold Stone, replacing Cure", 1, true))
+      assert.is_not_nil(logged(env):find("hold Stone, replacing Cure", 1, true))
       env.now = env.now + 2.01
       queue.step()
-      assert.is_not_nil(said(env):find("release Stone after 2.01s", 1, true))
+      assert.is_not_nil(logged(env):find("release Stone after 2.01s", 1, true))
       queue.press(spell("Cure"), command("Cure"))
       queue.drop("re-attach")
-      assert.is_not_nil(said(env):find("dropped Cure: re-attach", 1, true))
+      assert.is_not_nil(logged(env):find("dropped Cure: re-attach", 1, true))
     end)
 
     it("says why a press was not held", function()
@@ -1557,12 +1543,12 @@ describe("the action queue", function()
       start_cast(queue)
       env.recast.Cure = 4
       queue.press(spell("Cure"), command("Cure"))
-      assert.is_not_nil(said(env):find("not held: Cure on recast", 1, true))
+      assert.is_not_nil(logged(env):find("not held: Cure on recast", 1, true))
       queue.press(spell("Stone", "ft"), 'input /ma "Stone" <ft>')
-      assert.is_not_nil(said(env):find("not held: Stone, <ft> cannot be pinned", 1, true))
+      assert.is_not_nil(logged(env):find("not held: Stone, <ft> cannot be pinned", 1, true))
       env.blocked = "edit mode"
       queue.press(spell("Stone"), command("Stone"))
-      assert.is_not_nil(said(env):find("not held: Stone, edit mode", 1, true))
+      assert.is_not_nil(logged(env):find("not held: Stone, edit mode", 1, true))
     end)
 
     it("says a weaponskill that had no TP, at the press and at the release", function()
@@ -1574,28 +1560,28 @@ describe("the action queue", function()
       queue.on_action(action(3, 1))
       env.player.vitals.tp = 100
       queue.press(blade, 'input /ws "Savage Blade" <me>')
-      assert.truthy(said(env):find("swallowed Savage Blade, no TP", 1, true))
+      assert.truthy(logged(env):find("swallowed Savage Blade, no TP", 1, true))
       env.now = env.now + 2.41
       queue.step()
-      assert.truthy(said(env):find("dropped Savage Blade: no TP", 1, true))
+      assert.truthy(logged(env):find("dropped Savage Blade: no TP", 1, true))
     end)
 
     it("says a press was already going", function()
       local queue, env = world({ mode = "debug" })
       queue.press(spell("Cure"), command("Cure"))
       queue.press(spell("Cure"), command("Cure"))
-      assert.is_not_nil(said(env):find("swallowed Cure, already going", 1, true))
+      assert.is_not_nil(logged(env):find("swallowed Cure, already going", 1, true))
     end)
 
     it("says what a cursor did", function()
       local queue, env = world({ mode = "debug" })
       start_cast(queue)
       queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
-      assert.is_not_nil(said(env):find("cursor Shell V <stpc>", 1, true))
+      assert.is_not_nil(logged(env):find("cursor Shell V <stpc>", 1, true))
       queue.on_text("/ta 777")
       queue.on_text("/ta 12345")
-      assert.is_not_nil(said(env):find("OK Shell V at 12345", 1, true))
-      assert.is_not_nil(said(env):find("hold Shell V", 1, true))
+      assert.is_not_nil(logged(env):find("OK Shell V at 12345", 1, true))
+      assert.is_not_nil(logged(env):find("hold Shell V", 1, true))
     end)
 
     it("says a press that only changed what OK casts", function()
@@ -1603,7 +1589,7 @@ describe("the action queue", function()
       queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
       env.arrow_up = true
       queue.press(spell("Protect V", "stpc"), 'input /ma "Protect V" <stpc>')
-      assert.is_not_nil(said(env):find("cursor up, OK takes Protect V", 1, true))
+      assert.is_not_nil(logged(env):find("cursor up, OK takes Protect V", 1, true))
     end)
 
     it("says a cursor given up for another", function()
@@ -1612,7 +1598,7 @@ describe("the action queue", function()
       queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
       queue.on_text("/ta 777")
       queue.on_text("/ta <stnpc>")
-      assert.is_not_nil(said(env):find("no OK for Shell V", 1, true))
+      assert.is_not_nil(logged(env):find("no OK for Shell V", 1, true))
     end)
 
     it("says a cursor nobody confirmed", function()
@@ -1621,7 +1607,7 @@ describe("the action queue", function()
       queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
       env.now = env.now + 30.01
       queue.step()
-      assert.is_not_nil(said(env):find("no OK for Shell V", 1, true))
+      assert.is_not_nil(logged(env):find("no OK for Shell V", 1, true))
     end)
 
     it("says a release lost to its recast", function()
@@ -1632,7 +1618,7 @@ describe("the action queue", function()
       env.recast.Cure = 2
       env.now = env.now + 3.01
       queue.step()
-      assert.is_not_nil(said(env):find("dropped Cure: on recast", 1, true))
+      assert.is_not_nil(logged(env):find("dropped Cure: on recast", 1, true))
     end)
 
     it("says a backstop fired, which is the case worth seeing", function()
@@ -1640,28 +1626,28 @@ describe("the action queue", function()
       queue.press(spell(), command())
       env.now = env.now + 0.61
       queue.step()
-      assert.is_not_nil(said(env):find("nothing went out for the last press", 1, true))
-      env.chat = {}
+      assert.is_not_nil(logged(env):find("nothing went out for the last press", 1, true))
+      env.log = {}
       queue.on_outgoing(0x01A, outgoing_action(MAGIC))
       env.now = env.now + 2.01
       queue.step()
-      assert.is_not_nil(said(env):find("no answer to the last send", 1, true))
-      env.chat = {}
+      assert.is_not_nil(logged(env):find("no answer to the last send", 1, true))
+      env.log = {}
       start_cast(queue)
       env.now = env.now + 30.01
       queue.step()
-      assert.is_not_nil(said(env):find("no finish for the last start", 1, true))
+      assert.is_not_nil(logged(env):find("no finish for the last start", 1, true))
     end)
 
     it("says when the lock clears, once", function()
       local queue, env = world({ mode = "debug" })
       finish_cast(queue)
-      env.chat = {}
+      env.log = {}
       env.now = env.now + 3.01
       queue.step()
       queue.step()
-      assert.are.equal(1, #env.chat)
-      assert.is_not_nil(said(env):find("lock over", 1, true))
+      assert.are.equal(1, #env.log)
+      assert.is_not_nil(logged(env):find("lock over", 1, true))
     end)
 
     it("says a clear", function()
@@ -1669,18 +1655,7 @@ describe("the action queue", function()
       start_cast(queue)
       queue.press(spell(), command())
       queue.clear("zone")
-      assert.is_not_nil(said(env):find("cleared: zone", 1, true))
-    end)
-
-    it("is plain ASCII, because chat is not UTF-8", function()
-      local queue, env = world({ mode = "debug" })
-      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
-      start_cast(queue)
-      queue.press(spell(), command())
-      finish_cast(queue)
-      env.now = env.now + 3.01
-      queue.step()
-      assert.is_nil(said(env):find("[\128-\255]"))
+      assert.is_not_nil(logged(env):find("cleared: zone", 1, true))
     end)
   end)
 end)

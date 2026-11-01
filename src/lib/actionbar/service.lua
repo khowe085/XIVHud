@@ -635,7 +635,6 @@ local function new(deps)
     now = frame_now,
     config = config,
     get_player = get_player,
-    say = say,
     log = function(line)
       if deps.debug_log ~= nil then
         deps.debug_log(line)

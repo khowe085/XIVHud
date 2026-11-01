@@ -226,7 +226,7 @@ or the console too, and their settings are shared by both bars.
 | `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage: the spell, then Spectral Jig, then the ninjutsu, then an oil or powder. Silenced or muted, the spells and ninjutsu are passed over |
 | `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
 | `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; `0` switches the countdown off |
-| `//hud queue [on\|debug\|off]` | the action queue, below; `debug` also says each step in chat and adds it to `debug.log` in the addon's folder |
+| `//hud queue [on\|debug\|off]` | the action queue, below; `debug` also writes each step to `debug.log` in the addon's folder |
 | `//hud queue lock [<kind> <seconds>]` | how long the queue waits after each kind of action: `spell`, `weaponskill`, `ability`, `item`, `ranged` or `interrupted`, 0 to 5 seconds in tenths; alone, lists them all |
 
 **The action queue.** After a spell, a weapon skill or a job ability the game
