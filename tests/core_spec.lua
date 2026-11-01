@@ -2201,7 +2201,7 @@ describe("core", function()
           for _, expected in ipairs({
             "spell 2.7",
             "weaponskill 2.4",
-            "ability 1",
+            "ability 0.5",
             "item 1,",
             "ranged 1",
             "interrupted 2.7",
@@ -2567,7 +2567,7 @@ describe("core", function()
         for _, row in ipairs({
           { label = "Spell lock (seconds)", value = "2.7" },
           { label = "Weaponskill lock (seconds)", value = "2.4" },
-          { label = "Ability lock (seconds)", value = "1" },
+          { label = "Ability lock (seconds)", value = "0.5" },
           { label = "Item lock (seconds)", value = "1" },
           { label = "Ranged lock (seconds)", value = "1" },
           { label = "Interrupted lock (seconds)", value = "2.7" },

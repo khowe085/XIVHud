@@ -174,16 +174,17 @@ the lock is still running.
 
 The shipped lengths, at the top of `queue.lua`, because too long costs a moment and
 too short loses the press. `spell` and `weaponskill` are measured from Kevin's logs
-below, `interrupted` is bracketed by them and `item` rests on two samples;
-**`ability` and `ranged` are unverified**,
-the longer of two sources with ranged rounded up from its one.
+below, `interrupted` is bracketed by them, `ability` sits a step above a tested 0.4 and
+`item` rests on two samples;
+**`ranged` is unverified**,
+Selindrile's figure rounded up to a second.
 `//hud queue lock` and the settings window override any of them.
 
 | After | bg-wiki | Selindrile's aftercast | Shipped |
 | --- | --- | --- | --- |
 | spell | 3.0 | 2.9 | 2.7, measured |
 | weaponskill | 2.0 | 2.7 | 2.4, measured |
-| ability | 1.0, 2.0 before auto-attack | 0.8 | 1.0 |
+| ability | 1.0, 2.0 before auto-attack | 0.8 | 0.5, a step above 9 of 9 held spells at 0.4 |
 | item | none | 1.5 | 1.0, above two accepted sends at +0.64 and +0.86 |
 | ranged | none | 0.85 | 1.0 |
 | interrupted | none | 1.75 | 2.7, the spell's: refused up to +2.23, accepted from +2.01 |
@@ -495,6 +496,8 @@ unanswered. Kevin cannot say whether a mob was in reach for the two stretches of
 - **The seven message 17s were a mash.** Each was a spell pressed again once its own
   recast was running, which goes out by the rule and is refused. Each lock ran on as
   it was, and no held press was lost to them.
+- **`ability` ships at 0.5** (Kevin), on the safe side of what was tested. A stored
+  `queue_locks.ability` still overrides it.
 
 ## Open: left targeting a Trust
 
@@ -581,3 +584,7 @@ start bracket the true lock. Every line is in `debug.log` too.
 | 26 | Hold a `<stpc>` arrow on a Trust as your target dies, opening it during a lock. Repeat with `//hud queue off` | Which run leaves you on the Trust | Whether a `/ta` arrow is what strands you |
 | 27 | Hold a cursor up past 30s, then OK | It casts at who you picked, target unchanged | A long pre-select |
 | 28 | Press a `sneak` slot, then an `invisible` slot inside its cast or lock | `hold Invisible`, `release`, and it casts with no refusal | A ladder slot held |
+| 29 | Use an item, then press a bar spell at once | `finish item, lock 1.00s`, `release`, `out` at about +1.02, then `start` | `item` at 1.0 has never held a press |
+| 30 | Use an ability, then press a bar ability, and again with a bar weaponskill at 1000 TP | `lock 0.50s`, `release`, `out` at about +0.52, then `finish ability` or `start` | Only spells have been held at this length |
+| 31 | Press a `<st>` slot, pick a target, press OK | `cursor`, `arrow`, `OK`, the cast lands on who you picked, target unchanged | Only `<stpc>` and `<stnpc>` have run live |
+| 32 | Press a bar spell during a cast, then type `//hud layout` | `dropped ...: //hud layout`, nothing goes | Only `suppressed` has dropped a press for this reason |

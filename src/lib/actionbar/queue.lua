@@ -56,19 +56,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      `weaponskill` is measured too: sends at +2.09 went one each way, shorter ones
      were refused, and all 27 releases at 2.4 were accepted.
 
-     `interrupted` takes the spell's: after a real interrupt a spell was refused up
-     to +2.23 and accepted from +2.37, and Selindrile's 1.75 lost the press.
+     `interrupted` takes the spell's: after a real interrupt a send was refused up
+     to +2.23 and accepted down to +2.01, and Selindrile's 1.75 lost the press.
+
+     `ability` is measured: all 9 spells held at 0.4 started, about 0.8s sooner than
+     at 1.0, and it ships a step above that.
 
      `item` rests on two samples: a spell +0.64 after one started and an ability
      +0.86 after one went, so it sits above them rather than at them.
 
-     The rest are UNVERIFIED: the longer of bg-wiki and Selindrile's aftercast,
-     and ranged, which only Selindrile gives, is rounded up to a second.
-     `//hud queue debug` brackets the real ones. ]]
+     `ranged` is UNVERIFIED: Selindrile's is the only figure there is, and it is
+     rounded up to a second.
+     `//hud queue debug` brackets the real one. ]]
 local LOCK_SECONDS = {
   spell = 2.7,
   weaponskill = 2.4,
-  ability = 1,
+  ability = 0.5,
   item = 1,
   ranged = 1,
   interrupted = 2.7,

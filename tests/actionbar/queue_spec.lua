@@ -155,7 +155,7 @@ describe("the action queue", function()
       local queue = world()
       assert.are.equal(2.7, queue.lock("spell"))
       assert.are.equal(2.4, queue.lock("weaponskill"))
-      assert.are.equal(1, queue.lock("ability"))
+      assert.are.equal(0.5, queue.lock("ability"))
       assert.are.equal(1, queue.lock("item"))
       assert.are.equal(1, queue.lock("ranged"))
       assert.are.equal(2.7, queue.lock("interrupted"))
@@ -860,10 +860,10 @@ describe("the action queue", function()
       { category = 3, seconds = 2.4, name = "weaponskill" },
       { category = 4, seconds = 2.7, name = "spell" },
       { category = 5, seconds = 1.0, name = "item" },
-      { category = 6, seconds = 1.0, name = "ability" },
+      { category = 6, seconds = 0.5, name = "ability" },
       { category = 11, seconds = 2.4, name = "weaponskill" },
-      { category = 14, seconds = 1.0, name = "ability" },
-      { category = 15, seconds = 1.0, name = "ability" },
+      { category = 14, seconds = 0.5, name = "ability" },
+      { category = 15, seconds = 0.5, name = "ability" },
     }
     for _, lock in ipairs(LOCKS) do
       it("locks " .. lock.seconds .. "s after category " .. lock.category, function()

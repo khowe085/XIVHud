@@ -385,10 +385,12 @@ reaching the beat near +2.8 is a coin toss (refused up to +2.58, accepted down t
 250 releases at 2.7, none was refused by the lock. `weaponskill` is measured at 2.4:
 sends at +2.09 went one each way, shorter ones were refused, and all 27 releases
 were accepted, where bg-wiki
-says 2.0. `interrupted` takes the spell's 2.7, refused up to +2.23 and accepted from
-+2.37. `item` is 1 on two samples, a spell at +0.64 and an ability at +0.86, and sits
-above them rather than at them. **The others are unverified**, the longer of bg-wiki and Selindrile's
-aftercast. Mash
+says 2.0. `interrupted` takes the spell's 2.7, refused up to +2.23 and accepted down to
++2.01. `ability` is 0.5 (Kevin, 2026-11-01): all 9 spells held at 0.4 started, about 0.8s
+sooner than at 1.0, and it sits a step above that. `item` is 1 on two samples, a spell at
++0.64 and an ability at +0.86, and sits
+above them rather than at them. **`ranged` is unverified**, Selindrile's figure rounded up
+to a second. Mash
 an in-game macro through a lock in `debug` - bar presses are held and never test
 the edge - and the last refusal and the first start bracket the real one. The
 in-client rows are in the plan.
