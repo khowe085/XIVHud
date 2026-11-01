@@ -1122,6 +1122,10 @@ step("building the statusbar component", function()
     send_command = function(command)
       windower.send_command(command)
     end,
+    -- `partyorder`: the party list follows this bar's order, through core.
+    buff_order_changed = function(priority)
+      return core.buff_order_changed("statusbar", priority)
+    end,
   }))
 end)
 

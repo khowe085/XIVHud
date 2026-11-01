@@ -61,6 +61,16 @@ describe("entry point", function()
       assert.is_not_nil(boot.ctxs.statusbar.resources)
     end)
 
+    -- `partyorder`: a component cannot reach a sibling, so the order goes
+    -- through core, named as the status bar's so it is not handed back, and
+    -- core's count of who took it comes back for the reply.
+    it("hands the status bar's buff order to core under its own name", function()
+      local order = { [15] = 1 }
+      boot.buff_order_takers = 2
+      assert.are.equal(2, boot.ctxs.statusbar.buff_order_changed(order))
+      assert.are.same({ { from = "statusbar", priority = order } }, boot.buff_orders)
+    end)
+
     it("builds the party list once, with no variant to pick", function()
       local built = 0
       for _, name in ipairs(boot.built) do
