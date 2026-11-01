@@ -431,6 +431,34 @@ was tried. The Provoke mash was refused with 446 for having no valid target.
 - A cast ended with `finish spell` and `interrupted spell` in one frame at 23:43:27,
   while Kevin was paralyzed. Both lock 2.7, so nothing turns on it.
 
+## A long RDM run on the 1.0 item lock (Kevin, 2026-11-01, on `ebb8088`)
+
+65 minutes, 57 releases, none refused by a lock, and no crash. `ability` ran at 1.0, so
+this is the baseline for trying it at 0.4.
+
+- **The baseline:** five held spells went at +1.02 to +1.04 after an ability and started
+  at +1.63 to +1.65. Stymie held behind Saboteur went at +1.02 and finished. Nothing
+  was sent under +1.02.
+- **`item` at 1.0 is in force and still untested:** `lock 1.00s` printed twice, and
+  nothing was sent inside either lock.
+- **A weaponskill held across another went, the first to do so.** With TP left, Black
+  Halo stayed held through the finish, went at +2.42 and started at +2.86 (00:32:55), so
+  the TP check lets one through when it should.
+- **A refused item takes a false lock.** A menu item +0.47 after a weaponskill was
+  refused with 56, and the packet beside the refusal read as an interrupt, so a 2.7 from
+  there replaced the 2.4, 1.62s longer. It stands, as row 13's does: only a menu item
+  reaches it, a bar's being held, and it costs one held press a moment. An interrupt
+  with no start cannot simply be ignored, since the one at 23:45:04 was a real cast.
+- **Two stretches of `nothing went out`,** at 00:23:41 (five, 3.9s to the next send) and
+  00:24:05 (six, 5.8s): Black Halo pressed at 1000 TP and no packet left, and GearSwap's
+  own weaponskill, which usually goes as TP reaches 1000, did not go either. Then a
+  press went and started. No target in reach would fit, a dead mob or a disengage. The
+  queue adds at most 0.6s to the first press that can go.
+- **Two weaponskills went unanswered** at 00:33:13 and 00:33:15, GearSwap's and the
+  press released behind it, then nothing for 22s. The mob dying would fit.
+- **A send soon after a refusal,** recounted over seven logs: 8 of 25 under 0.9s got no
+  answer, against 12 of 1399 after that.
+
 ## Open: left targeting a Trust
 
 Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he
