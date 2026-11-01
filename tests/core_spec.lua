@@ -2202,7 +2202,7 @@ describe("core", function()
             "spell 2.7",
             "weaponskill 2.4",
             "ability 1",
-            "item 1.5",
+            "item 1,",
             "ranged 1",
             "interrupted 2.7",
           }) do
@@ -2568,7 +2568,7 @@ describe("core", function()
           { label = "Spell lock (seconds)", value = "2.7" },
           { label = "Weaponskill lock (seconds)", value = "2.4" },
           { label = "Ability lock (seconds)", value = "1" },
-          { label = "Item lock (seconds)", value = "1.5" },
+          { label = "Item lock (seconds)", value = "1" },
           { label = "Ranged lock (seconds)", value = "1" },
           { label = "Interrupted lock (seconds)", value = "2.7" },
         }) do

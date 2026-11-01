@@ -156,7 +156,7 @@ describe("the action queue", function()
       assert.are.equal(2.7, queue.lock("spell"))
       assert.are.equal(2.4, queue.lock("weaponskill"))
       assert.are.equal(1, queue.lock("ability"))
-      assert.are.equal(1.5, queue.lock("item"))
+      assert.are.equal(1, queue.lock("item"))
       assert.are.equal(1, queue.lock("ranged"))
       assert.are.equal(2.7, queue.lock("interrupted"))
     end)
@@ -859,7 +859,7 @@ describe("the action queue", function()
       { category = 2, seconds = 1.0, name = "ranged" },
       { category = 3, seconds = 2.4, name = "weaponskill" },
       { category = 4, seconds = 2.7, name = "spell" },
-      { category = 5, seconds = 1.5, name = "item" },
+      { category = 5, seconds = 1.0, name = "item" },
       { category = 6, seconds = 1.0, name = "ability" },
       { category = 11, seconds = 2.4, name = "weaponskill" },
       { category = 14, seconds = 1.0, name = "ability" },

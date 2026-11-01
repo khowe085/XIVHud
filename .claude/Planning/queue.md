@@ -174,7 +174,8 @@ the lock is still running.
 
 The shipped lengths, at the top of `queue.lua`, because too long costs a moment and
 too short loses the press. `spell` and `weaponskill` are measured from Kevin's logs
-below and `interrupted` is bracketed by them; **the other three are unverified**,
+below, `interrupted` is bracketed by them and `item` rests on two samples;
+**`ability` and `ranged` are unverified**,
 the longer of two sources with ranged rounded up from its one.
 `//hud queue lock` and the settings window override any of them.
 
@@ -183,7 +184,7 @@ the longer of two sources with ranged rounded up from its one.
 | spell | 3.0 | 2.9 | 2.7, measured |
 | weaponskill | 2.0 | 2.7 | 2.4, measured |
 | ability | 1.0, 2.0 before auto-attack | 0.8 | 1.0 |
-| item | none | 1.5 | 1.5 |
+| item | none | 1.5 | 1.0, above two accepted sends at +0.64 and +0.86 |
 | ranged | none | 0.85 | 1.0 |
 | interrupted | none | 1.75 | 2.7, the spell's, bracketed at +2.23 to +2.37 |
 
@@ -392,7 +393,8 @@ Still open: a held ability and a held item, a lock changed in `//hud config`, an
 and an ability at +0.86 went. Sends at +0.32 and +0.59 got no answer, but each came
 within 0.3s of a refusal, and the message 18 run shows a send that soon after a refusal
 gets none whatever the lock (+6.13, +15.00, +22.71 and +32.65, each under 0.9s after
-one), so neither says anything. Held releases at +1.54 all went.
+one), so neither says anything. Held releases at +1.54 all went. It ships at 1.0 (Kevin),
+above the two accepted sends rather than at them, and that length has yet to run live.
 
 The ability lock is no better known: three releases at +1.03 went and nothing shorter
 was tried. The Provoke mash was refused with 446 for having no valid target.

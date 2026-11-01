@@ -386,7 +386,8 @@ reaching the beat near +2.8 is a coin toss (refused up to +2.58, accepted down t
 sends at +2.09 went one each way, shorter ones were refused, and all 27 releases
 were accepted, where bg-wiki
 says 2.0. `interrupted` takes the spell's 2.7, refused up to +2.23 and accepted from
-+2.37. **The others are unverified**, the longer of bg-wiki and Selindrile's
++2.37. `item` is 1 on two samples, a spell at +0.64 and an ability at +0.86, and sits
+above them rather than at them. **The others are unverified**, the longer of bg-wiki and Selindrile's
 aftercast. Mash
 an in-game macro through a lock in `debug` - bar presses are held and never test
 the edge - and the last refusal and the first start bracket the real one. The
