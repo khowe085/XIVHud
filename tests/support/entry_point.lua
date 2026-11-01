@@ -208,7 +208,7 @@ local function build_windower(boot)
         return boot.last_incoming[id], 12345
       end,
     },
-    --[[ The four reads the player service caches are counted, because how many
+    --[[ The five reads the player service caches are counted, because how many
          of them reach the client is exactly what that service is for and is
          invisible from any component spec. ]]
     ffxi = {
@@ -219,6 +219,14 @@ local function build_windower(boot)
       get_mob_by_target = function(...)
         boot.client_calls.mob = boot.client_calls.mob + 1
         return boot.mobs[(...)]
+      end,
+      -- Its own table, so an id read wired to the token read answers nothing.
+      get_mob_by_id = function(id)
+        boot.client_calls.mob = boot.client_calls.mob + 1
+        return boot.mobs_by_id[id]
+      end,
+      get_mob_array = function()
+        return boot.mobs
       end,
       get_party = function()
         boot.client_calls.party = boot.client_calls.party + 1
@@ -364,6 +372,7 @@ function M.boot(options)
     logged_in = not options.logged_out,
     party = {},
     mobs = { t = { id = 7 } },
+    mobs_by_id = { [42] = { id = 42 } },
     client_calls = { player = 0, party = 0, info = 0, mob = 0 },
     prerender_targets = {},
   }

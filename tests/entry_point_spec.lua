@@ -455,6 +455,26 @@ describe("entry point", function()
       assert.are.equal(1, #boot.prerender_targets)
     end)
 
+    -- The focus bar's per-frame read goes through the same memo.
+    it("memoizes the target bar's lookup by id for the frame", function()
+      boot.ctxs.targetbar.get_mob_by_id(42)
+      boot.ctxs.targetbar.get_mob_by_id(42)
+      assert.are.equal(1, boot.client_calls.mob)
+      tick()
+      local before = boot.client_calls.mob
+      boot.ctxs.targetbar.get_mob_by_id(42)
+      assert.are.equal(before + 1, boot.client_calls.mob, "the memo outlived its frame")
+    end)
+
+    it("answers a lookup by id from the client's lookup by id", function()
+      assert.are.equal(42, boot.ctxs.targetbar.get_mob_by_id(42).id)
+    end)
+
+    -- Read once per `focus` command, so it is the client's own, unmemoized.
+    it("hands the target bar the client's mob array", function()
+      assert.are.equal(boot.mobs, boot.ctxs.targetbar.get_mob_array())
+    end)
+
     it("answers a mob lookup with what the client gave", function()
       assert.are.equal(7, boot.ctxs.targetbar.get_mob_by_target("t").id)
     end)

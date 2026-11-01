@@ -28,10 +28,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --[[ Target Bar - the current target's health, name and distance, on the same
      xiv bar art the party list uses, and the same again for the `<st>`
-     selection cursor on a second bar of its own.
+     selection cursor and for a focus target, each on a bar of its own.
 
-     This file owns prims and nothing else: what to draw comes from logic.lua,
-     whether to draw comes from the framework. The prims are built once at
+     This file owns prims and nothing else: what to draw comes from logic.lua
+     (and which mob the focus bar holds from focus.lua), whether to draw comes
+     from the framework. The prims are built once at
      construction rather than on demand - there are only six of them a bar, and
      a widget that builds them lazily has to dispose them somewhere too.
 
@@ -49,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local new_logic = require("components/targetbar/logic")
 local new_th = require("components/targetbar/th")
+local new_focus = require("components/targetbar/focus")
 local build_defaults = require("components/targetbar/defaults")
 
 local ASSET_DIR = "assets/xiv/wide/"
@@ -57,19 +59,19 @@ local ASSET_DIR = "assets/xiv/wide/"
 -- windower.packets.parse_action once for every component that wants it.
 local ACTION_CHUNK = 0x028
 
---[[ The two bars. `main` follows the target, `subtarget` the `<st>` selection
-     cursor - the only difference between the two instances is the token each
-     one reads. Main leads: the order `//hud list` prints, and the order layout
-     mode hit-tests REVERSED, so the subtarget wins where the two overlap. ]]
-local ANCHORS = { "main", "subtarget" }
+--[[ The three bars. `main` follows the target, `subtarget` the `<st>`
+     selection cursor and `focus` a mob named with `//hud targetbar focus` -
+     the only difference between the instances is where each one's mob comes
+     from. Main leads: the order `//hud list` prints, and the order layout mode
+     hit-tests REVERSED, so a later bar wins where two overlap. ]]
+local ANCHORS = { "main", "subtarget", "focus" }
 local TOKEN = { main = "t", subtarget = "st" }
 
---[[ One bar: its own prims, its own logic, its own placement. The token is
-     the only thing that tells the two apart - everything below draws whatever
-     mob it is handed. ]]
-local function new_bar(ctx, variant, config, th)
+--[[ One bar: its own prims, its own logic, its own placement. `read` is the
+     only thing that tells them apart - everything below draws whatever mob it
+     is handed. ]]
+local function new_bar(ctx, variant, config, th, read)
   local bar = {}
-  local token = TOKEN[variant]
 
   local screen_width = ctx.screen()
 
@@ -270,11 +272,11 @@ local function new_bar(ctx, variant, config, th)
 
     --[[ The bar's own mob is read every frame, because the cursor can move
          between any two of them and nothing announces it - and lib/player
-         memoizes the read for the frame, so the sibling bar and the party list
-         asking for the same one cost nothing extra. The player's own facts
-         come from the outer widget instead: both bars want the same answer,
-         and it is worth reading once. ]]
-    local mob = ctx.get_mob_by_target(token)
+         memoizes the read for the frame, so the sibling bars and the party
+         list asking for the same one cost nothing extra. The player's own
+         facts come from the outer widget instead: every bar wants the same
+         answer, and it is worth reading once. ]]
+    local mob = read()
     if mob then
       logic.set_target(mob)
     else
@@ -334,7 +336,7 @@ local function new_bar(ctx, variant, config, th)
   end
 
   -- The player's own facts, read once by the outer widget and pushed into
-  -- both bars.
+  -- every bar.
   function bar.set_client(me, player, party)
     logic.set_self(me and me.id, me and me.model_size, player and player.main_job)
     logic.set_party(party)
@@ -349,6 +351,8 @@ local function new_bar(ctx, variant, config, th)
   function bar.command(args)
     return logic.command(args)
   end
+
+  bar.has_verb = logic.has_verb
 
   function bar.config_row()
     return logic.config_row()
@@ -436,10 +440,11 @@ end
 
 --[[ The widget contract ---------------------------------------------------- ]]
 
---[[ Two bars under one registration: the outer widget owns the contract and
-     routes it by anchor, and a bar knows only its own token. partylist's
-     shape, and for its reason - a second component would have to require this
-     one to share the logic, which the isolation rule forbids outright. ]]
+--[[ Three bars under one registration: the outer widget owns the contract and
+     routes it by anchor, and a bar knows only where its own mob comes from.
+     partylist's shape, and for its reason - a second component would have to
+     require this one to share the logic, which the isolation rule forbids
+     outright. ]]
 local function new(ctx)
   local self = { name = "targetbar", alias = "tb" }
 
@@ -449,15 +454,30 @@ local function new(ctx)
   local save = nil
   local attached = false
   --[[ The service's read counter as of the last rebuild of the claim roster,
-       held here rather than in either bar: both want the same answer, and
+       held here rather than in any one bar: all want the same answer, and
        set_party walks eighteen member tables to reach it. ]]
   local last_generation = nil
-  -- One for both bars: a level belongs to the mob, whichever bar draws it.
+  -- One for every bar: a level belongs to the mob, whichever bar draws it.
   local th = new_th()
+
+  local focus = new_focus()
+  -- The mob the focus bar draws this frame, resolved once per tick.
+  local focus_mob = nil
 
   local bars = {}
   for _, anchor in ipairs(ANCHORS) do
-    bars[anchor] = new_bar(ctx, anchor, self.defaults.bars[anchor], th)
+    local read
+    if anchor == "focus" then
+      read = function()
+        return focus_mob
+      end
+    else
+      local token = TOKEN[anchor]
+      read = function()
+        return ctx.get_mob_by_target(token)
+      end
+    end
+    bars[anchor] = new_bar(ctx, anchor, self.defaults.bars[anchor], th, read)
   end
 
   local function each(method, ...)
@@ -480,11 +500,11 @@ local function new(ctx)
     return anchor ~= nil and bars[anchor] or nil
   end
 
-  --[[ The player's own facts, read once for both bars and pushed into each.
+  --[[ The player's own facts, read once for every bar and pushed into each.
        Gated on the service's read counter rather than a clock of our own,
        which would sit out of phase with it and leave the bars up to two
        intervals behind; an absent counter falls back to reading every frame
-       rather than never. Nothing is read while neither bar could draw. ]]
+       rather than never. Nothing is read while no bar could draw. ]]
   local function refresh_client()
     local wanted = false
     for _, anchor in ipairs(ANCHORS) do
@@ -510,6 +530,31 @@ local function new(ctx)
     end
   end
 
+  -- Read by id every frame, the way the other two bars read their tokens,
+  -- and only while the focus bar could draw.
+  local function refresh_focus()
+    focus_mob = nil
+    if focus.id() ~= nil and bars.focus.ready() then
+      focus_mob = focus.resolve(ctx.get_mob_by_id(focus.id()))
+    end
+  end
+
+  -- The mob array is walked here alone, at the command, never per frame.
+  local function set_focus(words)
+    local wanted = table.concat(words, " ")
+    local token = focus.token(wanted)
+    if token then
+      if not focus.take(ctx.get_mob_by_target(token), wanted) then
+        return ("targetbar focus: nothing to focus at %s"):format(wanted)
+      end
+    elseif focus.unknown_token(wanted) then
+      return ("targetbar focus: %s is not a target it takes - %s"):format(wanted, table.concat(focus.tokens(), ", "))
+    elseif not focus.take(focus.find(wanted, ctx.get_mob_by_target("t"), ctx.get_mob_array()), wanted) then
+      return ("targetbar focus: no '%s' in range"):format(wanted)
+    end
+    return ("targetbar focus: %s"):format(focus.name())
+  end
+
   --[[ A config file is code and is hand-editable, and `//hud copy` imports
        another character's, so a bar's entry can be any shape at all by the
        time it reaches here. Anything unusable is replaced with a FRESH copy of
@@ -522,6 +567,11 @@ local function new(ctx)
     -- Forget the last read: a relog inside one interval would otherwise keep
     -- the previous character's roster until the service next reads.
     last_generation = nil
+    -- Core re-attaches without a detach for a slot switch, a reset, `//hud
+    -- copy`'s reload and a change of character, and none of them keeps a focus
+    -- (Kevin, 2026-10-20) - unlike the treasure hunter levels, which a
+    -- re-attach keeps.
+    focus.clear()
     local config = type(loaded_config) == "table" and loaded_config or {}
     if type(config.bars) ~= "table" then
       config.bars = {}
@@ -541,8 +591,9 @@ local function new(ctx)
     attached = false
     save = nil
     -- Mob ids repeat between zones, so a level must not outlive the
-    -- character that saw it proc.
+    -- character that saw it proc - and nor may a focus.
     th.clear()
+    focus.clear()
     each("detach")
   end
 
@@ -599,14 +650,16 @@ local function new(ctx)
 
   --[[ No arguments is the per-frame tick. Of the events the entry point
        forwards to every component, only chunks are wanted: the action chunk
-       feeds both cast trackers and the treasure hunter tracker, and the
-       tracker picks its own few ids out of the rest - no render, no client
-       read. Everything else is ignored quietly, which is the contract:
-       core.dispatch has no idea who wants what, and a handler that threw
-       would be disabled for the rest of the session. ]]
+       feeds every cast tracker and the treasure hunter tracker, and the
+       tracker picks its own few ids out of the rest, as the focus does a zone
+       or its own mob's despawn - no render, no client read. Everything else
+       is ignored quietly, which is the contract: core.dispatch has no idea
+       who wants what, and a handler that threw would be disabled for the rest
+       of the session. ]]
   function self.update(event, id, original, parsed)
     if event == nil then
       refresh_client()
+      refresh_focus()
       each("render")
       return
     end
@@ -615,6 +668,7 @@ local function new(ctx)
     end
     if id ~= ACTION_CHUNK then
       th.on_chunk(id, original)
+      focus.on_chunk(id, original)
       return
     end
     -- Already decoded, by the one dispatch that sees the packet: nil when the
@@ -625,20 +679,29 @@ local function new(ctx)
     end
   end
 
-  -- What `//hud targetbar <bar>` reports: that bar's own settings. Whether it
-  -- is on screen at all is the framework's answer, and `//hud list` prints it
-  -- per anchor.
+  -- What `//hud targetbar <bar>` reports: that bar's own settings, and on the
+  -- focus bar what it holds. Whether it is on screen at all is the
+  -- framework's answer, and `//hud list` prints it per anchor.
   local function status_of(anchor)
     -- Parenthesised: `command` answers (line, changed), and a report has no
     -- second value to hand its caller.
-    return (bars[anchor].command({}))
+    local line = (bars[anchor].command({}))
+    if anchor == "focus" then
+      line = line .. (focus.id() and (" - focus: %s"):format(focus.name()) or " - no focus target")
+    end
+    return line
   end
 
   --[[ `//hud targetbar [<bar>] <verb> ...`, the bar word leading so the verb
        grammar behind it is untouched. Absent, the target bar is addressed -
        which is what every line that worked before the subtarget bar existed
        still means. A first word that is not a bar is a verb, so an unknown one
-       still reaches the verb parser and answers with its hint. ]]
+       still reaches the verb parser and answers with its hint.
+
+       `focus` is both a bar word and the verb that sets the focus target:
+       followed by one of the bars' own verbs it is the bar word, followed by
+       `clear` alone it drops the focus, as `clear focus` does (Kevin,
+       2026-10-20), and followed by anything else it is a name. ]]
   function self.handle_command(args)
     args = args or {}
     local first = args[1] and args[1]:lower() or nil
@@ -648,6 +711,22 @@ local function new(ctx)
         lines[#lines + 1] = status_of(anchor)
       end
       return lines
+    end
+
+    local second = args[2] and args[2]:lower() or nil
+    if args[3] == nil and ((first == "clear" and second == "focus") or (first == "focus" and second == "clear")) then
+      focus.clear()
+      return "targetbar focus cleared"
+    end
+    if first == "clear" then
+      return "//hud targetbar clear focus - drop the focus target"
+    end
+    if first == "focus" and args[2] ~= nil and not bars.focus.has_verb(args[2]) then
+      local words = {}
+      for index = 2, #args do
+        words[index - 1] = args[index]
+      end
+      return set_focus(words)
     end
 
     local anchor = bars[first] and first or nil
@@ -662,7 +741,15 @@ local function new(ctx)
       return status_of(anchor or "main")
     end
 
-    local reply, changed = bars[anchor or "main"].command(rest)
+    local bar = bars[anchor or "main"]
+    local reply, changed = bar.command(rest)
+    -- The widget's own verbs, which no bar's hint can name.
+    if not bar.has_verb(rest[1]) then
+      reply = reply
+        .. ("; focus target: //hud targetbar focus <name>|%s, //hud targetbar clear focus"):format(
+          table.concat(focus.tokens(), "|")
+        )
+    end
     -- No re-layout: the only setting here picks a colour scheme, and the next
     -- tick pushes the colour that follows from it. Add one back alongside the
     -- first command that actually moves something.
