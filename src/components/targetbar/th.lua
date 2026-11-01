@@ -35,34 +35,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      round's added effect with message 603, or a weaponskill's message 608, the
      level in the matching param. ]]
 
+local chunks = require("components/targetbar/chunks")
+
 local MELEE = 1
 local WEAPONSKILL = 3
 local MELEE_MESSAGE = 603
 local WEAPONSKILL_MESSAGE = 608
 
-local ZONE_IN = 0x00A
 local NPC_UPDATE = 0x00E
-local ANIMATION = 0x038
-
--- The despawn animation 0x038 names.
-local DESPAWN = "kesu"
 -- 0x00E's Status for an idle mob, which with full health is a mob that reset.
 local IDLE = 0
 
--- 1-based offsets into the raw chunk, header included: fields.lua's 0x04 for
--- both ids, 0x0C for the animation name, 0x1E and 0x1F for HP % and Status.
+-- 1-based offsets into 0x00E, header included: fields.lua's 0x04 for the id,
+-- 0x1E and 0x1F for HP % and Status.
 local ID_OFFSET = 5
-local ANIMATION_OFFSET = 13
 local HPP_OFFSET = 31
 local STATUS_OFFSET = 32
-
-local function u32(raw, offset)
-  local b1, b2, b3, b4 = raw:byte(offset, offset + 3)
-  if not b4 then
-    return nil
-  end
-  return b1 + b2 * 256 + b3 * 65536 + b4 * 16777216
-end
 
 local function first_action(act)
   local target = type(act.targets) == "table" and act.targets[1] or nil
@@ -108,20 +96,18 @@ local function new()
   end
 
   function self.on_chunk(id, raw)
-    if id == ZONE_IN then
+    if chunks.zoned(id) then
       self.clear()
       return
     end
     if type(raw) ~= "string" then
       return
     end
-    if id == ANIMATION then
-      local mob = u32(raw, ID_OFFSET)
-      if mob and raw:sub(ANIMATION_OFFSET, ANIMATION_OFFSET + 3) == DESPAWN then
-        levels[mob] = nil
-      end
+    local despawned = chunks.despawned(id, raw)
+    if despawned then
+      levels[despawned] = nil
     elseif id == NPC_UPDATE then
-      local mob = u32(raw, ID_OFFSET)
+      local mob = chunks.u32(raw, ID_OFFSET)
       local hpp, status = raw:byte(HPP_OFFSET, STATUS_OFFSET)
       if mob and hpp == 100 and status == IDLE then
         levels[mob] = nil

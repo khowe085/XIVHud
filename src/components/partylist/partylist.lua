@@ -858,6 +858,14 @@ local function new_list(ctx, variant, defaults)
     return lines, changed
   end
 
+  function self.adopt_order(priority)
+    local taken = logic.adopt_order(priority)
+    if taken then
+      apply_layout()
+    end
+    return taken
+  end
+
   function self.config_rows()
     return logic.config_rows()
   end
@@ -1108,6 +1116,17 @@ local function new(ctx)
       save()
     end
     return lines
+  end
+
+  -- The status bar's order, handed through core while its `partyorder` is
+  -- on: the main party is the only list with buff icons. Answers whether it
+  -- was taken.
+  function self.adopt_buff_order(priority)
+    local taken = lists.main.adopt_order(priority)
+    if taken and save then
+      save()
+    end
+    return taken
   end
 
   -- One tab per list, named by the list word handle_command takes.

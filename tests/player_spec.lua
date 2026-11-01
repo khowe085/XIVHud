@@ -16,6 +16,9 @@ describe("player service", function()
       party = { p0 = { name = "Kevin" } },
       info = { zone = 230 },
       mobs = { t = { id = 7 }, me = { id = 1 } },
+      -- Apart from `mobs`, so a lookup by id wired to the token read answers
+      -- nothing here rather than passing.
+      by_id = {},
     }
     service = new_player({
       now = function()
@@ -38,7 +41,37 @@ describe("player service", function()
         mob_args[#mob_args + 1] = { ... }
         return client.mobs[(...)]
       end,
+      get_mob_by_id = function(id)
+        calls.mob = calls.mob + 1
+        return client.by_id[id]
+      end,
     })
+  end)
+
+  describe("mob lookups by id", function()
+    it("reads one id once per frame", function()
+      client.by_id[42] = { id = 42 }
+      service.get_mob_by_id(42)
+      service.get_mob_by_id(42)
+      assert.are.equal(1, calls.mob)
+      assert.are.equal(42, service.get_mob_by_id(42).id)
+    end)
+
+    -- The same argument both ways: only the kind in the key keeps them apart.
+    it("does not share a slot with a token lookup of the same argument", function()
+      client.mobs[42] = { id = 1 }
+      client.by_id[42] = { id = 42 }
+      assert.are.equal(1, service.get_mob_by_target(42).id)
+      assert.are.equal(42, service.get_mob_by_id(42).id)
+      assert.are.equal(2, calls.mob)
+    end)
+
+    it("reads again on the next frame", function()
+      service.get_mob_by_id(42)
+      service.begin_frame()
+      service.get_mob_by_id(42)
+      assert.are.equal(2, calls.mob)
+    end)
   end)
 
   describe("the read interval", function()

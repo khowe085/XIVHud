@@ -61,6 +61,16 @@ describe("entry point", function()
       assert.is_not_nil(boot.ctxs.statusbar.resources)
     end)
 
+    -- `partyorder`: a component cannot reach a sibling, so the order goes
+    -- through core, named as the status bar's so it is not handed back, and
+    -- core's count of who took it comes back for the reply.
+    it("hands the status bar's buff order to core under its own name", function()
+      local order = { [15] = 1 }
+      boot.buff_order_takers = 2
+      assert.are.equal(2, boot.ctxs.statusbar.buff_order_changed(order))
+      assert.are.same({ { from = "statusbar", priority = order } }, boot.buff_orders)
+    end)
+
     it("builds the party list once, with no variant to pick", function()
       local built = 0
       for _, name in ipairs(boot.built) do
@@ -455,6 +465,26 @@ describe("entry point", function()
       assert.are.equal(1, #boot.prerender_targets)
     end)
 
+    -- The focus bar's per-frame read goes through the same memo.
+    it("memoizes the target bar's lookup by id for the frame", function()
+      boot.ctxs.targetbar.get_mob_by_id(42)
+      boot.ctxs.targetbar.get_mob_by_id(42)
+      assert.are.equal(1, boot.client_calls.mob)
+      tick()
+      local before = boot.client_calls.mob
+      boot.ctxs.targetbar.get_mob_by_id(42)
+      assert.are.equal(before + 1, boot.client_calls.mob, "the memo outlived its frame")
+    end)
+
+    it("answers a lookup by id from the client's lookup by id", function()
+      assert.are.equal(42, boot.ctxs.targetbar.get_mob_by_id(42).id)
+    end)
+
+    -- Read once per `focus` command, so it is the client's own, unmemoized.
+    it("hands the target bar the client's mob array", function()
+      assert.are.equal(boot.mobs, boot.ctxs.targetbar.get_mob_array())
+    end)
+
     it("answers a mob lookup with what the client gave", function()
       assert.are.equal(7, boot.ctxs.targetbar.get_mob_by_target("t").id)
     end)
@@ -700,6 +730,86 @@ describe("entry point", function()
       assert.are.equal(ACTION, call[1])
       assert.are.equal("raw action bytes", call[2])
       assert.are.equal(boot.last_dispatch("chunk")[3], call[3], "the same parsed table, not a second decode")
+    end)
+
+    it("hears what the client sends, and answers it nothing", function()
+      local answer = boot.fire("outgoing chunk", 0x01A, "raw out", "modified", false, false)
+      local call = boot.service_calls[#boot.service_calls]
+      assert.are.equal("on_outgoing", call.name)
+      assert.are.equal(0x01A, call[1])
+      assert.are.equal("raw out", call[2])
+      assert.is_nil(answer, "a returned value would replace the packet")
+    end)
+
+    it("hears an action GearSwap injected", function()
+      boot.fire("outgoing chunk", 0x01A, "injected", "injected", true, false)
+      assert.are.equal("injected", boot.service_calls[#boot.service_calls][2])
+    end)
+
+    it("does not hear a packet another addon blocked, which never left", function()
+      local before = #boot.service_calls
+      boot.fire("outgoing chunk", 0x01A, "raw out", "modified", false, true)
+      assert.are.equal(before, #boot.service_calls)
+    end)
+
+    it("hands it the outgoing text as the upstream addons left it", function()
+      boot.fire("outgoing text", "/ta <stpc>", "/ta 12345", false)
+      local call = boot.service_calls[#boot.service_calls]
+      assert.are.equal("on_text", call.name)
+      assert.are.equal("/ta 12345", call[1])
+    end)
+
+    it("blocks the text only when the service takes it", function()
+      assert.is_nil(boot.fire("outgoing text", "/p hello", "/p hello", false))
+      boot.service.on_text = function()
+        return true
+      end
+      assert.is_true(boot.fire("outgoing text", "/ta 12345", "/ta 12345", false))
+    end)
+
+    it("tells the service no packets are coming when the libraries failed", function()
+      assert.is_false(boot.service_deps.no_packets)
+      local without = harness.boot({ require_fails = { packets = "no packets library" } })
+      assert.is_true(without.service_deps.no_packets)
+    end)
+
+    it("registers nothing on the outgoing text in safe mode", function()
+      local safe = harness.boot({ files = { ["addons/XIVHud/safe_mode"] = "" } })
+      assert.is_nil(safe.handlers["outgoing text"])
+    end)
+
+    it("appends the queue's debug lines to debug.log, dated, beside load.log", function()
+      boot.service_deps.debug_log("queue 1.00: start spell")
+      boot.service_deps.debug_log("queue 2.00: finish spell, lock 3.00s")
+      local written = boot.files["addons/XIVHud/debug.log"]
+      assert.is_not_nil(written:find("queue 1.00: start spell\n", 1, true))
+      assert.is_not_nil(written:find("queue 2.00: finish spell, lock 3.00s\n", 1, true))
+      assert.is_not_nil(written:match("^%d%d%d%d%-%d%d%-%d%d %d%d:%d%d:%d%d queue"))
+    end)
+
+    it("carries on when debug.log cannot be written, being inside the chunk handlers", function()
+      boot.env.io.open = function()
+        error("disk full")
+      end
+      assert.has_no.errors(function()
+        boot.service_deps.debug_log("queue 1.00: start spell")
+      end)
+      boot.env.io.open = function()
+        return nil, "denied"
+      end
+      assert.has_no.errors(function()
+        boot.service_deps.debug_log("queue 1.00: start spell")
+      end)
+    end)
+
+    it("reads the recasts the crossbar reads", function()
+      assert.are.equal(boot.ctxs.crossbar.get_spell_recasts, boot.service_deps.get_spell_recasts)
+      assert.are.equal(boot.ctxs.crossbar.get_ability_recasts, boot.service_deps.get_ability_recasts)
+    end)
+
+    it("registers nothing on the outgoing path in safe mode", function()
+      local safe = harness.boot({ files = { ["addons/XIVHud/safe_mode"] = "" } })
+      assert.is_nil(safe.handlers["outgoing chunk"])
     end)
 
     it("hears the status, the job change, the ipc message and the unload", function()

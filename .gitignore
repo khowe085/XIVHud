@@ -19,6 +19,7 @@
 # Runtime load trace written by src/XIVHud.lua
 load.log
 icons.log
+debug.log
 
 # Claude Code session worktree tracking
 /.claude/work.local.md

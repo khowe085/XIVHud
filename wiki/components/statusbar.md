@@ -28,6 +28,11 @@ one for the rest.
 - **Drag** an icon onto another on the same bar to move it there in the
   priority order. The order is shared, so every bar follows it. A left-click
   on an icon no longer reaches the game.
+- **Party order** (off by default): the [party list](partylist.md)'s buff
+  icons can follow this order too. Switching it on replaces the party list's
+  own order with this one, and every later change here - a drag or an order
+  command - is copied over. Switching it off leaves the party list with the
+  order it has then; its old order does not come back.
 - Timers can be switched off, leaving the icons alone.
 
 ## Configuration options
@@ -43,6 +48,7 @@ one for the rest.
 | `priority` | `{}` | your changes to the buff order, shared by every bar |
 | `timers` | `true` | draw the remaining time under each icon |
 | `tooltips` | `true` | name the buff under the cursor |
+| `party_order` | `false` | copy the buff order to the party list on every change |
 
 Which bars are on is stored with the placement: `//hud show statusbar bar2`
 switches one on, or SHIFT + right-click it in layout mode.
@@ -52,21 +58,22 @@ switches one on, or SHIFT + right-click it in layout mode.
 Per-bar commands take an optional bar word in front of the verb: `bar1` (the
 default), `bar2` or `bar3`.
 
-Each bar's rows and predefined filter, and the timer and tooltip switches,
-can also be changed with the mouse: `//hud config statusbar` opens the
+Each bar's rows and predefined filter, and the timer, tooltip and party order
+switches, can also be changed with the mouse: `//hud config statusbar` opens the
 [settings window](../Home.md#settings-window) on this component. The buff
 order and each bar's own filter list stay commands.
 
 | Command | What it does |
 | --- | --- |
-| `//hud statusbar` | print all three bars and the two switches |
+| `//hud statusbar` | print all three bars and the three switches |
 | `//hud statusbar [<bar>]` | print one bar's settings |
 | `//hud statusbar [<bar>] rows <1-4>` | set how many rows the bar has |
 | `//hud statusbar timers on\|off` | show or hide the timers on every bar |
 | `//hud statusbar tooltips on\|off` | name the buff under the cursor, or not |
+| `//hud statusbar partyorder on\|off` | copy the buff order to the party list on every change, or stop |
 | `//hud show statusbar <bar>` / `//hud hide statusbar <bar>` | switch one bar on or off |
 
-`timers` and `tooltips` apply to every bar and refuse a bar word.
+`timers`, `tooltips` and `partyorder` apply to every bar and refuse a bar word.
 
 ### Buffs
 
@@ -90,3 +97,6 @@ through `//hud buffs statusbar` - the shared grammar described on the
 
 The priority order is one list shared by all three bars, so the order verbs
 take no bar word. The category and the filter list belong to one bar each.
+With `partyorder` on, every change these verbs make is copied to the party
+list as well - `reset` included, which puts the party list back on the
+shipped order too.

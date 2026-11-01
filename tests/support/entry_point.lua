@@ -91,7 +91,17 @@ local function build_stubs(boot, options)
     ["lib/actionbar/service"] = function(deps)
       boot.service_deps = deps
       local service = {}
-      for _, name in ipairs({ "tick", "on_chunk", "on_status", "on_job_change", "on_ipc", "on_logout", "on_unload" }) do
+      for _, name in ipairs({
+        "tick",
+        "on_chunk",
+        "on_outgoing",
+        "on_text",
+        "on_status",
+        "on_job_change",
+        "on_ipc",
+        "on_logout",
+        "on_unload",
+      }) do
         service[name] = function(...)
           boot.service_calls[#boot.service_calls + 1] = { name = name, n = select("#", ...), ... }
         end
@@ -208,7 +218,7 @@ local function build_windower(boot)
         return boot.last_incoming[id], 12345
       end,
     },
-    --[[ The four reads the player service caches are counted, because how many
+    --[[ The five reads the player service caches are counted, because how many
          of them reach the client is exactly what that service is for and is
          invisible from any component spec. ]]
     ffxi = {
@@ -219,6 +229,14 @@ local function build_windower(boot)
       get_mob_by_target = function(...)
         boot.client_calls.mob = boot.client_calls.mob + 1
         return boot.mobs[(...)]
+      end,
+      -- Its own table, so an id read wired to the token read answers nothing.
+      get_mob_by_id = function(id)
+        boot.client_calls.mob = boot.client_calls.mob + 1
+        return boot.mobs_by_id[id]
+      end,
+      get_mob_array = function()
+        return boot.mobs
       end,
       get_party = function()
         boot.client_calls.party = boot.client_calls.party + 1
@@ -298,6 +316,14 @@ local function build_core(boot)
     return boot.settings_open == true
   end
 
+  -- A component's hand-off of its buff order, recorded for a spec to read;
+  -- answers with how many took it, which a spec sets as `buff_order_takers`.
+  boot.buff_orders = {}
+  function core.buff_order_changed(from, priority)
+    boot.buff_orders[#boot.buff_orders + 1] = { from = from, priority = priority }
+    return boot.buff_order_takers
+  end
+
   for _, name in ipairs({
     "suppressed",
     "component_visible",
@@ -364,6 +390,7 @@ function M.boot(options)
     logged_in = not options.logged_out,
     party = {},
     mobs = { t = { id = 7 } },
+    mobs_by_id = { [42] = { id = 42 } },
     client_calls = { player = 0, party = 0, info = 0, mob = 0 },
     prerender_targets = {},
   }

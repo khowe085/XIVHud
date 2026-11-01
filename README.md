@@ -59,7 +59,7 @@ and where settings are stored.
 | Hotbar | `hb` | FFXIV's hotbar: ten slots in a row on the number keys, up to eight rows, with the same kinds of binding and the same commands as the crossbar | [hotbar](wiki/components/hotbar.md) |
 | Parameter bar | `pb` | HP, MP and TP bars with numbers | [parambar](wiki/components/parambar.md) |
 | Party list | `pl` | your party and both alliance parties: HP/MP/TP, jobs, buffs, distance | [partylist](wiki/components/partylist.md) |
-| Target bar | `tb` | your target's HP, name, distance, claim colour and cast bar, with a second smaller bar for the subtarget cursor | [targetbar](wiki/components/targetbar.md) |
+| Target bar | `tb` | your target's HP, name, distance, claim colour and cast bar, with smaller bars for the subtarget cursor and a focus target | [targetbar](wiki/components/targetbar.md) |
 | Status bar | `sb` | your buffs and debuffs as icons with timers, on up to three bars | [statusbar](wiki/components/statusbar.md) |
 | Experience bar | `eb` | experience, limit points or exemplar points toward the next step | [expbar](wiki/components/expbar.md) |
 | Equipment viewer | `ev` | your equipped gear as a 4x4 icon grid | [equipviewer](wiki/components/equipviewer.md) |
@@ -81,6 +81,7 @@ Everything is under `//hud`. The most used:
 //hud slot <name>              switch to a named layout
 //hud draw | mr | warp | sneak | invisible | reraise   act on the game (the same actions a bar slot can hold)
 //hud delay [<seconds>]        the mount and warp countdown, shared by the crossbar and hotbar
+//hud queue [on|debug|off]     hold a bar press through a cast and send it when you can act
 //hud hidecutscene [on|off]    hide the HUD during cutscenes
 //hud config                   the settings window: change settings with the mouse
 //hud <component> ...          that component's own settings

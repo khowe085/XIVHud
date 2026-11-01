@@ -1051,6 +1051,25 @@ local function new(deps)
     return buff_engine.command(buff_settings(), words, cap())
   end
 
+  --[[ The status bar's `partyorder`: the order replaced wholesale by a copy
+       of the one handed in, the filters left alone. Only an id and a rank
+       that are both numbers are copied - all lib/buffs reads - so a
+       hand-broken order carries no junk into this file. Returns whether it
+       was taken. ]]
+  function self.adopt_order(priority)
+    if not has_buffs() or not buffs_usable() or type(priority) ~= "table" then
+      return false
+    end
+    local copy = {}
+    for id, rank in pairs(priority) do
+      if type(id) == "number" and type(rank) == "number" then
+        copy[id] = rank
+      end
+    end
+    buff_settings().priority = copy
+    return true
+  end
+
   -- Returns the lines to print and whether anything changed, so the widget
   -- knows when to re-lay out and save.
   function self.command(args)

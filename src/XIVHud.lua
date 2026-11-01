@@ -73,7 +73,20 @@ local function say(lines)
   end
 end
 
---[[ Load trace, written straight to <addon>/load.log with raw io.
+-- One dated line, straight to a file beside the addon with raw io. pcall'd
+-- because its callers run where a throw would cost more than the line.
+local function log_line(file_name, message, mode)
+  pcall(function()
+    local file = io.open(windower.addon_path .. file_name, mode or "a")
+    if not file then
+      return
+    end
+    file:write(os.date("%Y-%m-%d %H:%M:%S ") .. message .. "\n")
+    file:close()
+  end)
+end
+
+--[[ Load trace, written straight to <addon>/load.log.
 
      Chat is not a reliable diagnostic channel here: if the main chunk dies
      before its handlers register, the addon is silent no matter what it wanted
@@ -82,14 +95,7 @@ end
      the process going down. The last line in the file is the last thing that
      ran. ]]
 local function trace(message, mode)
-  pcall(function()
-    local file = io.open(windower.addon_path .. "load.log", mode or "a")
-    if not file then
-      return
-    end
-    file:write(os.date("%Y-%m-%d %H:%M:%S ") .. message .. "\n")
-    file:close()
-  end)
+  log_line("load.log", message, mode)
 end
 
 trace("---- chunk started, version " .. _addon.version, "w")
@@ -574,6 +580,10 @@ local function get_mob_by_target(...)
   return windower.ffxi.get_mob_by_target(...)
 end
 
+local function get_mob_by_id(id)
+  return windower.ffxi.get_mob_by_id(id)
+end
+
 local function get_party()
   return windower.ffxi.get_party()
 end
@@ -583,7 +593,7 @@ local function get_info()
 end
 
 --[[ One read of the client per interval, shared by every component, and the one
-     place the two vitals streams are reconciled -- see lib/player. The four
+     place the two vitals streams are reconciled -- see lib/player. The five
      accessors above are its deps, and no COMPONENT gets them: what each ctx
      below gets is the service's getters, so a component cannot reach past it.
      Core is the exception, and takes the raw `get_player` for the reason given
@@ -603,6 +613,7 @@ local player_service = step("building the player service", function()
     get_party = get_party,
     get_info = get_info,
     get_mob_by_target = get_mob_by_target,
+    get_mob_by_id = get_mob_by_id,
   })
 end)
 
@@ -613,6 +624,7 @@ local read_player = player_service and player_service.get_player
 local read_party = player_service and player_service.get_party
 local read_info = player_service and player_service.get_info
 local read_mob_by_target = player_service and player_service.get_mob_by_target
+local read_mob_by_id = player_service and player_service.get_mob_by_id
 local read_generation = player_service and player_service.generation
 
 local function asset(relative_path)
@@ -860,7 +872,14 @@ local action_service = step("building the action service", function()
   -- same mount sequence every client start.
   math.randomseed(os.time())
   return new_action_service({
+    -- The queue's packets come through handlers the libraries gate, below.
+    no_packets = libraries_error ~= nil,
     say = say,
+    -- `//hud queue debug`'s lines, for a client nobody is sitting at. Only that
+    -- mode writes here, an edge at a time, and it is never truncated.
+    debug_log = function(line)
+      log_line("debug.log", line)
+    end,
     send_command = send_command,
     send_ipc = function(message)
       windower.send_ipc_message(message)
@@ -877,6 +896,8 @@ local action_service = step("building the action service", function()
     get_key_items = function()
       return windower.ffxi.get_key_items()
     end,
+    get_spell_recasts = get_spell_recasts,
+    get_ability_recasts = get_ability_recasts,
     -- Argument-agnostic on purpose: set_equip's exact arity is an in-client
     -- question, and a wrapper must not encode a guess.
     set_equip = function(...)
@@ -1045,6 +1066,13 @@ step("building the targetbar component", function()
     now = os.clock,
     get_player = read_player,
     get_mob_by_target = read_mob_by_target,
+    -- The focus bar's mob, read every frame and memoized with the tokens.
+    get_mob_by_id = read_mob_by_id,
+    -- Raw: walked once per `focus <name>` command, never per frame, and the
+    -- answer has to be the client's now rather than an interval old.
+    get_mob_array = function()
+      return windower.ffxi.get_mob_array()
+    end,
     get_party = read_party,
     generation = read_generation,
     -- nil when the resource library failed to load: the cast bar then never
@@ -1108,6 +1136,10 @@ step("building the statusbar component", function()
     -- A right-click on an icon asks the cancel addon to drop the buff.
     send_command = function(command)
       windower.send_command(command)
+    end,
+    -- `partyorder`: the party list follows this bar's order, through core.
+    buff_order_changed = function(priority)
+      return core.buff_order_changed("statusbar", priority)
     end,
   }))
 end)
@@ -1640,6 +1672,32 @@ if not safe_mode and not libraries_error then
       -- roulette read from here and nowhere else.
       action_service.on_chunk(id, original, parsed)
       core.dispatch("chunk", id, original, parsed)
+    end)
+  )
+
+  --[[ What the client sends, for the action queue: the half of "is anything in
+       flight" no incoming packet can answer, and the only sight of a macro's
+       action or one GearSwap injected. It sees every packet the client sends,
+       so the service asks of the id alone, and like the handler above this
+       must return nothing. A packet another addon blocked never left. ]]
+  windower.register_event(
+    "outgoing chunk",
+    guard.wrap("outgoing chunk", function(id, original, _modified, _injected, blocked)
+      if not blocked then
+        action_service.on_outgoing(id, original)
+      end
+    end)
+  )
+
+  --[[ The OK of a cursor the action queue opened, read off `modified` as GearSwap
+       reads it. Only ever a /ta line is taken, which GearSwap has no interest
+       in, so this does not care which of the two addons hears the text first. ]]
+  windower.register_event(
+    "outgoing text",
+    guard.wrap("outgoing text", function(_original, modified)
+      if action_service.on_text(modified) then
+        return true
+      end
     end)
   )
 

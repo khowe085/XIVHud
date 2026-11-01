@@ -95,7 +95,7 @@ Components can also be switched from the console: `//hud hide giltracker`,
 | [Hotbar](components/hotbar.md) | `hb` | yes (row 1) | FFXIV's hotbar: ten slots in a row on the number keys, up to eight rows, with the same kinds of binding and the same commands as the crossbar |
 | [Parameter bar](components/parambar.md) | `pb` | yes | HP, MP and TP bars with numbers |
 | [Party list](components/partylist.md) | `pl` | yes (main party) | your party and both alliance parties, with HP/MP/TP, jobs, buffs and distance |
-| [Target bar](components/targetbar.md) | `tb` | yes | your target's HP, name, distance and cast bar, plus a smaller copy for the subtarget cursor |
+| [Target bar](components/targetbar.md) | `tb` | yes | your target's HP, name, distance and cast bar, plus smaller copies for the subtarget cursor and a focus target |
 | [Status bar](components/statusbar.md) | `sb` | yes (bar 1) | your buffs and debuffs as icons with timers |
 | [Experience bar](components/expbar.md) | `eb` | yes | experience, limit points or exemplar points toward the next step |
 | [Equipment viewer](components/equipviewer.md) | `ev` | yes | your equipped gear as a 4x4 icon grid |
@@ -128,6 +128,7 @@ anywhere: `//hud reset tb` is `//hud reset targetbar`.
 | `//hud buffs <component> ...` | a component's buff order and filter settings (see below) |
 | `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise` | actions on the game itself (see Action commands below) |
 | `//hud delay [<seconds>]` | the mount and warp countdown, shared by the crossbar and hotbar; without a number it prints the current value (see Action commands below) |
+| `//hud queue [on\|debug\|off]` | hold a bar press made during a cast, and send it when you can act (see Action commands below); on by default |
 | `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default. Without a word it prints the current setting |
 | `//hud config [<component>]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
@@ -197,8 +198,8 @@ matching command would have answered, including a refusal - the window sets
 exactly what the commands set, with the same limits, so anything you change
 here you can also type.
 
-`global` holds the travel delay (see [Action commands](#action-commands)) and whether the HUD
-hides during cutscenes. The components with a page of their own are the
+`global` holds the travel delay, the action queue and its waits (see
+[Action commands](#action-commands)) and whether the HUD hides during cutscenes. The components with a page of their own are the
 parameter bar, target bar, party list, status bar, equipment viewer, inventory
 tracker, crossbar and hotbar; each one's page says what is on it. A number that
 needs a value the steps do not land on, the buff order and filter lists, and
@@ -237,6 +238,31 @@ or the console too, and their settings are shared by both bars.
 | `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage: the spell, then Spectral Jig, then the ninjutsu, then an oil or powder. Silenced or muted, the spells and ninjutsu are passed over |
 | `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
 | `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; `0` switches the countdown off |
+| `//hud queue [on\|debug\|off]` | the action queue, below; `debug` also writes each step to `debug.log` in the addon's folder |
+| `//hud queue lock [<kind> <seconds>]` | how long the queue waits after each kind of action: `spell`, `weaponskill`, `ability`, `item`, `ranged` or `interrupted`, 0 to 5 seconds in tenths; alone, lists them all |
+
+**The action queue.** After a spell, a weapon skill or a job ability the game
+refuses your next action for a moment, and a press made in that moment is lost.
+With the queue on, a crossbar or hotbar press made during a cast or that moment
+is held, and goes by itself as soon as you can act, as in FFXIV. Only one press
+is held, and a newer one replaces it. A press made while you are free goes at
+once. A held press is sent once, and is never waiting on a recast: if the action
+is still on its own recast when you could act, it is dropped. A press made during
+that moment is held if its recast ends first, and otherwise goes out as it always
+did. A weapon skill you
+have too little TP for does nothing at all, not even the game's usual message, and
+one held is dropped if the TP is gone when you could act. A held press aimed
+at `<t>` or `<bt>` stays on the target you had when you pressed, and a slot bound
+with no target takes whatever the game gives it when it goes. A slot that opens a
+cursor (`<st>`, `<stpc>` and the like) is decided when you press OK rather than
+when you press the slot, so you can pick your target during a cast and press OK
+whenever you like: if the game would still refuse it, it is held until it can go.
+GearSwap's `pretarget` does not run for such a slot.
+`<ft>` and party targets are not held and go at once, as they always did. A
+`sneak`, `invisible` or `reraise` slot picks its best way when you press it and holds
+that, unless the best way is gear to put on, which has a wait of its own. Macros and
+typed commands are not held, but they do count towards the wait. If you use
+Selindrile's GearSwap files, leave their MiniQueue off.
 
 `mr`, `warp` and a bound mount count down in chat before they act, so a
 mis-press costs a few seconds rather than a trip home. Getting off a mount
@@ -298,6 +324,8 @@ file is damaged the component falls back to its defaults and says so in chat.
 | `hideCutscene` | `true` | hide the HUD during cutscenes and the NPC conversations that lock your character (`//hud hidecutscene on\|off`) |
 | `config_pos` | centred | where you last dragged the settings window to |
 | `delay` | `5` | seconds a mount or warp counts down before it goes |
+| `queue` | `"on"` | the action queue: `"off"`, `"on"` or `"debug"` (`//hud queue`) |
+| `queue_locks` | none | your own queue waits, by kind (`//hud queue lock`); a kind not listed uses the shipped length |
 
 ## Auto-hide
 
