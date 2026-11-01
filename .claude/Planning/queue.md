@@ -499,6 +499,22 @@ unanswered. Kevin cannot say whether a mob was in reach for the two stretches of
 - **`ability` ships at 0.5** (Kevin), on the safe side of what was tested. A stored
   `queue_locks.ability` still overrides it.
 
+## `item` at 1.0 held (Kevin, 2026-11-01, on `ebb8088`)
+
+4 minutes on BLU. No ability was used, so this says nothing about 0.5.
+
+- **Row 29 passes.** All 6 spells held behind an item went at +1.02 to +1.04 and started
+  at +1.29 to +1.68.
+- **Row 31 is still open.** Both cursors printed `<stpc>`. A `<st>` slot would print
+  `cursor ... <st>`, and none of the 600-odd cursors in these logs has been one.
+- **Row 30 is dropped.** GearSwap's own sends already put 8 weaponskills and an ability
+  behind an ability at +0.23 to +0.37, all accepted, which is shorter than 0.5.
+- **Plenilune Embrace went out at 01:03:19 with no `OK` line,** 24s after a cursor that
+  then timed out, so it came from outside that cursor: the menu, a macro or GearSwap.
+- **One slow cast.** A held Nat. Meditation took 2.96s from start to finish at 01:00:38,
+  against a median of 0.44. Of 917 casts across the logs, 362 of them held, the only
+  other one that slow was a free Cure IV, so nothing ties it to the hold.
+
 ## Open: left targeting a Trust
 
 Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he
@@ -584,7 +600,7 @@ start bracket the true lock. Every line is in `debug.log` too.
 | 26 | Hold a `<stpc>` arrow on a Trust as your target dies, opening it during a lock. Repeat with `//hud queue off` | Which run leaves you on the Trust | Whether a `/ta` arrow is what strands you |
 | 27 | Hold a cursor up past 30s, then OK | It casts at who you picked, target unchanged | A long pre-select |
 | 28 | Press a `sneak` slot, then an `invisible` slot inside its cast or lock | `hold Invisible`, `release`, and it casts with no refusal | A ladder slot held |
-| 29 | Use an item, then press a bar spell at once | `finish item, lock 1.00s`, `release`, `out` at about +1.02, then `start` | `item` at 1.0 has never held a press |
-| 30 | Use an ability, then press a bar ability, and again with a bar weaponskill at 1000 TP | `lock 0.50s`, `release`, `out` at about +0.52, then `finish ability` or `start` | Only spells have been held at this length |
+| 29 | Use an item, then press a bar spell at once | `finish item, lock 1.00s`, `release`, `out` at about +1.02, then `start` | Whether `item` at 1.0 can hold a press |
+| 30 | Dropped: an ability or weaponskill held behind an ability | | GearSwap's own sends put 9 there at +0.23 to +0.37, all accepted |
 | 31 | Press a `<st>` slot, pick a target, press OK | `cursor`, `arrow`, `OK`, the cast lands on who you picked, target unchanged | Only `<stpc>` and `<stnpc>` have run live |
 | 32 | Press a bar spell during a cast, then type `//hud layout` | `dropped ...: //hud layout`, nothing goes | Only `suppressed` has dropped a press for this reason |
