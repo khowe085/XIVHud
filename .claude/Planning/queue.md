@@ -186,7 +186,7 @@ the longer of two sources with ranged rounded up from its one.
 | ability | 1.0, 2.0 before auto-attack | 0.8 | 1.0 |
 | item | none | 1.5 | 1.0, above two accepted sends at +0.64 and +0.86 |
 | ranged | none | 0.85 | 1.0 |
-| interrupted | none | 1.75 | 2.7, the spell's, bracketed at +2.23 to +2.37 |
+| interrupted | none | 1.75 | 2.7, the spell's: refused up to +2.23, accepted from +2.01 |
 
 bg-wiki's spell lock runs from the cast finishing at 75% of the gauge, and its
 example lands the effect 0.33s later, so the finish packet comes after the lock
@@ -398,6 +398,38 @@ above the two accepted sends rather than at them, and that length has yet to run
 
 The ability lock is no better known: three releases at +1.03 went and nothing shorter
 was tried. The Provoke mash was refused with 446 for having no valid target.
+
+## A BLU run with a death (Kevin, 2026-10-31, on `f877c49`, before the 1.0 item lock)
+
+33 minutes, mostly BLU, 13 releases, none refused by a lock, and no crash.
+
+- **`ability` looks too long.** Twelve sends +0.23 to +0.38 after Berserk, Warcry,
+  Aggressor, Unbridled Learning and Diffusion were all accepted: eight weaponskills,
+  three spells and an ability. A thirteenth left 0.07s before the finish arrived and
+  started at +0.43. All were GearSwap's, since a bar press in a lock is held. Each
+  weaponskill left 1.08 to 1.10 after its ability did, 9 of 9, so that is a timer and
+  none of them probes the edge. An ability's finish arrives 0.69 to 1.20 after it
+  leaves (28 samples), so a 0.4 lock sends 1.12 after it at the earliest, later than
+  any of those. No held press has gone at under +1.03.
+- **`interrupted` is a coin toss too.** Refused at +1.22 and +1.67, accepted at +2.01
+  and +2.17, where +2.23 was refused in the first full run. 2.7 stays.
+- **The first interrupted item:** `interrupted item`, then `refused, message 62`, on
+  an item used from the menu. The next one left at +1.82 and started, so 2.7 may be
+  long for an item. One sample.
+- **Row 9, a death:** `cleared: death` came at 23:45:11, and the next `out` printed
+  no `+` figure, so everything was forgotten. What it cleared was a free press on its
+  way, so a press HELD through a death is still unseen.
+- **The hold rescued a weaponskill.** GearSwap's at 23:38:01 got no answer, and the
+  held press went when the 2s ran out and started. That and the one at 23:34:41 had
+  no refusal or lock near them, so why they went unanswered is unknown.
+- **A send soon after a refusal, counted.** Across all six logs 7 of 24 sends under
+  0.9s after a refusal got no answer, against 9 of 1163 after that. The effect is
+  real, but "often" overstated it. One here was a bar press at +2.72, 0.29s after a
+  refusal of GearSwap's own weaponskill, which stalled that bar for 2s.
+- **The TP check:** 522 presses swallowed and 35 dropped at a release. The only
+  `nothing went out` was the press after the death.
+- A cast ended with `finish spell` and `interrupted spell` in one frame at 23:43:27,
+  while Kevin was paralyzed. Both lock 2.7, so nothing turns on it.
 
 ## Open: left targeting a Trust
 
