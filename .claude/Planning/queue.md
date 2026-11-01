@@ -364,6 +364,39 @@ is on the stack.
 Still open: a held ability and a held item, a lock changed in `//hud config`, and rows
 9 and 13. Rows 8 and 24 cannot be read from a log and need Kevin's word.
 
+## The in-game checklist (Kevin, 2026-10-31, on `f877c49`)
+
+46 minutes on RDM and BLU, 12 releases, none refused.
+
+- **Row 2:** Composure and Holy Water were each held through a Stoneskin and went at
+  +2.72 and +2.74. `out item`, `start item` and `finish item, lock 1.50s` all read
+  right, so `0x037` and category 5 work.
+- **Rows 8, 21 and 24 pass**, on Kevin's word. Row 21 covers the three short cursors
+  of the checklist run.
+- **Row 9:** a press held through Warp was released before the zone, and `cleared:
+  zone` came during its cast. With the `dropped ...: suppressed` of the first full run,
+  both ways out of a zone have been seen. A death has not.
+- **Row 13:** a weaponskill refused with 219 (`You cannot see`) took no lock. The next
+  one started, then took a category 4 finish, which is how atom0s says an out of range
+  weaponskill ends and explains 19:44:41 and 19:48:17 in the first full run. It gets
+  the 2.7 lock because a start was running. That costs one held press a moment at
+  worst, so it stands.
+- **The lock settings work:** one click printed `finish spell, lock 2.80s`, and the long
+  labels clear their `[-]` by 1-2px.
+- **The ladders fall through:** `hold Silent Oil` and `hold Spectral Jig` on BLU.
+- **Rows 10 to 12 on other jobs:** Kevin has none of RNG, COR, SMN or BST, so `/ra`, its
+  lock and pet commands stay unverified.
+- **Row 26:** still not reproduced.
+
+**The item lock is shorter than 1.5.** After an item's finish a spell at +0.64 started
+and an ability at +0.86 went. Sends at +0.32 and +0.59 got no answer, but each came
+within 0.3s of a refusal, and the message 18 run shows a send that soon after a refusal
+gets none whatever the lock (+6.13, +15.00, +22.71 and +32.65, each under 0.9s after
+one), so neither says anything. Held releases at +1.54 all went.
+
+The ability lock is no better known: three releases at +1.03 went and nothing shorter
+was tried. The Provoke mash was refused with 446 for having no valid target.
+
 ## Open: left targeting a Trust
 
 Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he
