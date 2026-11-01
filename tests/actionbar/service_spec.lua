@@ -1211,6 +1211,14 @@ describe("the action service", function()
       assert.is_not_nil(service.queue.held())
     end)
 
+    it("leaves an ability whose recast outlasts the lock to the game", function()
+      local service, env = queued()
+      finish_cast(service)
+      env.ability_recasts[5] = 3
+      service.fire({ type = "ja", action = "Provoke", target = "t" }, {})
+      assert.are.same({ 'input /ja "Provoke" <t>' }, env.commands)
+    end)
+
     it("sends the next press at once after one on its own recast, which GearSwap may have cancelled", function()
       local service, env = queued()
       env.spell_recasts[1] = 120

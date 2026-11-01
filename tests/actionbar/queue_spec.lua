@@ -987,19 +987,21 @@ describe("the action queue", function()
 
     it("takes the interrupt's lock when a paralyzed cast's finish comes first", function()
       local queue, env = world()
+      env.locks = { interrupted = 1 }
       start_cast(queue)
       queue.on_action(action(4, 1))
       queue.on_action(action(8, INTERRUPTED))
-      env.now = env.now + 2.71
+      env.now = env.now + 1.01
       assert.is_false(queue.busy())
     end)
 
     it("keeps the interrupt's lock when the finish comes after it", function()
       local queue, env = world()
+      env.locks = { interrupted = 1 }
       start_cast(queue)
       queue.on_action(action(8, INTERRUPTED))
       queue.on_action(action(4, 1))
-      env.now = env.now + 2.71
+      env.now = env.now + 1.01
       assert.is_false(queue.busy())
     end)
 

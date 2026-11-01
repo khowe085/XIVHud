@@ -342,7 +342,7 @@ handler, and blocking the packet afterwards would leave it `midaction` for good.
 So the press opens the same cursor over `/ta <token>`, free or busy, which GearSwap
 ignores, and `queue.on_text` takes the second number: the line is blocked, so
 your target never moves, and the real `/ma "..." <id>` is held, or sent at once
-if the lock has cleared or the recast is running. GearSwap sees nothing until
+if the lock has cleared or the recast outlasts it. GearSwap sees nothing until
 then, and its numeric path runs precast as it does after any OK. No load order
 is needed. Free counts too because a lock can begin after the press: GearSwap
 sends weaponskills of its own, and a Sleep II opened free and OK'd in one went

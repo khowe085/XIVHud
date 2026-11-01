@@ -117,7 +117,7 @@ on OK. GearSwap's `st_flag` skips the first of these the same way. So a cursor s
 opens the same cursor over `/ta <token>`, free or busy, and the queue counts the
 numbers: the first goes through, the second is OK. That line is blocked, so the
 target never moves, and the real `/ma "..." <id>` is held, or sent at once when the
-lock has cleared or the recast is running. If the second number ever failed to
+lock has cleared or the recast outlasts it. If the second number ever failed to
 come, the `/ta` would run: the target moves and nothing casts.
 
 **Free counts too.** It went as it always did until a run showed the hole: a Sleep II
@@ -648,6 +648,11 @@ A seventh round came back clean. Its optional notes that stand: with the librari
 failed the bars still load but `outgoing text` does not, so a cursor press would lose
 its OK with the queue on, and `Weaponskill lock (seconds)` may overrun its label
 column by about 18px at 18pt (an estimate, to check in `//hud config`).
+
+An eighth round, over the whole feature after the recast hold, came back clean. Two
+tests it said could not fail and a line of wording the hold left stale were fixed after
+it. Its note that stands: a token that raises no arrow leaves a cursor open, so a
+macro's numeric `/ta` could read as ours for up to 30s, which it put at 50% reachable.
 
 ## Measuring in a live client
 
