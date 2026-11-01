@@ -336,7 +336,9 @@ while the queue is on.
 stable 4.7.9.3 with the client up 27 hours. Windower/Issues#1116 documents that exact
 offset as `abort()`'s fast-fail, so the record says only that Hook aborted. Lua runs in
 `LuaCore.dll`, not `Hook.dll`. That issue shows the same record from plainly closing
-POL with no addons loaded, so it may be the tail of POL exiting for another reason. The
+POL with no addons loaded, so it could be the tail of POL exiting for another reason,
+though Kevin saw the game freeze for a second and vanish with no error, which reads
+more like an abort in the middle of play. The
 queue was idle: the last line is a weaponskill finish at 22:11:18 and the `lock over`
 due 2.4s later never came. Only a dump can say more, by showing whether `ExitProcess`
 is on the stack.
