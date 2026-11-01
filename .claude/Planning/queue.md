@@ -326,11 +326,17 @@ while the queue is on.
 23 minutes and 42 releases, none refused by a lock, ending in a client crash.
 
 - **Row 28 passes:** Invisible straight after Sneak was held and cast, 3 of 3.
-- **Row 27 passes:** a Cure IV cursor stayed up for 49s and its OK was caught.
+- **Row 27 passes:** a Cure IV cursor stayed up for 49s, its OK was caught, and Kevin's
+  main target stayed locked.
+- **Row 19 passes on the numbers:** held spells cast as fast as free ones (Cure IV
+  0.84s against 0.82s, Refresh III 1.22s against 1.21s), so the Fast Cast set goes on.
 - **`no TP` works on any weaponskill**, Black Halo as well as Savage Blade.
 - **One release went nowhere:** Cure IV at 22:04:55, cause unknown, and re-pressed 4s
   later.
 - Rows 20 and 23 are still open: no press met an arrow already up.
+- **The biggest gap:** all 322 releases in the last three logs were spells or
+  weaponskills. No ability, item, ranged shot or pet command has been held, so the
+  bare id on `/ja` and `/item` (row 8), `0x037` and category 5 have never run live.
 
 **The crash:** `pol.exe`, fault in `Hook.dll` at `0xc739a`, code `0xc0000409`, on
 stable 4.7.9.3 with the client up 27 hours. Windower/Issues#1116 documents that exact
