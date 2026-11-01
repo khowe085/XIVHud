@@ -349,6 +349,21 @@ queue was idle: the last line is a weaponskill finish at 22:11:18 and the `lock 
 due 2.4s later never came. Only a dump can say more, by showing whether `ExitProcess`
 is on the stack.
 
+## A run through the checklist (Kevin, 2026-10-31, on `f877c49`)
+
+12 minutes and 32 releases, all started, on a client restarted after the crash.
+
+- **Rows 20 and 23 pass:** 33 presses met an arrow already up and each changed what OK
+  cast, a mash of Dia III and a change to Dispel on one arrow among them.
+- **Row 21 passes, if those were his macro:** three cursors ended 3.5s, 5.4s and 7s
+  after opening, which only a `/ta` token with no arrow up can do, and nothing cast.
+- **Row 17 passes:** Cure IV pressed during its own cast at 22:32:06, OK 2s after the
+  finish, held and cast with no `on recast`.
+- **`interrupted` at 2.7:** 4 of 4 releases started.
+
+Still open: a held ability and a held item, a lock changed in `//hud config`, and rows
+9 and 13. Rows 8 and 24 cannot be read from a log and need Kevin's word.
+
 ## Open: left targeting a Trust
 
 Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he

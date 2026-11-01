@@ -351,8 +351,7 @@ changes what OK will cast: the token raises no new arrow, the game answers it
 had OK counted as the arrow, so the `/ta` ran and nothing cast (his Dia III and
 Sleep II). Confirmed in a live client over six runs (Kevin, 2026-10-31): on a
 single press every OK on a `<stpc>` or `<stnpc>` slot was caught, and none was
-refused by the lock. A seventh run confirmed the free press; the arrow check is not
-yet confirmed.
+refused by the lock. Later runs confirmed the free press and the arrow check.
 **Open:** Kevin was left locked onto a Trust with weapons out, swinging at a monster
 he could not target, until he disengaged (2026-10-31). It predates the queue, but a
 `/ta` arrow can set your target where a `/ma` arrow cannot, so whether a target dying
