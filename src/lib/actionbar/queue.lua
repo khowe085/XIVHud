@@ -391,9 +391,10 @@ local function new(deps)
     end
     local id = text:match("^/ta%a*%s+(%d+)%s*$")
     if id == nil then
-      -- A token after our arrow is a cursor of something else's opening, so
-      -- ours has gone, by ESC or otherwise, and its numbers are not ours.
-      if cursor.numbers > 0 and text:match("^/ta%a*%s+<") then
+      -- A token with no arrow up after ours means ours has gone, by ESC or
+      -- otherwise, and the numbers to come are not ours. With one up the game
+      -- refuses the token, and OK is still ours.
+      if cursor.numbers > 0 and text:match("^/ta%a*%s+<") and not deps.arrow_up() then
         note("no OK for " .. cursor.name)
         cursor = nil
       end
@@ -516,7 +517,9 @@ local function new(deps)
       lock_until = nil
       note("lock over")
     end
-    if cursor ~= nil and clock - cursor.at >= FINISH_BACKSTOP then
+    -- Never with its arrow up: its OK is still to come, and with no cursor to
+    -- catch it the /ta would move your target.
+    if cursor ~= nil and clock - cursor.at >= FINISH_BACKSTOP and not deps.arrow_up() then
       note("no OK for " .. cursor.name)
       cursor = nil
     end

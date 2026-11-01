@@ -527,6 +527,7 @@ describe("the action queue", function()
       env.now = env.now + 20
       queue.press(SHELL, SHELL_COMMAND)
       env.now = env.now + 20
+      env.arrow_up = false
       queue.step()
       assert.is_true((queue.on_text("/ta 12345")))
     end)
@@ -669,13 +670,24 @@ describe("the action queue", function()
     end)
 
     it("ignores every other line while a cursor is up", function()
-      local queue = world()
+      local queue, env = world()
       finish_cast(queue)
       cursor_up(queue)
+      env.arrow_up = true
       assert.is_false(queue.on_text("/p hello 12345"))
       assert.is_false(queue.on_text("/ta <t>"))
       assert.is_false(queue.on_text("/ta 12345 now"))
       assert.is_false(queue.on_text(nil))
+      assert.is_true((queue.on_text("/ta 12345")), "and OK is still OK")
+    end)
+
+    it("keeps its cursor through another's token with its arrow up, which the game refuses", function()
+      local queue, env = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      env.arrow_up = true
+      assert.is_false(queue.on_text("/ta <stnpc>"))
+      assert.is_true((queue.on_text("/ta 12345")))
     end)
 
     it("gives a cursor up when another opens after its arrow: the game has closed ours", function()
@@ -718,6 +730,28 @@ describe("the action queue", function()
       start_cast(queue)
       cursor_up(queue)
       env.now = env.now + 30.01
+      queue.step()
+      assert.is_false(queue.on_text("/ta 12345"))
+    end)
+
+    it("keeps a cursor past the backstop for as long as its arrow is up", function()
+      local queue, env = world()
+      cursor_up(queue)
+      env.arrow_up = true
+      env.now = env.now + 30.01
+      queue.step()
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.are.equal(AIMED, send)
+    end)
+
+    it("forgets it the tick its arrow goes, once past the backstop", function()
+      local queue, env = world()
+      cursor_up(queue)
+      env.arrow_up = true
+      env.now = env.now + 30.01
+      queue.step()
+      env.arrow_up = false
       queue.step()
       assert.is_false(queue.on_text("/ta 12345"))
     end)

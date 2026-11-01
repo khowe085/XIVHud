@@ -315,6 +315,9 @@ on a battle target then.
   `/ma` arrow cannot set your target and a `/ta` one can, which would fit landing on a
   Trust rather than a battle target. `8bb87b2` opens every cursor over `/ta`, so if
   that is the cause it now happens more often. Row 26 settles it.
+- **One real way into that state is closed.** The sixth review round found that an
+  arrow held past 30s lost its cursor, so OK ran as a `/ta` and moved the target. That
+  was not this run's cause: no `<stpc>` cursor timed out.
 
 ## Review gate
 
@@ -326,6 +329,19 @@ what the 0.6s and the recast check at the top of `press` are for. A fifth round
 over the whole feature, after the cursor work and `debug.log`, was clean; its note
 on a closed cursor taking the next `/ta` as its OK is why a token line after the
 arrow now ends one.
+
+A sixth round, over the whole feature after the TP check, reported an arrow held past
+30s losing its cursor, so OK ran as a `/ta`, and the give-up reading any token at all
+as our arrow gone. A cursor now outlives the 30s for as long as its arrow is up, and
+a token only ends one with no arrow up, since the game refuses a token while one is.
+Two optional notes stand: a second press in the frames before `<st>` answers still
+reads as a fresh cursor (row 20 will show it), and a press with an arrow up changes
+what OK casts even if its token differs, as row 23 intends.
+
+A seventh round came back clean. Its optional notes that stand: with the libraries
+failed the bars still load but `outgoing text` does not, so a cursor press would lose
+its OK with the queue on, and `Weaponskill lock (seconds)` may overrun its label
+column by about 18px at 18pt (an estimate, to check in `//hud config`).
 
 ## Measuring in a live client
 
@@ -363,3 +379,4 @@ start bracket the true lock. Every line is in `debug.log` too.
 | 21 | ESC a cursor, then run a `/ta <stnpc>` macro | The macro's cursor works, and nothing casts | A closed cursor must not take another's line as its OK |
 | 25 | Mash a weaponskill through its own lock, then press a spell as the lock ends | `swallowed ... no TP` or `dropped ... no TP`, no `nothing went out`, and the spell goes at about +2.43 | The TP check |
 | 26 | Hold a `<stpc>` arrow on a Trust as your target dies, opening it during a lock. Repeat with `//hud queue off` | Which run leaves you on the Trust | Whether a `/ta` arrow is what strands you |
+| 27 | Hold a cursor up past 30s, then OK | It casts at who you picked, target unchanged | A long pre-select |
