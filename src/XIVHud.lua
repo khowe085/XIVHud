@@ -580,6 +580,10 @@ local function get_mob_by_target(...)
   return windower.ffxi.get_mob_by_target(...)
 end
 
+local function get_mob_by_id(id)
+  return windower.ffxi.get_mob_by_id(id)
+end
+
 local function get_party()
   return windower.ffxi.get_party()
 end
@@ -589,7 +593,7 @@ local function get_info()
 end
 
 --[[ One read of the client per interval, shared by every component, and the one
-     place the two vitals streams are reconciled -- see lib/player. The four
+     place the two vitals streams are reconciled -- see lib/player. The five
      accessors above are its deps, and no COMPONENT gets them: what each ctx
      below gets is the service's getters, so a component cannot reach past it.
      Core is the exception, and takes the raw `get_player` for the reason given
@@ -609,6 +613,7 @@ local player_service = step("building the player service", function()
     get_party = get_party,
     get_info = get_info,
     get_mob_by_target = get_mob_by_target,
+    get_mob_by_id = get_mob_by_id,
   })
 end)
 
@@ -619,6 +624,7 @@ local read_player = player_service and player_service.get_player
 local read_party = player_service and player_service.get_party
 local read_info = player_service and player_service.get_info
 local read_mob_by_target = player_service and player_service.get_mob_by_target
+local read_mob_by_id = player_service and player_service.get_mob_by_id
 local read_generation = player_service and player_service.generation
 
 local function asset(relative_path)
@@ -1060,6 +1066,13 @@ step("building the targetbar component", function()
     now = os.clock,
     get_player = read_player,
     get_mob_by_target = read_mob_by_target,
+    -- The focus bar's mob, read every frame and memoized with the tokens.
+    get_mob_by_id = read_mob_by_id,
+    -- Raw: walked once per `focus <name>` command, never per frame, and the
+    -- answer has to be the client's now rather than an interval old.
+    get_mob_array = function()
+      return windower.ffxi.get_mob_array()
+    end,
     get_party = read_party,
     generation = read_generation,
     -- nil when the resource library failed to load: the cast bar then never
@@ -1123,6 +1136,10 @@ step("building the statusbar component", function()
     -- A right-click on an icon asks the cancel addon to drop the buff.
     send_command = function(command)
       windower.send_command(command)
+    end,
+    -- `partyorder`: the party list follows this bar's order, through core.
+    buff_order_changed = function(priority)
+      return core.buff_order_changed("statusbar", priority)
     end,
   }))
 end)

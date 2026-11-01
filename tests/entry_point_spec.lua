@@ -61,6 +61,16 @@ describe("entry point", function()
       assert.is_not_nil(boot.ctxs.statusbar.resources)
     end)
 
+    -- `partyorder`: a component cannot reach a sibling, so the order goes
+    -- through core, named as the status bar's so it is not handed back, and
+    -- core's count of who took it comes back for the reply.
+    it("hands the status bar's buff order to core under its own name", function()
+      local order = { [15] = 1 }
+      boot.buff_order_takers = 2
+      assert.are.equal(2, boot.ctxs.statusbar.buff_order_changed(order))
+      assert.are.same({ { from = "statusbar", priority = order } }, boot.buff_orders)
+    end)
+
     it("builds the party list once, with no variant to pick", function()
       local built = 0
       for _, name in ipairs(boot.built) do
@@ -453,6 +463,26 @@ describe("entry point", function()
       tick()
       assert.are.equal(before + 1, boot.client_calls.mob, "a component saw the previous frame's target")
       assert.are.equal(1, #boot.prerender_targets)
+    end)
+
+    -- The focus bar's per-frame read goes through the same memo.
+    it("memoizes the target bar's lookup by id for the frame", function()
+      boot.ctxs.targetbar.get_mob_by_id(42)
+      boot.ctxs.targetbar.get_mob_by_id(42)
+      assert.are.equal(1, boot.client_calls.mob)
+      tick()
+      local before = boot.client_calls.mob
+      boot.ctxs.targetbar.get_mob_by_id(42)
+      assert.are.equal(before + 1, boot.client_calls.mob, "the memo outlived its frame")
+    end)
+
+    it("answers a lookup by id from the client's lookup by id", function()
+      assert.are.equal(42, boot.ctxs.targetbar.get_mob_by_id(42).id)
+    end)
+
+    -- Read once per `focus` command, so it is the client's own, unmemoized.
+    it("hands the target bar the client's mob array", function()
+      assert.are.equal(boot.mobs, boot.ctxs.targetbar.get_mob_array())
     end)
 
     it("answers a mob lookup with what the client gave", function()

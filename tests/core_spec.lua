@@ -1352,6 +1352,77 @@ describe("core", function()
       assert.is_nil(env.said():find("plain command", 1, true))
     end)
 
+    --[[ A component cannot reach a sibling, so one buff order reaches another
+         component through core: every OTHER component declaring
+         `adopt_buff_order` is handed it, and one without the member is not
+         asked. The answer is how many took it, so the sender's reply cannot
+         claim a replacement nobody made. ]]
+    it("hands a changed buff order to every other component that adopts one, counting who took it", function()
+      local source = core.register(bar("source"))
+      local follower = core.register(bar("follower", 300, 200))
+      local declining = core.register(bar("declining", 500, 200))
+      core.register(bar("bystander", 700, 200))
+      local adopted, echoed, declined = {}, {}, 0
+      source.adopt_buff_order = function(priority)
+        echoed[#echoed + 1] = priority
+        return true
+      end
+      follower.adopt_buff_order = function(priority)
+        adopted[#adopted + 1] = priority
+        return true
+      end
+      declining.adopt_buff_order = function()
+        declined = declined + 1
+        return false
+      end
+      login()
+      local order = { [15] = 1 }
+      assert.are.equal(1, core.buff_order_changed("source", order))
+      assert.are.same({ order }, adopted)
+      assert.are.same({}, echoed)
+      assert.are.equal(1, declined)
+      assert.is_nil(env.said():find("bystander", 1, true), "said: " .. env.said())
+    end)
+
+    --[[ It runs inside the sender's own handlers - a drop is the mouse
+         handler, where five errors switch the mouse off for every component -
+         so one receiver's error is said and swallowed, and the rest are still
+         handed the order. ]]
+    it("says a receiver's error rather than throwing it, and hands the rest the order", function()
+      core.register(bar("source"))
+      local broken = core.register(bar("broken", 300, 200))
+      local follower = core.register(bar("follower", 500, 200))
+      broken.adopt_buff_order = function()
+        error("no buff settings")
+      end
+      local adopted = 0
+      follower.adopt_buff_order = function()
+        adopted = adopted + 1
+        return true
+      end
+      login()
+      local took
+      assert.has_no.errors(function()
+        took = core.buff_order_changed("source", { [15] = 1 })
+      end)
+      assert.are.equal(1, adopted)
+      assert.are.equal(1, took, "the one that threw took nothing")
+      assert.is_not_nil(env.said():find("broken", 1, true))
+      assert.is_not_nil(env.said():find("no buff settings", 1, true))
+    end)
+
+    it("hands a buff order to nobody while logged out", function()
+      core.register(bar("source"))
+      local follower = core.register(bar("follower", 300, 200))
+      local called = false
+      follower.adopt_buff_order = function()
+        called = true
+        return true
+      end
+      assert.are.equal(0, core.buff_order_changed("source", { [15] = 1 }))
+      assert.is_false(called)
+    end)
+
     it("refuses a component's buff verbs while logged out", function()
       local widget = core.register(bar())
       local called = false

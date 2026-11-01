@@ -862,6 +862,35 @@ local function new(deps)
     say_lines(component.handle_buffs(action.args))
   end
 
+  --[[ A component cannot reach a sibling, so a buff order one of them
+       changed reaches the others through here: every OTHER component
+       declaring `adopt_buff_order`, an opt-in member detected as
+       `handle_buffs` is, is handed it - the status bar's `partyorder`, read
+       by the party list. Nothing is attached while logged out, so nothing
+       is handed then. It runs inside the sender's own handlers - a drop is
+       the mouse handler, where five errors switch the mouse off for every
+       component - so a receiver's error is said rather than thrown, and the
+       rest are still handed the order. Answers how many took it (a receiver
+       answering true), so the sender cannot claim a replacement nobody
+       made. ]]
+  function self.buff_order_changed(from, priority)
+    local took = 0
+    if not settings.character() then
+      return took
+    end
+    for _, component in ipairs(registry.all()) do
+      if component.name ~= from and component.adopt_buff_order then
+        local ok, answer = pcall(component.adopt_buff_order, priority)
+        if not ok then
+          say(("%s could not take the buff order: %s"):format(component.name, tostring(answer)))
+        elseif answer == true then
+          took = took + 1
+        end
+      end
+    end
+    return took
+  end
+
   -- One line for a single-anchor component; a headline plus one indented line
   -- per anchor otherwise, since four placements do not fit one chat line.
   local function describe(component)

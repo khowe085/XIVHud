@@ -699,8 +699,9 @@ rest of the HUD is - and walks you through:
    through the subjob menu, or under a buff context, which offers them.
    Inside the subjob and weapon menus the rows read just the job or the
    weapon type (`WHM`, `Great Axe`).
-2. **Pick an action** — categories down the left, one page of actions on the
-   right, the wheel to page through them.
+2. **Pick an action** — categories down the left, the actions on the right.
+   The wheel scrolls them three at a time; clicking the page line under them
+   jumps a whole page, and past the last one back to the top.
 3. **Pick a target** — the common target tokens, with `(no target)` first (`stal`, `lastst`, `scan` and `r` are `bind`-command only). Actions
    that cannot take a target skip this step and bind straight away.
 
