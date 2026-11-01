@@ -321,6 +321,26 @@ while the queue is on.
   lock beginning after the press. Rows 20 and 23 are still open: no press met an
   arrow already up.
 
+## A run on the held ladder (Kevin, 2026-10-31, on `f877c49`: "felt the best")
+
+23 minutes and 42 releases, none refused by a lock, ending in a client crash.
+
+- **Row 28 passes:** Invisible straight after Sneak was held and cast, 3 of 3.
+- **Row 27 passes:** a Cure IV cursor stayed up for 49s and its OK was caught.
+- **`no TP` works on any weaponskill**, Black Halo as well as Savage Blade.
+- **One release went nowhere:** Cure IV at 22:04:55, cause unknown, and re-pressed 4s
+  later.
+- Rows 20 and 23 are still open: no press met an arrow already up.
+
+**The crash:** `pol.exe`, fault in `Hook.dll` at `0xc739a`, code `0xc0000409`, on
+stable 4.7.9.3 with the client up 27 hours. Windower/Issues#1116 documents that exact
+offset as `abort()`'s fast-fail, so the record says only that Hook aborted. Lua runs in
+`LuaCore.dll`, not `Hook.dll`. That issue shows the same record from plainly closing
+POL with no addons loaded, so it may be the tail of POL exiting for another reason. The
+queue was idle: the last line is a weaponskill finish at 22:11:18 and the `lock over`
+due 2.4s later never came. Only a dump can say more, by showing whether `ExitProcess`
+is on the stack.
+
 ## Open: left targeting a Trust
 
 Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he
