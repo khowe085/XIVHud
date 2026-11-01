@@ -479,6 +479,23 @@ unanswered. Kevin cannot say whether a mob was in reach for the two stretches of
 - **`item` at 1.0 is still untested.** Eight items, and the soonest send after one was
   +1.72.
 
+## `ability` at 0.4 (Kevin, 2026-11-01, on `ebb8088`, set with `//hud queue lock`)
+
+3 minutes on BLU, with the length set by hand rather than shipped.
+
+- **0.4 passes for spells.** All 9 held spells went at +0.43 to +0.45 after an ability
+  and started at +0.68 to +0.91, median +0.82, after eight different abilities. At 1.0
+  they started at +1.63 to +1.66 bar one at +2.08, so a spell after an ability starts
+  about 0.8s sooner.
+- **Going lower looks like no gain.** GearSwap's sends at +0.23 to +0.38 started at +0.87
+  to +1.64, median +1.21, later than these. They were mostly weaponskills, so that is a
+  hint only.
+- **Untested at 0.4:** a held ability or weaponskill. GearSwap's sends cover those from
+  below, 8 of 8 weaponskills at +0.23 to +0.36 and one ability at +0.37.
+- **The seven message 17s were a mash.** Each was a spell pressed again once its own
+  recast was running, which goes out by the rule and is refused. Each lock ran on as
+  it was, and no held press was lost to them.
+
 ## Open: left targeting a Trust
 
 Kevin, in that run: locked onto a Trust with weapons out, swinging at a monster he
