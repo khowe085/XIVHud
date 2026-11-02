@@ -14,10 +14,10 @@ opening the equipment menu.
   item in it.
 - Updates as you change gear, including GearSwap swaps.
 - Draws an **X** over any slot that encumbrance has locked.
-- Shows your **ammo count** over the ammo slot.
+- Shows your **ammo count** over the ammo slot when you have more than one.
 - Icons are read straight out of the game's data files the first time an
-  item is seen, then cached in `addons/XIVHud/cache/items/` for every character.
-  No icon pack to download.
+  item is seen, then cached in `addons/XIVHud/cache/items/` for every character
+  and shared with the crossbar and hotbar. No icon pack to download.
 
 ## Configuration options
 
@@ -50,8 +50,9 @@ cache folder, `cache/items`, and never looks at the old ones again. The loose
 `icons/custom` alone, since that is your own crossbar and hotbar art.
 
 If chat says **"item icons are not being read: the game's item data has
-changed"**, a game update has moved the icons again and XIVHud needs an update;
-nothing is cached until it has one.
+changed"**, a game update has moved the icons again and XIVHud needs an update.
+An icon that cannot be trusted is not cached, and its slot stays blank rather
+than showing the wrong picture.
 
 If an item still draws the wrong icon, `//hud equipviewer icons probe` prints
 the item id the addon believes each slot holds - compare those with what you

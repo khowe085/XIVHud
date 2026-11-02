@@ -25,9 +25,16 @@ bind here, and the same layers, contexts, sets and rotations apply.
   `bar4`, ALT+SHIFT for `bar5`, CTRL+ALT+SHIFT for `bar6`. `bar7` and `bar8`
   have no keys and are mouse only. The bare number row is the game's: it
   fires nothing, so a controller cannot set a row off by accident.
-  **CTRL+Up** and **CTRL+Down** cycle the active set (the game's own macro set
-  changes on the same chord).
-- **Left-click a slot** to fire it.
+  **CTRL+Up** moves to the next set in the rotation and **CTRL+Down** to the
+  previous one, with CTRL held on its own (the game's own macro set changes on
+  the same chord, and still sees the arrow).
+- None of the keys fire while the chat line is open, during a cutscene, in
+  layout or edit mode, before a job has loaded, or while the hotbar is hidden.
+- **Left-click a slot** to fire it. The game does not see a click on a drawn
+  slot, even an empty one.
+- **A press during a cast is held** by the
+  [action queue](../Home.md#the-action-queue), shared with the crossbar, and
+  goes by itself as soon as you can act.
 - The same slot art as the crossbar: icon, name, recast arc, MP or TP cost,
   item and tool counts, and the skillchain property a weaponskill would make
   while a chain is open.
@@ -38,7 +45,7 @@ bind here, and the same layers, contexts, sets and rotations apply.
 - **Drag a slot onto the crossbar**, or a crossbar slot onto the hotbar: the
   two slots swap everything they hold, every layer of it. Edit mode covers
   both bars, so `//hud hotbar edit` and `//hud crossbar edit` do the same
-  thing. See [dragging on the crossbar](crossbar.md).
+  thing. See [editing on the crossbar](crossbar.md#editing-without-guessing).
 - **Sets, sharing and rotations** work exactly as on the crossbar: eight
   sets per job, any of them shared across jobs, each in the drawn rotation,
   the sheathed one, both or neither.
@@ -82,10 +89,11 @@ over it.
 | `text_color` / `text_stroke` | white / dark, width 2 | label colour and outline |
 | `mp_cost_color` / `tp_cost_color` | pink / yellow | the cost text colours |
 
-The travel countdown is a setting
-shared with the crossbar: `//hud delay`, listed on the [home page](../Home.md#action-commands). Which
-rows are on is stored with the placement: `//hud show hotbar bar2` switches
-one on, or SHIFT + right-click it in layout mode.
+The travel countdown and the action queue are settings shared with the
+crossbar: `//hud delay` and `//hud queue`, listed on the
+[home page](../Home.md#action-commands). Which rows are on is stored with the
+placement: `//hud show hotbar bar2` switches one on, or SHIFT + right-click it
+in layout mode.
 
 ## Commands
 
@@ -97,12 +105,13 @@ context=sub:whm`, `context=wpn:great-katana`, `context=buf:light-arts`.
 The settings that are not about one slot - which sets are shared, which
 rotation each set is in, each row's shape and hide-empty switch, and the set
 numbers - can also be changed with the mouse: `//hud config hotbar` opens the
-[settings window](../Home.md#settings-window) on this component. Slots
-themselves are edited in edit mode, not there.
+[settings window](../Home.md#settings-window) on this component, in three tabs:
+`sets`, `rows` and `general`. Slots themselves are edited in edit mode, not
+there.
 
 | Command | What it does |
 | --- | --- |
-| `//hud hotbar` | the job, active set and weapon state, then one line per row: on or off, shape, the set it shows, and whether it hides empty slots |
+| `//hud hotbar` | the job, active set, weapon state and weapon classes, then one line per row: on or off, shape, the set it shows, and whether it hides empty slots |
 | `//hud hotbar <bar>` | the head line and that row alone |
 | `//hud hotbar [<bar>] rows <1\|2\|5\|10>` | set a row's shape (row 1 when no row is named) |
 | `//hud hotbar [<bar>] hideempty on\|off` | XIV's "Hide empty slots": leave a row's unbound slots undrawn (row 1 when no row is named). A slot counts as empty when nothing is bound to it through the layers active right now. Every slot is still drawn while the binder or layout mode is open |

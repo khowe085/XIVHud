@@ -12,10 +12,11 @@ property icons.
 ## Features
 
 - **Red and thin** while a weaponskill has landed but the next step is not
-  yet allowed.
-- **Green and thick** while the window is open, shrinking as the window
-  closes.
-- Nothing is drawn when no chain is in progress.
+  yet allowed, growing to full width over those three seconds.
+- **Green and thick** while the window is open, shrinking toward its centre
+  as the window closes.
+- Nothing is drawn when no chain is in progress on your current target, or
+  when that target is dead.
 - Ships on, centred near the bottom of the screen above where the crossbar's
   WXHB sits. Move and resize it in `//hud layout` like any other component.
 

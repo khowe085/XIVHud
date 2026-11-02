@@ -10,7 +10,7 @@ of the screen, in the style of FFXIV's currency display.
 ## Features
 
 - Updates the moment your gil changes - a sale, a purchase, a reward, a
-  trade.
+  trade. It reads `Loading...` until the first figure arrives after login.
 - The number is formatted with thousands separators.
 - The icon stays put as the digits change.
 - The icon can be switched off, leaving the number alone.

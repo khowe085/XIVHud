@@ -23,9 +23,9 @@ keeps its own arrangement.
   and speed check each come from a Windower addon of the same purpose. What
   XIVHud adds is what makes them one HUD: shared placement,
   per-character settings, layout slots, and a common command line. The
-  [Credits](#credits) section at the end names every project, and each
-  directory that carries borrowed code or art carries that project's licence
-  beside it.
+  [Credits](#credits) section at the end names every project, and borrowed
+  code and art carry that project's notice, in a `LICENSE.txt` beside them or
+  in the file itself.
 - **It was written with AI.** The code, the tests and the documentation were
   produced by an AI assistant (Anthropic's Claude, through Claude Code),
   working from the author's direction, with the author reviewing the results
@@ -44,7 +44,9 @@ came to be.
 3. In game, type `//lua load xivhud`. To load it automatically, add
    `lua load xivhud` to `Windower4/scripts/init.txt`.
 4. Type `//hud layout` to arrange the HUD: drag to move, mouse wheel to
-   resize, right-click to switch a widget off or on. Type it again to finish.
+   resize, right-click to switch a widget off or on (SHIFT + right-click
+   switches just the piece under the cursor; hold CTRL to drag off the grid).
+   Type it again to finish.
 
 The [wiki home page](wiki/Home.md) has the full walkthrough, the command list
 and where settings are stored.
@@ -77,9 +79,10 @@ Everything is under `//hud`. The most used:
 //hud show|hide <component>    switch one on or off
 //hud reset <component|all>    back to defaults
 //hud slot <name>              switch to a named layout
-//hud draw | mr | warp | sneak | invisible   act on the game (the same actions a bar slot can hold)
-//hud delay                    setting shared by the crossbar and hotbar
+//hud draw | mr | warp | sneak | invisible | reraise   act on the game (the same actions a bar slot can hold)
+//hud delay [<seconds>]        the mount and warp countdown, shared by the crossbar and hotbar
 //hud queue [on|debug|off]     hold a bar press through a cast and send it when you can act
+//hud hidecutscene [on|off]    hide the HUD during cutscenes
 //hud config                   the settings window: change settings with the mouse
 //hud <component> ...          that component's own settings
 ```
@@ -108,8 +111,8 @@ platform rules in detail.
 
 XIVHud's own code is released under the BSD 3-clause licence, © 2026
 Azureblood2; the notice is at the top of every source file. Borrowed code and
-art keep their original licences, listed below and reproduced in the
-`LICENSE.txt` beside each.
+art keep their original licences, listed below, with each project's notice in a
+`LICENSE.txt` beside it or in the file itself.
 
 ## Credits
 
@@ -133,6 +136,8 @@ licence.
 | [enemybar](https://github.com/Windower/Lua/tree/dev/addons/enemybar) | Mike McKee | BSD 3-clause | the target bar's claim colouring |
 | [enemybar2](https://github.com/AkadenTK/enemybar2) | AkadenTK | see project | the target bar's cast tracking and its subtarget bar |
 | [DistancePlus](https://github.com/Windower/Lua/tree/dev/addons/DistancePlus) | Sammeh of Quetzalcoatl | BSD 3-clause | the target bar's range bands |
+| thtracker | Krizz | BSD | the target bar's Treasure Hunter level |
+| [GearSwap](https://github.com/Windower/Lua/tree/dev/addons/GearSwap) | Byrthnoth | BSD 3-clause | the action queue's refusal messages and outgoing action categories |
 | SpeedChecker | Windower | BSD 3-clause | the speed check |
 | pointwatch | Byrthnoth | BSD 3-clause | the experience bar: which packets and messages carry experience, limit and exemplar points |
 | [barfiller](https://github.com/Windower/Lua/tree/live/addons/barfiller) | Morath86 | BSD 3-clause | the experience bar's art and its bar |

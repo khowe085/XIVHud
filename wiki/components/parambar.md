@@ -59,9 +59,9 @@ window 60` if you want a steadier number, or read the `(7/9)` rather than the
 percentage.
 
 `//hud parambar accuracy reset` empties the window, so you can start a fresh
-count on a new fight or after a gear change. The row is text only - there is
-nothing on it to click, and the parameter bar takes no part in the mouse at
-all.
+count on a new fight or after a gear change; logging out empties it too. The
+row is text only - there is nothing on it to click, and the parameter bar takes
+no part in the mouse at all.
 
 Switching the row on or off changes how tall the widget is, so the bars move
 down or up by the height of the row; drag the parameter bar back where you
@@ -115,6 +115,3 @@ opens the [settings window](../Home.md#settings-window) on this component.
 | `//hud parambar accuracy on\|off` | show or hide the accuracy row |
 | `//hud parambar accuracy reset` | empty the window and start a fresh count |
 | `//hud parambar accuracy window <seconds>` | set how much history the row counts (1 to 600) |
-
-`//hud parambar accuracy reset` is the only way to empty the window: the row
-is text, with nothing on it to click.

@@ -55,14 +55,17 @@ time to see the command list.
 1. Log in on a character. Every component that is on by default comes up in
    its shipped position.
 2. Type `//hud layout` to enter layout mode. Every component gets a
-   highlight box with its name on it.
+   highlight box with its name on it, including the ones you have switched
+   off, which show as a dark box marked `(hidden)` so they can be found and
+   switched back on.
    - **Left-drag** a box to move it. Movement snaps to a grid; hold **CTRL**
      to move freely.
-   - **Mouse wheel** over a box to scale it up or down.
+   - **Mouse wheel** over a box to scale it up or down (no smaller than a
+     quarter of its size).
    - **Right-click** a box to switch that component off or on.
    - **SHIFT + right-click** switches one piece of a component that has
-     several off or on: a party list, a status bar, a hotbar row, the subtarget
-     bar or a crossbar piece.
+     several off or on: a party list, a status bar, a hotbar row, a target bar
+     or a crossbar piece.
 3. Type `//hud layout` again to leave layout mode. Everything you changed is
    already saved.
 
@@ -73,8 +76,11 @@ does not appear at all, type `//hud`: it reports what went wrong if the addon
 failed to load.
 
 Two components take over keys while a character is loaded. The crossbar
-claims `;` `'` `\` `` ` `` and `=`, and the hotbar the number row `1` to `0`
-under CTRL, ALT and SHIFT (the bare keys stay the game's). If you would
+claims `;` `'` `\` `` ` `` and `=`, and the number row `1` to `8` while a side
+key or `` ` `` is held. The hotbar claims the number row `1` to `0` under CTRL
+(row 1), ALT (row 2), SHIFT (row 3), CTRL+SHIFT (row 4), ALT+SHIFT (row 5) and
+CTRL+ALT+SHIFT (row 6); the bare keys stay the game's. It also changes set on
+CTRL+Up and CTRL+Down, which the game still sees. If you would
 rather keep those keys, switch the component off with `//hud hide crossbar`
 or `//hud hide hotbar`; a hotbar row you hide gives its chord back too.
 
@@ -121,16 +127,20 @@ anywhere: `//hud reset tb` is `//hud reset targetbar`.
 | `//hud buffs active` | list every buff on you right now, with ids |
 | `//hud buffs <component> ...` | a component's buff order and filter settings (see below) |
 | `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise` | actions on the game itself (see Action commands below) |
-| `//hud delay` | setting shared by the crossbar and hotbar (see Action commands below) |
-| `//hud queue [on\|debug\|off]` | hold a bar press made during a cast, and send it when you can act (see Action commands below); on by default |
-| `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default |
+| `//hud delay [<seconds>]` | the mount and warp countdown, shared by the crossbar and hotbar; without a number it prints the current value (see Action commands below) |
+| `//hud queue [on\|debug\|off]` | hold a bar press made during a cast or the moment after it, and send it when you can act; on by default. Without a word it prints the current setting (see [The action queue](#the-action-queue)) |
+| `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action |
+| `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default. Without a word it prints the current setting |
 | `//hud config [<component>]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
 
 **`show` and `hide` take a piece name** for components made of several
 independently placed parts: `//hud hide partylist alliance2`,
 `//hud show statusbar bar2`, `//hud hide targetbar subtarget`. `//hud list`
-prints the piece names each component has.
+prints the piece names each component has. A piece and its component are
+separate switches: a piece you show stays hidden while the whole component is
+hidden, and `//hud show <component>` brings the component back without
+changing which of its pieces are off.
 
 **`reset` and `copy` have no undo and no confirmation step.** `reset` acts on
 the active slot only; `copy` replaces every slot the destination character
@@ -162,8 +172,12 @@ win. A filter list hides buffs (blacklist mode) or shows only the listed ones
 
 A buff can be named by its id or by its name (`//hud buffs partylist top
 haste`). `//hud buffs active` shows the ids of everything currently on you.
-See the [party list](components/partylist.md) and [status bar](components/statusbar.md)
-pages for what each one adds.
+The party list's buff settings belong to the main party alone, so its only
+piece name here is `main`, and it adds one verb of its own,
+`//hud buffs partylist active [<member>]`, for a party member's buffs.
+`//hud statusbar partyorder on` makes the party list follow the status bar's
+order. See the [party list](components/partylist.md) and
+[status bar](components/statusbar.md) pages for what each one adds.
 
 ## Settings window
 
@@ -187,11 +201,12 @@ exactly what the commands set, with the same limits, so anything you change
 here you can also type.
 
 `global` holds the travel delay, the action queue and its waits (see
-[Action commands](#action-commands)) and whether the HUD hides during cutscenes. The components with a page of their own are the
-parameter bar, target bar, party list, status bar, equipment viewer, inventory
-tracker, crossbar and hotbar; each one's page says what is on it. A number that
-needs a value the steps do not land on, the buff order and filter lists, and
-anything about a single action-bar slot are still typed.
+[Action commands](#action-commands)) and whether the HUD hides during
+cutscenes. The components with a page of their own are the parameter bar,
+target bar, party list, status bar, equipment viewer, inventory tracker,
+crossbar and hotbar; each one's page says what is on it. A number that needs a
+value the steps do not land on, the buff order and filter lists, and anything
+about a single action-bar slot are still typed.
 
 - **Move it** by dragging its title bar. It reopens where you left it.
 - **Close it** with `[ X ]`, or `//hud config` again.
@@ -226,37 +241,79 @@ or the console too, and their settings are shared by both bars.
 | `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage: the spell, then Spectral Jig, then the ninjutsu, then an oil or powder. Silenced or muted, the spells and ninjutsu are passed over |
 | `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
 | `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; `0` switches the countdown off |
-| `//hud queue [on\|debug\|off]` | the action queue, below; `debug` also writes each step to `debug.log` in the addon's folder |
-| `//hud queue lock [<kind> <seconds>]` | how long the queue waits after each kind of action: `spell`, `weaponskill`, `ability`, `item`, `ranged` or `interrupted`, 0 to 5 seconds in tenths; alone, lists them all |
-
-**The action queue.** After a spell, a weapon skill or a job ability the game
-refuses your next action for a moment, and a press made in that moment is lost.
-With the queue on, a crossbar or hotbar press made during a cast or that moment
-is held, and goes by itself as soon as you can act, as in FFXIV. Only one press
-is held, and a newer one replaces it. A press made while you are free goes at
-once. A held press is sent once, and is never waiting on a recast: if the action
-is still on its own recast when you could act, it is dropped. A press made during
-that moment is held if its recast ends first, and otherwise goes out as it always
-did. A weapon skill you
-have too little TP for does nothing at all, not even the game's usual message, and
-one held is dropped if the TP is gone when you could act. A held press aimed
-at `<t>` or `<bt>` stays on the target you had when you pressed, and a slot bound
-with no target takes whatever the game gives it when it goes. A slot that opens a
-cursor (`<st>`, `<stpc>` and the like) is decided when you press OK rather than
-when you press the slot, so you can pick your target during a cast and press OK
-whenever you like: if the game would still refuse it, it is held until it can go.
-GearSwap's `pretarget` does not run for such a slot.
-`<ft>` and party targets are not held and go at once, as they always did. A
-`sneak`, `invisible` or `reraise` slot picks its best way when you press it and holds
-that, unless the best way is gear to put on, which has a wait of its own. Macros and
-typed commands are not held, but they do count towards the wait. If you use
-Selindrile's GearSwap files, leave their MiniQueue off.
+| `//hud queue [on\|debug\|off]` | [the action queue](#the-action-queue); without a word it prints the current setting. `debug` also writes each step to `debug.log` in the addon's folder |
+| `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action, 0 to 5 seconds in tenths. Alone it lists them all; with only a kind it prints that one |
 
 `mr`, `warp` and a bound mount count down in chat before they act, so a
-mis-press costs a few seconds rather than a trip home. Resting (`/heal`)
+mis-press costs a few seconds rather than a trip home. Getting off a mount
+(`mr` or `draw` while mounted) and `draw` itself never wait. Resting (`/heal`)
 cancels the countdown. The crossbar page describes each of these in detail
 under [Built-in actions](components/crossbar.md#built-in-actions) and
 [Extras](components/crossbar.md#extras).
+
+### The action queue
+
+After a spell, a weapon skill, a job ability, an item or a ranged attack the
+game refuses your next action for a moment, and a press made in that moment is
+lost. With the queue on, which is the default, a crossbar or hotbar press made
+during a cast or that moment is held, and goes by itself as soon as you can
+act, as in FFXIV. A press made while you are free goes at once. With the queue
+off, every press goes at once and the game decides.
+
+- **What is held:** spells, job abilities, pet commands, weapon skills, items
+  and ranged attacks. A `sneak`, `invisible` or `reraise` slot picks its best
+  way when you press it and holds that, unless the best way is gear to put on,
+  which has a wait of its own. Every other kind of slot goes at once: chat and
+  Windower commands, game screens, job changes, mounts, warps, `draw` and
+  enchanted gear.
+- **One press.** Only one press is held, across both bars, and a newer one
+  replaces it. A held press is sent once, and not again if the game refuses
+  it. Nothing is said in chat when a press is held or dropped.
+- **Pressing again.** While the game has yet to answer a press, pressing the
+  same slot again does nothing, so mashing a slot cannot spend a weapon skill
+  or an item twice.
+- **Recasts.** A held press is never waiting on a recast: a spell, job ability
+  or pet command still on its own recast when you could act is dropped. A press
+  made during that moment is held if its recast ends first, and otherwise goes
+  out as it always did. One made during a cast goes out at once if it has any
+  recast left. Stratagems, Quick Draw and Ready have charges, so their recast
+  does not count.
+- **Weapon skills.** A weapon skill you have under 1000 TP for does nothing at
+  all, not even the game's usual message, and one held is dropped if the TP is
+  gone when you could act.
+- **Targets.** A held press aimed at `<t>` or `<bt>` stays on the target you
+  had when you pressed, and with nothing targeted it is not held. A slot bound
+  with no target takes whatever the game gives it when it goes, and `<me>` and
+  `<pet>` are held as they are. `<ft>`, party targets and the other tokens are
+  not held and go at once, as they always did.
+- **Cursor slots.** A slot that opens a cursor (`<st>`, `<stpc>` and the like)
+  is decided when you press OK rather than when you press the slot, so you can
+  pick your target during a cast and press OK whenever you like. OK then counts
+  as the press, under the rules above. GearSwap's `pretarget` does not run for
+  such a slot.
+- **Macros and typed commands** are not held, but they do count towards the
+  wait, as does anything another addon sends.
+- **What drops a held press:** zoning, dying, changing job or logging out; a
+  cutscene that hides the HUD; opening `//hud layout`, `//hud config` or edit
+  mode; resetting a bar or switching layout slot; and 30 seconds passing. While
+  one of those three is open, or the HUD is hidden, a press goes at once.
+
+If you use Selindrile's GearSwap files, leave their MiniQueue off.
+
+The wait after each kind of action is its own setting, read when that action
+finishes:
+
+| Kind | Shipped wait | After |
+| --- | --- | --- |
+| `spell` | 2.7 seconds | a spell |
+| `weaponskill` | 2.4 seconds | a weapon skill |
+| `ability` | 0.5 seconds | a job ability |
+| `item` | 1 second | an item |
+| `ranged` | 1 second | a ranged attack; an estimate, since nobody has measured this one |
+| `interrupted` | 2.7 seconds | a spell, weapon skill, item or ranged attack that was interrupted |
+
+A wait you set yourself is kept in `core.lua` (below). To go back to a shipped
+wait, type its number or remove the entry from `queue_locks`.
 
 ## Layout slots
 
@@ -270,8 +327,9 @@ on/off state and settings. Each character starts with one slot, `default`.
 //hud slot default            switch back
 //hud slot delete events      remove it
 ```
-A slot name is one word of letters, digits and underscores, and cannot be
-`list`, `create` or `delete`. Switch to another slot before deleting the one
+A slot name is one word of letters, digits and underscores, is not
+case-sensitive (it is stored in lower case), and cannot be `list`, `create` or
+`delete`. Switch to another slot before deleting the one
 you are in.
 
 
@@ -288,7 +346,9 @@ Windower4/addons/XIVHud/data/<Character>/core.lua                      general s
 Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/config.lua  the component's settings
 Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/layout.lua  its position, scale and on/off state
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/<JOB>.lua     the crossbar's bindings for that job (the hotbar's sit beside it in hotbar/)
+Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/SHARED.lua    the bindings of the sets marked shared across jobs
 Windower4/addons/XIVHud/cache/items/                                    item icons read from the game (a cache: delete it only with the addon unloaded)
+Windower4/addons/XIVHud/cache/packets/<Character>/                      the last character-stats packet per job, for the experience bar and the binder's subjob level cap (a cache)
 Windower4/addons/XIVHud/icons/custom/                                   your own crossbar and hotbar art
 ```
 

@@ -12,12 +12,14 @@ menu. Bags sit side by side as blocks, each with its short name under it.
 
 - One block per bag, in your choice of bags and column counts.
 - **Square colours** tell you what is in a slot: teal for an ordinary item,
-  red for a full stack, white for equipment, green for something equipped
-  (or a worn linkshell), orange for an item in your bazaar, pink for a
-  temporary item, dark for an empty slot.
+  red for a full stack, white for a worn slot in the equipment bag, green for
+  something equipped (or a worn linkshell), orange for an item in your
+  bazaar, pink for a temporary item or one in the treasure pool, dark for an
+  empty slot.
 - Updates whenever something moves - a pickup, a drop, a sale, a swap.
-- A **sort** option orders each bag by kind and fullness so the picture is
-  easy to read.
+- A **sort** option orders each bag so the picture is easy to read: equipped
+  and bazaar items first, then the stacks nearest full, then the largest
+  counts.
 - The temporary items bag and the treasure pool show only what they hold and
   disappear when empty.
 - Bags that share a purpose are one word: `safe` covers both Mog Safes and
@@ -66,10 +68,10 @@ Appearance options, set by editing the file:
 | `labels.color` / `stroke` | light grey / black, width 1 | label colour and outline |
 | `colours.default` | teal | an ordinary item |
 | `colours.full_stack` | red | a full stack |
-| `colours.equipment` | white | a piece of equipment |
+| `colours.equipment` | white | a worn slot in the equipment bag |
 | `colours.equipped` / `linkshell_equipped` | green | something equipped |
 | `colours.bazaar` | orange | an item in your bazaar |
-| `colours.temp_item` | pink | a temporary item |
+| `colours.temp_item` | pink | a temporary item, or one in the treasure pool |
 | `colours.empty` | dark | an empty slot |
 
 Each colour has a `box` (the square) and a `shadow` (the 1px relief behind
@@ -84,7 +86,7 @@ rest.
 
 | Command | What it does |
 | --- | --- |
-| `//hud invtracker` | list every bag with its on/off state and columns, then sort, labels, spacing and alignment |
+| `//hud invtracker` | print sort, labels, spacing, block spacing and alignment, then every bag with its on/off state and columns |
 | `//hud invtracker <bag>` | print one bag's on/off state and column count |
 | `//hud invtracker <bag> on\|off` | draw or hide a bag |
 | `//hud invtracker <bag> columns <1-20>` | set a bag's width in squares |
