@@ -23,7 +23,7 @@ off by default, that you place separately.
   is within a chosen distance of you - as icons, or as the distance in yalms.
 - The targeted member is highlighted, and the member under the subtarget cursor
   is half highlighted. Party and alliance leaders are marked, and a member in another
-  zone shows that zone's name.
+  zone shows that zone's name, shortened on the alliance lists.
 - The **alliance lists** (`alliance1`, `alliance2`) show the other two
   parties as a compact three-by-two grid, each placed on its own: job icon,
   name, HP and MP, with no TP, levels, buffs or range.

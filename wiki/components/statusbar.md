@@ -70,7 +70,7 @@ order and each bar's own filter list stay commands.
 | `//hud statusbar [<bar>] rows <1-4>` | set how many rows the bar has |
 | `//hud statusbar timers on\|off` | show or hide the timers on every bar |
 | `//hud statusbar tooltips on\|off` | name the buff under the cursor, or not |
-| `//hud statusbar partyorder on\|off` | copy the buff order to the party list on every change, or stop |
+| `//hud statusbar partyorder on\|off` | copy the buff order to the party list on every change, or stop. Typing `on` again copies it again. Each copy is saved at once and reaches a hidden party list too |
 | `//hud show statusbar <bar>` / `//hud hide statusbar <bar>` | switch one bar on or off |
 
 `timers`, `tooltips` and `partyorder` apply to every bar and refuse a bar word.
@@ -83,7 +83,7 @@ through `//hud buffs statusbar` - the shared grammar described on the
 
 | Command | What it does |
 | --- | --- |
-| `//hud buffs statusbar` | what every bar draws right now, including anything past its capacity |
+| `//hud buffs statusbar` | what every bar draws right now, including anything past its capacity and any bar switched off |
 | `//hud buffs statusbar <bar>` | the same for one bar |
 | `//hud buffs statusbar [<bar>] filter all\|buffs\|debuffs\|other` | set the bar's category |
 | `//hud buffs statusbar [<bar>] filter add\|remove <id\|name>` | edit the bar's own filter list |

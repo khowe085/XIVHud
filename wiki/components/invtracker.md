@@ -68,10 +68,10 @@ Appearance options, set by editing the file:
 | `labels.color` / `stroke` | light grey / black, width 1 | label colour and outline |
 | `colours.default` | teal | an ordinary item |
 | `colours.full_stack` | red | a full stack |
-| `colours.equipment` | white | a piece of equipment |
+| `colours.equipment` | white | a worn slot in the equipment bag |
 | `colours.equipped` / `linkshell_equipped` | green | something equipped |
 | `colours.bazaar` | orange | an item in your bazaar |
-| `colours.temp_item` | pink | a temporary item |
+| `colours.temp_item` | pink | a temporary item, or one in the treasure pool |
 | `colours.empty` | dark | an empty slot |
 
 Each colour has a `box` (the square) and a `shadow` (the 1px relief behind

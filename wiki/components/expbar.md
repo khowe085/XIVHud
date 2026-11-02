@@ -23,13 +23,15 @@ master level.
   **capacity point** rate: limit points move the bar and the merit count but
   have no per-hour figure of their own.
 - The rates cover the last ten minutes, idle time included, so they fall
-  while you earn nothing; each reads 0 for its first 30 seconds.
+  while you earn nothing. Each reads 0 until 30 seconds after its first gain.
 - The fill eases toward each new value.
 - Your job's icon is drawn beside the bar.
 
-The bar's numbers are kept per character and job under
-`addons/XIVHud/cache/packets/<Character>/`, so it has figures straight after a
-login or a reload rather than waiting for the game to send them.
+Experience, exemplar points and master level are kept per character and job
+under `addons/XIVHud/cache/packets/<Character>/`, so the bar has figures
+straight after a login or a reload. Those can be from your last session until
+the game sends new ones. Limit points, merits and the rates are not kept: after
+a reload they start over.
 
 The game only reports merit totals when they change or when you zone, so a
 merit-capped character who is earning nothing may read 0 merits until they

@@ -54,21 +54,24 @@ press them yourself.
   key) and Expanded Hold (eight more, both side keys at once).
 - **Bind anything**: spells, job abilities, weaponskills, items, enchanted
   gear, pet commands, mounts, ranged attack, chat lines, Windower commands,
-  and built-ins for drawing your weapon, mount roulette, warping home, sneak,
-  invisible and reraise.
+  game screens, job changes, and built-ins for drawing your weapon, mount
+  roulette, warping home, sneak, invisible and reraise.
 - **A mouse binder** (`//hud crossbar edit`): click a slot, pick a layer, pick
   an action from what your character actually knows.
 - **Layers**: a job's own base bindings, overrides for a particular subjob,
-  overrides for the weapon class in your main hand, buff contexts that swap
-  slots in while a buff is up (Light Arts, Addendum, Unbridled Learning), and
-  sets shared by every job.
+  overrides for the weapon class in your main hand or ranged slot, buff
+  contexts that swap slots in while a buff is up (Light Arts, Addendum, the
+  storms, Unbridled Learning), and sets shared by every job.
 - **Rotations**: each set can belong to a drawn-weapon rotation, a sheathed
   one, both or neither, and the switch key cycles the one that applies.
 - **On the slots**: recast arcs, MP and TP costs, item and ninja tool counts,
   stratagem counts, and the skillchain property each weaponskill would make
   while a chain is open.
-- **Optional extras**: a countdown before travel actions - a setting shared
-  with the hotbar. A left-click on the sword draws or sheathes.
+- **Shared with the hotbar**: a countdown before travel actions, and the
+  [action queue](../Home.md#the-action-queue), which holds a press made during
+  a cast until you can act.
+- **The mouse**: a left-click fires a slot, and a left-click on the sword draws
+  or sheathes.
 - **Controller friendly**: everything is a key, so a Steam Input layout that
   presses those keys gives you a full pad cross hotbar.
 
@@ -105,9 +108,9 @@ command are also set from the console.
 | `binder_pos` | none | where you last left the binder window; written by the binder, not by hand |
 | `input.*` | see below | the keys the bar reads, as DirectInput key codes |
 
-The travel countdown is a setting
-shared with the [hotbar](hotbar.md): `//hud delay`, listed
-on the [home page](../Home.md#action-commands).
+The travel countdown and the action queue are settings shared with the
+[hotbar](hotbar.md): `//hud delay` and `//hud queue`, listed on the
+[home page](../Home.md#action-commands).
 
 The default keys (`input`):
 
@@ -122,7 +125,12 @@ The default keys (`input`):
 
 The keys are not changed by command. To use different ones, edit the codes in
 `config.lua` (they are DirectInput scan codes; a search for "DIK scan codes"
-finds the table) and reload the addon.
+finds the table) and reload the addon. Each setting is a list, so a role can
+have several keys; to remove one, set it to `false`. `shortcuts` maps a key to
+a `tap` verb (a bare press), a `chorded` verb (with a side held), or both: any
+`//hud crossbar` command without that prefix, or `draw`, `mr`, `warp [all]`,
+`sneak`, `invisible` or `reraise`. If you give one key two jobs, the first
+keeps it and chat says which was dropped.
 
 The bar is placed in `//hud layout` as five pieces: `main` (the XHB),
 `wxhb_left`, `wxhb_right`, `set` (the active set label) and `weapon` (the
@@ -158,7 +166,7 @@ right-hand cross is slots 1–4 and the left-hand cross 5–8.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar` | report the current job, the XHB's active set and weapon state, where each view points, and the weapon class in your main hand |
+| `//hud crossbar` | report the current job, the XHB's active set and weapon state, the weapon classes in your main hand and ranged slot, and where each view points |
 | `//hud crossbar help` | list every command |
 | `//hud crossbar edit` | toggle the mouse binder, on the hotbar as well |
 | `//hud crossbar set <1-8>` | switch the XHB's active set |
@@ -266,7 +274,7 @@ that binds it — each opened by its own marker:
 ```
 //hud crossbar bind 1L3 ja "Addendum: White" alias=AW
 //hud crossbar bind 4L1 ct heal alias=Rest icon=heal
-//hud crossbar bind 2R1 item "Warp Ring" icon=items/warp-ring   -- an icon, no alias
+//hud crossbar bind 2R1 enchanteditem "Warp Ring" icon=items/warp-ring   -- an icon, no alias
 //hud crossbar bind 1R1 ex "jc RDM/DRK" alias=RDM/DRK icon=jobs/rdm
 ```
 
@@ -282,9 +290,9 @@ from that:
 - On a `ct` or `ex` line the marker is the only thing that ends the line, so
   the line keeps every word up to it: `ct p pulling alias=Pull` says
   `/p pulling` under the label "Pull". (A `ct` line is written without its
-  leading slash — the addon adds it.) A line that needs a literal `alias=` or
-  `icon=` in it must be quoted as a whole: `ct "p alias=x"` says `/p alias=x`,
-  where the unquoted `ct p alias=x` says `/p` under the label "x".
+  leading slash — the addon adds it.) A line that needs a literal `alias=`,
+  `icon=` or `context=` in it must be quoted as a whole: `ct "p alias=x"` says
+  `/p alias=x`, where the unquoted `ct p alias=x` says `/p` under the label "x".
 - **A quoted phrase inside a `ct` or `ex` line is kept**: `ct ma "Cure IV" <t>`
   says `/ma "Cure IV" <t>`, and `ex gs c "set TP"` runs with its grouping
   intact. Quotes around a *single* word are not kept — `ct ma "Cure" <t>` says
@@ -365,7 +373,7 @@ context=wpn:marksmanship`); without it they say which layers the slot holds. See
 
 ```
 //hud crossbar bind 1L3 ma "Cure IV" t
-//hud crossbar bind 1L4 ja "Utsusemi: Ichi" context=sub:nin
+//hud crossbar bind 1L4 ma "Utsusemi: Ichi" context=sub:nin
 //hud crossbar bind 1R1 ws "Savage Blade" t
 //hud crossbar bind 1L4 ma Cure t context=sub:whm
 //hud crossbar bind 1L3 ja "Addendum: White" context=buf:light-arts
@@ -430,7 +438,10 @@ Six keys drive everything:
 | `1`–`8` | the eight slots — but only while a side or the switch is held; otherwise they reach the game as usual |
 
 You can still type them: once the chat box has focus the crossbar hands every
-key back, so they all reach your message normally.
+key back, so they all reach your message normally. With the crossbar hidden
+(`//hud hide crossbar`) they are all the game's again. During a cutscene or a
+zone the bar does nothing, but it keeps the five keys that are its own, so
+they do not fall through to the game.
 
 **No modifiers are used.** The bar never uses Ctrl or Alt, so FFXI's own
 macro palette on those chords is untouched.
@@ -638,7 +649,8 @@ In edit mode:
 **Dragging** does two things, both of them on the bar rather than in the
 window: drag a slot onto another slot to swap them entirely, or drag a slot
 onto **genuinely empty screen** to clear it — which removes it from the layer
-you are editing, and leaves every other layer alone. Empty means clear of
+you have picked, and leaves every other layer alone. With no layer picked
+there is nothing to clear, and the drop does nothing. Empty means clear of
 everything: a drop that lands on a bar but misses its slots — between two of
 them, on a name, on the set number — cancels and changes nothing, on the
 crossbar and the hotbar alike. Dragging an action out
@@ -704,10 +716,13 @@ rest of the HUD is - and walks you through:
    Inside the subjob and weapon menus the rows read just the job or the
    weapon type (`WHM`, `Great Axe`).
 2. **Pick an action** — categories down the left, the actions on the right.
-   The wheel scrolls them three at a time; clicking the page line under them
-   jumps a whole page, and past the last one back to the top.
-3. **Pick a target** — the common target tokens, with `(no target)` first (`stal`, `lastst`, `scan` and `r` are `bind`-command only). Actions
-   that cannot take a target skip this step and bind straight away.
+   The wheel scrolls them three at a time and stops at either end; clicking
+   the page line under them jumps a whole page, and from the bottom back to
+   the top.
+3. **Pick a target** — the target tokens, with `(no target)` first (`stal`,
+   `lastst`, `scan` and `r` are `bind`-command only). The list scrolls the same
+   way. Actions that cannot take a target skip this step and bind straight
+   away.
 
 **Menus get a fourth step.** Some entries in the action list are the game's own
 menus rather than actions — **Stratagems** on SCH, **Phantom Roll** and **Quick
@@ -720,9 +735,7 @@ is a menu inside a menu: a main job, then a sub job. `[ < back ]` steps back out
 of the list one menu at a time, and the categories down the left stay live — clicking one leaves
 the menu.
 
-Before this the picker offered the menu itself, and binding that does nothing
-at all in game, so these were reachable only from `//hud crossbar bind`. How
-many entries a menu holds depends on what the game reports: it may list
+How many entries a menu holds depends on what the game reports: it may list
 everything the job can ever learn rather than only what you can use yet, in
 which case binding one you have not learned gives a slot the game refuses.
 
@@ -730,9 +743,12 @@ A **details column** on the right shows whatever the cursor is over: name,
 cost, recast, skillchain property, and for a slot the layer its binding comes
 from. A menu row is not an action and has nothing to describe, so the column
 is blank over one. It still carries an icon: Stratagems shows the grimoire,
-and every other menu shows its job's glyph. **`[ < back ]`**, in the top left, steps back one screen; it is absent
-on the first step. **`[ X ]`**, in the top right, closes the window from any
-step.
+and every other menu shows its job's glyph.
+
+**`[ < back ]`**, in the top left, steps back one screen; it is absent on the
+first step. **`[ X ]`**, in the top right, closes the window from any step, and
+so does a click anywhere clear of the window and the slots. That click also
+reaches the game. Edit mode stays on either way.
 
 Binding lands you back on step one, ready for the next edit on the same slot.
 
@@ -757,9 +773,10 @@ side activates, no slot fires, and the bar holds still under the binder. The
 side you were holding to open it goes dark as the mode opens, since it is inert
 from that moment; the display picks the real keys back up when you leave. Leave
 it with `//hud crossbar edit` again, with **any press of the Select key**
-(`=`), or by entering `//hud layout`, which takes over from it. Edit mode
-needs the crossbar visible and a job loaded to open at all, and refuses while
-`//hud layout` is up. Leaving takes the hotbar out of edit mode with it.
+(`=`), or by entering `//hud layout` or opening `//hud config`, each of which
+takes over from it. Edit mode needs the crossbar visible and a job loaded to
+open at all, and refuses while `//hud layout` or the settings window is up.
+Leaving takes the hotbar out of edit mode with it.
 
 ---
 
@@ -812,11 +829,13 @@ so a set rotation does not lurch back mid-pull.
 
 **Changing job lands you the same way.** A job change sheathes you, so you
 arrive on the first set of your *sheathed* rotation rather than wherever that
-job was left. The active set is not remembered per job: a job always resumes
-at the front of the rotation its current weapon state belongs to.
+job was left. It lands once more when the bar first reads your weapon, unless
+you have picked a set by hand by then, so a set that holds only weapon
+overrides is still found.
 
 If **no** set is flagged for the state you are entering — or every set that is
-happens to be empty — the active set is left where it is.
+happens to be empty — the active set is left where it is. On a job change that
+is the set that job was last on.
 
 Going *in* sends nothing to the game (unless you are mounted, when it dismounts): `draw` while sheathed only flips the
 addon's state and flips the sword to its drawn glyph, so it never picks a fight for you and
@@ -876,7 +895,7 @@ every press of it is refused with `cannot pin <st> at the press - bind <me>
 or <t>`.
 
 Both `item` and `enchanteditem` slots show **how many you carry** in the
-corner, and cross themselves out at zero — enchanted gear always, and a plain item once the crossbar has found your temporary items, so that a slot is never crossed out on a guess. Consumables are counted from
+corner, up to `99+`, and cross themselves out at zero — enchanted gear always, and a plain item once the crossbar has found your temporary items, so that a slot is never crossed out on a guess. Consumables are counted from
 your inventory and your temporary items; enchanted gear is counted
 wherever you can reach it, wardrobes included. That is a count of the items
 themselves, not of an enchantment's charges — a spent ring still reads `1`,
@@ -906,7 +925,7 @@ These are the same actions as the `//hud` commands under
 | `sneak` / `invisible` | the sneak and invisible ladders described under [Built-in actions](#built-in-actions). Both take the White Magic icon whichever rung fires, so the slot's face does not change with your subjob. |
 | `reraise` | the reraise ladder described under [Built-in actions](#built-in-actions), with the Reraise icon whichever rung fires |
 | `open <name>` | opens a game screen |
-| `jc <MAIN>/<SUB>` | changes job to that pair through the Windower **JobChange** addon (`//jc war/blm`), which must be loaded — without it the press does nothing but print "unknown command" in the console. You still have to stand near a Moogle (or a Nomad Moogle), as JobChange requires. The slot shows the main job's icon and the sub job as its label. In the binder it is **General → Job Change**, then a main job, then a sub job. All 22 jobs are listed whether you have unlocked them or not; JobChange refuses a locked one when you press it. |
+| `jc <MAIN>/<SUB>` | changes job to that pair through the Windower **JobChange** addon (`//jc war/blm`), which must be loaded — without it the press does nothing but print "unknown command" in the console. You still have to stand near a Moogle (or a Nomad Moogle), as JobChange requires. The slot shows the main job's icon and the sub job as its label. In the binder it is **General → Job Change**, then a main job, then a sub job. All 22 jobs are listed whether you have unlocked them or not; JobChange refuses a locked one when you press it. A pair naming one job twice is refused. |
 
 `mr` and `warp` count down before they go, and so does the `mount` type
 above — see **Travel counts down** under Extras.
@@ -960,6 +979,12 @@ can be opened this way.
 **Recasts** sweep as a radial arc around the slot.
 **Costs** show MP or TP in the corner. Actions you cannot use dim.
 
+**A press during a cast is held.** With the
+[action queue](../Home.md#the-action-queue) on, as it is out of the box, a
+slot pressed while you are casting, or in the moment the game refuses your next
+action, goes by itself as soon as you can act, and a weaponskill pressed under
+1000 TP sends nothing at all. The slot flashes at the press either way.
+
 **Skillchains**: the [skillchain](skillchain.md) component shows the window
 itself; on the bar, while a skillchain window is open on your target, every bound
 weaponskill, job ability and pet ability swaps its icon for the skillchain
@@ -970,13 +995,14 @@ the property dimmed, with its TP cost still up.
 countdown on those slots is the time until your **next** charge comes back, not
 until all of them are, and the slot stays lit while you have a charge left.
 
-**Ninja tool counts** show on ninjutsu slots — how many of that tool you are
-carrying, and the slot crossed out when you have none. The colour tells you
-where the count is coming from: **green** when you have more than fifty of the
-tool itself, **yellow** when it takes your master tools to get there, **red**
-when even together they are fifty or fewer. On main Ninja the
-count includes your master tools; on `/NIN` it counts the plain tool only.
-Corsair cards are counted the same way, including Trump Cards.
+**Ninja tool counts** show on ninjutsu slots while Ninja is your main or sub
+job — how many of that tool you are carrying, up to `99+`, and the slot crossed
+out when you have none. The colour tells you where the count is coming from:
+**green** when you have more than fifty of the tool itself, **yellow** when it
+takes your master tools to get there, **red** when even together they are fifty
+or fewer. On main Ninja the count includes your master tools; on `/NIN` it
+counts the plain tool only. Quick Draw slots count cards the same way, with
+Trump Cards as the master tool: included on main Corsair, not on `/COR`.
 
 **Travel counts down.** `mount`, `mr` and `warp` do not go the moment you
 press them. They count down in chat — five seconds out of the box, `//hud
