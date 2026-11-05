@@ -110,7 +110,6 @@ another job's bindings over it.
 | `disabled_alpha` | `100` | opacity of an action you cannot use right now |
 | `feedback.alpha` / `speed` | `150` / `30` | the flash when a slot fires |
 | `font` / `font_size` | `"sans-serif"` / `7` | the slot label font |
-| `text_offset.x` / `.y` | `0` / `0` | nudge the labels |
 | `text_color` / `text_stroke` | white / dark, width 2 | label colour and outline |
 | `mp_cost_color` / `tp_cost_color` | pink / yellow | the cost text colours |
 | `binder_pos` | none | where you last left the binder window; written by the binder, not by hand |
@@ -138,13 +137,16 @@ can have several keys; to remove one, set it to `false`. `slot_keys` is in slot
 order, slot 1 first. `shortcuts` maps a key code to a `tap` verb (a bare
 press), a `chorded` verb (with a side held), or both: any `//hud crossbar`
 command without that prefix, or `draw`, `mr`, `warp [all]`, `sneak`,
-`invisible` or `reraise`. If you give one key two jobs, the first keeps it and
+`invisible` or `reraise`. If you give one key two jobs, the roles win in the
+order left side, right side, layer key, set switch, slot keys, shortcuts, and
 chat says which was dropped.
 
 The bar is placed in `//hud layout` as five pieces: `main` (the XHB),
 `wxhb_left`, `wxhb_right`, `set` (the active set label) and `weapon` (the
-drawn sword). Each can be moved and scaled on its own, and
-`//hud hide crossbar <piece>` switches one off.
+sword that shows the weapon state). Each can be moved and scaled on its own,
+and `//hud hide crossbar <piece>` switches one off - off screen only: a hidden
+piece's keys still fire what it holds, and the side keys stay the crossbar's.
+Hiding the whole crossbar is what gives the keys back.
 
 ## Commands
 
@@ -182,7 +184,7 @@ right-hand cross is slots 1-4 and the left-hand cross 5-8.
 | `//hud crossbar cycle` | advance the XHB to the next set in the rotation |
 | `//hud crossbar cycle back` | step the XHB back to the previous set in the rotation |
 | `//hud crossbar list [<set>]` | list what is bound on this job, layer by layer, marking the live layer where a slot has more than one |
-| `//hud show crossbar <piece>` / `//hud hide crossbar <piece>` | switch one piece on or off: `main`, `wxhb_left`, `wxhb_right`, `set` or `weapon` |
+| `//hud show crossbar <piece>` / `//hud hide crossbar <piece>` | switch one piece on or off: `main`, `wxhb_left`, `wxhb_right`, `set` or `weapon`; a hidden piece still fires its keys |
 
 ### Binding
 
@@ -237,15 +239,16 @@ Leave it off for anything that does not need one. Each may be written bare or
 in angle brackets - `t` and `<t>` are the same thing.
 
 **Wrap `<action>` in quotes** if it contains a space. Unquoted, the last word
-is a target only when it is one of the tokens above; anything else is taken as
-part of the action's name, so `ws Savage Blade Zeid` binds a weaponskill
-called "Savage Blade Zeid". Where the addon can tell the shorter name is a
-real action and the longer one is not, it refuses instead of binding something
-that could never fire, and where it cannot tell it says which reading it took.
+is a target only when it is one of the tokens above; anything else is read as
+part of the action's name. Where the addon can tell that the shorter name is a
+real action and the longer one is not - `ws Savage Blade Zeid`, with "Savage
+Blade" a weaponskill and "Savage Blade Zeid" nothing - it refuses instead of
+binding something that could never fire, and where it cannot tell it says
+which reading it took.
 
-**Quote a whole name to keep it whole.** `ws "Savage Blade Zeid"` binds that
-three-word name outright. Quoting only part of a name settles nothing, and a
-quote cannot mark a label - use `alias=` and `icon=` for labels.
+**Quote a whole name to keep it whole.** `ma "Cure IV" t` binds the two-word
+spell and takes `t` as its target. Quoting only part of a name settles nothing,
+and a quote cannot mark a label - use `alias=` and `icon=` for labels.
 
 **A player's name is not a target.** Use a token above - `t` for whoever you
 have targeted, `p1`-`p5` for a party member.
@@ -265,9 +268,12 @@ to read at a glance, or when the slot holds a `ct` or `ex` command that has no
 icon of its own:
 
 ```
-//hud crossbar alias 1L3 "AW"           -- Addendum: White, shortened
-//hud crossbar icon 4L1 map             -- give a custom command an icon
-//hud crossbar alias 1L3                -- back to the action's own name
+-- Addendum: White, shortened
+//hud crossbar alias 1L3 "AW"
+-- give a custom command an icon
+//hud crossbar icon 4L1 map
+-- back to the action's own name
+//hud crossbar alias 1L3
 ```
 
 **`bind` takes both on the end**, so a slot can be labelled by the command
@@ -276,9 +282,13 @@ that binds it - each opened by its own marker:
 ```
 //hud crossbar bind 1L3 ja "Addendum: White" alias=AW
 //hud crossbar bind 4L1 ct heal alias=Rest icon=heal
-//hud crossbar bind 2R1 enchanteditem "Warp Ring" icon=items/warp-ring   -- an icon, no alias
 //hud crossbar bind 1R1 ex "jc RDM/DRK" alias=RDM/DRK icon=jobs/rdm
+-- an icon, no alias
+//hud crossbar bind 2R1 enchanteditem "Warp Ring" icon=items/warp-ring
 ```
+
+Nothing after a marker is a comment: its value runs to the end of the line, so
+type each command on its own.
 
 A marker's value runs to the next marker or the end of the line, so an alias
 with spaces needs no quotes of its own: `alias=Big Hit` is one alias. Both are
@@ -288,7 +298,8 @@ from that:
 
 - **The marker ends the action name**, which is what lets a one-word name
   carry a label: `ma Cure alias=C` binds Cure under the label "C", where
-  `ma Cure C` binds a spell called "Cure C".
+  `ma Cure C` is refused, there being no spell called "Cure C" - the reply
+  points you at `alias=`.
 - On a `ct` or `ex` line the marker is the only thing that ends the line, so
   the line keeps every word up to it: `ct p pulling alias=Pull` says
   `/p pulling` under the label "Pull". (A `ct` line is written without its
@@ -348,7 +359,9 @@ it is not part of the addon download, so updating XIVHud leaves it alone.
 Your icons are checked **before** the ones that ship with the addon, so naming
 a file after an action replaces its picture everywhere: an
 `icons/custom/cure.png` becomes the picture on every Cure slot without you
-re-pointing anything. The built-ins are matched by their type word
+re-pointing anything. The name looked for is the action's, in lower case, with
+spaces as hyphens and punctuation dropped: `cure-iv.png`, `utsusemi-ichi.png`,
+`addendum-white.png`. The built-ins are matched by their type word
 (`draw.png`, `warp.png`, `mr.png`).
 
 The folder is **flat**, and that is how it is searched: only the last part of a
@@ -369,8 +382,8 @@ weaponskill on its own weapon type: `bind 1R1 ws "Leaden Salute" t` lands on
 the Marksmanship layer whatever you are holding. A job ability (or pet
 command) that belongs to a subjob goes to that subjob's layer the same way: on DNC, `bind 1L2 ja
 Provoke` lands on `context=sub:war`, worn or not. A subjob's ability can also
-go under a buff context (`context=buf:light-arts`), but never on the base or a
-weapon layer. `unbind`, `alias` and `icon`
+go under a buff context (`context=buf:light-arts`), but never on the base, a
+weapon layer or another job's subjob layer. `unbind`, `alias` and `icon`
 never guess, so name that layer to edit it afterwards (`alias 1R1 LS
 context=wpn:marksmanship`); without it they say which layers the slot holds. See
 [Layers](#layers-how-a-slot-decides-what-to-show).
@@ -438,7 +451,7 @@ Six keys drive everything:
 | `'` | right side |
 | `\` | the W-layer - hold with a side for its WXHB bar |
 | `` ` `` | set switch - tap to cycle, hold and press a button to jump; ignored while a side is held |
-| `=` | Select - nothing on its own; with a side held, opens the binder |
+| `=` | Select - nothing on its own, except leaving edit mode; with a side held, opens the binder |
 | `1`-`8` | the eight slots - but only while a side or the switch is held; otherwise they reach the game as usual |
 
 You can still type them: once the chat box has focus the crossbar hands every
@@ -462,7 +475,7 @@ A controller layout that produces them:
 | **LB** tapped | the pad's own button | whatever the game has that button doing - the crossbar never sees it |
 | **LB** long-pressed | `\` | held for the draw gesture below |
 | **RB** | `` ` `` | tap cycles sets; hold and press any slot button to jump to that set, 1 to 8 (no trigger held) |
-| **Select** | `=` | nothing on its own; with a side held, the binder |
+| **Select** | `=` | nothing on its own, except leaving edit mode; with a side held, the binder |
 | **face / D-pad** while LT, RT or RB is held | `1`-`8` | the eight slots |
 
 ### Button chords
@@ -493,8 +506,9 @@ each slot button needs one chord rather than three:
 Eleven chords. Everything else on the pad is a plain binding, listed in the
 table above.
 
-The Select chord is what opens the binder: `=` on its own does nothing, and
-the crossbar only treats it as "open the binder" when a side is already held.
+The Select chord is what opens the binder: `=` on its own only ever leaves
+edit mode, and the crossbar treats it as "open the binder" only when a side is
+already held.
 Select emits `=` as a plain binding too, so the chord is there to make sure it
 still does while a trigger is down.
 
@@ -520,9 +534,9 @@ Two more things:
   the key still arrives and the crossbar is what ignores it.
 - **Leave Select alone.** It is `=` in every state, chorded or not - the
   crossbar reads the chord itself, so the binder stays reachable whatever
-  you are holding. On its own the key does nothing: it is still the
-  crossbar's, so the game never sees it, but a key you cannot use for
-  anything else should not fire something you did not ask for either.
+  you are holding. On its own the key does nothing but leave edit mode: it is
+  still the crossbar's, so the game never sees it, but a key you cannot use
+  for anything else should not fire something you did not ask for either.
 
 **Sheathe / unsheathe** is a gesture: hold `\` and tap `` ` `` with no side
 held - on the pad, hold **LB** and tap **RB**. Mounted, the same gesture
@@ -560,8 +574,10 @@ changes nothing - there is no W version of Expanded Hold. Being eight slots
 rather than sixteen, it draws centred on the XHB's position - the bar you were
 looking at changes contents rather than moving.
 
-Each of these is placed on its own in `//hud layout` (see **Positioning**
-under Extras), so a permanently-visible WXHB can live wherever the XHB is not.
+The XHB, the two WXHB halves, the set label and the sword are each placed on
+their own in `//hud layout` (see **Positioning** under Extras; Expanded Hold
+draws in the XHB's place), so a permanently-visible WXHB can live wherever the
+XHB is not.
 The skillchain window indicator is its own component,
 [skillchain](skillchain.md).
 
@@ -636,8 +652,9 @@ In edit mode:
   anything: `+` for a subjob override, `^` for a weapon override, `*` for a
   buff context, nothing at all for the job base or a shared set. The tags
   leave with edit mode.
-- Clicking a slot opens its **whole stack** - every layer, what each holds,
-  and which one is currently winning.
+- Clicking a slot opens its **stack**: the base and three menus (subjob,
+  weapon, job specific), with the layer currently winning marked; what each
+  layer holds shows as you open its menu.
 - **You must pick a layer before the action list appears.** Nothing is
   assumed, and the layer you are editing is named on screen the whole time.
 - Picking a layer row also **previews the crossbar as if that buff were up**, so
@@ -700,8 +717,9 @@ rest of the HUD is - and walks you through:
    Learning, and SCH's Klimaform, a **Storms** menu, and the arts and
    addenda). The subjob or weapon doesn't have to be the one you have on.
    Picking a layer previews the bar as if it were in use - that subjob worn,
-   that weapon held, that buff up. A `>` marks a menu; a `*` on one means the
-   layer showing on the bar is inside it. `[ < back ]` climbs out of a menu.
+   that weapon held, that buff up. A trailing `>` marks a menu and a leading
+   `>` the layer you have picked; a `*` marks the layer showing on the bar, or
+   the menu it is inside. `[ < back ]` climbs out of a menu.
    The actions offered next follow the layer. A weapon layer offers every
    weaponskill of that weapon type, as if you were holding it, and is the
    only layer that offers weaponskills at all - nor can `bind` put one
@@ -757,9 +775,10 @@ Binding lands you back on step one, ready for the next edit on the same slot.
 
 **Moving it.** Drag the window by its title strip - the top row, to the right
 of the back button. Where you leave it is remembered with the bar's settings
-(per layout slot), so it opens there next time rather than back in the middle.
-It is always kept fully on screen, including a position saved at a resolution
-you no longer play at.
+(per bar and per layout slot), so it opens there next time rather than back in
+the middle - and can jump when it passes to the other bar, which remembers its
+own spot. It is always kept fully on screen, including a position saved at a
+resolution you no longer play at.
 
 The window does not dodge the bar. If you have put the bar in the middle of
 the screen the window will cover it, and slots underneath cannot be clicked
@@ -780,7 +799,10 @@ it with `//hud crossbar edit` again, with **any press of the Select key**
 (`=`), or by entering `//hud layout` or opening `//hud config`, each of which
 takes over from it. Edit mode needs the crossbar visible and a job loaded to
 open at all, and refuses while `//hud layout` or the settings window is up.
-Leaving takes the hotbar out of edit mode with it.
+Leaving takes the hotbar out of edit mode with it. A cutscene or a zone closes
+edit mode too, since the HUD hides, and it does not come back by itself;
+`//hud hide crossbar` closes the crossbar's binder alone and leaves the hotbar
+in edit mode.
 
 ---
 
@@ -790,12 +812,16 @@ You always have **eight sets**. Cycling puts one of them on the
 XHB. What differs between sets is where each one is *stored*:
 
 - A set marked **shared** is the same on every job - one copy, edited from
-  anywhere. Good for non-combat things you want everywhere.
+  anywhere. Good for non-combat things you want everywhere. Only its base
+  layer is shared: a subjob, weapon or context override on a shared set stays
+  with the job it was made on, so a weaponskill, which lives on a weapon
+  layer, never carries over.
 - A set left **job-specific** is stored per job. Set 1 on WHM and set 1 on WAR
   are different sets that happen to share a number.
 
 ```
-//hud crossbar share 6 on      -- sets 6, 7, 8 shared: the same everywhere
+-- sets 6, 7, 8 shared: the same everywhere
+//hud crossbar share 6 on
 //hud crossbar share 7 on
 //hud crossbar share 8 on
 ```
@@ -811,10 +837,13 @@ Cycling with `` ` `` walks a rotation you choose, not all eight. Each set can
 be included in a **drawn** rotation, a **sheathed** one, both, or neither:
 
 ```
-//hud crossbar cycle 1 drawn        -- combat sets, cycled with the weapon out
+-- combat sets, cycled with the weapon out
+//hud crossbar cycle 1 drawn
 //hud crossbar cycle 2 drawn
-//hud crossbar cycle 6 sheathed     -- utility sets, cycled with it away
-//hud crossbar cycle 3 none         -- reachable only by jumping, or as a view
+-- utility sets, cycled with it away
+//hud crossbar cycle 6 sheathed
+-- reachable only by jumping, or as a view
+//hud crossbar cycle 3 none
 ```
 
 Empty sets are skipped, so the cycle is only as long as you have made it.
@@ -831,9 +860,10 @@ on your first combat set; sheathe and you land on your first utility one, every
 time, whatever you were on. Only sheathing yourself takes you out of combat mode,
 so a set rotation does not lurch back mid-pull.
 
-**Changing job lands you the same way.** A job change sheathes you, so you
-arrive on the first set of your *sheathed* rotation rather than wherever that
-job was left. It lands once more when the bar first reads your weapon, unless
+**Changing job lands you the same way, and so does every reload of the bar** -
+a login, a slot switch, a reset or a copy. Each sheathes you, so you arrive on
+the first set of your *sheathed* rotation rather than wherever that job was
+left. It lands once more when the bar first reads your weapon, unless
 you have picked a set by hand by then, so a set that holds only weapon
 overrides is still found.
 
@@ -873,8 +903,8 @@ item is already worn and charged it simply fires.
 
 Note that equipping the piece **displaces whatever was in that slot**,
 and the crossbar does not put the old piece back - it only releases the
-GearSwap hold. Your next gear swap will sort it out; a `//gs c` or a
-manual re-equip will do it sooner. A wait needing more than about 30
+GearSwap hold. Your next gear swap will sort it out, or re-equip the old piece
+by hand. A wait needing more than about 30
 further seconds is given up at once rather than sat through, and nothing
 is held much beyond that - the bar says which, and why, in chat. A few
 items whose enchantments take longer to come up are allowed a
@@ -895,9 +925,10 @@ normally worn by you and needs no target at all, but if you do bind one -
 that, so a wait of half a minute cannot land the item on something you
 tabbed to since. A target the press cannot settle is refused outright
 rather than left to resolve later: pressing with nothing targeted says so.
-A bind aimed at a pick-a-target cursor (`st` and friends) is accepted, but
-every press of it is refused with `cannot pin <st> at the press - bind <me>
-or <t>`.
+A bind aimed at anything but `t`, `bt`, `me` or `pet` - a pick-a-target
+cursor, a party member - is accepted, but a press that has to equip the piece
+and wait is refused with `cannot pin <st> at the press - bind <me> or <t>`; a
+piece already worn and charged fires at once, with the token as typed.
 
 Both `item` and `enchanteditem` slots show **how many you carry** in the
 corner, up to `99+`, and cross themselves out at zero - enchanted gear always,
@@ -915,8 +946,8 @@ and pressing it answers `Vocation Ring: no charges left.`
 | `ct` | a single chat command, e.g. `ct "sea all linkshell"` |
 | `ex` | a raw Windower command - including `exec <script>`, which runs a multi-line Windower script. This is the closest thing to a macro. |
 
-FFXI's own macro palette cannot be triggered by an addon, so `ex` with a
-script is the way to put a sequence on a slot.
+XIVHud does not drive FFXI's own macro palette, so `ex` with a script is the
+way to put a sequence on a slot.
 
 ### Built-ins
 
@@ -939,10 +970,12 @@ II spell (Black Mage main or sub, with the MP for it), then a Warp Ring, an
 Instant Warp, a Warp Cudgel, a Treat Staff II, and a Tavnazian Ring as the last
 resort. A ring or cudgel is equipped for you and its enchantment waited out,
 under the same rules as enchanted gear above; a piece already on your finger is
-not assumed to be ready either. `warp all` sends your other characters running
-XIVHud home when this character's warp actually fires, so calling the countdown
-off, or a ring warm-up that gets abandoned, leaves them where they are; a
-character with no way home at all sends them at once.
+not assumed to be ready either. `warp all` is the command's alone - a `warp`
+slot sends only you; bind `ex hud warp all`, or give a shortcut key the verb
+`warp all`, to take the party. It sends your other characters running XIVHud
+home when this character's warp actually fires, so calling the countdown off,
+or a ring warm-up that gets abandoned, leaves them where they are; a character
+with no way home at all sends them at once.
 
 **`sneak`** and **`invisible`** pick the first way this character has to get
 the effect, cheapest first: the spell (Sneak / Invisible), then Spectral Jig,
@@ -971,8 +1004,10 @@ forbids it the game turns the summon down itself.
 
 **A press the addon knows will fail does nothing at all**: no
 countdown, no command, no recast - a press while the recast from your last
-summon is still running. It says so in the log, with the seconds left. The greyed icon and the
-dead press follow the same rule, so what you see is what the button will do.
+summon is still running (though, like any press of a travel action, it calls
+off a countdown already running). It says so in the log, with the seconds
+left. The greyed icon and the dead press follow the same rule, so what you see
+is what the button will do.
 
 The recast keeps running once you are actually mounted, and keeps the slot
 greyed until you could mount again - though the press is now a dismount,
@@ -1000,7 +1035,7 @@ will still grey the slot for the minute.
 
 `//hud crossbar open` prints this list in game.
 
-Most of these are chat commands the game already has, so they are reliable.
+Most of these are chat commands the game already has.
 **`equipment` and `inventory` are the exceptions**: FFXI has no command for
 them, so those two press Ctrl+E and Ctrl+I for you. They stop working if you
 have rebound those keys in the game's own settings, and not every FFXI window
@@ -1064,12 +1099,14 @@ A countdown never carries over a zone, a death or a job change.
 `//hud crossbar edit` each call a pending trip off, and one you ask for while
 any of them is already open is refused outright - `[XIVHud] Mount roulette -
 not while //hud layout is open` - rather than counting down to nothing. A late
-action goes only where a fresh press would.
+action goes only where a fresh press would. A warp whose ring has to be
+equipped and warmed up has no countdown to refuse: it starts, and is called off
+on the next frame with the ring still on.
 `//hud reset crossbar` drops a countdown too, quietly, as does a slot switch or
 a copy: after any of them there is nothing left of the setup that armed it. A
 ring warm-up dropped that way does say so (`warp dropped - <item>`), since the
-ring is still on your finger. Typing `//hud mr` still dismounts in
-either mode, being instant rather than late.
+ring is still on your finger. Typing `//hud mr` still dismounts in any of
+those modes, being instant rather than late.
 
 **Typing in chat does not stop it.** Answering a tell while you wait to warp is
 playing, so the countdown runs on - only resting, the transitions above and the
@@ -1086,8 +1123,8 @@ same, dismounting rather than summoning - and `draw`, which dismounts as its
 first job.
 
 The countdown tells you **which** way you are going home - `Warp Ring in 5
-seconds`, not a bare `Warp` - and only the last five seconds are counted out
-loud.
+seconds`, or `Warp` alone when the spell is the rung - and only the last five
+seconds are counted out loud.
 
 **The plan is worked out once, when you press**, and the countdown names it,
 so what you were told is what fires, even if something better turns up while it

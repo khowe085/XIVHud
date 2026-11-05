@@ -11,20 +11,22 @@ property icons.
 
 ## Features
 
-- **Red and thin** while a weaponskill has landed but the next step is not
-  yet allowed - the game's three-second wait before a chain can continue -
-  growing to full width over those seconds.
+- **Red and thin** while a weaponskill (or a spell under Chain Affinity or
+  Immanence) has landed but the next step is not yet allowed - the game's
+  wait before a chain can continue, three seconds for most actions - growing
+  to full width over the last three seconds of that wait.
 - **Green and thick** while the window is open, shrinking toward its centre
   as the window closes.
-- Nothing is drawn when no chain is in progress on your current target, or
-  when that target is dead.
+- Nothing is drawn when no chain is in progress on your current target (or
+  your battle target, with nothing targeted), or when that target is dead.
 - Ships on, centred near the bottom of the screen above where the crossbar's
   WXHB sits. Move and resize it in `//hud layout` like any other component.
 
 ## Configuration options
 
-`config.lua` in the component's folder. There are no console commands; these
-are set by editing the file.
+`config.lua` in the component's folder, a file you create yourself (see
+[where settings are kept](../Home.md#where-settings-are-kept)). There are no
+console commands; these are set by editing the file.
 
 | Option | Default | What it does |
 | --- | --- | --- |

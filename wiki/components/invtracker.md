@@ -12,10 +12,10 @@ menu. Bags sit side by side as blocks, each with its short name under it.
 
 - One block per bag, in your choice of bags and column counts.
 - **Square colours** tell you what is in a slot: teal for an ordinary item,
-  red for a full stack, white for a worn slot in the equipment bag, green for
-  something equipped (or a worn linkshell), orange for an item in your
-  bazaar, pink for a temporary item or one in the treasure pool, dark for an
-  empty slot.
+  red for a full stack (which includes anything that does not stack, gear
+  among it), white for a worn slot in the equipment bag, green for something
+  equipped (or a worn linkshell), orange for an item in your bazaar, pink for
+  a temporary item or one in the treasure pool, dark for an empty slot.
 - Updates whenever something moves - a pickup, a drop, a sale, a swap.
 - A **sort** option orders each bag so the picture is easy to read: equipped
   and bazaar items first, then the stacks nearest full, then the largest
@@ -24,6 +24,8 @@ menu. Bags sit side by side as blocks, each with its short name under it.
   disappear when empty.
 - Bags that share a purpose are one word: `safe` covers both Mog Safes and
   `wardrobe` covers all eight wardrobes.
+- A bag you do not have draws no block, so a character without a satchel,
+  sack or case sees nothing for those even though they ship on.
 
 ## Configuration options
 
@@ -67,7 +69,7 @@ Appearance options, set by editing the file:
 | `labels.gap` | `1` | gap between block and label |
 | `labels.color` / `stroke` | light grey / black, width 1 | label colour and outline |
 | `colours.default` | teal | an ordinary item |
-| `colours.full_stack` | red | a full stack |
+| `colours.full_stack` | red | a full stack, or an item that does not stack |
 | `colours.equipment` | white | a worn slot in the equipment bag |
 | `colours.equipped` / `linkshell_equipped` | green | something equipped |
 | `colours.bazaar` | orange | an item in your bazaar |
@@ -92,7 +94,7 @@ rest.
 | `//hud invtracker <bag> columns <1-20>` | set a bag's width in squares |
 | `//hud invtracker sort on\|off` | sort each bag for display |
 | `//hud invtracker labels on\|off` | show or hide the bag names |
-| `//hud invtracker spacing <px>` | pixels between squares |
+| `//hud invtracker spacing <px>` | pixels from one square to the next |
 | `//hud invtracker blockspacing <px>` | pixels between bags |
 | `//hud invtracker align top\|bottom` | line blocks up along their top or bottom edge |
 

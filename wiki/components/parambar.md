@@ -29,10 +29,11 @@ hit messages (a hit and a critical hit) and the two miss messages, for your
 own swings only - your pet's do not count, and neither do your ranged
 attacks, which are a different stat.
 
-A parry, a block, a counter, a guard or a Third Eye evasion counts as
-**neither** a hit nor a miss, so none of them reaches the total. None of them
-is your accuracy failing. The figure is "of the swings that landed or missed",
-and that is the same rule the `scoreboard` addon uses.
+Only those four messages count. A swing the game reports any other way - a
+parry, a counter, a Third Eye evasion - is **neither** a hit nor a miss and
+never reaches the total, since none of them is your accuracy failing. The
+figure is "of the swings that landed or missed", the same rule the `scoreboard`
+addon uses.
 
 **The delay is measured, not calculated.** It is the median time between
 your melee rounds over the same window - what your swings are actually
@@ -69,15 +70,11 @@ want it in `//hud layout` afterwards.
 
 ## Configuration options
 
-A default that changes later does not reach a `config.lua` that already
-exists - your own value wins - so a parameter bar set up before 2026-09-28
-keeps `window_seconds = 15` until you change it or reset the component.
-
 `config.lua` in the component's folder. Everything here can be left alone;
 `compact`, `accuracy.enabled` and `accuracy.window_seconds` are also set by
 command.
 
-The bar width, spacing and offset are not settings: the troughs and the
+The bars' width, spacing and position are not settings: the troughs and the
 HP/MP/TP labels are part of the background image, so the fills are fixed to
 it. A `bar` or `compact_bar` block left in an older `config.lua` is ignored.
 
@@ -85,11 +82,11 @@ it. A `bar` or `compact_bar` block left in an older `config.lua` is ignored.
 | --- | --- | --- |
 | `compact` | `false` | use the compact bar art, with narrower bars and tighter spacing |
 | `dim_tp_bar` | `true` | draw the TP bar dimmed until TP reaches 1000 |
-| `font` | `"sans-serif"` | font for the numbers |
+| `font` | `"sans-serif"` | font for the numbers and the accuracy row |
 | `font_size` | `14` | font size |
 | `text_offset` | `0` | shifts the numbers sideways, in pixels |
-| `text_color` | white | number colour |
-| `text_stroke` | dark, width 2 | outline around the numbers |
+| `text_color` | white | colour of the numbers and the accuracy row |
+| `text_stroke` | dark, width 2 | outline around the numbers and the accuracy row |
 | `full_tp_color` | blue | TP number colour at 1000 or more |
 | `low_hp_colors` | yellow / orange / red | HP number colour under 75% / 50% / 25% |
 | `low_mp_colors` | yellow / orange / red | the same for MP |

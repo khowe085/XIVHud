@@ -18,7 +18,7 @@ edit by hand to get started.
   it with the wheel, switch it on or off with a right-click. Changes save at
   once.
 - **Per-character settings.** Every character keeps its own placements and
-  component settings, created the first time that character logs in.
+  component settings, written under `data/<Character>/` as you change them.
 - **Layout slots.** Several named arrangements per character, switched with
   one command - one for solo play and one for events, say.
 - **Copy between characters.** One command copies a character's whole
@@ -60,8 +60,8 @@ time to see the command list.
    switched back on.
    - **Left-drag** a box to move it. Movement snaps to a grid; hold **CTRL**
      to move freely.
-   - **Mouse wheel** over a box to scale it up or down, 1% a notch, no
-     smaller than a quarter of its size.
+   - **Mouse wheel** over a box to scale it up or down, no smaller than a
+     quarter of its size.
    - **Right-click** a box to switch that component off or on.
    - **SHIFT + right-click** switches one piece of a component that has
      several off or on: a party list, a status bar, a hotbar row, a target bar
@@ -80,8 +80,11 @@ Two components take over keys while a character is loaded. The crossbar
 claims `;` `'` `\` `` ` `` and `=`, and the number row `1` to `8` while a side
 key or `` ` `` is held. The hotbar claims the number row `1` to `0` under CTRL
 (row 1), ALT (row 2), SHIFT (row 3), CTRL+SHIFT (row 4), ALT+SHIFT (row 5) and
-CTRL+ALT+SHIFT (row 6); the bare keys stay the game's. It also changes set on
-CTRL+Up and CTRL+Down, which the game still sees. If you would
+CTRL+ALT+SHIFT (row 6); the bare keys stay the game's, and the game's own macro
+palette still fires on those chords, so leave the matching in-game macros
+empty. It also changes set on CTRL+Up and CTRL+Down, which the game still sees.
+The bars also take a left-click on a drawn slot or the sword, and the status
+bar a click on one of its icons. If you would
 rather keep those keys, switch the component off with `//hud hide crossbar`
 or `//hud hide hotbar`; a hotbar row you hide gives its chord back too.
 
@@ -92,10 +95,10 @@ Components can also be switched from the console: `//hud hide giltracker`,
 
 | Component | Alias | On by default | What it shows |
 | --- | --- | --- | --- |
-| [Crossbar](components/crossbar.md) | `cb` | yes | FFXIV's cross hotbar: sixteen slots per set, driven by held keys or a controller |
+| [Crossbar](components/crossbar.md) | `cb` | yes | FFXIV's cross hotbar: sixteen slots per set, driven by held keys, or a controller through Steam Input |
 | [Hotbar](components/hotbar.md) | `hb` | yes (row 1) | FFXIV's hotbar: ten slots in a row on the number keys, up to eight rows, with the same kinds of binding and the same commands as the crossbar |
 | [Parameter bar](components/parambar.md) | `pb` | yes | HP, MP and TP bars with numbers |
-| [Party list](components/partylist.md) | `pl` | yes (main party) | your party and both alliance parties, with HP/MP/TP, jobs, buffs and distance |
+| [Party list](components/partylist.md) | `pl` | yes (main party) | your party (HP/MP/TP, jobs, buffs, distance) and both alliance parties (HP and MP) |
 | [Target bar](components/targetbar.md) | `tb` | yes | your target's HP, name, distance and cast bar, plus smaller copies for the subtarget cursor and a focus target |
 | [Status bar](components/statusbar.md) | `sb` | yes (bar 1) | your buffs and debuffs as icons with timers |
 | [Experience bar](components/expbar.md) | `eb` | yes | experience, limit points or exemplar points toward the next step |
@@ -107,7 +110,7 @@ Components can also be switched from the console: `//hud hide giltracker`,
 
 ## Commands
 
-All commands start with `//hud` (`//xivhud` also works). Verbs and component
+All commands start with `//hud` (`//xivhud` is registered as a second name). Verbs and component
 names are not case-sensitive, and a component's alias stands in for its name
 anywhere: `//hud reset tb` is `//hud reset targetbar`.
 
@@ -118,7 +121,7 @@ anywhere: `//hud reset tb` is `//hud reset targetbar`.
 | `//hud list` | list every component with its state, position and scale |
 | `//hud show <component> [<piece>]` | switch a component on, or one piece of it |
 | `//hud hide <component> [<piece>]` | switch a component off, or one piece of it |
-| `//hud reset <component>` | restore that component's settings and placement to defaults |
+| `//hud reset <component>` | restore that component's settings and placement to defaults (for the crossbar and hotbar, every job's bindings go too) |
 | `//hud reset all` | restore every component |
 | `//hud slot <name>` | switch to a layout slot |
 | `//hud slot list` | list your layout slots, marking the active one |
@@ -127,12 +130,12 @@ anywhere: `//hud reset tb` is `//hud reset targetbar`.
 | `//hud copy <from> <to>` | replace character `<to>`'s configuration with character `<from>`'s |
 | `//hud buffs active` | list every buff on you right now, with ids |
 | `//hud buffs <component> ...` | a component's buff order and filter settings (see below) |
-| `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise` | actions on the game itself (see Action commands below) |
+| `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise` | the bars' built-in actions (see Action commands below) |
 | `//hud delay [<seconds>]` | the mount and warp countdown, shared by the crossbar and hotbar; without a number it prints the current value (see Action commands below) |
 | `//hud queue [on\|debug\|off]` | hold a bar press made during a cast or the moment after it, and send it when you can act; on by default. Without a word it prints the current setting (see [The action queue](#the-action-queue)) |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action |
 | `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default. Without a word it prints the current setting |
-| `//hud config [<component>]` | open the settings window, to change settings with the mouse (see below) |
+| `//hud config [<component>\|global]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
 
 **`show` and `hide` take a piece name** for components made of several
@@ -175,7 +178,9 @@ A buff can be named by its id or by its name (`//hud buffs partylist top
 haste`). `//hud buffs active` shows the ids of everything currently on you.
 The party list's buff settings belong to the main party alone, so its only
 piece name here is `main`, and it adds one verb of its own,
-`//hud buffs partylist active [<member>]`, for a party member's buffs.
+`//hud buffs partylist active [<member>]`, for a party member's buffs. The
+status bar's order is one list for all three of its bars, so its order verbs
+take no piece word either; only its `filter` verb does.
 `//hud statusbar partyorder on` makes the party list follow the status bar's
 order. See the [party list](components/partylist.md) and
 [status bar](components/statusbar.md) pages for what each one adds.
@@ -214,9 +219,9 @@ about a single action-bar slot are still typed.
 - **Open it on one panel** with `//hud config <component>`, for example
   `//hud config global`. If the window is already open, that switches panel.
 
-While the window is open the mouse belongs to it: a click on the window never
-reaches the game, a click anywhere else does, and the action bars do not
-answer the mouse. Your keys still work. Opening it closes the action bars'
+While the window is open the mouse belongs to it: a left-click on the window
+never reaches the game (a right-click does), a click anywhere else does, and
+the action bars do not answer the mouse. Your keys still work. Opening it closes the action bars'
 edit mode, which cannot be opened again until the window is closed, and
 cancels a mount or warp that is counting down. It cannot be opened in layout
 mode, and entering layout mode closes it. Like the rest of
@@ -236,7 +241,7 @@ or the console too, and their settings are shared by both bars.
 
 | Command | What it does |
 | --- | --- |
-| `//hud draw` | sheathe or unsheathe, which also picks the set rotation the bars cycle through; dismounts if you are mounted |
+| `//hud draw` | flip the bars' weapon state, which picks the set rotation they cycle through: drawing sends nothing to the game, sheathing disengages you, and mounted it dismounts |
 | `//hud mr` | mount roulette: summon a random mount you own, or dismount |
 | `//hud warp [all]` | warp home by the best means you have (a Warp spell, a Warp Ring, an Instant Warp, ...); `all` sends your other characters running XIVHud too |
 | `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage: the spell, then Spectral Jig, then the ninjutsu, then an oil or powder. Silenced or muted, the spells and ninjutsu are passed over |
@@ -302,8 +307,9 @@ off, every press goes at once and the game decides.
   cutscene that hides the HUD; opening `//hud layout`, `//hud config` or edit
   mode; anything that reloads a bar - a reset, a slot switch, a copy, a login;
   switching the queue off or unloading the addon; and 30 seconds passing, held
-  or waiting for a cast to end. While one of those three modes is open, or the
-  HUD is hidden, a press goes at once.
+  or waiting for a cast to end. A press made while `//hud config` is open goes
+  at once; in layout or edit mode, or while the HUD is hidden, the bars fire
+  nothing anyway.
 
 If you use Selindrile's GearSwap files, leave their MiniQueue off.
 
@@ -359,11 +365,19 @@ Windower4/addons/XIVHud/cache/packets/<Character>/                      the last
 Windower4/addons/XIVHud/icons/custom/                                   your own crossbar and hotbar art
 ```
 
-The files are plain Lua tables and can be edited in a text editor while the
-game is closed (or reload the addon afterwards with `//lua reload xivhud`).
-Colours are written as `{ r = , g = , b = , a = }`, each 0-255; `a` is the
-opacity and may be left out, which means fully opaque. Each component's page
-lists the options its `config.lua` holds. If a file cannot be read, chat says
+The files are plain Lua tables (`return { ... }`) and can be edited in a text
+editor while the game is closed (or reload the addon afterwards with `//lua
+reload xivhud`). A key the file leaves out keeps its shipped value, and a
+shipped default that changes later does not replace a value already in your
+file. Colours are written as `{ r = , g = , b = , a = }`, each 0-255; `a` is
+the opacity, a colour written without one keeps its shipped opacity, and some
+colours take none. Each component's page lists the options its `config.lua`
+holds.
+
+A component's `config.lua` is written when it saves a setting, so one that has
+no setting command - the gil tracker, speed check, experience bar and
+skillchain indicator - never writes one. To change their options, create the
+file yourself, holding just the keys you want. If a file cannot be read, chat says
 so and the component runs on its defaults; the next setting it saves overwrites
 the broken file (see [Troubleshooting](#troubleshooting)).
 
@@ -410,9 +424,11 @@ is not where it should be. Re-copy every file and folder from the release zip.
 Windower's own `resources` or `packets` library failed, and more than the party
 list goes with it: the gil tracker, equipment viewer, experience bar and
 inventory tracker are not loaded, the status bar draws no timers, the target
-bar has no cast bar or Treasure Hunter level, the bars show no skillchain
-properties or item counts, and the action queue is off whatever `core.lua`
-says. The line under it is the library's own error.
+bar has no cast bar or Treasure Hunter level, the parameter bar's accuracy row
+never counts, the skillchain indicator never draws, the bars' slots show no
+recast arcs, costs, icons or counts and their binder lists nothing, mount
+roulette and mount slots do nothing, `warp` finds no items, and the action
+queue is off whatever `core.lua` says. The line under it is the library's own error.
 
 **`could not parse <file> ... (using defaults)`** (or `could not read`,
 `ignoring`, `could not merge`). A settings file under `data/` is broken, usually
@@ -420,6 +436,11 @@ from a hand edit. The component runs on its defaults, in memory only: the next
 setting it saves overwrites the file. Fix the file with the game closed, or
 `//hud reset <component>` to start it over. An empty file is read as absent,
 silently.
+
+**`could not write <file>`.** A settings file could not be saved, usually
+because a folder under `data/` could not be created or the addon folder is
+read-only. The HUD carries on, but the change is lost on the next reload; check
+that Windower can write to `addons/XIVHud/data/`.
 
 **`error in the <name> handler: ...`.** An error inside the addon; it is said
 once per distinct message, not every frame. After five errors in one handler

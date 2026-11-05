@@ -54,11 +54,13 @@ changed"**, a game update has moved the icons again and XIVHud needs an update.
 An icon that cannot be trusted is not cached, and its slot stays blank rather
 than showing the wrong picture.
 
-If an item still draws the wrong icon, `//hud equipviewer icons probe` prints
-the item id the addon believes each slot holds - compare those with what you
-are actually wearing - along with where it read each icon from, and writes the
-same in more detail to `icons.log` beside the addon's `load.log`; that file is
-what to send along with a report.
+If an item still draws the wrong icon, `//hud equipviewer icons probe` prints,
+for each occupied slot, the item id the addon believes it holds and where it
+read the icon from. Each line starts with the game's slot number - 0 main, 1
+sub, 2 ranged, 3 ammo, 4 head, 5 body, 6 hands, 7 legs, 8 feet, 9 neck, 10
+waist, 11 and 12 ears, 13 and 14 rings, 15 back - so compare the ids with what
+you are actually wearing. It writes the same in more detail to `icons.log`
+beside the addon's `load.log`; that file is what to send along with a report.
 
 To make the addon read an icon again, unload it (`//lua unload xivhud`), delete
 the file `cache/items/<item id>.bmp` in the addon's folder, and load it again. There
@@ -72,7 +74,7 @@ opens the [settings window](../Home.md#settings-window) on this component.
 
 | Command | What it does |
 | --- | --- |
-| `//hud equipviewer` | print both toggles as they stand |
+| `//hud equipviewer` | print both toggles as they stand, and how many icons could not be read this session, if any |
 | `//hud equipviewer encumbrance on\|off` | show or hide the X over locked slots |
 | `//hud equipviewer ammocount on\|off` | show or hide the ammo count |
 | `//hud equipviewer icons probe` | print where each equipped slot's icon was read from, and write `icons.log` |

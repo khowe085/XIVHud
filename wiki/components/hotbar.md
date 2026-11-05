@@ -7,9 +7,9 @@ Alias: `hb`
 FFXIV's hotbar for FFXI: a plain row of ten slots fired by the number keys,
 with up to eight rows on screen at once. It is the [crossbar](crossbar.md)
 with a different face - the two take the same kinds of binding, one mouse binder
-and the same commands under their own names - so anything you can bind to the
-crossbar you can bind here, and the same layers, contexts, sets and rotations
-apply.
+and the same commands under their own names (bar `view` and `wxhb`, which
+only the crossbar has) - so anything you can bind to the crossbar you can bind
+here, and the same layers, contexts, sets and rotations apply.
 
 ## Features
 
@@ -17,7 +17,8 @@ apply.
   resized on its own. Row 1 ships on; rows 2 to 8 ship off.
 - **Row 1 follows the active set**, the one the cycle keys move through.
   Rows 2 to 8 are locked to sets 2 to 8, so a row you switch on always shows
-  the same set.
+  the same set - and row 1 shows the same set as one of them whenever the
+  active set is not 1.
 - **Four shapes per row**: 10x1, 5x2, 2x5 or 1x10. Slots are numbered left
   to right, top to bottom, so a binding stays on the same slot whatever the
   shape.
@@ -29,24 +30,27 @@ apply.
   **CTRL+Up** moves to the next set in the rotation and **CTRL+Down** to the
   previous one, with CTRL held on its own (the game's own macro set changes on
   the same chord, and still sees the arrow).
-- None of the keys fire while the chat line is open, during a cutscene, in
-  layout or edit mode, before a job has loaded, or while the hotbar is hidden.
+- None of the keys fire while the chat line is open, while the HUD is hidden
+  (a cutscene with `hidecutscene` on, or zoning), in layout or edit mode,
+  before a job has loaded, or while the hotbar is hidden.
 - **Left-click a slot** to fire it. The game does not see a click on a drawn
   slot, even an empty one.
 - **A press during a cast is held** by the
   [action queue](../Home.md#the-action-queue), shared with the crossbar, and
   goes by itself as soon as you can act.
 - The same slot art as the crossbar: icon, name, recast arc, MP or TP cost,
-  item and tool counts, and the skillchain property a weaponskill would make
-  while a chain is open.
+  item and tool counts, and the skillchain property a weaponskill, job
+  ability or pet command would make while a chain is open.
 - **A mouse binder** (`//hud hotbar edit`): click a slot, pick a layer, pick an
-  action from what your character knows. Menu entries - Stratagems, the Blood
-  Pacts, the DNC modes, Job Change - open what is behind them rather than binding, exactly
-  as on the crossbar.
+  action from what your character knows. Menu entries - Stratagems, Phantom
+  Roll, Quick Draw, the Blood Pacts, Ready, the DNC dances, Rune Enchantment,
+  Ward, Effusion, Job Change - open what is behind them rather than binding,
+  exactly as on the crossbar.
 - **Drag a slot onto the crossbar**, or a crossbar slot onto the hotbar: the
   two slots swap everything they hold, every layer of it. Edit mode covers
   both bars, so `//hud hotbar edit` and `//hud crossbar edit` do the same
-  thing. See [editing on the crossbar](crossbar.md#editing-without-guessing).
+  thing: a hidden bar refuses, and is left out when the other one opens. See
+  [editing on the crossbar](crossbar.md#editing-without-guessing).
 - **Sets, sharing and rotations** work exactly as on the crossbar: eight
   sets per job, any of them shared across jobs, each in the drawn rotation,
   the sheathed one, both or neither.
@@ -64,8 +68,8 @@ Bindings are stored per job in the addon's data folder (`<JOB>.lua` and
 or the commands below. `config.lua` beside them holds the settings.
 
 **`//hud reset hotbar` deletes every job's hotbar bindings** in the active
-layout slot, along with the settings - there is no undo and no confirmation
-step. To start one job over, unbind its slots or `copy` another job's bindings
+layout slot, along with the settings and the rows' placement - there is no undo
+and no confirmation step. To start one job over, unbind its slots or `copy` another job's bindings
 over it.
 
 | Option | Default | What it does |
@@ -87,7 +91,6 @@ over it.
 | `disabled_alpha` | `100` | opacity of an action you cannot use right now |
 | `feedback.alpha` / `speed` | `150` / `30` | the flash when a slot fires |
 | `font` / `font_size` | `"sans-serif"` / `7` | the slot label font |
-| `text_offset.x` / `.y` | `0` / `0` | nudge the labels |
 | `text_color` / `text_stroke` | white / dark, width 2 | label colour and outline |
 | `mp_cost_color` / `tp_cost_color` | pink / yellow | the cost text colours |
 
@@ -136,5 +139,7 @@ there.
 | `//hud show hotbar <bar>` / `//hud hide hotbar <bar>` | switch one row on or off |
 
 A set is a set whatever row draws it, so the binding verbs take no row word.
-The `<type>`, `<target>`, `alias=` and `icon=` rules are the crossbar's,
-described under [Binding](crossbar.md#binding) on its page.
+The `<type>`, `<target>`, `alias=`, `icon=` and `context=` rules are the
+crossbar's, described under [Binding](crossbar.md#binding),
+[Labels and icons](crossbar.md#labels-and-icons) and
+[Naming the layer](crossbar.md#naming-the-layer) on its page.

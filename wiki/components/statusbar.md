@@ -13,7 +13,8 @@ one for the rest.
 
 - Every effect on you as its icon, with the remaining time beneath it in
   FFXIV's style: seconds under a minute (`59`), then minutes (`12m`), then
-  hours (`2h`).
+  hours (`2h`). The art covers effect ids up to 639; a newer effect takes a
+  cell with only its timer.
 - **Three bars** (`bar1`, `bar2`, `bar3`), each placed on its own and each
   showing one **category**: `all`, `buffs`, `debuffs` or `other` (food, the
   mount, signets, restrictions and the like). Bar 1 ships on with `all`;
@@ -22,9 +23,9 @@ one for the rest.
 - When there are more effects than a bar can hold, the highest-priority ones
   are drawn. The order and a per-bar filter list are yours to edit.
 - **Hover** an icon to see the buff's name and id; **right-click** one to
-  cancel it (this uses the Windower `cancel` addon, and does nothing if that
-  addon is not loaded; either way the game does not see a right-click on an
-  icon).
+  cancel it (this uses the Windower `cancel` addon, and is a console error if
+  that addon is not loaded; either way the game does not see a right-click on
+  an icon).
 - **Drag** an icon onto another on the same bar to move it there in the
   priority order. The order is shared, so every bar follows it. A left-click
   on an icon does not reach the game.
@@ -66,7 +67,7 @@ order and each bar's own filter list stay commands.
 | Command | What it does |
 | --- | --- |
 | `//hud statusbar` | print all three bars and the three switches |
-| `//hud statusbar [<bar>]` | print one bar's settings |
+| `//hud statusbar <bar>` | print one bar's settings |
 | `//hud statusbar [<bar>] rows <1-4>` | set how many rows the bar has |
 | `//hud statusbar timers on\|off` | show or hide the timers on every bar |
 | `//hud statusbar tooltips on\|off` | name the buff under the cursor, or not |
@@ -97,6 +98,6 @@ through `//hud buffs statusbar` - the shared grammar described on the
 
 The priority order is one list shared by all three bars, so the order verbs
 take no bar word. The category and the filter list belong to one bar each.
-With `partyorder` on, every change these verbs make is copied to the party
-list as well - `reset` included, which puts the party list back on the
-shipped order too.
+With `partyorder` on, every change to the order - `top`, `up`, `down`, `rank`
+and `reset`, which puts the party list back on the shipped order too - is
+copied to the party list as well; filter edits are not.

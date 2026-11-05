@@ -17,7 +17,7 @@ master level.
   - at the cap once you hold the Master Breaker key item, with **exemplar
     points** toward the next master level.
 - The status line reads like `WAR99/SAM49 (ML23) JP: 342 MP: 12 EP/hr: 12.6k`:
-  your job pair, your master level where you have one, job points, merit
+  your job pair, your master level once you are earning exemplar points, job points, merit
   points, and the rate you are earning at - `EXP/hr` below the cap, `EP/hr`
   for exemplar points. In the limit-point mode the rate is `CP/hr`, your
   **capacity point** rate: limit points move the bar and the merit count but
@@ -39,24 +39,25 @@ zone or open the status menu.
 
 ## Configuration options
 
-`config.lua` in the component's folder. There are no settings commands; these
-are set by editing the file.
+`config.lua` in the component's folder, a file you create yourself (see
+[where settings are kept](../Home.md#where-settings-are-kept)). There are no
+settings commands; these are set by editing the file.
 
 | Option | Default | What it does |
 | --- | --- | --- |
 | `font` | `"sans-serif"` | font for the status line |
-| `font_size` | `6` | font size (changing it also wants `bar.width` changed, or `//hud reset expbar` to recompute it) |
+| `font_size` | `6` | font size; `bar.width` and `job_icon.size` do not follow it, so change them with it (`//hud reset expbar` puts all three back to shipped) |
 | `text_color` | gold | status line colour |
 | `text_stroke` | dark, width 2 | outline around the text |
 | `gap` | `3` | gap between the status line and the bar |
 | `job_icon.gap` | `1` | gap between the job icon and the text |
-| `job_icon.size` | computed once | the icon's size, worked out from the font size when the file is first written |
+| `job_icon.size` | from the shipped font size | the icon's size; set it yourself if you change `font_size` |
 | `bar.height` | `5` | bar height in pixels |
-| `bar.width` | computed once | bar width, worked out from the font size when the file is first written |
+| `bar.width` | from the shipped font size | bar width; set it yourself if you change `font_size` |
 | `bar.inset` | `2` | how far the fill sits inside the frame |
-| `bar.overhang` | `8` | how far the bar runs past the longest status line |
+| `bar.overhang` | `8` | how far the shipped `bar.width` runs past the longest status line; changing it in your file does nothing |
 | `fill_color` | white | tint over the gold fill art (white leaves it gold) |
-| `text_width_ratio` / `text_height_ratio` | `0.68` / `1.3` | how wide and tall the text is assumed to draw per point of font size |
+| `text_width_ratio` / `text_height_ratio` | `0.68` / `1.3` | how wide and tall the text is assumed to draw per point of font size; the width shapes only the shipped `bar.width`, the height places the bar under the header |
 
 ## Commands
 

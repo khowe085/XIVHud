@@ -13,14 +13,18 @@ speed buff or a piece of gear is actually doing something.
 - Reads your speed from the game and shows it relative to normal walking
   speed: `+0%` on foot with nothing on, more with speed gear or a mount,
   less while slowed or weighed down.
+- Whether the game reports your top speed or the speed you are moving at has
+  not been checked in a live client; if it is the latter, the figure will drop
+  while you stand still.
 - Shows `--%` until the first reading arrives after login.
 - Keeps the last value through a zone rather than blanking.
 - The icon can be switched off.
 
 ## Configuration options
 
-`config.lua` in the component's folder. There are no console commands; these
-are set by editing the file.
+`config.lua` in the component's folder, a file you create yourself (see
+[where settings are kept](../Home.md#where-settings-are-kept)). There are no
+console commands; these are set by editing the file.
 
 | Option | Default | What it does |
 | --- | --- | --- |
