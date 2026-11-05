@@ -7,8 +7,9 @@ Alias: `hb`
 FFXIV's hotbar for FFXI: a plain row of ten slots fired by the number keys,
 with up to eight rows on screen at once. It is the [crossbar](crossbar.md)
 with a different face - the two take the same kinds of binding, one mouse binder
-and one set of commands - so anything you can bind to the crossbar you can
-bind here, and the same layers, contexts, sets and rotations apply.
+and the same commands under their own names - so anything you can bind to the
+crossbar you can bind here, and the same layers, contexts, sets and rotations
+apply.
 
 ## Features
 
@@ -72,6 +73,7 @@ over it.
 | `bars.<bar>.rows` | `1` | that row's shape: `1` (10x1), `2` (5x2), `5` (2x5) or `10` (1x10) (`rows`) |
 | `bars.<bar>.hide_empty` | unset | leave that row's empty slots undrawn; unset, the row follows `hide.empty_slots` (`hideempty`) |
 | `numbers` | `true` | draw the set number beside every row; off, the slots move into its space (`numbers`) |
+| `binder_pos` | none | where you last left the binder window; written by the binder, not by hand |
 | `set_flags[n].shared` | `false` | set `n` is shared by every job (`share`) |
 | `set_flags[n].cycle.drawn` / `.sheathed` | `true` / `true` | which rotations set `n` belongs to (`cycle`) |
 | `hide.empty_slots` | `false` | leave empty slots undrawn on every row that has no `hide_empty` of its own |

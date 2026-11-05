@@ -23,9 +23,9 @@ keeps its own arrangement.
   and speed check each come from a Windower addon of the same purpose. What
   XIVHud adds is what makes them one HUD: shared placement,
   per-character settings, layout slots, and a common command line. The
-  [Credits](#credits) section at the end names every project, and borrowed
-  code and art carry that project's notice, in a `LICENSE.txt` beside them or
-  in the file itself.
+  [Credits](#credits) section at the end names every project, and the
+  `LICENSE.txt` files under `src/` and the headers of the files that
+  transcribe their code reproduce their notices.
 - **It was written with AI.** The code, the tests and the documentation were
   produced by an AI assistant (Anthropic's Claude, through Claude Code),
   working from the author's direction, with the author reviewing the results
@@ -111,8 +111,9 @@ platform rules in detail.
 
 XIVHud's own code is released under the BSD 3-clause licence, © 2026
 Azureblood2; the notice is at the top of every source file. Borrowed code and
-art keep their original licences, listed below, with each project's notice in a
-`LICENSE.txt` beside it or in the file itself.
+art keep their original licences, listed below; their notices are reproduced in
+the `LICENSE.txt` files under `src/` and in the headers of the files that
+transcribe their code.
 
 ## Credits
 

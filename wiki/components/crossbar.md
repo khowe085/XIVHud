@@ -48,8 +48,8 @@ press them yourself.
 
 ## Features
 
-- **Sixteen slots per set, eight sets**, drawn as two four-button crosses.
-  Hold a side key and that side's eight buttons are live.
+- **Sixteen slots per set, eight sets**, drawn as four-button crosses, two a
+  side. Hold a side key and that side's eight buttons are live.
 - **Two more bars**: the WXHB (another sixteen slots, held up with the layer
   key) and Expanded Hold (eight more, both side keys at once).
 - **Bind anything**: spells, job abilities, weaponskills, items, enchanted
@@ -96,7 +96,7 @@ command are also set from the console.
 | `hide.recast_text` | `false` | hide the recast countdown text |
 | `hide.skillchain_icon` | `false` | do not swap in skillchain property icons |
 | `slot_spacing` | `6` | pixels between slots |
-| `bar_spacing` | `56` | pixels between the two crosses |
+| `bar_spacing` | `56` | sets how far apart a cross's slot rows sit: half this many pixels |
 | `slot_alpha` | `100` | opacity of a slot's backing |
 | `button_bg_alpha` | `150` | opacity of the panel behind an active side |
 | `disabled_alpha` | `100` | opacity of an action you cannot use right now |
@@ -125,12 +125,13 @@ The default keys (`input`):
 
 The keys are not changed by command. To use different ones, edit the codes in
 `config.lua` (they are DirectInput scan codes; a search for "DIK scan codes"
-finds the table) and reload the addon. Each setting is a list, so a role can
-have several keys; to remove one, set it to `false`. `shortcuts` maps a key to
-a `tap` verb (a bare press), a `chorded` verb (with a side held), or both: any
-`//hud crossbar` command without that prefix, or `draw`, `mr`, `warp [all]`,
-`sneak`, `invisible` or `reraise`. If you give one key two jobs, the first
-keeps it and chat says which was dropped.
+finds the table) and reload the addon. The four key roles are lists, so a role
+can have several keys; to remove one, set it to `false`. `slot_keys` is in slot
+order, slot 1 first. `shortcuts` maps a key code to a `tap` verb (a bare
+press), a `chorded` verb (with a side held), or both: any `//hud crossbar`
+command without that prefix, or `draw`, `mr`, `warp [all]`, `sneak`,
+`invisible` or `reraise`. If you give one key two jobs, the first keeps it and
+chat says which was dropped.
 
 The bar is placed in `//hud layout` as five pieces: `main` (the XHB),
 `wxhb_left`, `wxhb_right`, `set` (the active set label) and `weapon` (the
@@ -173,6 +174,7 @@ right-hand cross is slots 1–4 and the left-hand cross 5–8.
 | `//hud crossbar cycle` | advance the XHB to the next set in the rotation |
 | `//hud crossbar cycle back` | step the XHB back to the previous set in the rotation |
 | `//hud crossbar list [<set>]` | list what is bound on this job, layer by layer, marking the live layer where a slot has more than one |
+| `//hud show crossbar <piece>` / `//hud hide crossbar <piece>` | switch one piece on or off: `main`, `wxhb_left`, `wxhb_right`, `set` or `weapon` |
 
 ### Binding
 
@@ -201,7 +203,7 @@ rest of the line means:
 | `ct` | a chat command, without its slash | `bind 4L1 ct "sea all linkshell"` |
 | `ex` | a Windower command, run as typed | `bind 4L2 ex "exec pull.txt"` |
 | `open` | the name of a game screen | `bind 5L1 open map` |
-| `jc` | a main/sub job pair — needs the JobChange addon (see Built-ins) | `bind 5L2 jc WAR/BLM` |
+| `jc` | a main/subjob pair — needs the JobChange addon (see Built-ins) | `bind 5L2 jc WAR/BLM` |
 | `draw` | *nothing* — sheathe / unsheathe | `bind 1L5 draw` |
 | `mr` | *nothing* — mount roulette | `bind 3L2 mr` |
 | `warp` | *nothing* — best available warp | `bind 6L1 warp` |
@@ -353,6 +355,8 @@ The folder is **flat**, and that is how it is searched: only the last part of a
 name is looked for there. `icon 6L1 items/warp-ring` checks
 `icons/custom/warp-ring.png` first and the addon's own `items/warp-ring` after
 — you never make an `items` folder of your own.
+
+### Naming the layer
 
 `bind`, `unbind`, `alias` and `icon` take an optional `context=` naming the
 layer — `context=sub:<job>` for a subjob (`context=sub:whm`, worn or not),
@@ -604,7 +608,7 @@ Scholar is the clearest example:
 - Your four stratagem slots hold the light stratagems under Light Arts and
   the dark ones under Dark Arts, automatically.
 
-Contexts ship with the addon; you fill in what goes in them. The list today,
+Contexts ship with the addon; you fill in what goes in them. The list,
 lowest priority first (when two live contexts both fill a slot, the later one
 wins):
 
@@ -731,7 +735,7 @@ I/II/III** on DNC, **Rune Enchantment**, **Ward** and **Effusion** on RUN,
 **Blood Pact: Rage** and **Blood Pact: Ward** on SMN, **Ready** on BST. Clicking
 one opens what is behind it, and you pick the real action there: Stratagems
 then Accession, Blood Pact: Rage then Volt Strike. **Job Change** under General
-is a menu inside a menu: a main job, then a sub job. `[ < back ]` steps back out
+is a menu inside a menu: a main job, then a subjob. `[ < back ]` steps back out
 of the list one menu at a time, and the categories down the left stay live — clicking one leaves
 the menu.
 
@@ -753,9 +757,10 @@ reaches the game. Edit mode stays on either way.
 Binding lands you back on step one, ready for the next edit on the same slot.
 
 **Moving it.** Drag the window by its title strip — the top row, to the right
-of the back button. Where you leave it is remembered with the bar's settings (per layout slot), so it opens
-there next time rather than back in the middle. It is always kept fully on
-screen, including a position saved at a resolution you no longer play at.
+of the back button. Where you leave it is remembered with the bar's settings
+(per layout slot), so it opens there next time rather than back in the middle.
+It is always kept fully on screen, including a position saved at a resolution
+you no longer play at.
 
 The window does not dodge the bar. If you have put the bar in the middle of
 the screen the window will cover it, and slots underneath cannot be clicked
@@ -837,9 +842,10 @@ If **no** set is flagged for the state you are entering — or every set that is
 happens to be empty — the active set is left where it is. On a job change that
 is the set that job was last on.
 
-Going *in* sends nothing to the game (unless you are mounted, when it dismounts): `draw` while sheathed only flips the
-addon's state and flips the sword to its drawn glyph, so it never picks a fight for you and
-never needs a target. Going *out* does disengage you — `draw` while drawn
+Going *in* sends nothing to the game (unless you are mounted, when it
+dismounts): `draw` while sheathed only flips the addon's state and flips the
+sword to its drawn glyph, so it never picks a fight for you and never needs a
+target. Going *out* does disengage you — `draw` while drawn
 means "I am done fighting".
 
 ---
@@ -859,7 +865,7 @@ means "I am done fighting".
 | `mount` | a specific mount |
 | `ra` | ranged attack |
 
-**Enchanted gear** is the one type that does more than send a command. Press
+**Enchanted gear** does more than send a command. Press
 it and the crossbar equips the piece, keeps GearSwap from swapping it straight
 back out, waits for the enchantment to come up, uses it, and releases the slot
 again (both ring slots, if it is a ring you were already wearing). If you keep
@@ -895,9 +901,11 @@ every press of it is refused with `cannot pin <st> at the press - bind <me>
 or <t>`.
 
 Both `item` and `enchanteditem` slots show **how many you carry** in the
-corner, up to `99+`, and cross themselves out at zero — enchanted gear always, and a plain item once the crossbar has found your temporary items, so that a slot is never crossed out on a guess. Consumables are counted from
-your inventory and your temporary items; enchanted gear is counted
-wherever you can reach it, wardrobes included. That is a count of the items
+corner, up to `99+`, and cross themselves out at zero — enchanted gear always,
+and a plain item once the crossbar has found your temporary items, so that a
+slot is never crossed out on a guess. Consumables are counted from your
+inventory and your temporary items; enchanted gear is counted wherever you can
+reach it, wardrobes included. That is a count of the items
 themselves, not of an enchantment's charges — a spent ring still reads `1`,
 and pressing it answers `Vocation Ring: no charges left.`
 
@@ -925,7 +933,7 @@ These are the same actions as the `//hud` commands under
 | `sneak` / `invisible` | the sneak and invisible ladders described under [Built-in actions](#built-in-actions). Both take the White Magic icon whichever rung fires, so the slot's face does not change with your subjob. |
 | `reraise` | the reraise ladder described under [Built-in actions](#built-in-actions), with the Reraise icon whichever rung fires |
 | `open <name>` | opens a game screen |
-| `jc <MAIN>/<SUB>` | changes job to that pair through the Windower **JobChange** addon (`//jc war/blm`), which must be loaded — without it the press does nothing but print "unknown command" in the console. You still have to stand near a Moogle (or a Nomad Moogle), as JobChange requires. The slot shows the main job's icon and the sub job as its label. In the binder it is **General → Job Change**, then a main job, then a sub job. All 22 jobs are listed whether you have unlocked them or not; JobChange refuses a locked one when you press it. A pair naming one job twice is refused. |
+| `jc <MAIN>/<SUB>` | changes job to that pair through the Windower **JobChange** addon (`//jc war/blm`), which must be loaded — without it the press does nothing but print "unknown command" in the console. You still have to stand near a Moogle (or a Nomad Moogle), as JobChange requires. The slot shows the main job's icon and the subjob as its label. In the binder it is **General → Job Change**, then a main job, then a subjob. All 22 jobs are listed whether you have unlocked them or not; JobChange refuses a locked one when you press it. A pair naming one job twice is refused. |
 
 `mr` and `warp` count down before they go, and so does the `mount` type
 above — see **Travel counts down** under Extras.
@@ -1028,11 +1036,13 @@ A countdown never carries over a zone, a death or a job change.
 
 **So does opening a config mode.** `//hud layout`, `//hud config` and
 `//hud crossbar edit` each call a pending trip off, and one you ask for while
-any of them is already open is refused outright — `[XIVHud] Mount roulette - not while //hud layout is
-open` — rather than counting down to nothing. A late action goes only where a
-fresh press would.
-`//hud reset crossbar` drops a countdown too, quietly: after a reset there is
-nothing left of the setup that armed it. Typing `//hud mr` still dismounts in
+any of them is already open is refused outright — `[XIVHud] Mount roulette -
+not while //hud layout is open` — rather than counting down to nothing. A late
+action goes only where a fresh press would.
+`//hud reset crossbar` drops a countdown too, quietly, as does a slot switch or
+a copy: after any of them there is nothing left of the setup that armed it. A
+ring warm-up dropped that way does say so (`warp dropped - <item>`), since the
+ring is still on your finger. Typing `//hud mr` still dismounts in
 either mode, being instant rather than late.
 
 **Typing in chat does not stop it.** Answering a tell while you wait to warp is
@@ -1083,7 +1093,7 @@ picked at the press.
 every bar - and **zero turns the wait
 off** for all three actions.
 
-The **active set** is written between the two crosses — `Set 3`, in gold,
+The **active set** is written between the two sides — `Set 3`, in gold,
 level with the bottom row. It is there whether or not a side is held, so a set
 switch is visible even on a bar you have not bound anything to yet.
 

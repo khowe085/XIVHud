@@ -12,7 +12,8 @@ property icons.
 ## Features
 
 - **Red and thin** while a weaponskill has landed but the next step is not
-  yet allowed, growing to full width over those three seconds.
+  yet allowed - the game's three-second wait before a chain can continue -
+  growing to full width over those seconds.
 - **Green and thick** while the window is open, shrinking toward its centre
   as the window closes.
 - Nothing is drawn when no chain is in progress on your current target, or

@@ -60,8 +60,8 @@ time to see the command list.
    switched back on.
    - **Left-drag** a box to move it. Movement snaps to a grid; hold **CTRL**
      to move freely.
-   - **Mouse wheel** over a box to scale it up or down (no smaller than a
-     quarter of its size).
+   - **Mouse wheel** over a box to scale it up or down, 1% a notch, no
+     smaller than a quarter of its size.
    - **Right-click** a box to switch that component off or on.
    - **SHIFT + right-click** switches one piece of a component that has
      several off or on: a party list, a status bar, a hotbar row, a target bar
@@ -70,10 +70,11 @@ time to see the command list.
    already saved.
 
 The crossbar and hotbar come up empty. Type `//hud crossbar edit` or
-`//hud hotbar edit`, click a slot, pick which layer, then pick an action (and a target if it takes one); their pages
-explain the rest. To unload the addon, type `//lua unload xivhud`. If the HUD
-does not appear at all, type `//hud`: it reports what went wrong if the addon
-failed to load.
+`//hud hotbar edit`, click a slot, pick which layer, then pick an action (and
+a target if it takes one); their pages explain the rest. To unload the addon,
+type `//lua unload xivhud`. If the HUD does not appear at all, type `//hud`:
+it reports what went wrong if the addon failed to load (see
+[Troubleshooting](#troubleshooting)).
 
 Two components take over keys while a character is loaded. The crossbar
 claims `;` `'` `\` `` ` `` and `=`, and the number row `1` to `8` while a side
@@ -144,7 +145,7 @@ changing which of its pieces are off.
 
 **`reset` and `copy` have no undo and no confirmation step.** `reset` acts on
 the active slot only; `copy` replaces every slot the destination character
-has.
+has, and its general settings (`core.lua`) with them.
 
 ### Buff order and filters
 
@@ -245,7 +246,9 @@ or the console too, and their settings are shared by both bars.
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action, 0 to 5 seconds in tenths. Alone it lists them all; with only a kind it prints that one |
 
 `mr`, `warp` and a bound mount count down in chat before they act, so a
-mis-press costs a few seconds rather than a trip home. Getting off a mount
+mis-press costs a few seconds rather than a trip home. A warp that first has to
+equip a ring and wait for its charge waits for that instead, and never for less
+than the countdown. Getting off a mount
 (`mr` or `draw` while mounted) and `draw` itself never wait. Resting (`/heal`)
 cancels the countdown. The crossbar page describes each of these in detail
 under [Built-in actions](components/crossbar.md#built-in-actions) and
@@ -253,14 +256,14 @@ under [Built-in actions](components/crossbar.md#built-in-actions) and
 
 ### The action queue
 
-After a spell, a weapon skill, a job ability, an item or a ranged attack the
+After a spell, a weaponskill, a job ability, an item or a ranged attack the
 game refuses your next action for a moment, and a press made in that moment is
 lost. With the queue on, which is the default, a crossbar or hotbar press made
 during a cast or that moment is held, and goes by itself as soon as you can
 act, as in FFXIV. A press made while you are free goes at once. With the queue
 off, every press goes at once and the game decides.
 
-- **What is held:** spells, job abilities, pet commands, weapon skills, items
+- **What is held:** spells, job abilities, pet commands, weaponskills, items
   and ranged attacks. A `sneak`, `invisible` or `reraise` slot picks its best
   way when you press it and holds that, unless the best way is gear to put on,
   which has a wait of its own. Every other kind of slot goes at once: chat and
@@ -270,33 +273,37 @@ off, every press goes at once and the game decides.
   replaces it. A held press is sent once, and not again if the game refuses
   it. Nothing is said in chat when a press is held or dropped.
 - **Pressing again.** While the game has yet to answer a press, pressing the
-  same slot again does nothing, so mashing a slot cannot spend a weapon skill
-  or an item twice.
+  same action at the same target again does nothing, so mashing a slot cannot
+  spend a weaponskill or an item twice.
 - **Recasts.** A held press is never waiting on a recast: a spell, job ability
   or pet command still on its own recast when you could act is dropped. A press
   made during that moment is held if its recast ends first, and otherwise goes
-  out as it always did. One made during a cast goes out at once if it has any
-  recast left. Stratagems, Quick Draw and Ready have charges, so their recast
+  out at once. One made during a cast goes out at once if it has any recast
+  left. Stratagems, Quick Draw and Ready have charges, so their recast
   does not count.
-- **Weapon skills.** A weapon skill you have under 1000 TP for does nothing at
+- **Weaponskills.** A weaponskill you have under 1000 TP for does nothing at
   all, not even the game's usual message, and one held is dropped if the TP is
   gone when you could act.
 - **Targets.** A held press aimed at `<t>` or `<bt>` stays on the target you
   had when you pressed, and with nothing targeted it is not held. A slot bound
   with no target takes whatever the game gives it when it goes, and `<me>` and
   `<pet>` are held as they are. `<ft>`, party targets and the other tokens are
-  not held and go at once, as they always did.
+  not held and go at once.
 - **Cursor slots.** A slot that opens a cursor (`<st>`, `<stpc>` and the like)
   is decided when you press OK rather than when you press the slot, so you can
-  pick your target during a cast and press OK whenever you like. OK then counts
-  as the press, under the rules above. GearSwap's `pretarget` does not run for
-  such a slot.
+  pick your target during a cast and press OK whenever you like. OK is then
+  judged as a press is: a weaponskill under 1000 TP sends nothing, an action
+  whose recast outlasts the wait goes at once, and otherwise it is held or goes
+  at once as the queue stands. GearSwap's `pretarget` does not run for such a
+  slot.
 - **Macros and typed commands** are not held, but they do count towards the
   wait, as does anything another addon sends.
 - **What drops a held press:** zoning, dying, changing job or logging out; a
   cutscene that hides the HUD; opening `//hud layout`, `//hud config` or edit
-  mode; resetting a bar or switching layout slot; and 30 seconds passing. While
-  one of those three is open, or the HUD is hidden, a press goes at once.
+  mode; anything that reloads a bar - a reset, a slot switch, a copy, a login;
+  switching the queue off or unloading the addon; and 30 seconds passing, held
+  or waiting for a cast to end. While one of those three modes is open, or the
+  HUD is hidden, a press goes at once.
 
 If you use Selindrile's GearSwap files, leave their MiniQueue off.
 
@@ -306,14 +313,15 @@ finishes:
 | Kind | Shipped wait | After |
 | --- | --- | --- |
 | `spell` | 2.7 seconds | a spell |
-| `weaponskill` | 2.4 seconds | a weapon skill |
+| `weaponskill` | 2.4 seconds | a weaponskill |
 | `ability` | 0.5 seconds | a job ability |
 | `item` | 1 second | an item |
 | `ranged` | 1 second | a ranged attack; an estimate, since nobody has measured this one |
-| `interrupted` | 2.7 seconds | a spell, weapon skill, item or ranged attack that was interrupted |
+| `interrupted` | 2.7 seconds | a spell, weaponskill, item or ranged attack that was interrupted |
 
-A wait you set yourself is kept in `core.lua` (below). To go back to a shipped
-wait, type its number or remove the entry from `queue_locks`.
+A wait you set yourself is kept in `core.lua` (below), and stays yours even if
+it equals the shipped one. To follow the shipped wait again, remove that kind's
+entry from `queue_locks` with the game closed.
 
 ## Layout slots
 
@@ -327,11 +335,10 @@ on/off state and settings. Each character starts with one slot, `default`.
 //hud slot default            switch back
 //hud slot delete events      remove it
 ```
+
 A slot name is one word of letters, digits and underscores, is not
 case-sensitive (it is stored in lower case), and cannot be `list`, `create` or
-`delete`. Switch to another slot before deleting the one
-you are in.
-
+`delete`. Switch to another slot before deleting the one you are in.
 
 Switching slots re-reads everything, so a component's own settings - the
 crossbar's bindings included - follow the slot.
@@ -356,8 +363,9 @@ The files are plain Lua tables and can be edited in a text editor while the
 game is closed (or reload the addon afterwards with `//lua reload xivhud`).
 Colours are written as `{ r = , g = , b = , a = }`, each 0-255; `a` is the
 opacity and may be left out, which means fully opaque. Each component's page
-lists the options its `config.lua` holds. If a
-file is damaged the component falls back to its defaults and says so in chat.
+lists the options its `config.lua` holds. If a file cannot be read, chat says
+so and the component runs on its defaults; the next setting it saves overwrites
+the broken file (see [Troubleshooting](#troubleshooting)).
 
 ### General settings (`core.lua`)
 
@@ -377,3 +385,58 @@ The whole HUD hides during cutscenes (unless you turn that off with
 `//hud hidecutscene off`), while
 zoning and for a few seconds after, and while logged out. It comes back by
 itself. Layout mode does not override this.
+
+## Troubleshooting
+
+Everything XIVHud says in chat starts with `[XIVHud]`. When it loads it says
+`loaded - type //hud for commands`.
+
+**Nothing appears, or `//hud` says `did not load`.** The addon loads in steps
+and stops at the first that fails; `//hud` then answers `did not load - <step>:
+<error>` and nothing is drawn. `load.log`, beside `XIVHud.lua`, is rewritten on
+every load and records each step, so its last line is the last thing that ran.
+Send that file with a report.
+
+**Bisecting a crash.** An empty file named `safe_mode` beside `XIVHud.lua`
+makes the addon load its framework and commands and nothing else: no component,
+no drawing, none of the action commands. Nothing in chat says it is on - only
+`load.log` does - and `//hud list` answers `no components registered`. Delete
+the file to go back.
+
+**`N texture(s) are missing from this install`.** Some of the addon's own art
+is not where it should be. Re-copy every file and folder from the release zip.
+
+**`the party list is off: Windower's resource or packet library did not load`.**
+Windower's own `resources` or `packets` library failed, and more than the party
+list goes with it: the gil tracker, equipment viewer, experience bar and
+inventory tracker are not loaded, the status bar draws no timers, the target
+bar has no cast bar or Treasure Hunter level, the bars show no skillchain
+properties or item counts, and the action queue is off whatever `core.lua`
+says. The line under it is the library's own error.
+
+**`could not parse <file> ... (using defaults)`** (or `could not read`,
+`ignoring`, `could not merge`). A settings file under `data/` is broken, usually
+from a hand edit. The component runs on its defaults, in memory only: the next
+setting it saves overwrites the file. Fix the file with the game closed, or
+`//hud reset <component>` to start it over. An empty file is read as absent,
+silently.
+
+**`error in the <name> handler: ...`.** An error inside the addon; it is said
+once per distinct message, not every frame. After five errors in one handler
+chat says `the <name> handler has been disabled after 5 failures - '//lua
+reload xivhud' to try again` and that part of the addon stops; a disabled mouse
+or keyboard handler hands your input back to the game. Reload to try again, and
+report the message.
+
+**`item icons are not being read: the game's item data has changed`.** A game
+update has moved the item icons and XIVHud needs an update. It applies to the
+equipment viewer and both action bars, which share one icon cache; the
+[equipment viewer](components/equipviewer.md) page has `icons probe` and the
+rest.
+
+**`crossbar: DIK <n> is bound to more than one thing`.** A hand-edited key map
+in the crossbar's `config.lua` gives one key two jobs; the first keeps it.
+
+**A press the action queue dropped or held.** `//hud queue debug` writes every
+step to `debug.log` beside `XIVHud.lua`, appended and never trimmed, so switch
+it back to `on` and delete the file when you are done.

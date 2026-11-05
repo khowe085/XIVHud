@@ -11,7 +11,7 @@ off by default, that you place separately.
 
 ## Features
 
-- One row per party member: name, main and sub job with levels, HP, MP and
+- One row per party member: name, main and subjob with levels, HP, MP and
   TP as bars with numbers.
 - The HP number changes colour as HP drops: yellow, then orange, then red
   under 75%, 50% and 25%. A full TP bar is marked.
@@ -76,7 +76,7 @@ order and filters, which stay commands.
 | `//hud partylist [<list>] spacing <px>` | set the extra space between rows |
 | `//hud partylist [<list>] align top\|bottom` | grow the list down from the top or up from the bottom |
 | `//hud partylist [<list>] emptyrows on\|off` | draw or hide empty party slots |
-| `//hud partylist range num\|icons` | show distance as a number or as indicator icons |
+| `//hud partylist range num\|icons` | show distance as a number or as indicator icons (`numeric` and `icon` also work) |
 | `//hud partylist range <near> <far>` | the two distances, in yalms, that the indicators mark |
 | `//hud partylist hidesolo on\|off` | hide the list while solo |
 | `//hud show partylist <list>` / `//hud hide partylist <list>` | switch one list on or off |

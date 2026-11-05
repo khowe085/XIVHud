@@ -60,7 +60,7 @@ are actually wearing - along with where it read each icon from, and writes the
 same in more detail to `icons.log` beside the addon's `load.log`; that file is
 what to send along with a report.
 
-To make the addon read an icon again, unload it (`//lua unload XIVHud`), delete
+To make the addon read an icon again, unload it (`//lua unload xivhud`), delete
 the file `cache/items/<item id>.bmp` in the addon's folder, and load it again. There
 is no command for it: the addon cannot overwrite an image file it is currently
 drawing.

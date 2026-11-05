@@ -27,7 +27,7 @@ one for the rest.
   icon).
 - **Drag** an icon onto another on the same bar to move it there in the
   priority order. The order is shared, so every bar follows it. A left-click
-  on an icon no longer reaches the game.
+  on an icon does not reach the game.
 - **Party order** (off by default): the [party list](partylist.md)'s buff
   icons can follow this order too. Switching it on replaces the party list's
   own order with this one, and every later change here - a drag or an order

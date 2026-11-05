@@ -50,9 +50,9 @@ are set by editing the file.
 | `text_stroke` | dark, width 2 | outline around the text |
 | `gap` | `3` | gap between the status line and the bar |
 | `job_icon.gap` | `1` | gap between the job icon and the text |
-| `job_icon.size` | computed | the icon's size; derived from the font size |
+| `job_icon.size` | computed once | the icon's size, worked out from the font size when the file is first written |
 | `bar.height` | `5` | bar height in pixels |
-| `bar.width` | computed | bar width; derived from the font size |
+| `bar.width` | computed once | bar width, worked out from the font size when the file is first written |
 | `bar.inset` | `2` | how far the fill sits inside the frame |
 | `bar.overhang` | `8` | how far the bar runs past the longest status line |
 | `fill_color` | white | tint over the gold fill art (white leaves it gold) |
