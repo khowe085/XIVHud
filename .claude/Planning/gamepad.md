@@ -1,4 +1,4 @@
-# Gamepad bridge (XInput via LuaJIT FFI)
+# Gamepad bridge (XInput through a native Lua module)
 
 Takes the chord logic out of Steam Input. The addon reads an XInput pad itself
 and does what the Steam profile's chords did: a face or D-pad press with a side
@@ -20,12 +20,92 @@ the right stick click. The bridge reads Steam's virtual pad.
 The game's own pad bindings for the buttons are blanked (Kevin, 2026-10-19);
 the sticks stay bound in game. Nothing here keeps a press from the game.
 
-## Pieces
+## The reader: a native module (Kevin, 2026-11-04)
 
-- `lib/xinput.lua` - `new(ffi) -> reader | nil, reason`. `cdef`s XINPUT_STATE,
-  loads `xinput1_4`, then `xinput1_3`, then `xinput9_1_0`, and answers
-  `read(index) -> { buttons, left_trigger, right_trigger } | nil`.
-  `__stdcall` (FFXI is 32-bit). Takes `ffi` injected so a spec can fake it.
+The first reader called XInputGetState through LuaJIT's ffi. **Windower 4 has
+no ffi** (the Windower devs, to Kevin, 2026-11-04), so it could never load.
+Of the three routes the devs offered - the deprecated `windower/helper` (an
+external libzmq API, last touched 2014), IPC from an external program (a
+proof of concept in their Discord), or a DLL with a Lua interface - the DLL is
+the one proven in an addon today: XIPivot appends
+`<addon_path with / for \>libs/?.dll` to `package.cpath` and
+`require('_XIPivot')`, its DLL exporting `luaopen__XIPivot` and linking
+against Windower's `LuaCore.dll`, which exports the Lua 5.1 C API; XICamera
+does the same with `_WindowerMemory`. It also runs inside the game process,
+where Steam's virtual pad is likeliest to answer, and needs no second program.
+
+### `_LuaXInput`: a generic module (Kevin, 2026-11-04)
+
+Not XIVHud's: any addon can `require` it, and it may move to a repo of its
+own, so it knows nothing of the bridge and holds no policy (no probe
+throttle, no chords - those stay in `lib/gamepad`).
+
+```lua
+local xinput = require('_LuaXInput')        -- _LuaXInput.dll, luaopen__LuaXInput
+
+xinput.VERSION                -- "1.0.0"
+xinput.library()              -- "xinput1_4.dll" | "xinput1_3.dll" | "xinput9_1_0.dll" | nil
+xinput.MAX_PADS               -- 4; a pad index is 0..3
+xinput.ANY                    -- 255, XUSER_INDEX_ANY, for get_keystroke alone
+xinput.buttons                -- { dpad_up = 0x0001, ... a = 0x1000, b, x, y }
+xinput.TRIGGER_THRESHOLD, xinput.LEFT_THUMB_DEADZONE, xinput.RIGHT_THUMB_DEADZONE
+
+xinput.get_state(index [, out])
+  -> { packet, buttons, left_trigger, right_trigger,
+       thumb_lx, thumb_ly, thumb_rx, thumb_ry }       -- `out` filled when given
+xinput.set_vibration(index, left, right) -> true       -- motors 0..65535
+xinput.get_capabilities(index [, out])
+  -> { type, subtype, flags, buttons, left_trigger, right_trigger,
+       thumb_lx, thumb_ly, thumb_rx, thumb_ry, left_motor, right_motor }
+xinput.get_battery(index [, device])                    -- "gamepad" | "headset"
+  -> { type, level }    -- "disconnected" | "wired" | "alkaline" | "nimh" | "unknown",
+                        -- "empty" | "low" | "medium" | "full"
+xinput.get_keystroke(index)                             -- index 0..3 or xinput.ANY
+  -> { key, unicode, user_index, hid_code, down, up, repeating }
+```
+
+- Every call that cannot answer returns `nil, reason, code`: `"not_connected"`,
+  `"empty"` (no keystroke waiting), `"not_supported"` (the XInput DLL found
+  lacks the call - battery and keystrokes are not in `xinput9_1_0.dll`),
+  `"no_xinput"`, or `"error"` with the Win32 code. A bad index or argument
+  raises, as the Lua API's own checks do.
+- At open it tries `xinput1_4.dll`, `xinput1_3.dll`, then `xinput9_1_0.dll`
+  and resolves each call separately with `GetProcAddress`; the DLL is never
+  freed, so nothing unloads under a read. It returns a table and sets no
+  global.
+- Plain C, 32-bit, linked against Windower's `LuaCore.dll` through an import
+  library made from `luacore.def` - the one Windower-specific piece, so
+  another host means another `.def`. Headers: Lua 5.1.5's own `lua.h`,
+  `luaconf.h`, `lauxlib.h`, vendored with Lua's MIT notice (the API Windower's
+  headers declare, as XIPivot's copy shows).
+- `native/xinput/` holds all of it - `src/`, `include/`, `luacore.def`,
+  `build.cmd` (finds MSVC through vswhere, so it builds the same on a PC and in
+  CI, no third-party action), `tests/`, `README.md`, `LICENSE.txt` (the repo's
+  BSD 3-clause) - so `git subtree split` can lift it out whole.
+- **Tested here** (Kevin, 2026-11-04): the binding (`src/luaxinput.c`) and
+  the loader (`src/loader_windows.c`) meet at `src/loader.h`, and
+  `src/xinput_abi.h` writes XInput's structures out so the binding needs no
+  Windows header. `make -C native/xinput test` builds the binding with gcc
+  against `tests/fake_loader.c`, a scripted XInput whose control module the
+  spec reaches through `package.loadlib`, and runs
+  `tests/luaxinput_spec.lua` under busted - everything a pad can answer.
+- **Tested on Windows CI**: a second build links the same source against a stock
+  Lua 5.1.5 compiled from the pinned lua.org tarball, and `tests/smoke.lua`
+  runs it with that `lua.exe` - the constants, argument checks, an XInput DLL
+  found, and the `not_connected` answers of a runner with no pad. Reading a
+  real pad stays a live-client test.
+- CI (Kevin, 2026-11-04: CI builds it, no binary in the repo):
+  `.github/workflows/xinput.yml` builds and smoke-tests on every pull request
+  touching `native/xinput/`, and is called by `package.yml`, which drops the
+  LuaCore build into the zip's `libs/`.
+
+### XIVHud's side
+
+- `lib/xinput.lua` - `new(module) -> reader | nil, reason`: nil without the
+  module ("_LuaXInput not loaded") or without an XInput DLL; `read(index)`
+  pcalls `module.get_state(index, reused)` and answers the state or nil. The
+  module's field names are the ones `lib/gamepad` already reads. The ffi path
+  goes - it can never run.
 - `lib/gamepad.lua` - pure. `new(deps)` over `read(index)`, `now()`,
   `config()`, `inject(name, down)` (a real key to the game),
   `key_held(dik)` (core's view of the keyboard) and `unavailable` (why there
@@ -41,7 +121,11 @@ the sticks stay bound in game. Nothing here keeps a press from the game.
   keyboard's keys alone. Verb `//hud gamepad [on|off]`, needing no
   character; the settings window's `global` panel gets a toggle row when the
   bridge has a reader.
-- entry point: `pcall(require, "ffi")`, `xinput(ffi)`, `gamepad(...)` with
+- entry point: puts `<addon_path>libs/?.dll` (forward slashes) at the FRONT of
+  `package.cpath`, traces `loading _LuaXInput` before the require (a native
+  crash is not something pcall catches) and keeps the require's error in
+  load.log,
+  `pcall(require, "_LuaXInput")`, `xinput(module)`, `gamepad(...)` with
   `config` and `key_held` late-bound to core, `inject` as
   `setkey <name> down|up`; drives `core.pump_gamepad` every prerender under a
   guard of its own, forwards focus to `core.on_focus` and hands core
@@ -111,9 +195,9 @@ login - Kevin, 2026-10-20; ships with `enabled = false`, and only an explicit
 
 ## Unverified in a live client
 
-Everything: that Windower 4's LuaJIT has FFI enabled, that `ffi.load` finds
-xinput, that Steam's virtual pad answers XInputGetState inside the game
-process, the probe and per-frame cost, the `setkey` spellings `enter`,
+Everything: that `_LuaXInput.dll` loads from the addon's `libs/` (XIPivot's
+route), that one of the three XInput DLLs is found, that Steam's virtual pad
+answers XInputGetState inside the game process, the probe and per-frame cost, the `setkey` spellings `enter`,
 `escape`, `numpad+` and `numpad-` (a wrong spelling silently does nothing),
 and whether a key held down through `setkey` repeats. `//hud gamepad` and
 load.log say which step failed.

@@ -924,21 +924,34 @@ local action_service = step("building the action service", function()
   })
 end)
 
---[[ The gamepad bridge (lib/gamepad): an XInput pad read through LuaJIT's
-     ffi, a chorded press handed to the bars as a key by `core.pump_gamepad`
-     (driven from prerender under a guard of its own, below) and a bare one
-     sent to the game with `setkey`. Optional, like the
-     libraries above - a failure here costs the pad, not the addon - and
-     built even when ffi or the XInput DLL is missing, so `//hud gamepad` can
-     say which. Not in safe mode, which has no render loop to poll it. Its
+--[[ The gamepad bridge (lib/gamepad): an XInput pad read through
+     _LuaXInput, the native module in native/xinput, a chorded press handed
+     to the bars as a key by `core.pump_gamepad` (driven from prerender under
+     a guard of its own, below) and a bare one sent to the game with
+     `setkey`. Optional, like the libraries above - a failure here costs the
+     pad, not the addon - and built even when the module or the XInput DLL is
+     missing, so `//hud gamepad` can say which. Not in safe mode, which has no render loop to poll it. Its
      reads of core close over the `core` local, which the next step fills
      in. ]]
 local gamepad = nil
 if not safe_mode then
   local ok, err = pcall(function()
-    local has_ffi, ffi = pcall(require, "ffi")
-    local reader, unavailable = require("lib/xinput")(has_ffi and ffi or nil)
-    trace(reader and ("gamepad: " .. reader.library) or ("gamepad unavailable: " .. tostring(unavailable)))
+    -- XIPivot's route to a native module, Windower 4 having no ffi: the
+    -- addon's own libs/ on the cpath, in forward slashes as XIPivot writes
+    -- it, and FIRST, so another addon's copy earlier on the path cannot
+    -- stand in for this one.
+    package.cpath = windower.addon_path:gsub("\\", "/") .. "libs/?.dll;" .. package.cpath
+    -- Before the require: a native load that crashes the client is not
+    -- something pcall can catch, and this is the line load.log ends on.
+    trace("loading _LuaXInput")
+    local loaded, module = pcall(require, "_LuaXInput")
+    local reader, unavailable = require("lib/xinput")(loaded and module or nil)
+    if reader then
+      trace("gamepad: " .. reader.library)
+    else
+      -- The require's own error is the one clue a DLL that will not load leaves.
+      trace("gamepad unavailable: " .. tostring(unavailable) .. (loaded and "" or " - " .. tostring(module)))
+    end
     gamepad = require("lib/gamepad")({
       read = reader and reader.read or nil,
       unavailable = unavailable,

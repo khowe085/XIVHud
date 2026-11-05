@@ -88,46 +88,48 @@ describe("entry point", function()
   end)
 
   describe("the gamepad bridge", function()
-    -- A client whose ffi loads, with one pad in the first slot holding
+    -- _LuaXInput as it answers with one pad in the first slot holding
     -- `buttons` - until a spec changes `pad_buttons`.
     local pad_buttons
-    local function fake_ffi(buttons)
+    local function fake_module(buttons)
       pad_buttons = buttons
       return {
-        cdef = function() end,
-        load = function()
-          return {
-            XInputGetState = function(index, state)
-              if index ~= 0 then
-                return 1167 -- ERROR_DEVICE_NOT_CONNECTED
-              end
-              state.Gamepad.wButtons = pad_buttons
-              state.Gamepad.bLeftTrigger = 0
-              state.Gamepad.bRightTrigger = 0
-              return 0
-            end,
-          }
+        library = function()
+          return "xinput1_4.dll"
         end,
-        new = function()
-          return { Gamepad = {} }
+        get_state = function(index, out)
+          if index ~= 0 then
+            return nil, "not_connected", 1167
+          end
+          out.buttons, out.left_trigger, out.right_trigger = pad_buttons, 0, 0
+          return out
         end,
       }
     end
 
-    it("is handed to core, saying why it reads nothing without ffi", function()
-      assert.are.equal("gamepad: unavailable - ffi not available", boot.core_deps.gamepad.status())
+    it("is handed to core, saying why it reads nothing without the module", function()
+      assert.are.equal("gamepad: unavailable - _LuaXInput not loaded", boot.core_deps.gamepad.status())
       assert.are.same({}, boot.core_deps.gamepad.poll())
     end)
 
-    it("reads the pad through XInput where ffi loads", function()
-      boot = harness.boot({ ffi = fake_ffi(0x0001) })
+    it("looks for the module in the addon's own libs/ before anywhere else", function()
+      assert.are.equal("addons/XIVHud/libs/?.dll;?.dll", boot.package.cpath)
+    end)
+
+    it("puts the addon's path on the cpath in forward slashes, as XIPivot does", function()
+      boot = harness.boot({ addon_path = "C:\\Windower4\\addons\\XIVHud\\" })
+      assert.are.equal("C:/Windower4/addons/XIVHud/libs/?.dll;?.dll", boot.package.cpath)
+    end)
+
+    it("reads the pad through the module where it loads", function()
+      boot = harness.boot({ xinput = fake_module(0x0001) })
       boot.gamepad_config = { enabled = true }
       assert.are.same({ { dik = 6, down = true } }, boot.core_deps.gamepad.poll())
       assert.are.equal("gamepad: on - pad 1 connected", boot.core_deps.gamepad.status())
     end)
 
     it("sends a bare face button to the game with setkey, held as long as the button is", function()
-      boot = harness.boot({ ffi = fake_ffi(0x1000) })
+      boot = harness.boot({ xinput = fake_module(0x1000) })
       boot.gamepad_config = { enabled = true }
       boot.core_deps.gamepad.poll()
       assert.are.same({ "setkey enter down" }, boot.commands)
@@ -162,7 +164,7 @@ describe("entry point", function()
     end)
 
     it("counts a side held on the keyboard as core saw it", function()
-      boot = harness.boot({ ffi = fake_ffi(0x1000) })
+      boot = harness.boot({ xinput = fake_module(0x1000) })
       boot.gamepad_config = { enabled = true }
       boot.keys_held = { [39] = true }
       assert.are.same({ { dik = 4, down = true } }, boot.core_deps.gamepad.poll())
@@ -170,21 +172,31 @@ describe("entry point", function()
     end)
 
     it("takes its settings from core's machine-wide file, and is off without one", function()
-      boot = harness.boot({ ffi = fake_ffi(0x0001) })
+      boot = harness.boot({ xinput = fake_module(0x0001) })
       assert.are.same({}, boot.core_deps.gamepad.poll())
       boot.gamepad_config = { enabled = false }
       assert.are.same({}, boot.core_deps.gamepad.poll())
       assert.are.equal("gamepad: off", boot.core_deps.gamepad.status())
     end)
 
-    it("traces which XInput library it loaded, or why none", function()
-      assert.is_not_nil(boot.files["addons/XIVHud/load.log"]:find("gamepad unavailable: ffi not available", 1, true))
-      boot = harness.boot({ ffi = fake_ffi(0) })
-      assert.is_not_nil(boot.files["addons/XIVHud/load.log"]:find("gamepad: xinput1_4", 1, true))
+    it("traces which XInput library it found, or why none, with the require's own error", function()
+      local trace = boot.files["addons/XIVHud/load.log"]
+      assert.is_not_nil(
+        trace:find("gamepad unavailable: _LuaXInput not loaded - module '_LuaXInput' not found", 1, true)
+      )
+      boot = harness.boot({ xinput = fake_module(0) })
+      assert.is_not_nil(boot.files["addons/XIVHud/load.log"]:find("gamepad: xinput1_4.dll", 1, true))
+    end)
+
+    it("traces that it is loading the module before it does, a native crash being silent", function()
+      local trace = boot.files["addons/XIVHud/load.log"]
+      local loading = trace:find("loading _LuaXInput", 1, true)
+      assert.is_not_nil(loading)
+      assert.is_true(loading < trace:find("gamepad unavailable", 1, true))
     end)
 
     it("is not built in safe mode, where nothing would poll it", function()
-      local safe = harness.boot({ ffi = fake_ffi(0), files = { ["addons/XIVHud/safe_mode"] = "" } })
+      local safe = harness.boot({ xinput = fake_module(0), files = { ["addons/XIVHud/safe_mode"] = "" } })
       assert.is_nil(safe.core_deps.gamepad)
     end)
   end)

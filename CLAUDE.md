@@ -12,12 +12,12 @@ Because addons run inside Windower on Windows, they cannot be executed or fully 
 
 The devcontainer (Alpine) provides Lua 5.1, luacheck, StyLua, busted, and the GitHub CLI.
 
-- **Test:** `busted` — runs every `*_spec.lua` under `tests/`, including `tests/components/` (config in `.busted`). Filter with `busted tests/core_spec.lua` or `busted --filter "layout"`.
+- **Test:** `busted` — runs every `*_spec.lua` under `tests/`, including `tests/components/` (config in `.busted`). Filter with `busted tests/core_spec.lua` or `busted --filter "layout"`. `native/xinput`'s spec is NOT among them: `make -C native/xinput test` builds that module's binding with gcc and runs it.
 - **Lint:** `luacheck .` — config in `.luacheckrc` (std `lua51`). luacheck auto-applies its `busted` std to `*_spec.lua`, so `describe`/`it`/`assert` need no whitelist.
 - **Format:** `stylua .` (or `stylua --check .`) — config in `stylua.toml` (2-space indent). Also runs on save in VS Code via the StyLua extension.
 - **Run a script standalone:** `lua <file>` — only for pure Lua with no Windower globals; anything touching the addon API must run inside Windower.
 
-There is no build step. "Passing" locally means green `busted` + clean `luacheck` + `stylua --check`.
+There is no build step for the addon. "Passing" locally means green `busted` + green `make -C native/xinput test` + clean `luacheck` + `stylua --check`.
 
 **Green locally does not mean it loads.** Nothing here exercises `require` resolution inside Windower, the real `texts`/`images`/`files` libraries, or the prim layer — and this addon has already shipped a build that passed every check and then failed to register a single event in the client. Treat any claim about the Windower API as unverified until it is read in the [library sources](https://github.com/Windower/Lua/tree/dev/addons/libs) or confirmed in a live client; the wiki documents what a function returns far more often than how it behaves at the edges.
 
@@ -43,6 +43,7 @@ These are platform facts about how Windower loads and runs addons:
   - `image:fit(true)` sizes a prim to its texture, which defeats explicit `size()`. Anything scaled or stretched must set `fit(false)`.
 - **Do not write config through the `files` library.** Reading its source suggests `files.new(path):write(contents)` creates any missing directories (`write` → `create()` → `create_path()` → `windower.create_dir`), and that reading is what this repo originally relied on — but `files.create` **ignores the error from `create_path`** and then indexes the nil handle from `io.open`. In practice that printed `New file: data/…` and produced no file, for days. `src/XIVHud.lua` builds each directory itself with `windower.create_dir`, checks the result, re-checks with `dir_exists` (success can be reported for a directory that is not there), and writes with plain `io.open`. Raw `io` against `windower.addon_path` is the one file operation proven to work here.
 - **Other I/O facts** (verified): `windower.get_dir(path)` returns files and directories together, so classify entries with `windower.dir_exists`. A texture path that does not exist fails **silently** — the prim simply draws nothing.
+- **No ffi; a native module loads through `package.cpath`.** Windower 4's Lua has no ffi (the Windower devs, to Kevin, 2026-11-04). A DLL exporting `luaopen_<name>` and linked against Windower's `LuaCore.dll`, which exports the Lua 5.1 C API, loads with `require` once the addon's own folder is on `package.cpath`. It is how XIPivot loads `_XIPivot` and how the gamepad bridge loads `_LuaXInput` (`native/xinput`), both turning the addon path's backslashes into forward slashes first - XIPivot's comment says `package.cpath` does not take backslashes, which nobody here has tested - and the bridge putting its own `libs/` FIRST, so another addon's copy earlier on the path cannot stand in for it.
 - **Never shell out.** The addon runs inside the game process, so `os.execute` and `io.popen` flash a console window over the client. Every file operation here calls straight into the C library instead: `io.open` for reading and writing, `os.remove` for deletion — none of which create a process. `tests/sources_spec.lua` fails the build on a process-spawning call in `src/`.
 - **Chat is not UTF-8.** Anything passed to `windower.add_to_chat` must be plain ASCII: an em dash reaches the player as `â€”`. Write `-` in user-facing strings, never `—`. Comments are exempt — they are never displayed, and the licence headers keep their `©`. `tests/sources_spec.lua` fails the build on a non-ASCII byte outside a comment.
 - **`src/XIVHud.lua` traces its own load** to `<addon>/load.log` with raw `io` — every load step, `addon_path`, and the result of each `create_dir`. An empty file named `safe_mode` beside it loads the framework and commands but no component or render loop, which is the bisect to reach for when the client misbehaves. Both are load-time only and deliberately kept: an addon whose chunk dies is silent, and a client that then crashes takes the console with it. **Nothing traces from the render loop** — a heartbeat there found a crash once and was removed the same day, because per-frame disk I/O is not something to ship.
@@ -74,7 +75,7 @@ src/
     gamepad.lua           -- the gamepad bridge: an XInput pad's chorded presses
                              as keys for the bars, its bare ones as keys for the
                              game (see Gamepad bridge below)
-    xinput.lua            -- XInputGetState through LuaJIT's ffi, ffi injected
+    xinput.lua            -- the bridge's reader over _LuaXInput (below), injected
     icons.lua             -- pure item-icon extraction (DAT record -> bitmap)
     icon_cache.lua        -- the queue/cache discipline around it, shared by components
     player.lua            -- one read of the client per interval, shared by every component
@@ -133,6 +134,10 @@ tests/
   *_spec.lua              -- one spec per lib module
   components/*_spec.lua   -- component specs, mirroring src/components/
   support/fakes.lua       -- fake deps, file system, prim recorder, widget
+native/
+  xinput/                 -- _LuaXInput.dll, XInput for ANY Windower addon, in C:
+                             its own README, LICENSE, build and tests, so it
+                             can leave for a repo of its own (Gamepad bridge)
 ```
 
 - **Pure modules (`src/lib/`).** Each returns a constructor `new(deps)`. It calls `deps.get_player()` etc. — never `windower.*` directly. Because deps are plain functions, a test "mock" is just a table of stubs; no mocking framework required.
@@ -297,7 +302,20 @@ reference-counts a key two buttons share, which Steam did not. Kevin's controlle
 Steam controller, which XInput cannot see on its own, so Steam Input stays,
 cut down to a plain Xbox-pad passthrough plus single keys for what XInput has
 no name for (the back buttons and trackpads), and `lib/gamepad` reads that
-virtual pad once a frame through `lib/xinput`. `core.pump_gamepad` polls it
+virtual pad once a frame through `lib/xinput`, over **`_LuaXInput`** - a
+native module in `native/xinput/`, since Windower 4 has no ffi (2026-11-04).
+It is deliberately GENERIC (Kevin): XInput's state, vibration, capabilities,
+battery and keystrokes for any addon, holding no policy of XIVHud's, kept
+self-contained so it can leave for a repo of its own. Plain C, 32-bit,
+linked against `LuaCore.dll` through `luacore.def`; `xinput.yml` builds and
+smoke-tests it on Windows for every pull request touching it, and
+`package.yml` ships it in the zip's `libs/` - no binary is committed.
+`make -C native/xinput test` tests its binding here, over a scripted fake
+XInput (`tests/fake_loader.c`); the Windows smoke covers the real loader,
+which keeps the XInput DLL it found loaded for the life of the process, so a
+read can never land in an unloaded library. Its README is the reference.
+The first reader called XInput through LuaJIT's ffi, written before anyone
+had asked whether Windower had one. `core.pump_gamepad` polls it
 from the entry point's prerender, under a guard of its OWN (`gamepad`), so a
 component throwing on a pad's key never counts against the frame tick - every
 edge of the poll is still delivered and the first error raised after. It runs
@@ -312,10 +330,7 @@ every slot has been asked - only then `no pad connected`, since that line is
 the first thing a live test reads - and `paused - the game is not in focus`
 when that is why nothing is read. A trigger lets go only 10 under the
 threshold it pressed at, so a resting finger cannot flicker a cross.
-`lib/xinput` calls through the `ffi.load` namespace on EVERY read and never
-keeps a bare function pointer: LuaJIT unloads a DLL whose namespace is
-collected, and a pointer taken from it then jumps into freed memory - a crash
-`pcall` cannot catch. A press with a side held (`activators`: `;`, `'` and
+A press with a side held (`activators`: `;`, `'` and
 backtick by default, held by the pad OR the keyboard - core remembers the
 KEYBOARD's keys alone, `core.key_held`, so a back button Steam maps to `;`
 still chords, while the pad's own keys are the bridge's to know and never read
@@ -332,9 +347,10 @@ sides, RB the set switch or `\` with RT held, LB `\`, Back `=`), all of it in
 Settings). It ships OFF and only an explicit `true` turns it on (Kevin): a
 player whose game still binds the pad would otherwise get a second Enter from
 every A. `//hud gamepad` needs no character, the file being nobody's. Built in
-the entry point even without ffi or an XInput DLL, so `//hud gamepad` can say
-which is missing; not in safe mode. **Unverified in a live client**: all of it - in particular that
-Windower 4's LuaJIT has ffi, that Steam's virtual pad answers XInputGetState
+the entry point even without the module or an XInput DLL, so `//hud gamepad`
+can say which is missing, and load.log keeps the `require` error a DLL that
+would not load left; not in safe mode. **Unverified in a live client**: all of it - in particular that
+`_LuaXInput.dll` loads from the addon's `libs/`, that Steam's virtual pad answers XInputGetState
 inside the game process, what `windower.has_focus` answers, and the four
 `setkey` spellings (a wrong one silently does nothing).
 
@@ -914,7 +930,8 @@ The write goes through the entry point's `write_binary`, which opens `"wb"`: the
 - **What it produces.** Everything in `src/` is copied into a single top-level folder **named after the repository**, then zipped (`XIVHud/…`). A user unzips it into `Windower4/addons/`, yielding `addons/XIVHud/`. The runtime `data/` dir is stripped from the package.
 - **Folder/main-file rule.** Because the folder is the repo name, the main file must be `src/XIVHud.lua`, or Windower won't load it. The "Check source" step emits a `::warning::` when that file is missing — treat that warning as a real defect, not noise.
 - **Delivery.** Branch pushes (`main`, `rc/**`) upload the zip as a **workflow artifact** (ephemeral). Pushing a `vX.Y.Z` tag additionally creates a **GitHub Release** with the zip attached (a semver pre-release tag like `v1.2.0-rc.1` is marked pre-release). Releases need `contents: write`, already granted in the workflow.
-- **Build outputs** (`dist/`, `*.zip`) are gitignored.
+- **The one native piece.** `package.yml` first calls [.github/workflows/xinput.yml](.github/workflows/xinput.yml), which builds `native/xinput`'s `_LuaXInput.dll` on a Windows runner (MSVC, x86, through `native/xinput/build.cmd`) and smoke-tests it; the packaging job drops the DLL into the zip's `libs/`. The same workflow runs on every pull request touching `native/xinput/`, which is the only place the DLL is ever compiled - nothing in the devcontainer can.
+- **Build outputs** (`dist/`, `*.zip`, `native/xinput/build/`) are gitignored.
 
 ## Line endings (important)
 

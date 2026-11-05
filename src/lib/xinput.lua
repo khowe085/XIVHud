@@ -26,80 +26,30 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ XInputGetState through LuaJIT's ffi: the one call the gamepad bridge
-     makes into Windows. `ffi` is injected, so a spec can stand in for it.
-
-     __stdcall matters: FFXI is a 32-bit process, where XInput's functions
-     are WINAPI and a cdecl call would leave the stack unbalanced. ]]
-
-local DECLARATIONS = [[
-typedef struct {
-  uint16_t wButtons;
-  uint8_t bLeftTrigger;
-  uint8_t bRightTrigger;
-  int16_t sThumbLX;
-  int16_t sThumbLY;
-  int16_t sThumbRX;
-  int16_t sThumbRY;
-} XINPUT_GAMEPAD;
-typedef struct {
-  uint32_t dwPacketNumber;
-  XINPUT_GAMEPAD Gamepad;
-} XINPUT_STATE;
-uint32_t __stdcall XInputGetState(uint32_t dwUserIndex, XINPUT_STATE *pState);
-]]
-
--- Newest first: 1_4 ships with Windows 8 and later, 1_3 with the DirectX
--- runtime, and 9_1_0 with every Windows since Vista.
-local LIBRARIES = { "xinput1_4", "xinput1_3", "xinput9_1_0" }
-local ERROR_SUCCESS = 0
+--[[ The gamepad bridge's reader, over _LuaXInput - the native module in
+     native/xinput, loaded by the entry point and injected here, since
+     Windower 4 has no ffi to call XInput with. ]]
 
 --- A reader, `{ library, read(index) }`, or nil and why there is none.
-local function new(ffi)
-  if type(ffi) ~= "table" then
-    return nil, "ffi not available"
+local function new(module)
+  if type(module) ~= "table" then
+    return nil, "_LuaXInput not loaded"
   end
-  local declared, failure = pcall(ffi.cdef, DECLARATIONS)
-  if not declared then
-    return nil, "could not declare XInputGetState: " .. tostring(failure)
-  end
-  -- The call is looked up here first: a symbol a library lacks raises on
-  -- lookup, which belongs at load rather than in every frame's read.
-  local library, name
-  for _, candidate in ipairs(LIBRARIES) do
-    local loaded, namespace = pcall(ffi.load, candidate)
-    if loaded then
-      local found, call = pcall(function()
-        return namespace.XInputGetState
-      end)
-      if found and call ~= nil then
-        library, name = namespace, candidate
-        break
-      end
-    end
-  end
+  local library = module.library()
   if library == nil then
-    return nil, "no XInput library with XInputGetState loaded (tried " .. table.concat(LIBRARIES, ", ") .. ")"
+    return nil, "no XInput library found"
   end
 
-  local state = ffi.new("XINPUT_STATE")
-  -- Handed out every frame and read before the next, so one table serves.
-  local answer = {}
-  local reader = { library = name }
+  -- Filled by every read and read before the next, so one table serves.
+  local state = {}
+  local reader = { library = library }
 
   --- The pad in slot `index` (0-3), or nil when nothing answers there.
   function reader.read(index)
-    -- Through the namespace on every call, LuaJIT's own idiom, and what keeps
-    -- it referenced: a namespace that is collected unloads its DLL, and a
-    -- function taken from it would then jump into freed memory.
-    local called, code = pcall(library.XInputGetState, index, state)
-    if not called or code ~= ERROR_SUCCESS then
+    local read, answer = pcall(module.get_state, index, state)
+    if not read then
       return nil
     end
-    local pad = state.Gamepad
-    answer.buttons = tonumber(pad.wButtons)
-    answer.left_trigger = tonumber(pad.bLeftTrigger)
-    answer.right_trigger = tonumber(pad.bRightTrigger)
     return answer
   end
 

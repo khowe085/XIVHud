@@ -1,119 +1,47 @@
 local new_xinput = require("lib/xinput")
 
+--[[ The bridge's reader over _LuaXInput (native/xinput), which the entry
+     point loads; the module itself is native/xinput's own spec's. ]]
 describe("xinput", function()
-  local ffi, loaded, calls, answer
+  local calls, answer, library
 
-  -- A stand-in for LuaJIT's ffi: `libraries` names the DLLs that load, and
-  -- XInputGetState fills the state the way the real one does.
-  local function fake_ffi(libraries)
+  -- A stand-in for _LuaXInput: `answer(index, out)` is what get_state says.
+  local function fake_module()
     return {
-      cdef = function(source)
-        ffi.declared = source
+      library = function()
+        return library
       end,
-      load = function(name)
-        loaded[#loaded + 1] = name
-        if not libraries[name] then
-          error("cannot load module '" .. name .. "'")
-        end
-        return {
-          XInputGetState = function(index, state)
-            calls[#calls + 1] = { library = name, index = index, state = state }
-            if type(answer) == "function" then
-              return answer(index, state)
-            end
-            return answer
-          end,
-        }
-      end,
-      new = function(ctype)
-        ffi.allocated = ctype
-        return { Gamepad = {} }
+      get_state = function(index, out)
+        calls[#calls + 1] = { index = index, out = out }
+        return answer(index, out)
       end,
     }
   end
 
   before_each(function()
-    loaded, calls, answer = {}, {}, 0
-    ffi = fake_ffi({ xinput1_4 = true })
+    calls, library = {}, "xinput1_4.dll"
+    answer = function(_, out)
+      out.buttons, out.left_trigger, out.right_trigger = 0x1000, 12, 255
+      return out
+    end
   end)
 
   describe("loading", function()
-    it("needs ffi", function()
+    it("needs the module", function()
       local reader, reason = new_xinput(nil)
       assert.is_nil(reader)
-      assert.are.equal("ffi not available", reason)
+      assert.are.equal("_LuaXInput not loaded", reason)
     end)
 
-    it("declares XInputGetState as __stdcall over XINPUT_STATE", function()
-      assert.is_not_nil(new_xinput(ffi))
-      assert.is_not_nil(ffi.declared:find("__stdcall XInputGetState", 1, true))
-      assert.is_not_nil(ffi.declared:find("XINPUT_STATE", 1, true))
-      assert.are.equal("XINPUT_STATE", ffi.allocated)
-    end)
-
-    it("says why when the declaration is refused", function()
-      ffi.cdef = function()
-        error("bad declaration")
-      end
-      local reader, reason = new_xinput(ffi)
+    it("needs an XInput library behind it", function()
+      library = nil
+      local reader, reason = new_xinput(fake_module())
       assert.is_nil(reader)
-      assert.is_not_nil(reason:find("bad declaration", 1, true))
+      assert.are.equal("no XInput library found", reason)
     end)
 
-    it("takes the first library that loads, newest first", function()
-      ffi = fake_ffi({ xinput1_3 = true, xinput9_1_0 = true })
-      local reader = new_xinput(ffi)
-      assert.are.same({ "xinput1_4", "xinput1_3" }, loaded)
-      assert.are.equal("xinput1_3", reader.library)
-    end)
-
-    it("passes over a library without XInputGetState, resolving the call once, at load", function()
-      ffi = fake_ffi({ xinput1_4 = true, xinput1_3 = true })
-      local load = ffi.load
-      ffi.load = function(name)
-        local library = load(name)
-        if name == "xinput1_4" then
-          return setmetatable({}, {
-            __index = function(_, key)
-              error("missing symbol " .. key)
-            end,
-          })
-        end
-        return library
-      end
-      local reader = new_xinput(ffi)
-      assert.are.equal("xinput1_3", reader.library)
-    end)
-
-    it("keeps the library loaded for as long as the reader lives", function()
-      local alive = setmetatable({}, { __mode = "v" })
-      local load = ffi.load
-      ffi.load = function(name)
-        local library = load(name)
-        alive[1] = library
-        return library
-      end
-      local reader = new_xinput(ffi)
-      collectgarbage("collect")
-      assert.is_not_nil(alive[1], "a collected namespace unloads its DLL from under the reader")
-      assert.is_not_nil(reader.read)
-    end)
-
-    it("says why when no library has XInputGetState", function()
-      ffi.load = function()
-        return {}
-      end
-      local reader, reason = new_xinput(ffi)
-      assert.is_nil(reader)
-      assert.is_not_nil(reason:find("XInputGetState", 1, true))
-    end)
-
-    it("says which libraries it tried when none loads", function()
-      ffi = fake_ffi({})
-      local reader, reason = new_xinput(ffi)
-      assert.is_nil(reader)
-      assert.are.same({ "xinput1_4", "xinput1_3", "xinput9_1_0" }, loaded)
-      assert.is_not_nil(reason:find("xinput1_4, xinput1_3, xinput9_1_0", 1, true))
+    it("names the XInput library the module found", function()
+      assert.are.equal("xinput1_4.dll", new_xinput(fake_module()).library)
     end)
   end)
 
@@ -121,28 +49,33 @@ describe("xinput", function()
     local reader
 
     before_each(function()
-      reader = new_xinput(ffi)
-      answer = function(_, state)
-        state.Gamepad.wButtons = 0x1000
-        state.Gamepad.bLeftTrigger = 12
-        state.Gamepad.bRightTrigger = 255
-        return 0
-      end
+      reader = new_xinput(fake_module())
     end)
 
     it("answers the buttons and both triggers of a connected pad", function()
-      assert.are.same({ buttons = 0x1000, left_trigger = 12, right_trigger = 255 }, reader.read(2))
+      local state = reader.read(2)
+      assert.are.equal(0x1000, state.buttons)
+      assert.are.equal(12, state.left_trigger)
+      assert.are.equal(255, state.right_trigger)
       assert.are.equal(2, calls[1].index)
     end)
 
+    it("reads into one table, so a frame's read allocates nothing", function()
+      local first = reader.read(0)
+      assert.are.equal(first, reader.read(0))
+      assert.are.equal(first, calls[1].out)
+    end)
+
     it("answers nil for a slot with nothing in it", function()
-      answer = 1167 -- ERROR_DEVICE_NOT_CONNECTED
+      answer = function()
+        return nil, "not_connected", 1167
+      end
       assert.is_nil(reader.read(0))
     end)
 
-    it("answers nil when the call itself fails", function()
+    it("answers nil when the module raises", function()
       answer = function()
-        error("access violation")
+        error("bad argument")
       end
       assert.is_nil(reader.read(0))
     end)

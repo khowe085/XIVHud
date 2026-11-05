@@ -1,0 +1,19 @@
+; The Lua 5.1 C API calls _LuaXInput makes, as Windower 4's LuaCore.dll
+; exports them. build.cmd turns this into the import library the DLL links
+; against; another Lua host needs another list naming its own DLL.
+LIBRARY LuaCore.dll
+
+EXPORTS
+	luaL_argerror
+	luaL_checkinteger
+	luaL_checkoption
+	luaL_checktype
+	luaL_register
+	lua_createtable
+	lua_pushboolean
+	lua_pushinteger
+	lua_pushnil
+	lua_pushstring
+	lua_pushvalue
+	lua_setfield
+	lua_type

@@ -28,8 +28,10 @@
          parser, never the decode itself (partylist_packets_spec owns that).
        - `io` is in memory. The addon traces every load step to load.log, and
          a spec must not put that on disk.
-       - `ffi` never loads unless a spec hands one in as `options.ffi`, so
-         the gamepad bridge boots unavailable by default.
+       - `_LuaXInput`, the gamepad bridge's native module, never loads unless
+         a spec hands one in as `options.xinput`, so the bridge boots
+         unavailable by default. `package` is the entry point's own, so the
+         `cpath` it extends is not the one busted itself runs on.
        - lib/core and every component factory are stubs, so this exercises the
          wiring alone: what the entry point registers, what it builds each ctx
          out of, and what it dispatches. Component behaviour belongs in the
@@ -130,12 +132,12 @@ local function build_stubs(boot, options)
     boot.require_fails[name] = failure
   end
 
-  -- LuaJIT's ffi: whatever a spec hands in, and otherwise a load failure,
-  -- whichever Lua the specs happen to run on.
-  if options.ffi ~= nil then
-    stubs.ffi = options.ffi
-  elseif boot.require_fails.ffi == nil then
-    boot.require_fails.ffi = "module 'ffi' not found"
+  -- The native module: whatever a spec hands in, and otherwise the load
+  -- failure an addon without its DLL meets.
+  if options.xinput ~= nil then
+    stubs._LuaXInput = options.xinput
+  elseif boot.require_fails._LuaXInput == nil then
+    boot.require_fails._LuaXInput = "module '_LuaXInput' not found"
   end
 
   return stubs
@@ -177,7 +179,7 @@ end
 
 local function build_windower(boot)
   return {
-    addon_path = "addons/XIVHud/",
+    addon_path = boot.addon_path,
     windower_path = "Windower4/",
     ffxi_path = "FFXI/",
     pol_path = "POL/",
@@ -392,13 +394,16 @@ end
        files         - seeded in-memory files (an entry named
                        "addons/XIVHud/safe_mode" boots the addon in safe mode)
        require_fails - module name -> message, for a library that will not load
-       ffi           - what `require("ffi")` answers; absent, it fails ]]
+       xinput        - what `require("_LuaXInput")` answers; absent, it fails
+       addon_path    - what windower.addon_path answers ("addons/XIVHud/") ]]
 -- `options.logged_out` boots at the character screen (get_info reports
 -- logged_in = false); `require_fails` maps a module to the error it raises.
 function M.boot(options)
   options = options or {}
 
   local boot = {
+    -- Where the addon lives, as windower.addon_path answers it.
+    addon_path = options.addon_path or "addons/XIVHud/",
     files = options.files or {},
     opens = {},
     handlers = {},
@@ -451,6 +456,7 @@ function M.boot(options)
     _addon = {},
     io = build_io(boot),
     windower = build_windower(boot),
+    package = { cpath = "?.dll" },
     require = function(name)
       local failure = boot.require_fails[name]
       if failure then
@@ -469,6 +475,7 @@ function M.boot(options)
   local chunk = assert(loadfile(ENTRY_POINT))
   -- The fake client, so a spec can change what it answers after the boot.
   boot.windower = env.windower
+  boot.package = env.package
   setfenv(chunk, env)
   chunk()
 
