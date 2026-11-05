@@ -1555,6 +1555,67 @@ describe("partylist widget", function()
       assert.is_not_nil(leftmost():find("/15.png", 1, true))
     end)
 
+    --[[ The status bar's `partyorder`: the main party's priority becomes a
+         copy of the order it is handed, through core's adopt_buff_order. ]]
+    it("adopts a buff order it is handed wholesale, and saves it", function()
+      build()
+      buffs({ "top", "0" })
+      assert.are.equal(1, widget.defaults.lists.main.buffs.priority[0], "its own override, to be replaced")
+      local before = env.saves
+      assert.is_true(widget.adopt_buff_order({ [15] = 1 }))
+      assert.are.same({ [15] = 1 }, widget.defaults.lists.main.buffs.priority)
+      assert.are.equal(before + 1, env.saves)
+    end)
+
+    it("keeps a copy rather than the table it was handed", function()
+      build()
+      local handed = { [15] = 1 }
+      widget.adopt_buff_order(handed)
+      handed[15], handed[2] = nil, 1
+      assert.are.same({ [15] = 1 }, widget.defaults.lists.main.buffs.priority)
+    end)
+
+    it("adopts only the ranks in an order, and leaves the filters alone", function()
+      build()
+      buffs({ "filter", "add", "doom" })
+      widget.adopt_buff_order({ [15] = 1, junk = "x", [2] = "first" })
+      assert.are.same({ [15] = 1 }, widget.defaults.lists.main.buffs.priority)
+      assert.are.same({ 15 }, widget.defaults.lists.main.buffs.filters)
+    end)
+
+    it("re-lays the buff icons as soon as an order is adopted", function()
+      build()
+      env.party = { p0 = member("Volker", 2) }
+      settle(2)
+      widget.update("chunk", 0x076, party_buff_packet(2, { 0, 15 }))
+      settle(2)
+      local function leftmost()
+        local best
+        for _, prim in ipairs(prims.images) do
+          if type(prim.last.path) == "string" and prim.last.path:find("buffIcons", 1, true) and prim.visible then
+            if not best or prim.x < best.x then
+              best = prim
+            end
+          end
+        end
+        return best and best.last.path
+      end
+      assert.is_not_nil(leftmost():find("/0.png", 1, true))
+      widget.adopt_buff_order({ [15] = 1 })
+      assert.is_not_nil(leftmost():find("/15.png", 1, true))
+    end)
+
+    it("adopts nothing where its buff settings are not a table, or it is handed none", function()
+      build()
+      assert.is_false(widget.adopt_buff_order("nonsense"))
+      assert.are.same({}, widget.defaults.lists.main.buffs.priority)
+      widget.defaults.lists.main.buffs = "broken"
+      local before = env.saves
+      assert.is_false(widget.adopt_buff_order({ [15] = 1 }))
+      assert.are.equal("broken", widget.defaults.lists.main.buffs)
+      assert.are.equal(before, env.saves)
+    end)
+
     it("takes main as the list word", function()
       build()
       buffs({ "Main", "top", "doom" })

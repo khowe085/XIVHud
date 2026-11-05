@@ -60,6 +60,7 @@ local RESERVED = {
   draw = true,
   delay = true,
   hidecutscene = true,
+  queue = true,
   gamepad = true,
 }
 
@@ -71,7 +72,7 @@ local ACTION_VERBS = { mr = true, sneak = true, invisible = true, reraise = true
 -- The framework's own options - the service's tuning and core's in core.lua,
 -- the gamepad bridge's in data/gamepad.lua: the words after the verb go
 -- through untouched, and core answers them over the file that holds them.
-local TUNING_VERBS = { delay = true, hidecutscene = true, gamepad = true }
+local TUNING_VERBS = { delay = true, hidecutscene = true, queue = true, gamepad = true }
 
 local SLOT_OPS = { list = true, create = true, delete = true }
 

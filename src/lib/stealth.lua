@@ -122,6 +122,9 @@ local LADDERS = {
   },
 }
 
+-- What a slot bound to a rung's action would be. A gear rung has no such slot.
+local RUNG_TYPES = { spell = "ma", ability = "ja", item = "item" }
+
 -- What a ladder refuses outright, before any rung is walked.
 local REFUSED_UNDER = {
   reraise = { buff = RERAISE_BUFF, hint = "Reraise is already active" },
@@ -370,9 +373,20 @@ local function new(deps)
     return plan
   end
 
+  -- The action a picked rung amounts to, read back off the line it made.
+  local function as_action(rung, command)
+    local kind = RUNG_TYPES[rung.kind]
+    if kind == nil then
+      return nil
+    end
+    local name, target = command:match('"(.*)" <(%a+)>$')
+    return { type = kind, action = name, target = target }
+  end
+
   --- The command (or, for a gear rung, the enchanteditem plan) for the
   --- first rung this character can use, or nil plus a hint naming what was
-  --- asked for.
+  --- asked for. A third answer is the action that rung amounts to, in the
+  --- shape of a bound slot.
   function self.plan(which)
     local name = type(which) == "string" and which:lower() or which
     local ladder = LADDERS[name]
@@ -397,7 +411,7 @@ local function new(deps)
         command = item_rung(rung)
       end
       if command ~= nil then
-        return command
+        return command, nil, as_action(rung, command)
       end
     end
     return nil, "no way to " .. name .. " right now"

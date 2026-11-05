@@ -5,6 +5,7 @@ describe("targetbar widget", function()
   local prims, assets, widget
   local target, subtarget, party, player, me, clock, saves
   local target_reads, subtarget_reads, party_reads
+  local mobs_by_id, mob_array, id_reads, array_reads, battle_target
   local screen_w, screen_h
   local generation_count, generation_deadline
 
@@ -104,6 +105,11 @@ describe("targetbar widget", function()
     assets = {}
     target = nil
     subtarget = nil
+    mobs_by_id = {}
+    mob_array = {}
+    battle_target = nil
+    id_reads = 0
+    array_reads = 0
     party = {}
     player = { main_job = "WAR" }
     me = { id = 1, model_size = 1.0 }
@@ -132,7 +138,18 @@ describe("targetbar widget", function()
         if kind == "me" then
           return me
         end
+        if kind == "bt" then
+          return battle_target
+        end
         return nil
+      end,
+      get_mob_by_id = function(id)
+        id_reads = id_reads + 1
+        return mobs_by_id[id]
+      end,
+      get_mob_array = function()
+        array_reads = array_reads + 1
+        return mob_array
       end,
       get_party = function()
         party_reads = party_reads + 1
@@ -234,16 +251,16 @@ describe("targetbar widget", function()
       assert.is_false(rawequal(bars.main, bars.subtarget))
     end)
 
-    it("builds four texts and six bar layers for each of the two bars", function()
-      assert.are.equal(8, #prims.texts)
-      assert.are.equal(12, #prims.images)
+    it("builds four texts and six bar layers for each of the three bars", function()
+      assert.are.equal(12, #prims.texts)
+      assert.are.equal(18, #prims.images)
     end)
 
-    -- The same six textures twice: each bar owns its own layers, and the
+    -- The same six textures per bar: each bar owns its own layers, and the
     -- library gives no way to share one prim between two placements.
     it("points every layer at its own copy of the art", function()
       local wanted = {}
-      for _ = 1, 2 do
+      for _ = 1, 3 do
         for _, file in ipairs({ "BarBG", "Bar", "BarFG", "CastBG", "CastBar", "CastFG" }) do
           wanted[#wanted + 1] = "assets/xiv/wide/" .. file .. ".png"
         end
@@ -303,13 +320,13 @@ describe("targetbar widget", function()
     end)
   end)
 
-  --[[ Two bars, one component: the target and the `<st>` selection cursor,
-       each placed and scaled on its own. Everything routes by anchor name,
-       and main leads - the order `//hud list` prints, and the order layout
-       mode hit-tests reversed, so the subtarget wins an overlap. ]]
+  --[[ Three bars, one component: the target, the `<st>` selection cursor and
+       the focus target, each placed and scaled on its own. Everything routes
+       by anchor name, and main leads - the order `//hud list` prints, and the
+       order layout mode hit-tests reversed, so a later bar wins an overlap. ]]
   describe("anchors", function()
-    it("declares the target and the subtarget", function()
-      assert.are.same({ "main", "subtarget" }, widget.anchors())
+    it("declares the target, the subtarget and the focus target", function()
+      assert.are.same({ "main", "subtarget", "focus" }, widget.anchors())
     end)
 
     it("draws the selection cursor on the second bar", function()
@@ -602,6 +619,373 @@ describe("targetbar widget", function()
           widget.attach("broken", function() end)
         end)
       end)
+    end)
+  end)
+
+  --[[ The third bar draws a mob the player named, tracked by id from then on,
+       and draws nothing at all while nothing is focused. ]]
+  describe("the focus bar", function()
+    -- Built third, so its prims follow two bars' six images and four texts.
+    local function focus_fill()
+      return prims.images[14]
+    end
+
+    local function focus_name()
+      return prims.texts[11]
+    end
+
+    local function u32(value)
+      return string.char(
+        value % 256,
+        math.floor(value / 256) % 256,
+        math.floor(value / 65536) % 256,
+        math.floor(value / 16777216) % 256
+      )
+    end
+
+    local function despawn(id)
+      widget.update("chunk", 0x038, "\56\0\0\0" .. u32(id) .. u32(id) .. "kesu\0\0\0\0")
+    end
+
+    -- A mob both in the array the name lookup walks and behind its id.
+    local function spawn(fields)
+      local entry = mob(fields)
+      mob_array[#mob_array + 1] = entry
+      mobs_by_id[entry.id] = entry
+      return entry
+    end
+
+    local function focus(...)
+      return widget.handle_command({ "focus", ... })
+    end
+
+    before_each(function()
+      attach()
+      widget.set_pos(100, 500, "focus")
+      widget.show()
+    end)
+
+    it("is a third anchor", function()
+      assert.are.equal("focus", widget.anchors()[3])
+    end)
+
+    it("ships at the subtarget bar's size, shown, below it", function()
+      local anchors = widget.defaults.layout.anchors
+      assert.are.equal(anchors.subtarget.scale, anchors.focus.scale)
+      assert.is_nil(anchors.focus.visible)
+      attach()
+      for anchor, slot in pairs(anchors) do
+        widget.set_pos(slot.pos.x, slot.pos.y, anchor)
+        widget.set_scale(slot.scale, anchor)
+      end
+      local _, sub_y, _, sub_height = widget.get_bounds("subtarget")
+      local _, focus_y = widget.get_bounds("focus")
+      assert.is_true(focus_y >= sub_y + sub_height)
+    end)
+
+    it("draws nothing while nothing is focused", function()
+      spawn({ id = 300, name = "Colibri" })
+      widget.update()
+      assert.is_false(focus_fill().visible)
+      assert.are.equal(0, id_reads)
+    end)
+
+    it("still previews in layout mode with nothing focused", function()
+      widget.set_preview(true)
+      widget.update()
+      assert.is_true(focus_fill().visible)
+    end)
+
+    it("draws the mob it was told to focus", function()
+      spawn({ id = 300, name = "Colibri" })
+      local reply = focus("Colibri")
+      widget.update()
+      assert.is_true(focus_fill().visible)
+      assert.are.equal("Colibri", focus_name().last.text)
+      assert.is_truthy(reply:find("Colibri"))
+    end)
+
+    it("joins a name of several words", function()
+      spawn({ id = 300, name = "Greater Colibri" })
+      focus("greater", "colibri")
+      widget.update()
+      assert.are.equal("Greater Colibri", focus_name().last.text)
+    end)
+
+    it("matches the name in any case but never a part of it", function()
+      spawn({ id = 300, name = "Colibri" })
+      focus("colib")
+      widget.update()
+      assert.is_false(focus_fill().visible)
+      focus("COLIBRI")
+      widget.update()
+      assert.is_true(focus_fill().visible)
+    end)
+
+    -- Distance is squared in the mob table; ordering is all that matters.
+    it("takes the nearest of several with the name", function()
+      spawn({ id = 300, name = "Colibri", distance = 400 })
+      spawn({ id = 301, name = "Colibri", distance = 100, hpp = 70 })
+      spawn({ id = 302, name = "Colibri", distance = 900 })
+      focus("Colibri")
+      widget.update()
+      assert.are.equal("70%", prims.texts[9].last.text)
+    end)
+
+    it("passes over a mob that cannot be targeted or is dead", function()
+      spawn({ id = 300, name = "Colibri", distance = 1, valid_target = false })
+      spawn({ id = 301, name = "Colibri", distance = 4, hpp = 0 })
+      spawn({ id = 302, name = "Colibri", distance = 9, hpp = 55 })
+      focus("Colibri")
+      widget.update()
+      assert.are.equal("55%", prims.texts[9].last.text)
+    end)
+
+    it("says so when nothing by that name is near, and focuses nothing", function()
+      local reply = focus("Colibri")
+      widget.update()
+      assert.is_truthy(reply:find("Colibri"))
+      assert.is_false(focus_fill().visible)
+    end)
+
+    it("takes the current target from <t>", function()
+      target = spawn({ id = 300, name = "Colibri" })
+      focus("<t>")
+      target = nil
+      widget.update()
+      assert.are.equal("Colibri", focus_name().last.text)
+    end)
+
+    it("takes the selection cursor from <st>", function()
+      subtarget = spawn({ id = 301, name = "Chocobo" })
+      focus("<st>")
+      subtarget = nil
+      widget.update()
+      assert.are.equal("Chocobo", focus_name().last.text)
+    end)
+
+    it("takes the battle target from <bt>", function()
+      battle_target = spawn({ id = 302, name = "Bat" })
+      focus("<BT>")
+      battle_target = nil
+      widget.update()
+      assert.are.equal("Bat", focus_name().last.text)
+    end)
+
+    it("refuses a token it does not take rather than searching for it by name", function()
+      local reply = focus("<pet>")
+      assert.is_truthy(reply:find("<pet>", 1, true))
+      assert.is_truthy(reply:find("<t>, <st>, <bt>", 1, true))
+      assert.are.equal(0, array_reads)
+    end)
+
+    it("refuses a token with nothing focusable behind it", function()
+      local reply = focus("<t>")
+      widget.update()
+      assert.is_truthy(reply:find("<t>", 1, true))
+      assert.is_false(focus_fill().visible)
+    end)
+
+    it("takes your target over a nearer mob of the same name", function()
+      spawn({ id = 300, name = "Colibri", distance = 1, hpp = 90 })
+      target = spawn({ id = 301, name = "Colibri", distance = 900, hpp = 30 })
+      focus("Colibri")
+      target = nil
+      widget.update()
+      assert.are.equal("30%", prims.texts[9].last.text)
+    end)
+
+    it("walks the mob array at the command and never per frame", function()
+      spawn({ id = 300, name = "Colibri" })
+      focus("Colibri")
+      for _ = 1, 3 do
+        widget.update()
+      end
+      assert.are.equal(1, array_reads)
+    end)
+
+    it("keeps the mob it focused rather than the name", function()
+      spawn({ id = 300, name = "Colibri", hpp = 80 })
+      focus("Colibri")
+      spawn({ id = 301, name = "Colibri", distance = 0, hpp = 20 })
+      widget.update()
+      assert.are.equal("80%", prims.texts[9].last.text)
+    end)
+
+    it("does not save a focus, which lasts the session", function()
+      spawn({ id = 300, name = "Colibri" })
+      focus("Colibri")
+      assert.are.equal(0, saves)
+    end)
+
+    it("is cleared by `clear focus`", function()
+      spawn({ id = 300, name = "Colibri" })
+      focus("Colibri")
+      local reply = widget.handle_command({ "clear", "focus" })
+      widget.update()
+      assert.is_false(focus_fill().visible)
+      assert.is_truthy(reply:find("focus"))
+    end)
+
+    -- The natural slip for `clear focus` (Kevin, 2026-10-20), so a mob named
+    -- exactly "Clear" cannot be focused by name.
+    it("is cleared by `focus clear` too, in any case", function()
+      spawn({ id = 300, name = "Colibri" })
+      focus("Colibri")
+      assert.are.equal("targetbar focus cleared", focus("CLEAR"))
+      widget.update()
+      assert.is_false(focus_fill().visible)
+    end)
+
+    it("still reads a longer name beginning with clear as a name", function()
+      spawn({ id = 300, name = "Clear Spring" })
+      focus("clear", "spring")
+      widget.update()
+      assert.are.equal("Clear Spring", focus_name().last.text)
+    end)
+
+    it("refuses `clear` with nothing it knows after it", function()
+      spawn({ id = 300, name = "Colibri" })
+      focus("Colibri")
+      local reply = widget.handle_command({ "clear" })
+      widget.update()
+      assert.is_true(focus_fill().visible)
+      assert.is_truthy(reply:find("clear focus"))
+    end)
+
+    describe("once the mob is gone", function()
+      local focused
+
+      before_each(function()
+        focused = spawn({ id = 300, name = "Colibri" })
+        focus("Colibri")
+        widget.update()
+      end)
+
+      local function cleared()
+        -- Brought back after the clear: a cleared focus must stay cleared.
+        mobs_by_id[300] = mob({ id = 300, name = "Colibri" })
+        widget.update()
+        return not focus_fill().visible
+      end
+
+      it("is cleared when it dies", function()
+        focused.hpp = 0
+        widget.update()
+        assert.is_true(cleared())
+      end)
+
+      it("is cleared when it lies dead", function()
+        focused.status = 2
+        widget.update()
+        assert.is_true(cleared())
+      end)
+
+      it("is cleared when it lies dead engaged", function()
+        focused.status = 3
+        widget.update()
+        assert.is_true(cleared())
+      end)
+
+      it("is cleared when the client no longer has it", function()
+        mobs_by_id[300] = nil
+        widget.update()
+        assert.is_true(cleared())
+      end)
+
+      it("is cleared when it despawns", function()
+        despawn(300)
+        assert.is_true(cleared())
+      end)
+
+      it("is not cleared by another mob's despawn", function()
+        despawn(301)
+        widget.update()
+        assert.is_true(focus_fill().visible)
+      end)
+
+      it("is cleared on a zone", function()
+        widget.update("chunk", 0x00A, "zone bytes")
+        assert.is_true(cleared())
+      end)
+
+      -- Core re-attaches without a detach for a slot switch, a reset and
+      -- `//hud copy`'s reload.
+      it("is cleared by a re-attach", function()
+        attach()
+        widget.show()
+        assert.is_true(cleared())
+      end)
+
+      -- Asked while detached: a re-attach clears it too, so only the status
+      -- line can tell whether the detach did.
+      it("is cleared on a detach", function()
+        widget.detach()
+        assert.is_truthy(widget.handle_command({ "focus" }):find("no focus target", 1, true))
+      end)
+
+      -- Out of draw range is not gone: the bar hides and comes back.
+      it("only hides while the mob cannot be targeted", function()
+        focused.valid_target = false
+        widget.update()
+        assert.is_false(focus_fill().visible)
+        focused.valid_target = true
+        widget.update()
+        assert.is_true(focus_fill().visible)
+      end)
+    end)
+
+    describe("as a bar word", function()
+      -- The verbs are the widget's, so no bar's own hint can name them.
+      it("is named in the hint for a word no bar knows", function()
+        for _, words in ipairs({ { "trebuchet" }, { "subtarget", "trebuchet" } }) do
+          local reply = widget.handle_command(words)
+          assert.is_truthy(reply:find("//hud targetbar focus <name>", 1, true))
+          assert.is_truthy(reply:find("//hud targetbar clear focus", 1, true))
+        end
+      end)
+
+      it("is not named in a reply to a verb a bar knows", function()
+        assert.is_nil(widget.handle_command({ "mode", "trebuchet" }):find("focus", 1, true))
+      end)
+
+      it("reports the focus bar when named alone", function()
+        local reply = widget.handle_command({ "focus" })
+        assert.is_truthy(reply:find("targetbar focus"))
+        assert.is_truthy(reply:find("no focus target"))
+      end)
+
+      it("names the mob it holds in that report", function()
+        spawn({ id = 300, name = "Colibri" })
+        focus("Colibri")
+        assert.is_truthy(widget.handle_command({ "focus" }):find("Colibri"))
+      end)
+
+      it("sets the focus bar's own mode", function()
+        local config = attach()
+        widget.handle_command({ "focus", "mode", "bow" })
+        assert.are.equal("bow", config.bars.focus.distance.mode)
+        assert.are.equal("auto", config.bars.main.distance.mode)
+        assert.are.equal(1, saves)
+      end)
+    end)
+  end)
+
+  describe("the focus bar before it is placed", function()
+    it("reads nothing for a focus it could not draw", function()
+      attach()
+      widget.set_pos(100, 100, "main")
+      widget.show()
+      local entry = mob({ id = 300, name = "Colibri" })
+      mob_array[1] = entry
+      mobs_by_id[300] = entry
+      widget.handle_command({ "focus", "Colibri" })
+      widget.update()
+      assert.are.equal(0, id_reads)
+
+      widget.set_pos(100, 500, "focus")
+      widget.update()
+      assert.are.equal(1, id_reads)
     end)
   end)
 
@@ -1313,6 +1697,17 @@ describe("targetbar widget", function()
       assert.are.equal("Colibri", name().last.text)
     end)
 
+    -- Core re-attaches without a detach for a slot switch, a reset and `//hud
+    -- copy`'s reload, and none of them changes what has procced on a mob
+    -- (Kevin, 2026-10-20). A change of character zones, which forgets it.
+    it("is kept through a re-attach", function()
+      proc(100, 4)
+      attach()
+      widget.show()
+      widget.update()
+      assert.are.equal("Colibri - TH:4", name().last.text)
+    end)
+
     it("is forgotten on a detach, so the next character does not inherit it", function()
       proc(100, 4)
       widget.detach()
@@ -1389,11 +1784,12 @@ describe("targetbar widget", function()
 
     -- One line per bar, each naming its own: partylist's shape, and core says
     -- each line of a list.
-    it("reports both bars' range modes", function()
+    it("reports every bar's range mode", function()
       local reply = widget.handle_command({})
-      assert.are.equal(2, #reply)
+      assert.are.equal(3, #reply)
       assert.is_truthy(reply[1]:find("main"))
       assert.is_truthy(reply[2]:find("subtarget"))
+      assert.is_truthy(reply[3]:find("focus"))
       assert.is_truthy(reply[1]:find("auto"))
     end)
 
@@ -1468,14 +1864,17 @@ describe("targetbar widget", function()
       local panel = widget.config_panel()
       assert.is_nil(panel.tabs)
       local rows = panel.rows
-      assert.are.equal(2, #rows)
-      assert.are.same({ "Target mode", "Subtarget mode" }, { rows[1].label, rows[2].label })
-      assert.are.same({ "choice", "choice" }, { rows[1].kind, rows[2].kind })
-      assert.are.same({ "auto", "auto" }, { rows[1].value, rows[2].value })
+      assert.are.equal(3, #rows)
+      assert.are.same(
+        { "Target mode", "Subtarget mode", "Focus mode" },
+        { rows[1].label, rows[2].label, rows[3].label }
+      )
+      assert.are.same({ "choice", "choice", "choice" }, { rows[1].kind, rows[2].kind, rows[3].kind })
+      assert.are.same({ "auto", "auto", "auto" }, { rows[1].value, rows[2].value, rows[3].value })
 
       widget.handle_command({ "subtarget", "mode", "bow" })
       rows = widget.config_panel().rows
-      assert.are.same({ "auto", "bow" }, { rows[1].value, rows[2].value })
+      assert.are.same({ "auto", "bow", "auto" }, { rows[1].value, rows[2].value, rows[3].value })
     end)
 
     --[[ The bar word leads the verb even on the target bar's row, where the
@@ -1485,6 +1884,7 @@ describe("targetbar widget", function()
       local rows = widget.config_panel().rows
       assert.are.same({ "main", "mode" }, rows[1].command)
       assert.are.same({ "subtarget", "mode" }, rows[2].command)
+      assert.are.same({ "focus", "mode" }, rows[3].command)
     end)
 
     it("offers exactly the modes the verb takes", function()
@@ -1506,9 +1906,11 @@ describe("targetbar widget", function()
       assert.are.same({}, panels.failures(records))
       assert.are.same({ "main", "mode", "default" }, records[1].words)
       assert.are.same({ "subtarget", "mode", "default" }, records[2].words)
-      assert.are.equal(4, saves, "each of the two was moved and moved back")
+      assert.are.same({ "focus", "mode", "default" }, records[3].words)
+      assert.are.equal(6, saves, "each of the three was moved and moved back")
       assert.are.equal("auto", config.bars.main.distance.mode)
       assert.are.equal("auto", config.bars.subtarget.distance.mode)
+      assert.are.equal("auto", config.bars.focus.distance.mode)
     end)
 
     --[[ A hand-edited file can hold anything. The colouring runs such a bar

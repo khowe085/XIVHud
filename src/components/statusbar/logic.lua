@@ -179,6 +179,24 @@ local function new(deps)
     return config.priority
   end
 
+  -- `partyorder`: the party list follows the one order. Only an explicit
+  -- true, so a hand-broken config cannot start writing another file; and a
+  -- copy, so no receiver holding it can edit this config. Answers how many
+  -- took it.
+  local function share()
+    if config.party_order ~= true or not deps.share_order then
+      return 0
+    end
+    local copy = {}
+    for id, rank in pairs(priority()) do
+      copy[id] = rank
+    end
+    -- Through a local: a ctx function answering nothing at all would hand
+    -- tonumber no argument, which Lua 5.1 refuses.
+    local took = deps.share_order(copy)
+    return tonumber(took) or 0
+  end
+
   local function store_view(entry, view)
     entry.filters = view.filters
     entry.filter_mode = view.filter_mode
@@ -307,6 +325,7 @@ local function new(deps)
       for _, engine in pairs(engines) do
         engine.invalidate()
       end
+      share()
     end
     return changed
   end
@@ -428,11 +447,16 @@ local function new(deps)
       config.timers == false and "off" or "on",
       config.tooltips == false and "off" or "on"
     )
+    if config.party_order == true then
+      lines[#lines + 1] = "  partyorder on - each change to this buff order is copied to the party list"
+    else
+      lines[#lines + 1] = "  partyorder off - the party list keeps its own buff order"
+    end
     return lines, false
   end
 
   local function unknown(word)
-    return { ("statusbar has no '%s' setting (rows, timers, tooltips)"):format(tostring(word)) }, false
+    return { ("statusbar has no '%s' setting (rows, timers, tooltips, partyorder)"):format(tostring(word)) }, false
   end
 
   local function unusable(bar)
@@ -470,7 +494,8 @@ local function new(deps)
     return { ("%s now draws %d rows (%dx%d)"):format(LABELS[bar], rows, COLUMNS_BY_ROWS[rows], rows) }, true
   end
 
-  -- The two component-wide switches, `timers` and `tooltips`.
+  -- Two of the component-wide switches, `timers` and `tooltips`; the third,
+  -- `partyorder`, has its own setter below.
   local function set_switch(key, word)
     word = word and word:lower() or nil
     if word ~= "on" and word ~= "off" then
@@ -478,6 +503,28 @@ local function new(deps)
     end
     config[key] = word == "on"
     return { ("statusbar %s %s"):format(key, word) }, true
+  end
+
+  -- Switching it on hands the order over at once, so the two match from
+  -- that moment rather than from the next reorder.
+  local function set_party_order(word)
+    word = word and word:lower() or nil
+    if word ~= "on" and word ~= "off" then
+      return { "//hud statusbar partyorder needs on or off" }, false
+    end
+    config.party_order = word == "on"
+    local took = share()
+    if not config.party_order then
+      return { "statusbar partyorder off - the party list keeps the order it has now" }, true
+    end
+    if took > 0 then
+      return { "statusbar partyorder on - the party list's buff order was replaced by this one" }, true
+    end
+    return {
+      "statusbar partyorder on - but nothing took the order: the party list is not loaded,"
+        .. " or its buff settings need '//hud reset partylist'",
+    },
+      true
   end
 
   -- What each bar draws right now, past its capacity: how you name a buff
@@ -574,6 +621,7 @@ local function new(deps)
       for _, engine in pairs(engines) do
         engine.invalidate()
       end
+      share()
     end
     return lines, changed
   end
@@ -603,11 +651,14 @@ local function new(deps)
       return status(bar or "bar1")
     end
 
-    if verb == "timers" or verb == "tooltips" then
-      -- Two component-wide switches, so a bar word is refused rather than
+    if verb == "timers" or verb == "tooltips" or verb == "partyorder" then
+      -- Component-wide switches, so a bar word is refused rather than
       -- silently dropped.
       if bar then
         return { ("%s is shared by every bar, so //hud statusbar %s takes no bar word"):format(verb, verb) }, false
+      end
+      if verb == "partyorder" then
+        return set_party_order(words[2])
       end
       return set_switch(verb, words[2])
     end
@@ -655,6 +706,12 @@ local function new(deps)
     end
     rows[#rows + 1] = { label = "Timers", kind = "toggle", value = config.timers ~= false, command = { "timers" } }
     rows[#rows + 1] = { label = "Tooltips", kind = "toggle", value = self.tooltips_on(), command = { "tooltips" } }
+    rows[#rows + 1] = {
+      label = "Party order",
+      kind = "toggle",
+      value = config.party_order == true,
+      command = { "partyorder" },
+    }
     return { rows = rows }
   end
 

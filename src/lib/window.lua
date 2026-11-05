@@ -199,17 +199,8 @@ local function new(deps)
     return frame
   end
 
-  --[[ One page of a list, laid into a column. Shared by every list a window
-       pages, so the clamp and the row rects cannot drift apart between two
-       that look the same. Answers the page it actually built: one past the
-       end comes back as the last. ]]
-  function self.paged(items, column, rows_per_page, page)
+  local function laid(items, column, rows_per_page, first)
     local ROW_HEIGHT = sized().row_height
-    local pages = math.max(1, math.ceil(#items / rows_per_page))
-    if page > pages then
-      page = pages
-    end
-    local first = (page - 1) * rows_per_page
     local built = {}
     for index = 1, rows_per_page do
       local item = items[first + index]
@@ -225,7 +216,29 @@ local function new(deps)
         height = ROW_HEIGHT,
       }
     end
-    return built, pages, page
+    return built
+  end
+
+  --[[ One page of a list, laid into a column. Shared by every list a window
+       pages, so the clamp and the row rects cannot drift apart between two
+       that look the same. Answers the page it actually built: one past the
+       end comes back as the last. ]]
+  function self.paged(items, column, rows_per_page, page)
+    local pages = math.max(1, math.ceil(#items / rows_per_page))
+    if page > pages then
+      page = pages
+    end
+    return laid(items, column, rows_per_page, (page - 1) * rows_per_page), pages, page
+  end
+
+  --[[ The same column scrolled by rows: `first` items skipped, clamped so
+       the last item stops on the bottom row rather than leaving the column
+       half empty. Answers the first it actually built and the furthest it
+       could have gone. ]]
+  function self.scrolled(items, column, rows_per_page, first)
+    local last_first = math.max(0, #items - rows_per_page)
+    first = math.max(0, math.min(last_first, first))
+    return laid(items, column, rows_per_page, first), first, last_first
   end
 
   --[[ The two ways out, then the drag handle: checked before anything a

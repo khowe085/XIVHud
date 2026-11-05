@@ -55,7 +55,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      this own the cadence -- their own throttles come out -- and read
      `generation()` when they need to tell a fresh read from a cached one.
 
-     Nothing here touches a Windower global: `deps` carries the four client
+     Nothing here touches a Windower global: `deps` carries the five client
      reads and a clock. ]]
 
 -- The cadence the target bar and the party list already ran at.
@@ -244,20 +244,22 @@ local function new(deps)
        and a pair must not share a slot with the single 't' either. The RETURN
        is narrowed to one value, which the wrapper this replaced did not do -
        the API answers a single mob table and nothing reads past it. ]]
-  function self.get_mob_by_target(...)
-    --[[ The count leads the key. Joining the arguments alone would let one
+  local function memoized(kind, read, ...)
+    --[[ The kind and the count lead the key: a lookup by id can never answer
+         for a lookup by token, and joining the arguments alone would let one
          argument carrying the separator collide with a longer call, and the
          pair ('t', 'bt') sharing a slot with a single 't' is exactly what this
-         memo must not do. Unreachable with the six fixed tokens the addon
-         passes, but the separation is an invariant rather than an accident. ]]
+         memo must not do. Unreachable with the fixed tokens and numeric ids
+         the addon passes, but the separation is an invariant rather than an
+         accident. ]]
     local count = select("#", ...)
-    local parts = { tostring(count) }
+    local parts = { kind, tostring(count) }
     for index = 1, count do
       local value = select(index, ...)
       -- Typed, so 5 and "5" cannot share a slot either. Unreachable with the
-      -- six fixed tokens the addon passes, but a separation worth stating is a
-      -- separation worth holding in general.
-      parts[index + 1] = type(value) .. tostring(value)
+      -- fixed tokens and numeric ids the addon passes, but a separation worth
+      -- stating is a separation worth holding in general.
+      parts[index + 2] = type(value) .. tostring(value)
     end
     local key = table.concat(parts, "\0")
 
@@ -271,11 +273,20 @@ local function new(deps)
     -- worth remembering rather than asking again every call.
     local remembered = mobs[key]
     if remembered == nil then
-      remembered = { deps.get_mob_by_target(...) }
+      remembered = { read(...) }
       mobs[key] = remembered
       mobs_stamp = mobs_stamp or now
     end
     return remembered[1]
+  end
+
+  function self.get_mob_by_target(...)
+    return memoized("target", deps.get_mob_by_target, ...)
+  end
+
+  -- The focus target bar tracks one mob by id, read every frame.
+  function self.get_mob_by_id(id)
+    return memoized("id", deps.get_mob_by_id, id)
   end
 
   --[[ An `hp change` / `hpp change` / … event has arrived. The VALUE it carried

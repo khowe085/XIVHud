@@ -335,9 +335,11 @@ local function new(deps)
     --[[ One ladder per effect, walked at the press: which rung is available
          depends on the job pair, the bag and the target, none of which hold
          still. A ladder that finds nothing answers its own hint rather than
-         a bare nil, so the player is told why the press did nothing. ]]
+         a bare nil, so the player is told why the press did nothing. What it
+         picks is `held_as` the action it amounts to, so the action queue holds
+         and drops it exactly as a slot bound to that action. ]]
     if kind == "sneak" or kind == "invisible" or kind == "reraise" then
-      local command, hint = deps.stealth.plan(kind)
+      local command, hint, action = deps.stealth.plan(kind)
       if command == nil then
         return nil, hint
       end
@@ -346,7 +348,9 @@ local function new(deps)
       if type(command) == "table" then
         return { kind = "enchanted", plan = command }
       end
-      return command_plan(command)
+      local plan = command_plan(command)
+      plan.held_as = action
+      return plan
     end
     -- The named-item sibling of warp: the same plan shapes, so the widget's
     -- equip -> wait -> use scheduler runs either without knowing which asked.

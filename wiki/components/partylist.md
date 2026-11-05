@@ -49,7 +49,7 @@ The main list only:
 | `buffs.max_icons` | `16` | how many buff icons a row draws at most (the art holds 16) |
 | `buffs.filter_mode` | `"blacklist"` | whether `filters` hides the listed buffs or shows only them |
 | `buffs.filters` | `{}` | the filtered buff ids |
-| `buffs.priority` | `{}` | your changes to the buff order |
+| `buffs.priority` | `{}` | your changes to the buff order (replaced by the status bar's while its `partyorder` is on) |
 
 Which lists are on is stored with the placement: `//hud show partylist
 alliance1` switches one on, or SHIFT + right-click it in layout mode.
@@ -102,3 +102,8 @@ one verb of the party list's own:
 
 The word `main` may be written after `partylist` on any of these; the
 alliance lists are refused, since they draw no buff icons.
+
+The [status bar](statusbar.md)'s `partyorder` switch makes this list follow
+its order instead: while it is on, every change to the status bar's order
+replaces this one. The filters stay this list's own, and the order verbs
+above still work - until the status bar's order next changes.

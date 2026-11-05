@@ -27,7 +27,14 @@ describe("statusbar widget", function()
 
   local function build(without)
     prims = fakes.prims()
-    env = { clock = 1788000000, player = { name = "Ayame", buffs = {} }, last = {}, parses = 0, commands = {} }
+    env = {
+      clock = 1788000000,
+      player = { name = "Ayame", buffs = {} },
+      last = {},
+      parses = 0,
+      commands = {},
+      shared = {},
+    }
     saves = 0
     local ctx = {
       name = "statusbar",
@@ -57,6 +64,15 @@ describe("statusbar widget", function()
       end,
       send_command = function(command)
         env.commands[#env.commands + 1] = command
+      end,
+      -- Core's hand-off of the one order to the party list, as it stood at
+      -- the moment it was handed over.
+      buff_order_changed = function(priority)
+        local snapshot = {}
+        for id, rank in pairs(priority) do
+          snapshot[id] = rank
+        end
+        env.shared[#env.shared + 1] = snapshot
       end,
     }
     for _, key in ipairs(without or {}) do
@@ -733,6 +749,27 @@ describe("statusbar widget", function()
       assert.is_false(widget.on_mouse(LEFT_DOWN, 105, 60, 0))
     end)
 
+    it("hands the new order to core while partyorder is on, and only then", function()
+      drag(HASTE_AT, KO_AT)
+      assert.are.same({}, env.shared)
+      widget.handle_command({ "partyorder", "on" })
+      assert.are.same({ { [HASTE] = 1 } }, env.shared)
+      drag(KO_AT, HASTE_AT)
+      assert.are.equal(2, #env.shared)
+      assert.are.same(config.priority, env.shared[2])
+    end)
+
+    it("drags as before where nothing in the ctx takes the order", function()
+      build({ "buff_order_changed" })
+      attach()
+      config.party_order = true
+      env.player.buffs = { HASTE, KO }
+      widget.update()
+      assert.are.same({ true, true }, { drag(HASTE_AT, KO_AT) })
+      assert.are.same({ HASTE, KO }, ids())
+      assert.are.equal(1, saves)
+    end)
+
     -- Layout mode takes the mouse, a hide or a logout takes the bar: the
     -- release cannot be ours after any of them.
     for _, case in ipairs({
@@ -835,7 +872,7 @@ describe("statusbar widget", function()
         shown[index] = record.before
         sent[index] = table.concat(record.words, " ")
       end
-      assert.same({ "20x1", "all", "20x1", "debuffs", "20x1", "other", "[ on ]", "[ on ]" }, shown)
+      assert.same({ "20x1", "all", "20x1", "debuffs", "20x1", "other", "[ on ]", "[ on ]", "[ off ]" }, shown)
       assert.same({
         "bar1 rows 2",
         "bar1 filter buffs",
@@ -845,6 +882,7 @@ describe("statusbar widget", function()
         "bar3 filter all",
         "timers off",
         "tooltips off",
+        "partyorder on",
       }, sent)
     end)
 
@@ -863,10 +901,10 @@ describe("statusbar widget", function()
       loaded.bars.bar2.filter = "Debuffs"
       attach(loaded)
       assert.same({}, panels.problems(widget.config_panel()))
-      assert.same({ 3, "all", 1, "all", 1, "other", true, true }, column("value"))
+      assert.same({ 3, "all", 1, "all", 1, "other", true, true, false }, column("value"))
     end)
 
-    it("offers each bar's shape and category, then the two shared switches, as they stand", function()
+    it("offers each bar's shape and category, then the three shared switches, as they stand", function()
       attach()
       assert.same({
         "Bar 1 rows",
@@ -877,13 +915,17 @@ describe("statusbar widget", function()
         "Bar 3 filter",
         "Timers",
         "Tooltips",
+        "Party order",
       }, column("label"))
-      assert.same({ "choice", "choice", "choice", "choice", "choice", "choice", "toggle", "toggle" }, column("kind"))
-      assert.same({ 1, "all", 1, "debuffs", 1, "other", true, true }, column("value"))
+      assert.same(
+        { "choice", "choice", "choice", "choice", "choice", "choice", "toggle", "toggle", "toggle" },
+        column("kind")
+      )
+      assert.same({ 1, "all", 1, "debuffs", 1, "other", true, true, false }, column("value"))
       widget.handle_command({ "bar2", "rows", "3" })
       widget.handle_buffs({ "bar3", "filter", "buffs" })
       widget.handle_command({ "timers", "off" })
-      assert.same({ 1, "all", 3, "debuffs", 1, "buffs", false, true }, column("value"))
+      assert.same({ 1, "all", 3, "debuffs", 1, "buffs", false, true, false }, column("value"))
     end)
 
     -- A category is set through `//hud buffs statusbar` and nowhere else, so
@@ -899,12 +941,16 @@ describe("statusbar widget", function()
         { "bar3", "filter" },
         { "timers" },
         { "tooltips" },
+        { "partyorder" },
       }, column("command"))
       local routes = {}
       for index, row in ipairs(widget.config_panel().rows) do
         routes[index] = row.route or "command"
       end
-      assert.same({ "command", "buffs", "command", "buffs", "command", "buffs", "command", "command" }, routes)
+      assert.same(
+        { "command", "buffs", "command", "buffs", "command", "buffs", "command", "command", "command" },
+        routes
+      )
     end)
 
     it("offers the four shapes the rows command takes, and no other", function()
@@ -935,7 +981,7 @@ describe("statusbar widget", function()
     it("changes each setting through its own command, and saves it", function()
       attach()
       assert.same({}, panels.failures(panels.exercise(widget)))
-      assert.equal(16, saves, "each of the eight was moved and put back")
+      assert.equal(18, saves, "each of the nine was moved and put back")
     end)
 
     -- An unusable row count draws one row and a name that is not a category
@@ -946,7 +992,7 @@ describe("statusbar widget", function()
       loaded.bars.bar2.filter = "nonsense"
       attach(loaded)
       assert.same({}, panels.problems(widget.config_panel()))
-      assert.same({ 1, "all", 1, "all", 1, "other", true, true }, column("value"))
+      assert.same({ 1, "all", 1, "all", 1, "other", true, true, false }, column("value"))
       assert.same({}, panels.failures(panels.exercise(widget)))
     end)
 
@@ -969,7 +1015,7 @@ describe("statusbar widget", function()
       local panel = new_logic({ config = loaded, resources = RESOURCES }).config_panel()
       assert.same({}, panels.problems(panel))
       assert.same(
-        { "Bar 1 rows", "Bar 1 filter", "Bar 3 rows", "Bar 3 filter", "Timers", "Tooltips" },
+        { "Bar 1 rows", "Bar 1 filter", "Bar 3 rows", "Bar 3 filter", "Timers", "Tooltips", "Party order" },
         column("label", panel)
       )
     end)

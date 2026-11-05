@@ -381,6 +381,41 @@ describe("window", function()
     end)
   end)
 
+  describe("scrolled", function()
+    local column = { x = 100, y = 200, width = 300 }
+
+    local function items(count)
+      local list = {}
+      for index = 1, count do
+        list[index] = "item " .. index
+      end
+      return list
+    end
+
+    it("lays a window of rows starting past the first ones skipped", function()
+      local rows, first, last_first = build().scrolled(items(40), column, 19, 3)
+      assert.are.equal(19, #rows)
+      assert.are.equal(3, first)
+      assert.are.equal(21, last_first)
+      assert.are.same({ item = "item 4", index = 4, x = 100, y = 200, width = 300, height = 26 }, rows[1])
+      assert.are.equal(22, rows[19].index)
+    end)
+
+    it("stops with the last item on the bottom row", function()
+      local rows, first = build().scrolled(items(40), column, 19, 30)
+      assert.are.equal(21, first)
+      assert.are.equal(19, #rows)
+      assert.are.equal(40, rows[19].index)
+    end)
+
+    it("never scrolls a list that fits, nor above its top", function()
+      local _, first, last_first = build().scrolled(items(5), column, 19, 3)
+      assert.are.same({ 0, 0 }, { first, last_first })
+      local _, from_top = build().scrolled(items(40), column, 19, -3)
+      assert.are.equal(0, from_top)
+    end)
+  end)
+
   describe("control_at", function()
     local function centre(rect)
       return rect.x + rect.width / 2, rect.y + rect.height / 2

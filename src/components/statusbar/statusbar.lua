@@ -75,7 +75,11 @@ local function new(ctx)
   -- expiry is ever taken: the wrap would resolve against nothing, and a
   -- slice of raw values would count down as garbage.
   local clock = ctx.time
-  local logic = new_logic({ config = self.defaults, resources = ctx.resources or {} })
+  local logic = new_logic({
+    config = self.defaults,
+    resources = ctx.resources or {},
+    share_order = ctx.buff_order_changed,
+  })
 
   local attached = false
   local save = nil

@@ -28,6 +28,10 @@ describe("statusbar defaults", function()
     assert.is_true(defaults.tooltips)
   end)
 
+  it("leaves the party list's buff order its own", function()
+    assert.is_false(defaults.party_order)
+  end)
+
   it("places one anchor per bar, at scale 1, with no top-level pos", function()
     assert.is_nil(defaults.layout.pos)
     assert.is_nil(defaults.layout.scale)
