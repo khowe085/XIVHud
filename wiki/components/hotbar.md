@@ -14,7 +14,8 @@ here, and the same layers, contexts, sets and rotations apply.
 ## Features
 
 - **Ten slots per row, eight rows** (`bar1` to `bar8`), each placed and
-  resized on its own. Row 1 ships on; rows 2 to 8 ship off.
+  resized on its own. Row 1 ships on, about mid-screen; rows 2 to 8 ship off,
+  stacked under it in one column.
 - **Row 1 follows the active set**, the one the cycle keys move through.
   Rows 2 to 8 are locked to sets 2 to 8, so a row you switch on always shows
   the same set - and row 1 shows the same set as one of them whenever the
@@ -29,7 +30,11 @@ here, and the same layers, contexts, sets and rotations apply.
   fires nothing, so a controller cannot set a row off by accident.
   **CTRL+Up** moves to the next set in the rotation and **CTRL+Down** to the
   previous one, with CTRL held on its own (the game's own macro set changes on
-  the same chord, and still sees the arrow).
+  the same chord, and still sees the arrow; the arrow keys' codes have not
+  been checked in a live client). Left and right modifiers both count;
+  CTRL+ALT and any other chord reach the game untouched. Holding a chord fires
+  once, and a number pressed before its modifier stays the game's until it is
+  released.
 - None of the keys fire while the chat line is open, while the HUD is hidden
   (a cutscene with `hidecutscene` on, or zoning), in layout or edit mode,
   before a job has loaded, or while the hotbar is hidden.
@@ -76,7 +81,7 @@ over it.
 | --- | --- | --- |
 | `bars.<bar>.rows` | `1` | that row's shape: `1` (10x1), `2` (5x2), `5` (2x5) or `10` (1x10) (`rows`) |
 | `bars.<bar>.hide_empty` | unset | leave that row's empty slots undrawn; unset, the row follows `hide.empty_slots` (`hideempty`) |
-| `numbers` | `true` | draw the set number beside every row; off, the slots move into its space (`numbers`) |
+| `numbers` | `true` | draw the set number, in gold, left of slot 1 on the wide shapes and above it on the tall ones; off, the slots move into its space (`numbers`) |
 | `binder_pos` | none | where you last left the binder window; written by the binder, not by hand |
 | `set_flags[n].shared` | `false` | set `n` is shared by every job (`share`) |
 | `set_flags[n].cycle.drawn` / `.sheathed` | `true` / `true` | which rotations set `n` belongs to (`cycle`) |
@@ -120,7 +125,7 @@ there.
 | `//hud hotbar <bar>` | the head line and that row alone |
 | `//hud hotbar [<bar>] rows <1\|2\|5\|10>` | set a row's shape (row 1 when no row is named) |
 | `//hud hotbar [<bar>] hideempty on\|off` | XIV's "Hide empty slots": leave a row's unbound slots undrawn (row 1 when no row is named). A slot counts as empty when nothing is bound to it through the layers active right now. Every slot is still drawn while the binder or layout mode is open |
-| `//hud hotbar numbers [on\|off]` | show or hide the set number on every row, or say which it is |
+| `//hud hotbar numbers [on\|off]` | show or hide the set number on every row, or say which it is; one switch, so it takes no row word |
 | `//hud hotbar help` | list every command |
 | `//hud hotbar edit` | toggle the mouse binder, on the crossbar as well |
 | `//hud hotbar set <1-8>` | switch the active set (and so row 1) |

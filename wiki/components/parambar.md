@@ -14,7 +14,8 @@ the number beside each, sitting at the bottom centre of the screen.
 - The HP and MP numbers change colour as they drop: yellow, then orange, then
   red.
 - The TP number turns blue at 1000 or more, and the TP bar is dimmed below
-  that.
+  that and full from there to 3000. An HP or MP number reads 0 whenever its
+  percentage does.
 - A **compact** mode with narrower bars and tighter spacing.
 - A **melee accuracy** row above the TP bar - how many of your swings landed
   over the last thirty seconds, with your measured attack delay on the end;
@@ -41,7 +42,8 @@ landing at, after gear, haste, songs, dual wield and everything else. It has
 to be measured, because nothing in the game tells an addon your haste: gear
 haste only exists as item description text, and a march's strength depends on
 the bard's own skill and instrument, which your client cannot see. It reads
-`--s` until two rounds have landed.
+`--s` until two rounds have landed; before any swing has landed the whole row
+reads `Acc: --% (0/0) - --s`.
 
 The figure is the **median** gap rather than the average, so that a
 weaponskill, a cast or a step out of range does not drag it. That needs a
@@ -66,7 +68,8 @@ no part in the mouse at all.
 
 Switching the row on or off changes how tall the widget is, so the bars move
 down or up by the height of the row; drag the parameter bar back where you
-want it in `//hud layout` afterwards.
+want it in `//hud layout` afterwards. The count keeps running while the row is
+off, so switching it back on shows the full window rather than a fresh one.
 
 ## Configuration options
 
@@ -101,12 +104,13 @@ it. A `bar` or `compact_bar` block left in an older `config.lua` is ignored.
 ## Commands
 
 Every setting below can also be changed with the mouse: `//hud config parambar`
-opens the [settings window](../Home.md#settings-window) on this component.
-(`accuracy reset` is an action rather than a setting, so it is not there.)
+opens the [settings window](../Home.md#settings-window) on this component,
+where the window length steps five seconds a click. (`accuracy reset` is an
+action rather than a setting, so it is not there.)
 
 | Command | What it does |
 | --- | --- |
-| `//hud parambar` | print the compact and accuracy state |
+| `//hud parambar` | print the compact and accuracy state, with the window length |
 | `//hud parambar compact on\|off` | switch compact mode |
 | `//hud parambar accuracy` | print the row's state, window and current reading |
 | `//hud parambar accuracy on\|off` | show or hide the accuracy row |

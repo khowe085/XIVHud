@@ -6,7 +6,7 @@ Alias: `ev`
 
 Your equipped gear as a 4x4 grid of item icons on a dark panel, one cell per
 equipment slot, so you can see at a glance what you are wearing without
-opening the equipment menu.
+opening the equipment menu. It ships at 500,500, pulled in on a smaller screen.
 
 ## Features
 
@@ -16,8 +16,12 @@ opening the equipment menu.
 - Draws an **X** over any slot that encumbrance has locked.
 - Shows your **ammo count** over the ammo slot when you have more than one.
 - Icons are read straight out of the game's data files the first time an
-  item is seen, then cached in `addons/XIVHud/cache/items/` for every character
-  and shared with the crossbar and hotbar. No icon pack to download.
+  item is seen, one per frame, then cached in `addons/XIVHud/cache/items/` for
+  every character and shared with the crossbar and hotbar. No icon pack to
+  download. An icon that fails to read leaves its slot blank until you next log
+  in, when it is tried again.
+- In layout mode the panel is drawn even with `bg.visible` off, with no icons,
+  so it can be placed.
 
 ## Configuration options
 
@@ -74,7 +78,7 @@ opens the [settings window](../Home.md#settings-window) on this component.
 
 | Command | What it does |
 | --- | --- |
-| `//hud equipviewer` | print both toggles as they stand, and how many icons could not be read this session, if any |
+| `//hud equipviewer` | print both toggles as they stand; this and every other reply adds how many icons could not be read since login, if any |
 | `//hud equipviewer encumbrance on\|off` | show or hide the X over locked slots |
 | `//hud equipviewer ammocount on\|off` | show or hide the ammo count |
 | `//hud equipviewer icons probe` | print where each equipped slot's icon was read from, and write `icons.log` |

@@ -6,32 +6,43 @@ Alias: `eb`
 
 FFXIV's experience bar for FFXI: a thin gold bar with your job's icon at its
 left and a status line above it, filling toward your next level, merit or
-master level.
+master level. It ships at the bottom centre of the screen.
 
 ## Features
 
 - **Three modes**, picked automatically from your job level:
   - below the level cap, the bar fills with **experience** toward the next
     level;
-  - at the cap, with **limit points** toward the next merit;
+  - at the cap, with **limit points** toward the next merit - stopping at
+    9999/10000 once your merits are capped;
   - at the cap once you hold the Master Breaker key item, with **exemplar
-    points** toward the next master level.
+    points** toward the next master level. This bar moves only when the game
+    sends a character update; each gain feeds the rate at once.
 - The status line reads like `WAR99/SAM49 (ML23) JP: 342 MP: 12 EP/hr: 12.6k`:
   your job pair, your master level once you are earning exemplar points, job points, merit
   points, and the rate you are earning at - `EXP/hr` below the cap, `EP/hr`
   for exemplar points. In the limit-point mode the rate is `CP/hr`, your
   **capacity point** rate: limit points move the bar and the merit count but
-  have no per-hour figure of their own.
+  have no per-hour figure of their own. With no subjob the pair reads
+  `WAR99/---`, and the line is blank until the game has reported your job.
 - The rates cover the last ten minutes, idle time included, so they fall
-  while you earn nothing. Each reads 0 until 30 seconds after its first gain.
+  while you earn nothing. Each reads 0 until 30 seconds after its first gain,
+  and is rounded down to the nearest hundred, so under 100 an hour reads
+  `0.0k`.
 - The fill eases toward each new value.
 - Your job's icon is drawn beside the bar.
 
 Experience, exemplar points and master level are kept per character and job
 under `addons/XIVHud/cache/packets/<Character>/`, so the bar has figures
 straight after a login or a reload. Those can be from your last session until
-the game sends new ones. Limit points, merits and the rates are not kept: after
-a reload they start over.
+the game sends new ones. Limit points, merits and the rates are held in memory
+only: they survive a slot switch, a reset and logging back in on the same
+character, and start over on a `//lua reload` or another character.
+
+Which fields of the game's character update carry the Master Breaker flag and
+the master level has not been confirmed in a live client. If they are wrong,
+the bar stays in limit-point mode and reads `ML0`; the second line of
+`//hud expbar` is there to check.
 
 The game only reports merit totals when they change or when you zone, so a
 merit-capped character who is earning nothing may read 0 merits until they
@@ -63,5 +74,5 @@ settings commands; these are set by editing the file.
 
 | Command | What it does |
 | --- | --- |
-| `//hud expbar` | print the mode, the current and required points, all three rates, and what was read for the master level |
+| `//hud expbar` | two lines: the mode, the current and required points and all three rates; then `master breaker yes\|no, master level N, merits N/M` as read from the game (`M` is 0 until it is sent) |
 | `//hud expbar clear` | drop the rate history and start the per-hour figures over |

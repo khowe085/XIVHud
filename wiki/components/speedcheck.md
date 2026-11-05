@@ -5,8 +5,9 @@ Alias: `spd`
 ## Description
 
 Your movement speed bonus as a signed percentage - `+12%`, `-50%` - drawn
-under a running-figure icon. Handy for seeing whether a mount, a movement
-speed buff or a piece of gear is actually doing something.
+under a running-figure icon, shipped just above the gil tracker. Handy for
+seeing whether a mount, a movement speed buff or a piece of gear is actually
+doing something.
 
 ## Features
 

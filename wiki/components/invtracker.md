@@ -6,7 +6,8 @@ Alias: `inv`
 
 FFXIV's inventory grid for FFXI: every slot of the bags you choose drawn as a
 small coloured square, so you can see how full each bag is without opening a
-menu. Bags sit side by side as blocks, each with its short name under it.
+menu. Bags sit side by side as blocks, each with its short name under it. It
+ships at the bottom right of the screen.
 
 ## Features
 
@@ -16,10 +17,16 @@ menu. Bags sit side by side as blocks, each with its short name under it.
   among it), white for a worn slot in the equipment bag, green for something
   equipped (or a worn linkshell), orange for an item in your bazaar, pink for
   a temporary item or one in the treasure pool, dark for an empty slot.
-- Updates whenever something moves - a pickup, a drop, a sale, a swap.
-- A **sort** option orders each bag so the picture is easy to read: equipped
-  and bazaar items first, then the stacks nearest full, then the largest
-  counts.
+- Updates whenever something moves - a pickup, a drop, a sale, a swap. After
+  a zone it waits for every bag to arrive before redrawing, and gives up
+  waiting after about ten seconds.
+- A **sort** option orders each bag so the picture is easy to read: bazaar
+  items, then a worn linkshell, then equipped gear, then the stacks nearest
+  full, then the largest counts, with empty slots last; ties keep the game's
+  own order. A slot the tracker does not recognise draws teal.
+- In layout mode the grid shows your last real read, or every drawn bag at a
+  standard size before one; with every bag off it still draws one square, so
+  it can be dragged.
 - The temporary items bag and the treasure pool show only what they hold and
   disappear when empty.
 - Bags that share a purpose are one word: `safe` covers both Mog Safes and
@@ -44,19 +51,21 @@ also set by command.
 
 Bags and their shipped state:
 
-| Bag word | Covers | Drawn by default | Columns |
-| --- | --- | --- | --- |
-| `equipment` | equipped gear | no | 4 |
-| `inventory` | your inventory | yes | 5 |
-| `safe` | Mog Safe and Mog Safe 2 | no | 5 |
-| `storage` | Storage | no | 4 |
-| `locker` | Mog Locker | no | 5 |
-| `satchel` | Mog Satchel | yes | 5 |
-| `sack` | Mog Sack | yes | 5 |
-| `case` | Mog Case | yes | 5 |
-| `wardrobe` | Wardrobes 1-8 | no | 5 |
-| `temporary` | temporary items | yes | 1 |
-| `treasure` | the treasure pool | yes | 1 |
+| Bag word | Covers | Label | Drawn by default | Columns |
+| --- | --- | --- | --- | --- |
+| `equipment` | equipped gear | `Equip` | no | 4 |
+| `inventory` | your inventory | `Inv` | yes | 5 |
+| `safe` | Mog Safe and Mog Safe 2 | `Safe`, `Safe2` | no | 5 |
+| `storage` | Storage | `Stor` | no | 4 |
+| `locker` | Mog Locker | `Lock` | no | 5 |
+| `satchel` | Mog Satchel | `Sat` | yes | 5 |
+| `sack` | Mog Sack | `Sack` | yes | 5 |
+| `case` | Mog Case | `Case` | yes | 5 |
+| `wardrobe` | Wardrobes 1-8 | `W1` to `W8` | no | 5 |
+| `temporary` | temporary items | `Temp` | yes | 1 |
+| `treasure` | the treasure pool | `Pool` | yes | 1 |
+
+The blocks are drawn left to right in that order.
 
 Appearance options, set by editing the file:
 

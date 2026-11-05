@@ -15,20 +15,33 @@ off by default, that you place separately.
 - One row per party member: name, main and subjob with levels, HP, MP and
   TP as bars with numbers.
 - The HP number changes colour as HP drops: yellow, then orange, then red
-  under 75%, 50% and 25%. The TP number turns blue at 1000.
-- A **job icon** on each row, coloured by role (tank, healer, damage,
-  support, and a fifth colour for the SPC trusts).
-- Up to sixteen **buff icons** per member, ordered by priority and filtered
-  to your liking (see Buffs below).
-- Members out of range are **dimmed**, and a **range indicator** can show each
-  member's distance in yalms, or mark with icons who is within the near and far
-  distances you set.
+  under 75%, 50% and 25%. The TP bar is full at 1000 and the TP number turns
+  blue there; only the number goes higher. Names are cut at 17 characters.
+- A **job icon** on each row, coloured by role: tank for PLD, RUN and PUP,
+  healer for WHM and SCH, support for BRD, COR and GEO, damage for everything
+  else (RDM included), and a fifth colour for the SPC trusts. A trust's job
+  and level come from a built-in table (its level is the party leader's), so
+  a trust the table does not know shows no job.
+- Up to sixteen **buff icons** per member in two rows of eight, ordered by
+  priority and filtered to your liking (see Buffs below); the ninth icon opens
+  the second row. A buff newer than the art takes a slot and draws nothing.
+- Members out of casting range are **dimmed**: the bars are at full strength
+  within about 21 yalms, half under 50, and a quarter beyond that or when the
+  distance is unknown. A **range indicator** can show each member's distance
+  in yalms (two decimals, `?` when unknown, nothing on your own row), or mark
+  with icons who is within the near and far distances you set.
 - The targeted member is highlighted, and the member under the subtarget cursor
-  is half highlighted. Party and alliance leaders are marked, and a member in another
-  zone shows that zone's name, shortened on the alliance lists.
+  is half highlighted (whether the highlight draws over the row art has not
+  been checked in a live client). Party and alliance leaders and the
+  quartermaster are marked.
+- A member in another zone shows that zone's name in parentheses in place of
+  their job - `(Port Jeuno)`, or `(?)` for a zone the resources do not know -
+  with empty bars and `?` for every number, and no buffs.
 - The **alliance lists** (`alliance1`, `alliance2`) show the other two
   parties as a compact three-by-two grid, each placed on its own: job icon,
-  name, HP and MP, with no TP, levels, buffs or range.
+  name cut at 9 characters, and HP and MP bars without numbers - no TP,
+  levels, buffs or range. A member in another zone shows the zone name
+  shortened, and no bars.
 - A list with nobody in it draws nothing, an alliance list you have switched
   on included; layout mode shows every list with a sample party so it can be
   placed.
@@ -44,7 +57,7 @@ Every option below is per list, under `lists.main`, `lists.alliance1` and
 | --- | --- | --- |
 | `item_spacing` | `0` | extra pixels between rows (and between columns on the alliance grid) |
 | `align_bottom` | `false` | grow the list upward from its bottom edge rather than down from the top |
-| `show_empty_rows` | `false` | draw the frame at its full six-row height even when the party is smaller |
+| `show_empty_rows` | `false` | draw the frame at its full size (six rows, or the whole alliance grid) even when the party is smaller |
 
 The main list only:
 

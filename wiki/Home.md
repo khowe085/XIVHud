@@ -18,7 +18,8 @@ edit by hand to get started.
   it with the wheel, switch it on or off with a right-click. Changes save at
   once.
 - **Per-character settings.** Every character keeps its own placements and
-  component settings, written under `data/<Character>/` as you change them.
+  component settings under `data/<Character>/`: the general settings written
+  at first login, the rest as you change them.
 - **Layout slots.** Several named arrangements per character, switched with
   one command - one for solo play and one for events, say.
 - **Copy between characters.** One command copies a character's whole
@@ -55,9 +56,12 @@ time to see the command list.
 1. Log in on a character. Every component that is on by default comes up in
    its shipped position.
 2. Type `//hud layout` to enter layout mode. Every component gets a
-   highlight box with its name on it, including the ones you have switched
-   off, which show as a dark box marked `(hidden)` so they can be found and
-   switched back on.
+   highlight box with its name on it - one per piece for a component made of
+   several, labelled `partylist:alliance1` and the like - and draws sample
+   content, so an empty widget can still be placed. The ones you have switched
+   off show as a dark box marked `(hidden)` so they can be found and switched
+   back on. Where boxes overlap, the one drawn later takes the mouse; a click
+   that misses every box is the game's.
    - **Left-drag** a box to move it. Movement snaps to a grid; hold **CTRL**
      to move freely.
    - **Mouse wheel** over a box to scale it up or down, no smaller than a
@@ -65,9 +69,12 @@ time to see the command list.
    - **Right-click** a box to switch that component off or on.
    - **SHIFT + right-click** switches one piece of a component that has
      several off or on: a party list, a status bar, a hotbar row, a target bar
-     or a crossbar piece.
-3. Type `//hud layout` again to leave layout mode. Everything you changed is
-   already saved.
+     or a crossbar piece. On a component with one piece it is a plain
+     right-click.
+3. Type `//hud layout` again to leave layout mode (logging out leaves it
+   too). Everything you changed is already saved, and every widget is kept
+   fully on screen - a placement from a hand edit or a smaller screen is
+   pulled back inside it.
 
 The crossbar and hotbar come up empty. Type `//hud crossbar edit` or
 `//hud hotbar edit`, click a slot, pick which layer, then pick an action (and
@@ -110,9 +117,12 @@ Components can also be switched from the console: `//hud hide giltracker`,
 
 ## Commands
 
-All commands start with `//hud` (`//xivhud` is registered as a second name). Verbs and component
-names are not case-sensitive, and a component's alias stands in for its name
-anywhere: `//hud reset tb` is `//hud reset targetbar`.
+All commands start with `//hud` (`//xivhud` is registered as a second name).
+Verbs and component names are not case-sensitive, and a component's alias
+stands in for its name anywhere: `//hud reset tb` is `//hud reset targetbar`.
+Settings are per character, so until one is loaded everything but `help`,
+`list` and `copy` answers `log in first - XIVHud configuration is per
+character`.
 
 | Command | What it does |
 | --- | --- |
@@ -128,27 +138,35 @@ anywhere: `//hud reset tb` is `//hud reset targetbar`.
 | `//hud slot create <name>` | create a new slot as a copy of the active one |
 | `//hud slot delete <name>` | delete a slot (`default` and the active slot cannot be deleted) |
 | `//hud copy <from> <to>` | replace character `<to>`'s configuration with character `<from>`'s |
-| `//hud buffs active` | list every buff on you right now, with ids |
+| `//hud buffs active` | list every buff on you right now, with ids, in the shipped priority order |
 | `//hud buffs <component> ...` | a component's buff order and filter settings (see below) |
 | `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise` | the bars' built-in actions (see Action commands below) |
 | `//hud delay [<seconds>]` | the mount and warp countdown, shared by the crossbar and hotbar; without a number it prints the current value (see Action commands below) |
 | `//hud queue [on\|debug\|off]` | hold a bar press made during a cast or the moment after it, and send it when you can act; on by default. Without a word it prints the current setting (see [The action queue](#the-action-queue)) |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action |
-| `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default. Without a word it prints the current setting |
+| `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default, and a change applies at once. Without a word it prints the current setting |
 | `//hud config [<component>\|global]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
 
 **`show` and `hide` take a piece name** for components made of several
 independently placed parts: `//hud hide partylist alliance2`,
 `//hud show statusbar bar2`, `//hud hide targetbar subtarget`. `//hud list`
-prints the piece names each component has. A piece and its component are
-separate switches: a piece you show stays hidden while the whole component is
-hidden, and `//hud show <component>` brings the component back without
-changing which of its pieces are off.
+prints the piece names each component has; a wrong one is answered with the
+right ones, and a successful switch prints nothing. A piece and its component
+are separate switches: a piece you show stays hidden while the whole component
+is hidden (the command warns you), and `//hud show <component>` brings the
+component back without changing which of its pieces are off.
 
 **`reset` and `copy` have no undo and no confirmation step.** `reset` acts on
-the active slot only; `copy` replaces every slot the destination character
-has, and its general settings (`core.lua`) with them.
+the active slot only, deletes every file in the component's folder there and
+writes fresh ones; `reset all` does that for every component and leaves the
+general settings (`core.lua`) alone. `copy` replaces every slot the
+destination character has, and its general settings with them. It works from
+character select, the destination need not exist yet, names are matched
+regardless of case, and the reply counts the files copied. Only a destination
+that is the character you are playing is reloaded at once; one logged in on
+another client keeps its old settings in memory and writes them back over the
+copy as it saves.
 
 ### Buff order and filters
 
@@ -170,12 +188,21 @@ win. A filter list hides buffs (blacklist mode) or shows only the listed ones
 //hud buffs <component> [<piece>] filter add <id|name>
 //hud buffs <component> [<piece>] filter remove <id|name>
 //hud buffs <component> [<piece>] filter clear
-//hud buffs <component> [<piece>] filter list
+//hud buffs <component> [<piece>] filter list                 (a bare filter lists it too)
 //hud buffs <component> [<piece>] filter mode blacklist|whitelist
 ```
 
-A buff can be named by its id or by its name (`//hud buffs partylist top
-haste`). `//hud buffs active` shows the ids of everything currently on you.
+A buff can be named by its id or by its whole name, in any case (`//hud buffs
+partylist top haste`); a name several buffs share, such as `sleep`, is refused
+with their ids listed, and a name nothing matches points you at `find`, which
+searches by part of a name. The shipped order puts debuffs first, then
+abilities and ordinary buffs, with system effects (food, signets,
+restrictions) last; buffs it does not rank sort after everything else, by id,
+and `list` prints them under a divider, twenty to a page, with a mark where
+the icon cap falls. `rank` past the end lands on the last place, and `up` on
+an unranked buff pulls it into the ranked order. A whitelist with nothing in
+it shows nothing. `//hud buffs active` shows the ids of everything currently
+on you.
 The party list's buff settings belong to the main party alone, so its only
 piece name here is `main`, and it adds one verb of its own,
 `//hud buffs partylist active [<member>]`, for a party member's buffs. The
@@ -201,10 +228,12 @@ settings there. Click an entry to see its settings on the right.
 A component with more settings than one page holds splits them across tabs
 along the top; click a tab to see its page.
 
-Every change is saved as you make it. The line under the title shows what the
-matching command would have answered, including a refusal - the window sets
-exactly what the commands set, with the same limits, so anything you change
-here you can also type.
+Every change is saved as you make it. The line under the title shows the first
+line of what the matching command would have answered, including a refusal
+(any further lines go to chat) - the window sets exactly what the commands
+set, with the same limits, so anything you change here you can also type. A
+control at its limit does nothing, and a press that slides off a control
+before release does nothing either.
 
 `global` holds the travel delay, the action queue and its waits (see
 [Action commands](#action-commands)) and whether the HUD hides during
@@ -215,15 +244,19 @@ value the steps do not land on, the buff order and filter lists, and anything
 about a single action-bar slot are still typed.
 
 - **Move it** by dragging its title bar. It reopens where you left it.
-- **Close it** with `[ X ]`, or `//hud config` again.
+- **Close it** with `[ X ]`, or `//hud config` again; the next bare
+  `//hud config` reopens it on the panel you last used.
 - **Open it on one panel** with `//hud config <component>`, for example
   `//hud config global`. If the window is already open, that switches panel.
 
-While the window is open the mouse belongs to it: a left-click on the window
-never reaches the game (a right-click does), a click anywhere else does, and
-the action bars do not answer the mouse. Your keys still work. Opening it closes the action bars'
-edit mode, which cannot be opened again until the window is closed, and
-cancels a mount or warp that is counting down. It cannot be opened in layout
+While the window is open the mouse belongs to it: a left-click or the wheel
+on the window never reaches the game (a right-click does), a click anywhere
+else does, and no component answers the mouse - the bars' clicks and the
+status bar's hover, right-click and drag are off until it closes. Your keys
+still work. Opening it closes the action bars' edit mode, which cannot be
+opened again until the window is closed, and
+cancels a mount or warp that is counting down, and an enchanted item's wait
+(the piece stays on). It cannot be opened in layout
 mode, and entering layout mode closes it. Like the rest of
 the HUD it hides during a cutscene and comes back afterwards.
 
@@ -246,7 +279,7 @@ or the console too, and their settings are shared by both bars.
 | `//hud warp [all]` | warp home by the best means you have (a Warp spell, a Warp Ring, an Instant Warp, ...); `all` sends your other characters running XIVHud too |
 | `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage: the spell, then Spectral Jig, then the ninjutsu, then an oil or powder. Silenced or muted, the spells and ninjutsu are passed over |
 | `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
-| `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; `0` switches the countdown off |
+| `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; fractions are fine, there is no upper limit, and `0` switches the countdown off |
 | `//hud queue [on\|debug\|off]` | [the action queue](#the-action-queue); without a word it prints the current setting. `debug` also writes each step to `debug.log` in the addon's folder |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action, 0 to 5 seconds in tenths. Alone it lists them all; with only a kind it prints that one |
 
@@ -299,10 +332,12 @@ off, every press goes at once and the game decides.
   pick your target during a cast and press OK whenever you like. OK is then
   judged as a press is: a weaponskill under 1000 TP sends nothing, an action
   whose recast outlasts the wait goes at once, and otherwise it is held or goes
-  at once as the queue stands. GearSwap's `pretarget` does not run for such a
-  slot.
+  at once as the queue stands. Pressing another cursor slot while the arrow is
+  up sends nothing and only changes what OK will cast; an arrow a macro raised
+  is left alone. GearSwap's `pretarget` does not run for such a slot.
 - **Macros and typed commands** are not held, but they do count towards the
-  wait, as does anything another addon sends.
+  wait, as does anything another addon sends. A press made before the game has
+  answered the last one is held too.
 - **What drops a held press:** zoning, dying, changing job or logging out; a
   cutscene that hides the HUD; opening `//hud layout`, `//hud config` or edit
   mode; anything that reloads a bar - a reset, a slot switch, a copy, a login;
@@ -319,7 +354,7 @@ finishes:
 | Kind | Shipped wait | After |
 | --- | --- | --- |
 | `spell` | 2.7 seconds | a spell |
-| `weaponskill` | 2.4 seconds | a weaponskill |
+| `weaponskill` | 2.4 seconds | a weaponskill, or your own monster skill in Monstrosity |
 | `ability` | 0.5 seconds | a job ability |
 | `item` | 1 second | an item |
 | `ranged` | 1 second | a ranged attack; an estimate, since nobody has measured this one |
@@ -344,7 +379,11 @@ on/off state and settings. Each character starts with one slot, `default`.
 
 A slot name is one word of letters, digits and underscores, is not
 case-sensitive (it is stored in lower case), and cannot be `list`, `create` or
-`delete`. Switch to another slot before deleting the one you are in.
+`delete`. `create` writes the active slot to disk first and does not switch to
+the new one; switch to another slot before deleting the one you are in. A
+deleted slot's empty folders stay behind, and are neither listed nor in the
+way of reusing the name. A folder you make yourself under `data/<Character>/`
+counts as a slot once it holds a component folder with a file in it.
 
 Switching slots re-reads everything, so a component's own settings - the
 crossbar's bindings included - follow the slot.
@@ -374,10 +413,19 @@ the opacity, a colour written without one keeps its shipped opacity, and some
 colours take none. Each component's page lists the options its `config.lua`
 holds.
 
-A component's `config.lua` is written when it saves a setting, so one that has
-no setting command - the gil tracker, speed check, experience bar and
-skillchain indicator - never writes one. To change their options, create the
-file yourself, holding just the keys you want. If a file cannot be read, chat says
+A component's `config.lua` is written when it saves a setting, when it is
+reset, and when a slot is created, so one that has no setting command - the
+gil tracker, speed check, experience bar and skillchain indicator - has none
+until you reset it. To change their options, create the file yourself, holding
+just the keys you want (a reset writes every shipped value into it, after
+which later shipped defaults no longer reach it).
+
+`layout.lua` is `{ pos = { x = , y = }, scale = , visible = }`, or
+`{ anchors = { <piece> = { pos = , scale = , visible = } }, visible = }` for
+a component with several pieces. `visible` must be exactly `true` to count as
+on; a piece is on unless its own `visible` is `false`; the scale cannot go
+below 0.25; and a position or scale that is not a number falls back to the
+shipped placement. If a file cannot be read, chat says
 so and the component runs on its defaults; the next setting it saves overwrites
 the broken file (see [Troubleshooting](#troubleshooting)).
 
@@ -385,7 +433,7 @@ the broken file (see [Troubleshooting](#troubleshooting)).
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| `snap` | `10` | the grid, in pixels, that dragging snaps to in layout mode |
+| `snap` | `10` | the grid, in pixels, that dragging snaps to in layout mode; `0` switches the grid off. File-only |
 | `slot` | `"default"` | the active layout slot |
 | `hideCutscene` | `true` | hide the HUD during cutscenes and the NPC conversations that lock your character (`//hud hidecutscene on\|off`) |
 | `config_pos` | centred | where you last dragged the settings window to |
@@ -397,7 +445,7 @@ the broken file (see [Troubleshooting](#troubleshooting)).
 
 The whole HUD hides during cutscenes (unless you turn that off with
 `//hud hidecutscene off`), while
-zoning and for a few seconds after, and while logged out. It comes back by
+zoning and for three seconds after, and while logged out. It comes back by
 itself. Layout mode does not override this.
 
 ## Troubleshooting
@@ -418,7 +466,8 @@ no drawing, none of the action commands. Nothing in chat says it is on - only
 the file to go back.
 
 **`N texture(s) are missing from this install`.** Some of the addon's own art
-is not where it should be. Re-copy every file and folder from the release zip.
+is not where it should be. Re-copy every file and folder from the release zip
+(the chat line says `src/`, which is the same folder in the repository).
 
 **`the party list is off: Windower's resource or packet library did not load`.**
 Windower's own `resources` or `packets` library failed, and more than the party
@@ -426,16 +475,23 @@ list goes with it: the gil tracker, equipment viewer, experience bar and
 inventory tracker are not loaded, the status bar draws no timers, the target
 bar has no cast bar or Treasure Hunter level, the parameter bar's accuracy row
 never counts, the skillchain indicator never draws, the bars' slots show no
-recast arcs, costs, icons or counts and their binder lists nothing, mount
-roulette and mount slots do nothing, `warp` finds no items, and the action
-queue is off whatever `core.lua` says. The line under it is the library's own error.
+recast arcs, costs, icons or counts, their weapon layers never come up (so
+`bind ... ws` needs `context=wpn:`), their binder offers only General and
+Open, mount roulette and mount slots do nothing, `warp` finds no items, and
+the action queue is off whatever `core.lua` says. The line under it is the
+library's own error. A failure of Windower's `extdata` library is quieter -
+only `load.log` records it - and costs `warp` its item rungs and enchanted gear
+its charge readings.
 
 **`could not parse <file> ... (using defaults)`** (or `could not read`,
 `ignoring`, `could not merge`). A settings file under `data/` is broken, usually
 from a hand edit. The component runs on its defaults, in memory only: the next
-setting it saves overwrites the file. Fix the file with the game closed, or
-`//hud reset <component>` to start it over. An empty file is read as absent,
-silently.
+setting it saves overwrites the file. A broken `core.lua` puts you on the
+`default` slot with every general setting at its default; a broken bar
+bindings file loads as no bindings, and the next bind writes a file holding
+only the new one, so the old bindings are gone. Fix the file with the game
+closed, or `//hud reset <component>` to start it over. An empty file is read
+as absent, silently.
 
 **`could not write <file>`.** A settings file could not be saved, usually
 because a folder under `data/` could not be created or the addon folder is
@@ -443,11 +499,12 @@ read-only. The HUD carries on, but the change is lost on the next reload; check
 that Windower can write to `addons/XIVHud/data/`.
 
 **`error in the <name> handler: ...`.** An error inside the addon; it is said
-once per distinct message, not every frame. After five errors in one handler
-chat says `the <name> handler has been disabled after 5 failures - '//lua
-reload xivhud' to try again` and that part of the addon stops; a disabled mouse
-or keyboard handler hands your input back to the game. Reload to try again, and
-report the message.
+when the message changes, not every frame. After five errors in one handler
+over the session chat says `the <name> handler has been disabled after 5
+failures - '//lua reload xivhud' to try again` and that part of the addon
+stops: a disabled mouse or keyboard handler hands your input back to the game,
+a disabled `prerender` handler freezes the whole HUD, and a disabled `command`
+handler leaves `//hud` silent. Reload to try again, and report the message.
 
 **`item icons are not being read: the game's item data has changed`.** A game
 update has moved the item icons and XIVHud needs an update. It applies to the
@@ -461,3 +518,7 @@ in the crossbar's `config.lua` gives one key two jobs; the first keeps it.
 **A press the action queue dropped or held.** `//hud queue debug` writes every
 step to `debug.log` beside `XIVHud.lua`, appended and never trimmed, so switch
 it back to `on` and delete the file when you are done.
+
+**Two clients on one addon folder** share these files: `load.log` holds only
+the last client to load, and both write to `debug.log` with nothing to tell
+their lines apart.

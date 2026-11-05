@@ -13,22 +13,37 @@ one for the rest.
 
 - Every effect on you as its icon, with the remaining time beneath it in
   FFXIV's style: seconds under a minute (`59`), then minutes (`12m`), then
-  hours (`2h`). The art covers effect ids up to 639; a newer effect takes a
+  hours (`2h`). An effect with no duration, or more than 100 hours of it,
+  shows no time. The art covers effect ids up to 639; a newer effect takes a
   cell with only its timer.
+- The icons come from the game at once; the times come from a packet the
+  game sends when a buff changes, so after loading or reloading the addon the
+  icons can be up with no timers until you next gain or lose a buff.
 - **Three bars** (`bar1`, `bar2`, `bar3`), each placed on its own and each
   showing one **category**: `all`, `buffs`, `debuffs` or `other` (food, the
-  mount, signets, restrictions and the like). Bar 1 ships on with `all`;
-  bars 2 and 3 ship off, set to `debuffs` and `other`.
+  mount, signets, restrictions, crafting imagery, experience bonuses,
+  battlefield markers and the like). Anything the categories do not know,
+  a newer effect included, counts as a buff. Bar 1 ships on with `all`, in
+  the top-left corner; bars 2 and 3 ship off, set to `debuffs` and `other`,
+  stacked under it.
 - Each bar is **1 to 4 rows** deep: 20x1, 10x2, 7x3 or 5x4 icons.
 - When there are more effects than a bar can hold, the highest-priority ones
-  are drawn. The order and a per-bar filter list are yours to edit.
-- **Hover** an icon to see the buff's name and id; **right-click** one to
-  cancel it (this uses the Windower `cancel` addon, and is a console error if
-  that addon is not loaded; either way the game does not see a right-click on
-  an icon).
+  are drawn. The order and a per-bar filter list are yours to edit. The
+  filter works inside the bar's category, so a whitelist on a `debuffs` bar
+  can only show debuffs, and an empty whitelist shows nothing.
+- **Hover** an icon to see the buff's name and id - `haste (33)`, drawn under
+  the bar level with the icon; **right-click** one to cancel it (this uses the
+  Windower `cancel` addon, and is a console error if that addon is not loaded;
+  either way the game does not see a right-click on an icon).
 - **Drag** an icon onto another on the same bar to move it there in the
-  priority order. The order is shared, so every bar follows it. A left-click
-  on an icon does not reach the game.
+  priority order: in front of it when dragged up the order, behind it when
+  dragged down, and a drop on a buff the shipped order does not rank puts the
+  dragged one at the end of the ranked order. A copy of the icon follows the
+  cursor; a drop anywhere else changes nothing. The order is shared, so every
+  bar follows it, and it is saved at once without a reply. A left-click on an
+  icon does not reach the game.
+- In layout mode each bar shows a sample of icons so it can be placed, and
+  the hover, right-click and drag are off.
 - **Party order** (off by default): the [party list](partylist.md)'s buff
   icons can follow this order too. Switching it on replaces the party list's
   own order with this one, and every later change here - a drag or an order
@@ -71,7 +86,7 @@ order and each bar's own filter list stay commands.
 | `//hud statusbar [<bar>] rows <1-4>` | set how many rows the bar has |
 | `//hud statusbar timers on\|off` | show or hide the timers on every bar |
 | `//hud statusbar tooltips on\|off` | name the buff under the cursor, or not |
-| `//hud statusbar partyorder on\|off` | copy the buff order to the party list on every change, or stop. Typing `on` again copies it again. Each copy is saved at once and reaches a hidden party list too |
+| `//hud statusbar partyorder on\|off` | copy the buff order to the party list on every change, or stop. Typing `on` again copies it again. Each copy is saved at once and reaches a hidden party list too; if nothing could take it (the party list not loaded, or its buff settings broken) the reply says so, and the switch goes on all the same |
 | `//hud show statusbar <bar>` / `//hud hide statusbar <bar>` | switch one bar on or off |
 
 `timers`, `tooltips` and `partyorder` apply to every bar and refuse a bar word.
@@ -88,7 +103,7 @@ through `//hud buffs statusbar` - the shared grammar described on the
 | `//hud buffs statusbar <bar>` | the same for one bar |
 | `//hud buffs statusbar [<bar>] filter all\|buffs\|debuffs\|other` | set the bar's category |
 | `//hud buffs statusbar [<bar>] filter add\|remove <id\|name>` | edit the bar's own filter list |
-| `//hud buffs statusbar [<bar>] filter clear\|list` | empty or print it |
+| `//hud buffs statusbar [<bar>] filter clear\|list` | empty or print it (a bare `filter` prints it too) |
 | `//hud buffs statusbar [<bar>] filter mode blacklist\|whitelist` | hide the listed buffs, or show only them |
 | `//hud buffs statusbar list [<page>]` | the full priority order |
 | `//hud buffs statusbar find <text>` | search buffs by name |
