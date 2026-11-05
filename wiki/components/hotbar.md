@@ -124,7 +124,7 @@ there.
 | `//hud hotbar cycle` / `cycle back` | move to the next or previous set in the rotation |
 | `//hud hotbar list [<set>]` | list what is bound on this job, layer by layer |
 | `//hud hotbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>]` | bind a slot |
-| `//hud hotbar unbind <address> [context=<layer>]` | clear a slot in one layer — the one `context=` names, or the job base without it |
+| `//hud hotbar unbind <address> [context=<layer>]` | clear a slot in one layer - the one `context=` names, or the job base without it |
 | `//hud hotbar alias <address> [<name>] [context=<layer>]` | change the label under a slot; omit the name to clear it |
 | `//hud hotbar icon <address> [<icon>] [context=<layer>]` | change a slot's icon; omit it to clear |
 | `//hud hotbar swap <address> <address>` | swap two slots, every layer at once |
