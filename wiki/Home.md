@@ -342,9 +342,18 @@ off, every press goes at once and the game decides.
   cutscene that hides the HUD; opening `//hud layout`, `//hud config` or edit
   mode; anything that reloads a bar - a reset, a slot switch, a copy, a login;
   switching the queue off or unloading the addon; and 30 seconds passing, held
-  or waiting for a cast to end. A press made while `//hud config` is open goes
-  at once; in layout or edit mode, or while the HUD is hidden, the bars fire
-  nothing anyway.
+  or waiting for a ranged attack or an unknown action to end. A press made
+  while `//hud config` is open goes at once; in layout or edit mode, or while
+  the HUD is hidden, the bars fire nothing anyway.
+- **Lag.** The game tells the queue when a cast starts and when it finishes,
+  and lag can lose either message. If the finish never comes, a spell counts
+  as finished at its cast time plus 0.4 seconds, a weaponskill after 3 seconds
+  and an item at its cast time plus 1 second; the wait for that kind then runs
+  and a held press goes. If the start is lost, a spell you sent waits for an
+  answer as long as its cast time plus 0.4 seconds, so its finish still starts
+  the wait. A spell the server drops with no answer at all holds the bar that
+  long. A cast slowed past these times by a debuff can let a held press go
+  early, and the game then refuses it.
 
 If you use Selindrile's GearSwap files, leave their MiniQueue off.
 
