@@ -5,8 +5,8 @@ Alias: `tb`
 ## Description
 
 Your current target's health bar, drawn top centre of the screen in the party
-list's art: a row reading `HP% | distance | name` above a bar that fills to
-the target's HP, with a smaller cast bar beneath it while the target is
+list's art: a row of HP%, distance and name above a bar that fills to the
+target's HP, with a smaller cast bar beneath it while the target is
 casting or readying a TP move. A second, smaller copy of the whole bar follows
 the game's **subtarget cursor** - the `<st>` selection you move through the
 party or the nearby mobs while choosing a target for a spell or ability - and
@@ -16,33 +16,51 @@ a third, the **focus bar**, stays on one mob you name, whatever you target.
 
 - **Three bars**, placed separately: `main` follows your target,
   `subtarget` follows the `<st>` cursor and `focus` follows your focus
-  target. The subtarget and focus bars are the same bar at 60% size, seeded
+  target. The subtarget and focus bars are the same bar at 60% size, stacked
   under the main one, and each shows only while it has something to draw.
 - A **focus target**: `//hud targetbar focus <name>` takes the mob with that
   full name (any case) - your current target if it has that name, otherwise
-  the nearest one - and `focus <t>`, `<st>` or `<bt>` takes that target. The
+  the nearest one alive and targetable, which can be a player or an NPC as
+  well as a monster - and `focus <t>`, `<st>` or `<bt>` takes that target. The
   focus bar then stays on that one mob until it dies or despawns, you zone,
-  you type `//hud targetbar clear focus` (or `focus clear`), or you switch
-  slot, reset the component or log out. While the mob is out of range the
-  bar hides, and it comes back with the mob. The focus is never saved.
+  you type `//hud targetbar clear focus` (or `focus clear`), the game stops
+  reporting the mob, or you switch slot, `//hud copy` onto this character,
+  reset the component, change character or log out. A `focus` that finds nothing leaves the one you
+  had. While the game still has the mob but you cannot target it, the bar hides
+  and comes back with it. The focus is never saved.
 - HP percentage, distance and name for whatever is targeted - a monster, a
   player or an NPC.
 - The **HP number** turns yellow, orange and red as the target drops below
-  75%, 50% and 25%.
+  75%, 50% and 25%. The fill eases toward each new value, and jumps when the
+  target changes.
 - The **bar fill colour** shows claim: red for a monster you or your alliance
-  have claimed, purple for one claimed by someone else, yellow-green for an
-  unclaimed one, cyan for a party member, white for another player, grey
-  for a dead one.
-- The **distance** is coloured by whether you are in range for the range mode
-  below. In `magic` and `ninjutsu` it is white out of range and green in
-  range. For the `gun`, `bow` and `xbow`
-  modes it also marks the sweet spot: yellow in range, green inside the Square
-  Shot band, blue inside the True Shot band.
-- A **cast bar** rises while the target winds up a spell or TP move, with the
-  name of what is coming. It clears when the cast finishes or is interrupted.
+  have claimed, purple for one claimed by someone else (or by an alliance
+  member the game has not loaded, out of zone), pale yellow for an unclaimed
+  one or for an NPC or pet, cyan for a party member, white for another player
+  or for yourself, grey for a dead one.
+- The **distance** has two decimals, stops at `99.99`, and is coloured by
+  whether you are in range for the range mode below. In `magic` and
+  `ninjutsu` it is white out of range and green in range (within 20 yalms
+  plus both model sizes for magic, 16.1 for ninjutsu). For the `gun`, `bow`
+  and `xbow` modes it also marks the sweet spot within 25: yellow in range,
+  green inside the Square Shot band, blue inside the True Shot band. It stays
+  white at distance 0, and until both model sizes are known.
+- A **cast bar** rises while the target winds up a spell or TP move (or, on a
+  player, a weaponskill), with the name of what is coming - `Unknown (id:N)`
+  for one the resources do not know. It fills over the spell's base cast time
+  and clears when the cast finishes or is interrupted, three seconds after it
+  should have ended if no finish arrives, or when you change target. It only
+  tracks a cast that starts while the mob is on the bar: targeting a mob
+  already mid-cast shows no bar.
 - The target's **Treasure Hunter level** follows its name (`Colibri - TH:4`)
-  once a Treasure Hunter proc lands on it, whoever's it was. It is forgotten
-  when the monster despawns or resets, and when you zone. There is no setting.
+  once a Treasure Hunter proc lands on it from a melee round or a weaponskill,
+  whoever's it was; a ranged proc is not read, and an area weaponskill records
+  the level on its first target only. It is forgotten when the monster
+  despawns or resets, and when you zone or log out - but, unlike the focus,
+  it survives a slot switch, a reset and a copy. There is no setting.
+- All three bars draw the cast bar and the Treasure Hunter level, each for its
+  own mob. A subtarget cursor resting on your current target draws that mob on
+  both bars.
 - Long names are cut to fit.
 
 ## Configuration options
@@ -61,15 +79,15 @@ Every option is per bar, under `bars.main`, `bars.subtarget` and
 | `bands.yellow` / `orange` / `red` | yellow / orange / red | the HP number colours under 75% / 50% / 25% |
 | `fill_colors.mine` | red | bar colour for a monster claimed by your alliance |
 | `fill_colors.claimed` | purple | claimed by someone else |
-| `fill_colors.unclaimed` | yellow-green | unclaimed |
+| `fill_colors.unclaimed` | pale yellow | unclaimed |
 | `fill_colors.member` | cyan | a party member |
 | `fill_colors.pc` | white | another player |
 | `fill_colors.dead` | grey | a dead target |
 | `name_max_chars` | `17` | longest name drawn before it is cut |
 | `gap` | `8` | gap between the text row and the bar |
-| `cast.scale` | `0.67` | size of the cast bar relative to the health bar |
+| `cast.scale` | `0.67` | size of the cast bar's own art, which is half the health bar's width, so `0.67` draws it about a third as wide |
 | `cast.font_size` | `12` | font size of the cast name |
-| `cast.fill_color` | yellow-green | cast bar fill colour |
+| `cast.fill_color` | pale yellow | cast bar fill colour |
 | `cast.gap` | `4` | gap between the health bar and the cast bar |
 | `cast.name_gap` | `2` | gap between the cast bar and its name |
 | `cast.name_max_chars` | `20` | longest cast name drawn before it is cut |
@@ -77,8 +95,8 @@ Every option is per bar, under `bars.main`, `bars.subtarget` and
 
 The subtarget and focus bars' smaller size is their scale in layout mode
 (0.6 out of the box), so resize them there with the mouse wheel like any
-other piece. Layout mode shows the focus bar with a sample mob, so it can be
-placed with nothing focused. Which bars are on is stored with the placement:
+other piece. Layout mode shows every bar with a sample mob, so the focus bar
+can be placed with nothing focused. Which bars are on is stored with the placement:
 `//hud hide targetbar subtarget` switches one off, or SHIFT + right-click it
 in layout mode.
 
@@ -91,12 +109,12 @@ else is the name of a mob to focus.
 
 Each bar's range mode can also be changed with the mouse: `//hud config
 targetbar` opens the [settings window](../Home.md#settings-window) on this
-component.
+component, with one row per bar. Choosing a focus target is typed.
 
 | Command | What it does |
 | --- | --- |
-| `//hud targetbar` | print every bar and the range mode each is in, and what the focus bar holds |
-| `//hud targetbar [<bar>]` | print one bar's range mode |
+| `//hud targetbar` | print every bar and the range mode each is in (`auto` adds the mode it picked, and a Ranger is told to pick a weapon), and what the focus bar holds |
+| `//hud targetbar <bar>` | print one bar's range mode, and for `focus` what it holds |
 | `//hud targetbar [<bar>] mode auto` | pick the range table from your main job |
 | `//hud targetbar [<bar>] mode default` | no range colouring; the distance stays white |
 | `//hud targetbar [<bar>] mode magic` | spell range |
@@ -104,12 +122,12 @@ component.
 | `//hud targetbar [<bar>] mode gun` | gun range |
 | `//hud targetbar [<bar>] mode bow` | bow range |
 | `//hud targetbar [<bar>] mode xbow` | crossbow range |
-| `//hud targetbar focus <name>` | focus the mob with that name: your target if it has it, otherwise the nearest |
-| `//hud targetbar focus <t>` (or `<st>`, `<bt>`) | focus that target |
+| `//hud targetbar focus <name>` | focus the mob with that name (several words need no quotes): your target if it has it, otherwise the nearest |
+| `//hud targetbar focus <t>` (or `<st>`, `<bt>`) | focus that target; no other token is taken |
 | `//hud targetbar clear focus` (or `focus clear`) | drop the focus target |
 | `//hud show targetbar <bar>` / `//hud hide targetbar <bar>` | switch one bar on or off |
 
 `auto` picks `magic` for RDM, BLM, WHM, SCH, GEO and BRD, `ninjutsu` for NIN
 and `gun` for COR. Every other job gets `default`, which colours nothing;
-a Ranger should pick `gun`, `bow` or `xbow` by hand, since the game does not
-say which ranged weapon is equipped.
+a Ranger should pick `gun`, `bow` or `xbow` by hand: the target bar does not
+read your ranged slot, and a gun and a crossbow share one skill anyway.

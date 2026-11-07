@@ -6,22 +6,33 @@ Alias: `inv`
 
 FFXIV's inventory grid for FFXI: every slot of the bags you choose drawn as a
 small coloured square, so you can see how full each bag is without opening a
-menu. Bags sit side by side as blocks, each with its short name under it.
+menu. Bags sit side by side as blocks, each with its short name under it. It
+ships at the bottom right of the screen.
 
 ## Features
 
 - One block per bag, in your choice of bags and column counts.
 - **Square colours** tell you what is in a slot: teal for an ordinary item,
-  red for a full stack, white for equipment, green for something equipped
-  (or a worn linkshell), orange for an item in your bazaar, pink for a
-  temporary item, dark for an empty slot.
-- Updates whenever something moves - a pickup, a drop, a sale, a swap.
-- A **sort** option orders each bag by kind and fullness so the picture is
-  easy to read.
+  red for a full stack (which includes anything that does not stack, gear
+  among it), white for a worn slot in the equipment bag, green for something
+  equipped (or a worn linkshell), orange for an item in your bazaar, pink for
+  a temporary item or one in the treasure pool, dark for an empty slot.
+- Updates whenever something moves - a pickup, a drop, a sale, a swap. After
+  a zone it waits for every bag to arrive before redrawing, and gives up
+  waiting after about ten seconds.
+- A **sort** option orders each bag so the picture is easy to read: bazaar
+  items, then a worn linkshell, then equipped gear, then the stacks nearest
+  full, then the largest counts, with empty slots last; ties keep the game's
+  own order. A slot the tracker does not recognise draws teal.
+- In layout mode the grid shows your last real read, or every drawn bag at a
+  standard size before one; with every bag off it still draws one square, so
+  it can be dragged.
 - The temporary items bag and the treasure pool show only what they hold and
   disappear when empty.
 - Bags that share a purpose are one word: `safe` covers both Mog Safes and
   `wardrobe` covers all eight wardrobes.
+- A bag you do not have draws no block, so a character without a satchel,
+  sack or case sees nothing for those even though they ship on.
 
 ## Configuration options
 
@@ -40,19 +51,21 @@ also set by command.
 
 Bags and their shipped state:
 
-| Bag word | Covers | Drawn by default | Columns |
-| --- | --- | --- | --- |
-| `equipment` | equipped gear | no | 4 |
-| `inventory` | your inventory | yes | 5 |
-| `safe` | Mog Safe and Mog Safe 2 | no | 5 |
-| `storage` | Storage | no | 4 |
-| `locker` | Mog Locker | no | 5 |
-| `satchel` | Mog Satchel | yes | 5 |
-| `sack` | Mog Sack | yes | 5 |
-| `case` | Mog Case | yes | 5 |
-| `wardrobe` | Wardrobes 1-8 | no | 5 |
-| `temporary` | temporary items | yes | 1 |
-| `treasure` | the treasure pool | yes | 1 |
+| Bag word | Covers | Label | Drawn by default | Columns |
+| --- | --- | --- | --- | --- |
+| `equipment` | equipped gear | `Equip` | no | 4 |
+| `inventory` | your inventory | `Inv` | yes | 5 |
+| `safe` | Mog Safe and Mog Safe 2 | `Safe`, `Safe2` | no | 5 |
+| `storage` | Storage | `Stor` | no | 4 |
+| `locker` | Mog Locker | `Lock` | no | 5 |
+| `satchel` | Mog Satchel | `Sat` | yes | 5 |
+| `sack` | Mog Sack | `Sack` | yes | 5 |
+| `case` | Mog Case | `Case` | yes | 5 |
+| `wardrobe` | Wardrobes 1-8 | `W1` to `W8` | no | 5 |
+| `temporary` | temporary items | `Temp` | yes | 1 |
+| `treasure` | the treasure pool | `Pool` | yes | 1 |
+
+The blocks are drawn left to right in that order.
 
 Appearance options, set by editing the file:
 
@@ -65,11 +78,11 @@ Appearance options, set by editing the file:
 | `labels.gap` | `1` | gap between block and label |
 | `labels.color` / `stroke` | light grey / black, width 1 | label colour and outline |
 | `colours.default` | teal | an ordinary item |
-| `colours.full_stack` | red | a full stack |
-| `colours.equipment` | white | a piece of equipment |
+| `colours.full_stack` | red | a full stack, or an item that does not stack |
+| `colours.equipment` | white | a worn slot in the equipment bag |
 | `colours.equipped` / `linkshell_equipped` | green | something equipped |
 | `colours.bazaar` | orange | an item in your bazaar |
-| `colours.temp_item` | pink | a temporary item |
+| `colours.temp_item` | pink | a temporary item, or one in the treasure pool |
 | `colours.empty` | dark | an empty slot |
 
 Each colour has a `box` (the square) and a `shadow` (the 1px relief behind
@@ -84,13 +97,13 @@ rest.
 
 | Command | What it does |
 | --- | --- |
-| `//hud invtracker` | list every bag with its on/off state and columns, then sort, labels, spacing and alignment |
+| `//hud invtracker` | print sort, labels, spacing, block spacing and alignment, then every bag with its on/off state and columns |
 | `//hud invtracker <bag>` | print one bag's on/off state and column count |
 | `//hud invtracker <bag> on\|off` | draw or hide a bag |
 | `//hud invtracker <bag> columns <1-20>` | set a bag's width in squares |
 | `//hud invtracker sort on\|off` | sort each bag for display |
 | `//hud invtracker labels on\|off` | show or hide the bag names |
-| `//hud invtracker spacing <px>` | pixels between squares |
+| `//hud invtracker spacing <px>` | pixels from one square to the next |
 | `//hud invtracker blockspacing <px>` | pixels between bags |
 | `//hud invtracker align top\|bottom` | line blocks up along their top or bottom edge |
 

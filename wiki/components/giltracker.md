@@ -10,15 +10,18 @@ of the screen, in the style of FFXIV's currency display.
 ## Features
 
 - Updates the moment your gil changes - a sale, a purchase, a reward, a
-  trade.
+  trade. It reads `Loading...` until the first figure arrives after login.
 - The number is formatted with thousands separators.
-- The icon stays put as the digits change.
+- The icon stays put as the digits change. The space kept for the number is
+  an estimate, and a very large total (around a hundred million) can run under
+  the icon; raising `icon.gap` makes room.
 - The icon can be switched off, leaving the number alone.
 
 ## Configuration options
 
-`config.lua` in the component's folder. There are no console commands; these
-are set by editing the file.
+`config.lua` in the component's folder, a file you create yourself (see
+[where settings are kept](../Home.md#where-settings-are-kept)). There are no
+console commands; these are set by editing the file.
 
 | Option | Default | What it does |
 | --- | --- | --- |
@@ -33,7 +36,7 @@ are set by editing the file.
 | `bg` colour | black, `a = 100` | the backing box colour and opacity |
 | `icon.visible` | `true` | draw the gil icon |
 | `icon.size` | `23` | icon size in pixels (square) |
-| `icon.gap` | `1` | gap between icon and number |
+| `icon.gap` | `1` | gap between the icon and the width reserved for the number |
 | `icon.color` | white | tint applied to the icon |
 
 ## Commands
