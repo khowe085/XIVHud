@@ -319,7 +319,14 @@ server packets show none), so the lock's LENGTH is the one constant, and it is
 taken from the finish packet with nothing subtracted. The server starts the
 lock no later than it sends that packet, so latency can only make a release
 late, never early - where MiniQueue takes a guessed `latency = .5` off the same
-anchor and aims early. Everything else is a packet, whoever caused it: outgoing
+anchor and aims early. The one exception is a finish that never comes (Kevin,
+2026-11-06: lag lost several in one event, and each held the bar for 30s): a
+start then counts as finished at its spell's `cast_time` plus 0.4s, 3s for a
+weaponskill or an item's `cast_time` plus 1s, and that lock is the one anchor
+that is not a packet, so a cast lengthened past it can release early. A held
+press then goes once that lock ends; a finish arriving late still replaces the
+lock. A start nothing can time (ranged, an unknown id) keeps the 30s backstop,
+and what it held is dropped. Everything else is a packet, whoever caused it: outgoing
 `0x01A`/`0x037` (the only sight of a macro or of what GearSwap injects),
 `0x028` starts, finishes and interrupts, `0x029` refusals (GearSwap's
 `unable_to_use` list), all through handlers the resource libraries gate, so with
@@ -370,9 +377,14 @@ without a packet, and the next press must not wait on an answer that cannot
 come. A config mode, suppression and a re-attach drop what is
 held; a zone, a death, a job change, a logout, an unload and `off` forget the
 lock too, and a newer finish replaces a lock, since an action the server accepted
-proves the old one over. A spell finish with no cast running is ignored: a cast
-always sends its start first, these arrived a melee round apart while Kevin was
-paralyzed, and sends straight after them were accepted, so nothing locks.
+proves the old one over. A spell finish with no cast running is ignored: these
+arrived a melee round apart while Kevin was paralyzed, and sends straight after
+them were accepted, so nothing locks. The exception is a spell that went out, from
+anything, and is still unanswered (Kevin, 2026-11-06: lag lost seven starts whose
+finishes came, and the next send went into the lock): it waits for an answer for
+its `cast_time` plus 0.4s where that is longer than 2s, and a finish inside that
+is its own and locks. A refusal still ends the wait at once; a spell the server
+drops without one holds the bar that long.
 
 `debug` is `on` plus a line per edge in `<addon>/debug.log`, appended with raw `io`,
 dated and stamped with the clock, and never in chat (Kevin, 2026-11-01; the client

@@ -23,7 +23,8 @@ Selindrile's MiniQueue starts from the same packet (its aftercast) and then
 subtracts a guessed `latency = .5` to aim early, which is the race. Its safety
 net never runs: the `0x029` handler compares `action.message`, the field is
 `Message`, and the packets library holds no alias for it. Its precast estimate,
-`cast_time / 4 + 3`, has no equivalent here: nothing computes a cast time.
+`cast_time / 4 + 3`, has no equivalent here: a cast time only bounds how long a
+spell or a start may go unanswered when lag loses its packet (below, 2026-11-06).
 
 ## Decisions (Kevin, 2026-10-31)
 
@@ -140,9 +141,9 @@ that action on the selected sub-target", which is what the resent token drew.
 
 | Fact | Set by | Cleared by | Backstop |
 | --- | --- | --- | --- |
-| `sent`: something went out, nothing back yet | a bar press or release, outgoing `0x01A` (3 magic, 7 ws, 9 ja, 16 ranged, 25 monster skill), outgoing `0x037` (item) | any `0x028` start or finish of ours, a refusal | 0.6s until the packet is seen, 2s after |
-| `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787) | 30s |
-| `lock_until`: the lock's end | a finish (2, 3, 5, 6, 11, 14, 15 of ours, and 4 while a cast is running), an interrupt | time | none needed |
+| `sent`: something went out, nothing back yet | a bar press or release, outgoing `0x01A` (3 magic, 7 ws, 9 ja, 16 ranged, 25 monster skill), outgoing `0x037` (item) | any `0x028` start or finish of ours, a refusal | 0.6s until the packet is seen, 2s after, or a spell's `cast_time` + 0.4s where longer (2026-11-06) |
+| `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787) | a spell's `cast_time` + 0.4s, a weaponskill 3s, an item's `cast_time` + 1s, else 30s; a finish is still read as one for 30s (2026-11-06) |
+| `lock_until`: the lock's end | a finish (2, 3, 5, 6, 11, 14, 15 of ours, and 4 while a cast is running or a spell that went out is unanswered), an interrupt, the end of a start's wait | time | none needed |
 
 Busy is any of the three. A held press goes on the first tick nothing is busy.
 
@@ -154,9 +155,9 @@ GearSwap filters cancel a press with no packet at all (Selindrile's
 `filter_precast` does, on a recast, a cost or silence), and the next press must
 not wait out an answer that cannot come. It is a guess past the client's send
 cadence: too short, a press held behind one still leaving is released early and
-refused. A press on its own recast sets nothing, for the same reason. The 30s
-backstop bounds a finish that never arrives, and a held press older than that is
-dropped.
+refused. A press on its own recast sets nothing, for the same reason. A finish that never
+arrives is bounded by the start's own length (2026-11-06, below), or 30s where
+nothing names one, and a held press older than 30s is dropped.
 
 Zone, death, job change, logout, unload and `off` forget everything, since
 nothing tracks packets while off. A config mode, suppression and a bar's
@@ -593,7 +594,7 @@ Kevin's was stopping self-cures, which is the `nothing went out` the 0.6s exists
   7143.90 were held, the seventh found no `<t>`, and the last held one was dropped at the
   30s backstop. Tail Slap's casts take under 0.8s, and this is the first such stall in 17
   logs. What ended the cast is unknown. Kevin left the backstop at 30s rather than bound
-  it by the cast's own length.
+  it by the cast's own length, and bounded it on 2026-11-06 (below).
 - **`ability` at 0.5 is safe rather than tight.** GearSwap put 26 more sends inside it,
   from +0.14 to +0.39, and all were accepted. The one refusal, at +0.13, was Efflux's own
   recast (88).
@@ -713,3 +714,35 @@ start bracket the true lock. Every line is in `debug.log`.
 | 31 | Press a `<st>` slot, pick a target, press OK | `cursor`, `arrow`, `OK`, the cast lands on who you picked, target unchanged | Only `<stpc>` and `<stnpc>` have run live |
 | 32 | Press a bar spell during a cast, then type `//hud layout` | `dropped ...: //hud layout`, nothing goes | Only `suppressed` has dropped a press for this reason |
 | 33 | Press Cure IV again late in its own lock, about +1.8 after its finish | `hold Cure IV`, `release`, and it casts at about +2.72, with no `not held` and no refusal | A short recast inside a lock is held. Passes, 10 of 10 on `2e4fb77` |
+
+## The finish backstop, bounded (Kevin, 2026-11-06)
+
+A laggy event's log showed seven starts whose finish never arrived, each holding every
+bar press for 11 to 30s (four ran the full 30s backstop, three were freed by a macro).
+A start now keeps the bar busy for its spell's resource `cast_time` plus one 0.4s server
+beat (Fast Cast only shortens the cast), 3s for a weaponskill, an item's `cast_time` plus
+1s, and the old 30s for a ranged attack or anything the resources cannot name. That
+end is taken for the lost finish: it starts the kind's lock, since the server locked
+from the real finish, and a press held through both is then sent, not dropped. A
+finish arriving later is still read as one, so it still locks, for the full 30s.
+The weaponskill and item figures are
+unverified, and so is the items resource's `cast_time` and that a category 9 start
+names its item in `targets[1].actions[1].param`.
+
+## A lost start, answered by its finish (Kevin, 2026-11-06)
+
+The same log lost seven spell STARTS whose finishes arrived (messages 230, 75, 236,
+236, 236, 230, 7), 1.2 to 2.4s after each spell went out. Each finish was ignored as
+the paralysis kind, so nothing locked, and the next send went into the server's lock:
+Refresh III at 20:07:18 was refused with 17, a Cure IV at 6764.73 went unanswered, and
+a Refresh III at 5692 never left. Both of the run's other ignored finishes carried
+message 0 and followed no send. Now a spell that goes out, from anything, waits for an
+answer for its `cast_time` plus 0.4s where that is longer than 2s, and a spell finish
+inside that wait is the spell's own and locks. A refusal still ends the wait at once,
+and a finish after a non-spell send (row 13) is still ignored. Losing both the start
+and the finish leaves the bar free once the wait runs out, and the next send can be
+refused: one re-press, which Kevin accepted. The cost: a spell the server drops
+without an answer (4 of 321 sends in the BLU run) holds the bar for its cast time
+plus 0.4s rather than 2s. Not done: a finish names its spell in `param`, and matching
+it against the one that went out would also keep a paralysis round that lands inside
+the wait from being taken for the finish.

@@ -170,6 +170,7 @@ local function world(opts)
       return env.config
     end,
   })
+  env.res = res
   return service, env
 end
 
@@ -1015,6 +1016,34 @@ describe("the action service", function()
       env.now = env.now + 3.01
       service.tick()
     end
+
+    it("waits on a spell's finish for its cast time out of the spells resource, and a beat, then its lock", function()
+      local service, env = queued()
+      local start = act(8, 24931)
+      start.targets = { { actions = { { param = 1 } } } }
+      env.res.spells[1].cast_time = 2
+      service.on_chunk(ACTION, "raw", start)
+      env.now = env.now + 5.09
+      service.tick()
+      assert.is_true(service.queue.busy())
+      env.now = env.now + 0.02
+      service.tick()
+      assert.is_false(service.queue.busy())
+    end)
+
+    it("waits on an item's finish for its cast time out of the items resource, then its lock", function()
+      local service, env = queued()
+      local start = act(9, 24931)
+      start.targets = { { actions = { { param = 4181 } } } }
+      env.res.items[4181].cast_time = 2
+      service.on_chunk(ACTION, "raw", start)
+      env.now = env.now + 3.99
+      service.tick()
+      assert.is_true(service.queue.busy())
+      env.now = env.now + 0.02
+      service.tick()
+      assert.is_false(service.queue.busy())
+    end)
 
     it("names its mode among the tuning core seeds, shipping on", function()
       local service = world()
