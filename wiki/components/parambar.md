@@ -14,7 +14,8 @@ the number beside each, sitting at the bottom centre of the screen.
 - The HP and MP numbers change colour as they drop: yellow, then orange, then
   red.
 - The TP number turns blue at 1000 or more, and the TP bar is dimmed below
-  that.
+  that and full from there to 3000. An HP or MP number reads 0 whenever its
+  percentage does.
 - A **compact** mode with narrower bars and tighter spacing.
 - A **melee accuracy** row above the TP bar - how many of your swings landed
   over the last thirty seconds, with your measured attack delay on the end;
@@ -29,10 +30,11 @@ hit messages (a hit and a critical hit) and the two miss messages, for your
 own swings only - your pet's do not count, and neither do your ranged
 attacks, which are a different stat.
 
-A parry, a block, a counter, a guard or a Third Eye evasion counts as
-**neither** a hit nor a miss, so none of them reaches the total. None of them
-is your accuracy failing. The figure is "of the swings that landed or missed",
-and that is the same rule the `scoreboard` addon uses.
+Only those four messages count. A swing the game reports any other way - a
+parry, a counter, a Third Eye evasion - is **neither** a hit nor a miss and
+never reaches the total, since none of them is your accuracy failing. The
+figure is "of the swings that landed or missed", the same rule the `scoreboard`
+addon uses.
 
 **The delay is measured, not calculated.** It is the median time between
 your melee rounds over the same window - what your swings are actually
@@ -40,7 +42,8 @@ landing at, after gear, haste, songs, dual wield and everything else. It has
 to be measured, because nothing in the game tells an addon your haste: gear
 haste only exists as item description text, and a march's strength depends on
 the bard's own skill and instrument, which your client cannot see. It reads
-`--s` until two rounds have landed.
+`--s` until two rounds have landed; before any swing has landed the whole row
+reads `Acc: --% (0/0) - --s`.
 
 The figure is the **median** gap rather than the average, so that a
 weaponskill, a cast or a step out of range does not drag it. That needs a
@@ -59,25 +62,22 @@ window 60` if you want a steadier number, or read the `(7/9)` rather than the
 percentage.
 
 `//hud parambar accuracy reset` empties the window, so you can start a fresh
-count on a new fight or after a gear change. The row is text only - there is
-nothing on it to click, and the parameter bar takes no part in the mouse at
-all.
+count on a new fight or after a gear change; logging out empties it too. The
+row is text only - there is nothing on it to click, and the parameter bar takes
+no part in the mouse at all.
 
 Switching the row on or off changes how tall the widget is, so the bars move
 down or up by the height of the row; drag the parameter bar back where you
-want it in `//hud layout` afterwards.
+want it in `//hud layout` afterwards. The count keeps running while the row is
+off, so switching it back on shows the full window rather than a fresh one.
 
 ## Configuration options
-
-A default that changes later does not reach a `config.lua` that already
-exists - your own value wins - so a parameter bar set up before 2026-09-28
-keeps `window_seconds = 15` until you change it or reset the component.
 
 `config.lua` in the component's folder. Everything here can be left alone;
 `compact`, `accuracy.enabled` and `accuracy.window_seconds` are also set by
 command.
 
-The bar width, spacing and offset are not settings: the troughs and the
+The bars' width, spacing and position are not settings: the troughs and the
 HP/MP/TP labels are part of the background image, so the fills are fixed to
 it. A `bar` or `compact_bar` block left in an older `config.lua` is ignored.
 
@@ -85,11 +85,11 @@ it. A `bar` or `compact_bar` block left in an older `config.lua` is ignored.
 | --- | --- | --- |
 | `compact` | `false` | use the compact bar art, with narrower bars and tighter spacing |
 | `dim_tp_bar` | `true` | draw the TP bar dimmed until TP reaches 1000 |
-| `font` | `"sans-serif"` | font for the numbers |
+| `font` | `"sans-serif"` | font for the numbers and the accuracy row |
 | `font_size` | `14` | font size |
 | `text_offset` | `0` | shifts the numbers sideways, in pixels |
-| `text_color` | white | number colour |
-| `text_stroke` | dark, width 2 | outline around the numbers |
+| `text_color` | white | colour of the numbers and the accuracy row |
+| `text_stroke` | dark, width 2 | outline around the numbers and the accuracy row |
 | `full_tp_color` | blue | TP number colour at 1000 or more |
 | `low_hp_colors` | yellow / orange / red | HP number colour under 75% / 50% / 25% |
 | `low_mp_colors` | yellow / orange / red | the same for MP |
@@ -104,17 +104,15 @@ it. A `bar` or `compact_bar` block left in an older `config.lua` is ignored.
 ## Commands
 
 Every setting below can also be changed with the mouse: `//hud config parambar`
-opens the [settings window](../Home.md#settings-window) on this component.
-(`accuracy reset` is an action rather than a setting, so it is not there.)
+opens the [settings window](../Home.md#settings-window) on this component,
+where the window length steps five seconds a click. (`accuracy reset` is an
+action rather than a setting, so it is not there.)
 
 | Command | What it does |
 | --- | --- |
-| `//hud parambar` | print the compact and accuracy state |
+| `//hud parambar` | print the compact and accuracy state, with the window length |
 | `//hud parambar compact on\|off` | switch compact mode |
 | `//hud parambar accuracy` | print the row's state, window and current reading |
 | `//hud parambar accuracy on\|off` | show or hide the accuracy row |
 | `//hud parambar accuracy reset` | empty the window and start a fresh count |
 | `//hud parambar accuracy window <seconds>` | set how much history the row counts (1 to 600) |
-
-`//hud parambar accuracy reset` is the only way to empty the window: the row
-is text, with nothing on it to click.
