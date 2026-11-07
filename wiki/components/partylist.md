@@ -5,27 +5,48 @@ Alias: `pl`
 ## Description
 
 FFXIV's party list for FFXI: your party as a column of rows, each with the
-member's name, job, level, HP/MP/TP bars, buff icons and distance. Both
+member's name, job, level, HP/MP/TP bars and buff icons, and their distance if
+you switch that on. Both
 alliance parties are available as two further lists,
 off by default, that you place separately.
 
 ## Features
 
-- One row per party member: name, main and sub job with levels, HP, MP and
+- One row per party member: name, main and subjob with levels, HP, MP and
   TP as bars with numbers.
 - The HP number changes colour as HP drops: yellow, then orange, then red
-  under 75%, 50% and 25%. A full TP bar is marked.
-- A **job icon** on each row, coloured by role (tank, healer, damage,
-  support).
-- Up to sixteen **buff icons** per member, ordered by priority and filtered
-  to your liking (see Buffs below).
-- Members out of range are **dimmed**, and a **range indicator** can mark who
-  is within a chosen distance of you - as icons, or as the distance in yalms.
-- The targeted member is highlighted.
+  under 75%, 50% and 25%. The TP bar is full at 1000 and the TP number turns
+  blue there; only the number goes higher. Names are cut at 17 characters.
+- A **job icon** on each row, coloured by role: tank for PLD, RUN and PUP,
+  healer for WHM and SCH, support for BRD, COR and GEO, damage for everything
+  else (RDM included), and a fifth colour for the SPC trusts. A trust's job
+  and level come from a built-in table (its level is the party leader's), so
+  a trust the table does not know shows no job.
+- Up to sixteen **buff icons** per member in two rows of eight, ordered by
+  priority and filtered to your liking (see Buffs below); the ninth icon opens
+  the second row. A buff newer than the art takes a slot and draws nothing.
+- Members out of casting range are **dimmed**: the bars are at full strength
+  within about 21 yalms, half under 50, and a quarter beyond that or when the
+  distance is unknown. A **range indicator** can show each member's distance
+  in yalms (two decimals, `?` when unknown, nothing on your own row), or mark
+  with icons who is within the near and far distances you set.
+- The targeted member is highlighted, and the member under the subtarget cursor
+  is half highlighted (whether the highlight draws over the row art has not
+  been checked in a live client). Party and alliance leaders and the
+  quartermaster are marked.
+- A member in another zone shows that zone's name in parentheses in place of
+  their job - `(Port Jeuno)`, or `(?)` for a zone the resources do not know -
+  with empty bars and `?` for every number, and no buffs.
 - The **alliance lists** (`alliance1`, `alliance2`) show the other two
-  parties in a compact row layout, each placed on its own.
-- Optional: hide the list while solo, show empty rows, align rows to the
-  bottom instead of the top, set the row spacing.
+  parties as a compact three-by-two grid, each placed on its own: job icon,
+  name cut at 9 characters, and HP and MP bars without numbers - no TP,
+  levels, buffs or range. A member in another zone shows the zone name
+  shortened, and no bars.
+- A list with nobody in it draws nothing, an alliance list you have switched
+  on included; layout mode shows every list with a sample party so it can be
+  placed.
+- Optional: hide the list while solo, draw the frame at its full height, align
+  rows to the bottom instead of the top, set the row spacing.
 
 ## Configuration options
 
@@ -34,9 +55,9 @@ Every option below is per list, under `lists.main`, `lists.alliance1` and
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| `item_spacing` | `0` | extra pixels between rows |
+| `item_spacing` | `0` | extra pixels between rows (and between columns on the alliance grid) |
 | `align_bottom` | `false` | grow the list upward from its bottom edge rather than down from the top |
-| `show_empty_rows` | `false` | draw the rows of empty party slots |
+| `show_empty_rows` | `false` | draw the frame at its full size (six rows, or the whole alliance grid) even when the party is smaller |
 
 The main list only:
 
@@ -69,16 +90,18 @@ order and filters, which stay commands.
 | Command | What it does |
 | --- | --- |
 | `//hud partylist` | print all three lists' settings |
-| `//hud partylist [<list>]` | print one list's settings |
+| `//hud partylist <list>` | print one list's settings |
 | `//hud partylist [<list>] spacing <px>` | set the extra space between rows |
 | `//hud partylist [<list>] align top\|bottom` | grow the list down from the top or up from the bottom |
-| `//hud partylist [<list>] emptyrows on\|off` | draw or hide empty party slots |
-| `//hud partylist range num\|icons` | show distance as a number or as indicator icons |
+| `//hud partylist [<list>] emptyrows on\|off` | draw the frame at its full height, or only as tall as the party |
+| `//hud partylist range num\|icons` | show distance as a number or as indicator icons (`numeric` and `icon` also work) |
 | `//hud partylist range <near> <far>` | the two distances, in yalms, that the indicators mark |
 | `//hud partylist hidesolo on\|off` | hide the list while solo |
 | `//hud show partylist <list>` / `//hud hide partylist <list>` | switch one list on or off |
 
-`range` and `hidesolo` apply to the main party only and refuse a list word.
+`range` and `hidesolo` apply to the main party only and refuse an alliance
+list word. In `range <near> <far>`, both are whole yalms, `0` switches a ring
+off, and far cannot be nearer than near.
 
 ### Buffs
 
@@ -89,7 +112,7 @@ one verb of the party list's own:
 
 | Command | What it does |
 | --- | --- |
-| `//hud buffs partylist` | the first sixteen buffs of the priority order - the ones a row would draw if a member had them; use `active` for what is on someone now |
+| `//hud buffs partylist` | the top of the priority order, as many as a row draws (sixteen out of the box), before the filter is applied; use `active` for what is on someone now |
 | `//hud buffs partylist list [<page>]` | the full priority order |
 | `//hud buffs partylist find <text>` | search buffs by name |
 | `//hud buffs partylist active [<member>]` | the buffs on you, or on a named party member |

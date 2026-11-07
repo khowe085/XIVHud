@@ -6,22 +6,43 @@ Alias: `eb`
 
 FFXIV's experience bar for FFXI: a thin gold bar with your job's icon at its
 left and a status line above it, filling toward your next level, merit or
-master level.
+master level. It ships at the bottom centre of the screen.
 
 ## Features
 
 - **Three modes**, picked automatically from your job level:
   - below the level cap, the bar fills with **experience** toward the next
     level;
-  - at the cap, with **limit points** toward the next merit;
+  - at the cap, with **limit points** toward the next merit - stopping at
+    9999/10000 once your merits are capped;
   - at the cap once you hold the Master Breaker key item, with **exemplar
-    points** toward the next master level.
+    points** toward the next master level. This bar moves only when the game
+    sends a character update; each gain feeds the rate at once.
 - The status line reads like `WAR99/SAM49 (ML23) JP: 342 MP: 12 EP/hr: 12.6k`:
-  your job pair, your master level where you have one, job points, merit
-  points, and the rate you are earning at - `EXP/hr` below the cap, `CP/hr`
-  for limit points, `EP/hr` for exemplar points.
+  your job pair, your master level once you are earning exemplar points, job points, merit
+  points, and the rate you are earning at - `EXP/hr` below the cap, `EP/hr`
+  for exemplar points. In the limit-point mode the rate is `CP/hr`, your
+  **capacity point** rate: limit points move the bar and the merit count but
+  have no per-hour figure of their own. With no subjob the pair reads
+  `WAR99/---`, and the line is blank until the game has reported your job.
+- The rates cover the last ten minutes, idle time included, so they fall
+  while you earn nothing. Each reads 0 until 30 seconds after its first gain,
+  and is rounded down to the nearest hundred, so under 100 an hour reads
+  `0.0k`.
 - The fill eases toward each new value.
 - Your job's icon is drawn beside the bar.
+
+Experience, exemplar points and master level are kept per character and job
+under `addons/XIVHud/cache/packets/<Character>/`, so the bar has figures
+straight after a login or a reload. Those can be from your last session until
+the game sends new ones. Limit points, merits and the rates are held in memory
+only: they survive a slot switch, a reset and logging back in on the same
+character, and start over on a `//lua reload` or another character.
+
+Which fields of the game's character update carry the Master Breaker flag and
+the master level has not been confirmed in a live client. If they are wrong,
+the bar stays in limit-point mode and reads `ML0`; the second line of
+`//hud expbar` is there to check.
 
 The game only reports merit totals when they change or when you zone, so a
 merit-capped character who is earning nothing may read 0 merits until they
@@ -29,28 +50,29 @@ zone or open the status menu.
 
 ## Configuration options
 
-`config.lua` in the component's folder. There are no settings commands; these
-are set by editing the file.
+`config.lua` in the component's folder, a file you create yourself (see
+[where settings are kept](../Home.md#where-settings-are-kept)). There are no
+settings commands; these are set by editing the file.
 
 | Option | Default | What it does |
 | --- | --- | --- |
 | `font` | `"sans-serif"` | font for the status line |
-| `font_size` | `6` | font size (changing it also wants `bar.width` changed, or `//hud reset expbar` to recompute it) |
+| `font_size` | `6` | font size; `bar.width` and `job_icon.size` do not follow it, so change them with it (`//hud reset expbar` puts all three back to shipped) |
 | `text_color` | gold | status line colour |
 | `text_stroke` | dark, width 2 | outline around the text |
 | `gap` | `3` | gap between the status line and the bar |
 | `job_icon.gap` | `1` | gap between the job icon and the text |
-| `job_icon.size` | computed | the icon's size; derived from the font size |
+| `job_icon.size` | from the shipped font size | the icon's size; set it yourself if you change `font_size` |
 | `bar.height` | `5` | bar height in pixels |
-| `bar.width` | computed | bar width; derived from the font size |
+| `bar.width` | from the shipped font size | bar width; set it yourself if you change `font_size` |
 | `bar.inset` | `2` | how far the fill sits inside the frame |
-| `bar.overhang` | `8` | how far the bar runs past the longest status line |
+| `bar.overhang` | `8` | how far the shipped `bar.width` runs past the longest status line; changing it in your file does nothing |
 | `fill_color` | white | tint over the gold fill art (white leaves it gold) |
-| `text_width_ratio` / `text_height_ratio` | `0.68` / `1.3` | how wide and tall the text is assumed to draw per point of font size |
+| `text_width_ratio` / `text_height_ratio` | `0.68` / `1.3` | how wide and tall the text is assumed to draw per point of font size; the width shapes only the shipped `bar.width`, the height places the bar under the header |
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `//hud expbar` | print the mode, the current and required points, all three rates, and what was read for the master level |
+| `//hud expbar` | two lines: the mode, the current and required points and all three rates; then `master breaker yes\|no, master level N, merits N/M` as read from the game (`M` is 0 until it is sent) |
 | `//hud expbar clear` | drop the rate history and start the per-hour figures over |

@@ -6,7 +6,7 @@ Alias: `ev`
 
 Your equipped gear as a 4x4 grid of item icons on a dark panel, one cell per
 equipment slot, so you can see at a glance what you are wearing without
-opening the equipment menu.
+opening the equipment menu. It ships at 500,500, pulled in on a smaller screen.
 
 ## Features
 
@@ -14,10 +14,14 @@ opening the equipment menu.
   item in it.
 - Updates as you change gear, including GearSwap swaps.
 - Draws an **X** over any slot that encumbrance has locked.
-- Shows your **ammo count** over the ammo slot.
+- Shows your **ammo count** over the ammo slot when you have more than one.
 - Icons are read straight out of the game's data files the first time an
-  item is seen, then cached in `addons/XIVHud/cache/items/` for every character.
-  No icon pack to download.
+  item is seen, one per frame, then cached in `addons/XIVHud/cache/items/` for
+  every character and shared with the crossbar and hotbar. No icon pack to
+  download. An icon that fails to read leaves its slot blank until you next log
+  in, when it is tried again.
+- In layout mode the panel is drawn even with `bg.visible` off, with no icons,
+  so it can be placed.
 
 ## Configuration options
 
@@ -50,16 +54,19 @@ cache folder, `cache/items`, and never looks at the old ones again. The loose
 `icons/custom` alone, since that is your own crossbar and hotbar art.
 
 If chat says **"item icons are not being read: the game's item data has
-changed"**, a game update has moved the icons again and XIVHud needs an update;
-nothing is cached until it has one.
+changed"**, a game update has moved the icons again and XIVHud needs an update.
+An icon that cannot be trusted is not cached, and its slot stays blank rather
+than showing the wrong picture.
 
-If an item still draws the wrong icon, `//hud equipviewer icons probe` prints
-the item id the addon believes each slot holds - compare those with what you
-are actually wearing - along with where it read each icon from, and writes the
-same in more detail to `icons.log` beside the addon's `load.log`; that file is
-what to send along with a report.
+If an item still draws the wrong icon, `//hud equipviewer icons probe` prints,
+for each occupied slot, the item id the addon believes it holds and where it
+read the icon from. Each line starts with the game's slot number - 0 main, 1
+sub, 2 ranged, 3 ammo, 4 head, 5 body, 6 hands, 7 legs, 8 feet, 9 neck, 10
+waist, 11 and 12 ears, 13 and 14 rings, 15 back - so compare the ids with what
+you are actually wearing. It writes the same in more detail to `icons.log`
+beside the addon's `load.log`; that file is what to send along with a report.
 
-To make the addon read an icon again, unload it (`//lua unload XIVHud`), delete
+To make the addon read an icon again, unload it (`//lua unload xivhud`), delete
 the file `cache/items/<item id>.bmp` in the addon's folder, and load it again. There
 is no command for it: the addon cannot overwrite an image file it is currently
 drawing.
@@ -71,7 +78,7 @@ opens the [settings window](../Home.md#settings-window) on this component.
 
 | Command | What it does |
 | --- | --- |
-| `//hud equipviewer` | print both toggles as they stand |
+| `//hud equipviewer` | print both toggles as they stand; this and every other reply adds how many icons could not be read since login, if any |
 | `//hud equipviewer encumbrance on\|off` | show or hide the X over locked slots |
 | `//hud equipviewer ammocount on\|off` | show or hide the ammo count |
 | `//hud equipviewer icons probe` | print where each equipped slot's icon was read from, and write `icons.log` |

@@ -7,16 +7,19 @@ Alias: `hb`
 FFXIV's hotbar for FFXI: a plain row of ten slots fired by the number keys,
 with up to eight rows on screen at once. It is the [crossbar](crossbar.md)
 with a different face - the two take the same kinds of binding, one mouse binder
-and one set of commands - so anything you can bind to the crossbar you can
-bind here, and the same layers, contexts, sets and rotations apply.
+and the same commands under their own names (bar `view` and `wxhb`, which
+only the crossbar has) - so anything you can bind to the crossbar you can bind
+here, and the same layers, contexts, sets and rotations apply.
 
 ## Features
 
 - **Ten slots per row, eight rows** (`bar1` to `bar8`), each placed and
-  resized on its own. Row 1 ships on; rows 2 to 8 ship off.
+  resized on its own. Row 1 ships on, about mid-screen; rows 2 to 8 ship off,
+  stacked under it in one column.
 - **Row 1 follows the active set**, the one the cycle keys move through.
   Rows 2 to 8 are locked to sets 2 to 8, so a row you switch on always shows
-  the same set.
+  the same set - and row 1 shows the same set as one of them whenever the
+  active set is not 1.
 - **Four shapes per row**: 10x1, 5x2, 2x5 or 1x10. Slots are numbered left
   to right, top to bottom, so a binding stays on the same slot whatever the
   shape.
@@ -25,20 +28,34 @@ bind here, and the same layers, contexts, sets and rotations apply.
   `bar4`, ALT+SHIFT for `bar5`, CTRL+ALT+SHIFT for `bar6`. `bar7` and `bar8`
   have no keys and are mouse only. The bare number row is the game's: it
   fires nothing, so a controller cannot set a row off by accident.
-  **CTRL+Up** and **CTRL+Down** cycle the active set (the game's own macro set
-  changes on the same chord).
-- **Left-click a slot** to fire it.
+  **CTRL+Up** moves to the next set in the rotation and **CTRL+Down** to the
+  previous one, with CTRL held on its own (the game's own macro set changes on
+  the same chord, and still sees the arrow; the arrow keys' codes have not
+  been checked in a live client). Left and right modifiers both count;
+  CTRL+ALT and any other chord reach the game untouched. Holding a chord fires
+  once, and a number pressed before its modifier stays the game's until it is
+  released.
+- None of the keys fire while the chat line is open, while the HUD is hidden
+  (a cutscene with `hidecutscene` on, or zoning), in layout or edit mode,
+  before a job has loaded, or while the hotbar is hidden.
+- **Left-click a slot** to fire it. The game does not see a click on a drawn
+  slot, even an empty one.
+- **A press during a cast is held** by the
+  [action queue](../Home.md#the-action-queue), shared with the crossbar, and
+  goes by itself as soon as you can act.
 - The same slot art as the crossbar: icon, name, recast arc, MP or TP cost,
-  item and tool counts, and the skillchain property a weaponskill would make
-  while a chain is open.
+  item and tool counts, and the skillchain property a weaponskill, job
+  ability or pet command would make while a chain is open.
 - **A mouse binder** (`//hud hotbar edit`): click a slot, pick a layer, pick an
-  action from what your character knows. Menu entries - Stratagems, the Blood
-  Pacts, the DNC modes, Job Change - open what is behind them rather than binding, exactly
-  as on the crossbar.
+  action from what your character knows. Menu entries - Stratagems, Phantom
+  Roll, Quick Draw, the Blood Pacts, Ready, the DNC dances, Rune Enchantment,
+  Ward, Effusion, Job Change - open what is behind them rather than binding,
+  exactly as on the crossbar.
 - **Drag a slot onto the crossbar**, or a crossbar slot onto the hotbar: the
   two slots swap everything they hold, every layer of it. Edit mode covers
   both bars, so `//hud hotbar edit` and `//hud crossbar edit` do the same
-  thing. See [dragging on the crossbar](crossbar.md).
+  thing: a hidden bar refuses, and is left out when the other one opens. See
+  [editing on the crossbar](crossbar.md#editing-without-guessing).
 - **Sets, sharing and rotations** work exactly as on the crossbar: eight
   sets per job, any of them shared across jobs, each in the drawn rotation,
   the sheathed one, both or neither.
@@ -56,15 +73,16 @@ Bindings are stored per job in the addon's data folder (`<JOB>.lua` and
 or the commands below. `config.lua` beside them holds the settings.
 
 **`//hud reset hotbar` deletes every job's hotbar bindings** in the active
-layout slot, along with the settings - there is no undo and no confirmation
-step. To start one job over, unbind its slots or `copy` another job's bindings
+layout slot, along with the settings and the rows' placement - there is no undo
+and no confirmation step. To start one job over, unbind its slots or `copy` another job's bindings
 over it.
 
 | Option | Default | What it does |
 | --- | --- | --- |
 | `bars.<bar>.rows` | `1` | that row's shape: `1` (10x1), `2` (5x2), `5` (2x5) or `10` (1x10) (`rows`) |
 | `bars.<bar>.hide_empty` | unset | leave that row's empty slots undrawn; unset, the row follows `hide.empty_slots` (`hideempty`) |
-| `numbers` | `true` | draw the set number beside every row; off, the slots move into its space (`numbers`) |
+| `numbers` | `true` | draw the set number, in gold, left of slot 1 on the wide shapes and above it on the tall ones; off, the slots move into its space (`numbers`) |
+| `binder_pos` | none | where you last left the binder window; written by the binder, not by hand |
 | `set_flags[n].shared` | `false` | set `n` is shared by every job (`share`) |
 | `set_flags[n].cycle.drawn` / `.sheathed` | `true` / `true` | which rotations set `n` belongs to (`cycle`) |
 | `hide.empty_slots` | `false` | leave empty slots undrawn on every row that has no `hide_empty` of its own |
@@ -78,14 +96,14 @@ over it.
 | `disabled_alpha` | `100` | opacity of an action you cannot use right now |
 | `feedback.alpha` / `speed` | `150` / `30` | the flash when a slot fires |
 | `font` / `font_size` | `"sans-serif"` / `7` | the slot label font |
-| `text_offset.x` / `.y` | `0` / `0` | nudge the labels |
 | `text_color` / `text_stroke` | white / dark, width 2 | label colour and outline |
 | `mp_cost_color` / `tp_cost_color` | pink / yellow | the cost text colours |
 
-The travel countdown is a setting
-shared with the crossbar: `//hud delay`, listed on the [home page](../Home.md#action-commands). Which
-rows are on is stored with the placement: `//hud show hotbar bar2` switches
-one on, or SHIFT + right-click it in layout mode.
+The travel countdown and the action queue are settings shared with the
+crossbar: `//hud delay` and `//hud queue`, listed on the
+[home page](../Home.md#action-commands). Which rows are on is stored with the
+placement: `//hud show hotbar bar2` switches one on, or SHIFT + right-click it
+in layout mode.
 
 ## Commands
 
@@ -97,23 +115,24 @@ context=sub:whm`, `context=wpn:great-katana`, `context=buf:light-arts`.
 The settings that are not about one slot - which sets are shared, which
 rotation each set is in, each row's shape and hide-empty switch, and the set
 numbers - can also be changed with the mouse: `//hud config hotbar` opens the
-[settings window](../Home.md#settings-window) on this component. Slots
-themselves are edited in edit mode, not there.
+[settings window](../Home.md#settings-window) on this component, in three tabs:
+`sets`, `rows` and `general`. Slots themselves are edited in edit mode, not
+there.
 
 | Command | What it does |
 | --- | --- |
-| `//hud hotbar` | the job, active set and weapon state, then one line per row: on or off, shape, the set it shows, and whether it hides empty slots |
+| `//hud hotbar` | the job, active set, weapon state and weapon classes, then one line per row: on or off, shape, the set it shows, and whether it hides empty slots |
 | `//hud hotbar <bar>` | the head line and that row alone |
 | `//hud hotbar [<bar>] rows <1\|2\|5\|10>` | set a row's shape (row 1 when no row is named) |
 | `//hud hotbar [<bar>] hideempty on\|off` | XIV's "Hide empty slots": leave a row's unbound slots undrawn (row 1 when no row is named). A slot counts as empty when nothing is bound to it through the layers active right now. Every slot is still drawn while the binder or layout mode is open |
-| `//hud hotbar numbers [on\|off]` | show or hide the set number on every row, or say which it is |
+| `//hud hotbar numbers [on\|off]` | show or hide the set number on every row, or say which it is; one switch, so it takes no row word |
 | `//hud hotbar help` | list every command |
 | `//hud hotbar edit` | toggle the mouse binder, on the crossbar as well |
 | `//hud hotbar set <1-8>` | switch the active set (and so row 1) |
 | `//hud hotbar cycle` / `cycle back` | move to the next or previous set in the rotation |
 | `//hud hotbar list [<set>]` | list what is bound on this job, layer by layer |
 | `//hud hotbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>]` | bind a slot |
-| `//hud hotbar unbind <address> [context=<layer>]` | clear a slot in one layer — the one `context=` names, or the job base without it |
+| `//hud hotbar unbind <address> [context=<layer>]` | clear a slot in one layer - the one `context=` names, or the job base without it |
 | `//hud hotbar alias <address> [<name>] [context=<layer>]` | change the label under a slot; omit the name to clear it |
 | `//hud hotbar icon <address> [<icon>] [context=<layer>]` | change a slot's icon; omit it to clear |
 | `//hud hotbar swap <address> <address>` | swap two slots, every layer at once |
@@ -125,5 +144,7 @@ themselves are edited in edit mode, not there.
 | `//hud show hotbar <bar>` / `//hud hide hotbar <bar>` | switch one row on or off |
 
 A set is a set whatever row draws it, so the binding verbs take no row word.
-The `<type>`, `<target>`, `alias=` and `icon=` rules are the crossbar's,
-described under [Binding](crossbar.md#binding) on its page.
+The `<type>`, `<target>`, `alias=`, `icon=` and `context=` rules are the
+crossbar's, described under [Binding](crossbar.md#binding),
+[Labels and icons](crossbar.md#labels-and-icons) and
+[Naming the layer](crossbar.md#naming-the-layer) on its page.
