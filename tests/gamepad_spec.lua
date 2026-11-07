@@ -662,23 +662,39 @@ describe("gamepad", function()
   end)
 
   describe("problems", function()
-    local function known(name)
-      return name ~= "nope"
+    local function check(value)
+      if value == "nope" then
+        return nil, "no behavior nope"
+      end
+      if type(value) == "table" and value.key == "enter;quit" then
+        return nil, "enter;quit is not a key name"
+      end
+      return true
     end
 
     it("has none for the shipped map", function()
-      pad = build({ known = known })
+      pad = build({ check = check })
       assert.are.same({}, pad.problems())
     end)
 
     it("names each broken gesture once, in order", function()
-      pad = build({ known = known })
-      config = on({ map = { ["lt+q"] = "slot", ["lt+lt"] = "slot", a = "nope", b = 5, x = false } })
+      pad = build({ check = check })
+      config = on({
+        map = {
+          ["lt+q"] = "slot",
+          ["lt+lt"] = "slot",
+          a = "nope",
+          b = 5,
+          x = false,
+          y = { key = "enter;quit" },
+        },
+      })
       assert.are.same({
         "gamepad: a - no behavior nope",
-        "gamepad: b - not a behavior name",
+        "gamepad: b - not a behavior",
         "gamepad: lt+lt - names lt twice",
         "gamepad: lt+q - no button q",
+        "gamepad: y - enter;quit is not a key name",
       }, pad.problems())
     end)
 
@@ -710,6 +726,241 @@ describe("gamepad", function()
     it("does not ask after behaviours it has no way to ask about", function()
       config = on({ map = { a = "nope" } })
       assert.are.same({}, pad.problems())
+    end)
+  end)
+
+  describe("a gesture's own behaviour", function()
+    it("goes out as the entry the map holds", function()
+      local own = { key = "f" }
+      config = on({ map = { a = own } })
+      connect(0)
+      pads[0] = state(A)
+      local got = pad.poll()
+      assert.are.equal(own, got[1].behavior)
+      pads[0] = state()
+      assert.are.equal(own, pad.poll()[1].behavior)
+    end)
+  end)
+
+  describe("editing the map", function()
+    local function map_copy()
+      local copy = {}
+      for gesture, value in pairs(config.map) do
+        copy[gesture] = value
+      end
+      return copy
+    end
+
+    before_each(function()
+      config = on({ map = pad.config_defaults().map, extra = { l4 = 100, l5 = false, r4 = false, r5 = false } })
+    end)
+
+    describe("bind", function()
+      it("binds a gesture under its spelling, lowercased, and answers it", function()
+        assert.are.equal("lt+l4", pad.bind("LT+L4", "accept"))
+        assert.are.equal("accept", config.map["lt+l4"])
+      end)
+
+      it("replaces what the gesture held", function()
+        pad.bind("a", { key = "f" })
+        assert.are.same({ key = "f" }, config.map.a)
+      end)
+
+      it("keeps one gesture under one spelling", function()
+        config.map["RB+LT+Y"] = "one"
+        assert.are.equal("lt+rb+y", pad.bind("lt+rb+y", "two"))
+        assert.are.equal("two", config.map["lt+rb+y"])
+        assert.is_nil(config.map["RB+LT+Y"])
+      end)
+
+      it("takes effect at the next press", function()
+        connect(0)
+        pad.bind("a", "cancel")
+        pads[0] = state(A)
+        assert.are.same({ { "cancel", true } }, edges(pad.poll()))
+      end)
+
+      it("refuses a gesture it cannot read, and changes nothing", function()
+        local before = map_copy()
+        for _, case in ipairs({
+          { "lt+lt", "names lt twice" },
+          { "lt+", "an empty button" },
+          { "", "an empty button" },
+        }) do
+          local spelling, why = pad.bind(case[1], "accept")
+          assert.is_nil(spelling, case[1])
+          assert.are.equal(case[2], why, case[1])
+        end
+        assert.are.same(before, config.map)
+      end)
+
+      it("names the button it does not know", function()
+        local spelling, why, missing = pad.bind("lt+l5", "accept")
+        assert.is_nil(spelling)
+        assert.are.equal("no button l5", why)
+        assert.are.equal("l5", missing)
+        assert.is_nil(config.map["lt+l5"])
+      end)
+
+      it("gives a broken map a table of its own, the shipped one under the binding", function()
+        config.map = "broken"
+        pad.bind("a", "cancel")
+        assert.are.equal("cancel", config.map.a)
+        assert.are.equal("cancel", config.map.b)
+        config = on()
+        connect(0, state(A))
+        assert.are.same({}, pad.poll())
+        pads[0] = state()
+        pad.poll()
+        pads[0] = state(A)
+        assert.are.same({ { "accept", true } }, edges(pad.poll()))
+      end)
+    end)
+
+    describe("unbind", function()
+      it("removes a gesture of the user's own", function()
+        pad.bind("lt+l4", "accept")
+        assert.are.equal("lt+l4", pad.unbind("lt+l4"))
+        assert.is_nil(config.map["lt+l4"])
+      end)
+
+      it("writes false over a shipped gesture, which the merge would put back", function()
+        assert.are.equal("a", pad.unbind("A"))
+        assert.is_false(config.map.a)
+      end)
+
+      it("removes the gesture under every spelling", function()
+        config.map["LT+Y"] = "one"
+        pad.unbind("lt+y")
+        assert.is_nil(config.map["LT+Y"])
+        assert.is_false(config.map["lt+y"])
+      end)
+
+      it("says when the gesture is not bound", function()
+        pad.unbind("a")
+        for _, gesture in ipairs({ "a", "lt+rb+y" }) do
+          local spelling, why = pad.unbind(gesture)
+          assert.is_nil(spelling)
+          assert.are.equal("not bound", why)
+        end
+      end)
+
+      it("removes a gesture whose button has lost its key", function()
+        config.map["lt+l5"] = "accept"
+        assert.are.equal("lt+l5", pad.unbind("lt+l5"))
+        assert.is_nil(config.map["lt+l5"])
+      end)
+
+      it("names a button it does not know in a gesture the map does not hold", function()
+        local spelling, why, missing = pad.unbind("lt+q")
+        assert.is_nil(spelling)
+        assert.are.equal("no button q", why)
+        assert.are.equal("q", missing)
+      end)
+
+      it("takes effect at the next press", function()
+        connect(0)
+        pad.unbind("a")
+        pads[0] = state(A)
+        assert.are.same({}, pad.poll())
+      end)
+    end)
+
+    it("switches the bridge on and off", function()
+      pad.set_enabled(false)
+      assert.is_false(config.enabled)
+      assert.is_false(pad.enabled())
+      pad.set_enabled(true)
+      assert.is_true(config.enabled)
+    end)
+
+    it("names the pad's buttons in the order it answers them", function()
+      assert.are.same(
+        { "lt", "rt", "lb", "rb", "back", "start", "l3", "r3", "y", "b", "a", "x", "up", "right", "down", "left" },
+        pad.buttons()
+      )
+    end)
+
+    it("lists every gesture and what it does, in order, removals left out", function()
+      config.map = { b = "cancel", a = false, ["lt+y"] = { key = "f" }, back = "open_map" }
+      assert.are.same({
+        { gesture = "b", behavior = "cancel" },
+        { gesture = "back", behavior = "open_map" },
+        { gesture = "lt+y", behavior = { key = "f" } },
+      }, pad.bindings())
+    end)
+  end)
+
+  describe("naming keys", function()
+    before_each(function()
+      config =
+        on({ map = { l4 = "accept", r4 = "cancel" }, extra = { l4 = false, l5 = false, r4 = false, r5 = false } })
+    end)
+
+    it("takes any plain name that is no pad button", function()
+      assert.is_true(pad.learnable("l4"))
+      assert.is_true(pad.learnable("lpad"))
+    end)
+
+    it("refuses a pad button and a name that is not a plain word", function()
+      for _, case in ipairs({
+        { "a", "a is a pad button" },
+        { "lt", "lt is a pad button" },
+        { "L4", "a name is a plain lowercase word" },
+        { "l4+y", "a name is a plain lowercase word" },
+      }) do
+        local ok, why = pad.learnable(case[1])
+        assert.is_nil(ok, case[1])
+        assert.are.equal(case[2], why, case[1])
+      end
+    end)
+
+    it("gives a name its key, which then reads as a button", function()
+      connect(0)
+      assert.is_nil(pad.set_key("l4", 100))
+      assert.are.equal(100, config.extra.l4)
+      assert.are.equal(100, pad.key_of("l4"))
+      assert.is_true(pad.on_key(100, true))
+      assert.are.same({ { "accept", true } }, edges(pad.poll()))
+    end)
+
+    it("moves a key another name has, and says which name lost it", function()
+      config.extra.l4 = 100
+      assert.are.equal("l4", pad.set_key("r4", 100))
+      assert.is_false(config.extra.l4)
+      assert.are.equal(100, config.extra.r4)
+    end)
+
+    it("drops a name of the user's own that loses its key", function()
+      config.extra.lpad = 100
+      assert.are.equal("lpad", pad.set_key("l4", 100))
+      assert.is_nil(config.extra.lpad)
+    end)
+
+    it("clears a key with false", function()
+      config.extra.l4, config.extra.lpad = 100, 101
+      pad.set_key("l4", false)
+      pad.set_key("lpad", false)
+      assert.is_false(config.extra.l4)
+      assert.is_nil(config.extra.lpad)
+      assert.is_nil(pad.key_of("l4"))
+    end)
+
+    it("gives a broken extra a table of its own", function()
+      config.extra = "broken"
+      pad.set_key("l4", 100)
+      assert.are.same({ l4 = 100, l5 = false, r4 = false, r5 = false }, config.extra)
+    end)
+
+    it("names the names with a key, in order, leaving out any that holds no key", function()
+      config.extra = { r4 = 101, l4 = 100, l5 = false, lpad = "x", rpad = 101 }
+      assert.are.same({ { name = "l4", key = 100 }, { name = "r4", key = 101 } }, pad.named_keys())
+    end)
+
+    it("knows no key for a name holding something else", function()
+      config.extra.l4 = "100"
+      assert.is_nil(pad.key_of("l4"))
+      assert.is_nil(pad.key_of("nothing"))
     end)
   end)
 end)

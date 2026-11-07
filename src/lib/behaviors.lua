@@ -26,58 +26,53 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ Named behaviours: what a gesture does, in game or on a bar, with nothing
-     of what made it. Three kinds:
+--[[ Behaviours: what a gesture does, in game or on a bar, with nothing of
+     what made it. A gesture names one of three:
 
-       { key = "<setkey name>" }  a key sent to the game, down while held and
-                                  up when let go
-       { action = "<words>" }     an action, written as `bind` takes it after
-                                  the address, run on the press as a slot
-                                  holding it would run it
-       <component>.<name>         one a component declares, handed both edges
-
-     The first two are the file's (data/behaviors.lua), over the shipped ones:
-     a name the file leaves out is the shipped behaviour, and one it names is
-     its own entry, WHOLE - never merged field by field, which would carry a
-     shipped key into an entry the file makes an action. A component's
-     carries a dot, which no name in the file may, so the file cannot shadow
-     one.
+       <name>                      one of the shipped behaviours below
+       <component>.<name>          one a component declares, handed both edges
+       an entry of its own:
+         { key = "<setkey name>" } a key sent to the game, down while held
+                                   and up when let go
+         { type = , action = ... } an action, the record a slot would hold,
+                                   run on the press as that slot would run it
 
      Holders are counted: a behaviour two gestures hold is let go when the
      last of them lets go, and as it went down - the key it pressed, whatever
-     the file says by then. A let-go is `cancelled` when it ends a hold
-     without being a release (focus lost, the pad gone), which a component is
-     told so it can undo the hold without acting on it.
+     the entry says by then. A gesture's own entry is held by itself alone.
+     A let-go is `cancelled` when it ends a hold without being a release
+     (focus lost, the pad gone), which a component is told so it can undo
+     the hold without acting on it.
 
-     Pure: the file, the key sender, the action parser and runner, the
+     Pure: the key sender, the action service's validate and runner, the
      components' behaviours and their delivery arrive as deps. ]]
 
-local NAME = "^[%l%d_]+$"
 -- A word `setkey` could take and nothing more: the name is spliced into a
 -- console command, where a `;` would start another.
 local KEY = "^[%w%+%-%*/%.]+$"
 
-local function defaults()
-  return {
-    accept = { key = "enter" },
-    cancel = { key = "escape" },
-    cycle_window = { key = "numpad+" },
-    main_menu = { key = "numpad-" },
-    lockon = { key = "numpad*" },
-    autorun = { key = "r" },
-    open_map = { action = "open map" },
-  }
+local SHIPPED = {
+  accept = { key = "enter" },
+  cancel = { key = "escape" },
+  cycle_window = { key = "numpad+" },
+  main_menu = { key = "numpad-" },
+  lockon = { key = "numpad*" },
+  autorun = { key = "r" },
+  open_map = { type = "open", action = "map" },
+}
+
+local SHIPPED_NAMES = {}
+for name in pairs(SHIPPED) do
+  SHIPPED_NAMES[#SHIPPED_NAMES + 1] = name
 end
-local SHIPPED = defaults()
+table.sort(SHIPPED_NAMES)
 
 local function new(deps)
   local self = {}
-  local parse_action = type(deps.parse_action) == "function" and deps.parse_action or nil
-  -- Name -> `{ count = , effect = }`: how many hold it and what it went down
-  -- as. A behaviour is in here exactly while something holds it.
+  local validate = type(deps.validate) == "function" and deps.validate or nil
+  -- Behaviour -> `{ count = , effect = }`: how many hold it and what it went
+  -- down as. A behaviour is in here exactly while something holds it.
   local held = {}
-  -- Action words -> `{ record = }` or `{ why = }`: each is read once.
-  local actions = {}
   -- Key name -> how many held behaviours have it down, so two that share one
   -- let it up only when both have.
   local keys_down = {}
@@ -97,20 +92,6 @@ local function new(deps)
     end
   end
 
-  local function file()
-    local value = deps.config and deps.config() or nil
-    return type(value) == "table" and value or {}
-  end
-
-  -- The file's entry for a name, or the shipped one where it has none.
-  local function entry_of(entries, name)
-    local entry = entries[name]
-    if entry == nil then
-      return SHIPPED[name]
-    end
-    return entry
-  end
-
   local function declared(name)
     for _, entry in ipairs(deps.components and deps.components() or {}) do
       if entry == name then
@@ -120,27 +101,13 @@ local function new(deps)
     return false
   end
 
-  local function read_action(words)
-    local known = actions[words]
-    if known == nil then
-      local record, why = parse_action(words)
-      known = record ~= nil and { record = record } or { why = why }
-      actions[words] = known
-    end
-    return known
-  end
-
-  -- What a file entry does, or nil and why it does nothing.
-  local function definition(name, entry)
-    if type(name) ~= "string" or not name:match(NAME) then
-      return nil, "a name is a plain lowercase word"
-    end
+  -- What an entry does, or nil and why it does nothing.
+  local function definition(entry)
     if type(entry) ~= "table" then
       return nil, "neither a key nor an action"
     end
     local key = type(entry.key) == "string" and entry.key or nil
-    local action = type(entry.action) == "string" and entry.action or nil
-    if key ~= nil and action ~= nil then
+    if key ~= nil and entry.type ~= nil then
       return nil, "a key or an action, not both"
     end
     if key ~= nil then
@@ -149,55 +116,57 @@ local function new(deps)
       end
       return { kind = "key", key = key }
     end
-    if action == nil then
+    if entry.type == nil then
       return nil, "neither a key nor an action"
     end
-    if parse_action == nil then
+    if validate == nil then
       return nil, "actions need the action service, which did not load"
     end
-    local known = read_action(action)
-    if known.record == nil then
-      return nil, known.why
+    local ok, why = validate(entry)
+    if not ok then
+      return nil, why
     end
-    return { kind = "action", record = known.record }
+    return { kind = "action", record = entry }
   end
 
-  local function resolve(name)
-    if type(name) ~= "string" then
-      return nil
+  local function resolve(value)
+    if type(value) ~= "string" then
+      return definition(value)
     end
-    if name:find(".", 1, true) then
-      return declared(name) and { kind = "component" } or nil
+    if value:find(".", 1, true) then
+      if declared(value) then
+        return { kind = "component" }
+      end
+      return nil, "no behavior " .. value
     end
-    local entry = entry_of(file(), name)
-    if entry == nil or entry == false then
-      return nil
+    if SHIPPED[value] == nil then
+      return nil, "no behavior " .. value
     end
-    return (definition(name, entry))
+    return definition(SHIPPED[value])
   end
 
-  --- One edge of a behaviour, from whatever holds it. Unknown and broken
-  --- behaviours do nothing; `problems` says why.
-  function self.edge(name, down, cancelled)
-    local holding = held[name]
+  --- One edge of a behaviour - a name, or a gesture's own entry - from
+  --- whatever holds it. One that cannot work does nothing; `check` says why.
+  function self.edge(value, down, cancelled)
+    local holding = held[value]
     if down then
       if holding ~= nil then
         holding.count = holding.count + 1
         return
       end
-      local effect = resolve(name)
+      local effect = resolve(value)
       if effect == nil then
         return
       end
       -- Counted before it goes out, so a throw downstream leaves the hold
       -- standing for its let-go to end.
-      held[name] = { count = 1, effect = effect }
+      held[value] = { count = 1, effect = effect }
       if effect.kind == "key" then
         press_key(effect.key)
       elseif effect.kind == "action" then
         deps.fire_action(effect.record)
       else
-        deps.deliver(name, true, false)
+        deps.deliver(value, true, false)
       end
       return
     end
@@ -208,15 +177,24 @@ local function new(deps)
       holding.count = holding.count - 1
       return
     end
-    held[name] = nil
+    held[value] = nil
     if holding.effect.kind == "key" then
       lift_key(holding.effect.key)
     elseif holding.effect.kind == "component" then
-      deps.deliver(name, false, cancelled == true)
+      deps.deliver(value, false, cancelled == true)
     end
   end
 
-  --- Whether a behaviour of that name exists, sound or not.
+  --- Whether a behaviour can work: true, or nil and why not.
+  function self.check(value)
+    local effect, why = resolve(value)
+    if effect == nil then
+      return nil, why
+    end
+    return true
+  end
+
+  --- Whether a name is a behaviour's, sound or not.
   function self.known(name)
     if type(name) ~= "string" then
       return false
@@ -224,37 +202,19 @@ local function new(deps)
     if name:find(".", 1, true) then
       return declared(name)
     end
-    local entry = entry_of(file(), name)
-    return entry ~= nil and entry ~= false
+    return SHIPPED[name] ~= nil
   end
 
-  --- Why each broken behaviour does nothing, the file's and the shipped ones
-  --- it leaves standing alike, in name order.
-  function self.problems()
-    local entries = file()
-    local names, seen = {}, {}
-    for _, source in ipairs({ entries, SHIPPED }) do
-      for name in pairs(source) do
-        if not seen[name] then
-          seen[name] = true
-          names[#names + 1] = name
-        end
-      end
+  --- Every behaviour's name: the shipped ones, then the components'.
+  function self.names()
+    local names = {}
+    for _, name in ipairs(SHIPPED_NAMES) do
+      names[#names + 1] = name
     end
-    table.sort(names, function(a, b)
-      return tostring(a) < tostring(b)
-    end)
-    local out = {}
-    for _, name in ipairs(names) do
-      local entry = entry_of(entries, name)
-      if entry ~= false then
-        local effect, why = definition(name, entry)
-        if effect == nil then
-          out[#out + 1] = "behaviors: " .. tostring(name) .. " - " .. why
-        end
-      end
+    for _, name in ipairs(deps.components and deps.components() or {}) do
+      names[#names + 1] = name
     end
-    return out
+    return names
   end
 
   return self

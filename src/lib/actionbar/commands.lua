@@ -704,30 +704,6 @@ local function parse_record(kind, head, advise_alias, bar_name)
   return record, nil
 end
 
---[[ A line as a client hands an addon its words: split on whitespace, a
-     double-quoted run kept whole with its quotes dropped. For a line nobody
-     typed - a behaviour's, read from a file - so it reaches the parser in the
-     shape a typed one does. ]]
-local function split_words(text)
-  local words = {}
-  local at = 1
-  while true do
-    local from = text:find("%S", at)
-    if from == nil then
-      return words
-    end
-    if text:sub(from, from) == '"' then
-      local close = text:find('"', from + 1, true) or (#text + 1)
-      words[#words + 1] = text:sub(from + 1, close - 1)
-      at = close + 1
-    else
-      local finish = text:find("%s", from) or (#text + 1)
-      words[#words + 1] = text:sub(from, finish - 1)
-      at = finish
-    end
-  end
-end
-
 local function new(deps)
   local self = {}
 
@@ -1149,12 +1125,11 @@ local function new(deps)
     return told, false, true
   end
 
-  --- An action written as `bind` takes one after the address, for a caller
-  --- with no slot to put it in (a behaviour): the record, or nil and why, in
-  --- words of its own with no bar's name in front.
-  function self.parse_action(text)
-    local words = type(text) == "string" and split_words(text) or {}
-    if #words == 0 then
+  --- An action's words as `bind` takes them after the address, as the client
+  --- hands them over, for a caller with no slot to put it in (a gesture):
+  --- the record, or nil and why, with no bar's name in front.
+  function self.parse_action(words)
+    if type(words) ~= "table" or #words == 0 then
       return nil, "an empty action"
     end
     local rest = slice(words, 2)
@@ -1165,12 +1140,17 @@ local function new(deps)
     if record == nil then
       return nil, complaint
     end
+    -- A label is a slot's to show, and `jc` writes its sub job as one.
+    record.alias = nil
     local ok, why = deps.validate(record)
     if ok == nil then
       return nil, why
     end
     return record
   end
+
+  --- An action as `list` prints one, in the words `bind` takes.
+  self.describe_action = record_label
 
   --- `unbind <address> [context=<layer>]` -- the addressed layer only.
   local function unbind(args)

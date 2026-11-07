@@ -136,14 +136,19 @@ describe("entry point", function()
       assert.are.same({ "setkey enter down", "setkey enter up" }, boot.commands)
     end)
 
-    it("hands core bind's own reading of a behaviour's action, validated as a slot's is", function()
-      assert.are.same({ type = "open", action = "map" }, boot.core_deps.parse_behavior_action("open map"))
-      local record, why = boot.core_deps.parse_behavior_action("nope x")
+    it("hands core bind's own reading of a gesture's action, validated as a slot's is", function()
+      local actions = boot.core_deps.behavior_actions
+      assert.are.same({ type = "open", action = "map" }, actions.parse({ "open", "map" }))
+      local record, why = actions.parse({ "nope", "x" })
       assert.is_nil(record)
       assert.are.equal("unknown action type: nope", why)
+      assert.are.equal("open map", actions.describe({ type = "open", action = "map" }))
+      assert.is_true(actions.is_type("ma"))
+      assert.is_false(actions.is_type("nope"))
+      assert.is_true(actions.validate({ type = "ma", action = "Cure" }))
     end)
 
-    it("asks core which behaviours exist, to name the map's dead entries", function()
+    it("asks core whether each behaviour can work, to name the map's dead entries", function()
       boot = harness.boot({ xinput = fake_module(0) })
       boot.gamepad_config = { enabled = true, map = { a = "nope" } }
       boot.known_behaviors = {}

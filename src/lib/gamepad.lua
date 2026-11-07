@@ -30,8 +30,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
      Each poll turns the pad's state into GESTURES - a button, or a chord of
      buttons ending in one - and each gesture into the behaviour the map
-     names for it (`map`, in data/gamepad.lua): `{ behavior, down }` edges
-     for lib/behaviors, which alone knows what a behaviour does. Nothing here
+     holds for it (`map`, in data/gamepad.lua: a behaviour's name, or an
+     entry of the gesture's own): `{ behavior, down }` edges for
+     lib/behaviors, which alone knows what a behaviour does. Nothing here
      knows a key or a bar.
 
      A gesture is `lt+y`: the last button is the trigger, the rest held
@@ -47,9 +48,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      `on_key`, which takes a named one while the bridge is on; the next poll
      answers it as a button.
 
+     The map and the named keys are edited here too (`bind`, `unbind`,
+     `set_key`), in the config table itself, for `//hud gamepad` to save.
+
      Pure: the read, the clock and the config arrive as deps, and so does
-     `known(name)`, asked only to say which behaviours the map names that do
-     not exist. ]]
+     `check(behavior)`, asked only to say which of the map's behaviours
+     cannot work. ]]
 
 -- XInput's own XINPUT_GAMEPAD_TRIGGER_THRESHOLD.
 local DEFAULT_THRESHOLD = 30
@@ -161,9 +165,14 @@ local function sorted_keys(entries)
   return keys
 end
 
--- The spelling the shipped map uses: lowercase, unspaced.
+-- How a gesture is kept in the map, and spelled in the shipped one:
+-- lowercase, unspaced.
+local function spelling_of(text)
+  return (text:lower():gsub("%s", ""))
+end
+
 local function shipped_spelling(text)
-  return type(text) == "string" and text == (text:lower():gsub("%s", ""))
+  return type(text) == "string" and text == spelling_of(text)
 end
 
 -- The map's gestures, every other spelling ahead of the shipped kind, so the
@@ -205,18 +214,19 @@ local function read_extra(extra)
   return reading, problems
 end
 
--- A gesture's buttons, trigger last, or nil and why.
+-- A gesture's buttons, trigger last, or nil, why and the button it does not
+-- know, where that is why.
 local function read_gesture(text, extra_names)
   if type(text) ~= "string" then
     return nil, "not a gesture"
   end
   local buttons, seen = {}, {}
-  for part in (text:lower():gsub("%s", "") .. "+"):gmatch("([^+]*)%+") do
+  for part in (spelling_of(text) .. "+"):gmatch("([^+]*)%+") do
     if part == "" then
       return nil, "an empty button"
     end
     if not PAD[part] and not extra_names[part] then
-      return nil, "no button " .. part
+      return nil, "no button " .. part, part
     end
     if seen[part] then
       return nil, "names " .. part .. " twice"
@@ -238,9 +248,9 @@ end
 --[[ The map as trigger -> its gestures, `{ modifiers, behavior }`, and why
      each entry left out was. Two spellings of one gesture - a removal among
      them - are reported and the first in `map_order` kept, which is the one
-     a user wrote. `known`, when given, is asked of each behaviour named; one
-     it does not know stays in the map, inert, and is reported. ]]
-local function read_map(map, extra_names, known)
+     a user wrote. `check`, when given, is asked of each behaviour; one that
+     cannot work stays in the map, inert, and is reported. ]]
+local function read_map(map, extra_names, check)
   local by_trigger, problems, seen = {}, {}, {}
   for _, text in ipairs(map_order(map)) do
     local behavior = map[text]
@@ -256,11 +266,15 @@ local function read_map(map, extra_names, known)
         problems[#problems + 1] = seen[key] .. " and " .. label .. " - the same gesture"
       else
         seen[key] = label
-        if behavior ~= false and type(behavior) ~= "string" then
-          problems[#problems + 1] = label .. " - not a behavior name"
+        if behavior ~= false and type(behavior) ~= "string" and type(behavior) ~= "table" then
+          problems[#problems + 1] = label .. " - not a behavior"
         elseif behavior ~= false then
-          if known ~= nil and not known(behavior) then
-            problems[#problems + 1] = label .. " - no behavior " .. behavior
+          local works, broken = true, nil
+          if check ~= nil then
+            works, broken = check(behavior)
+          end
+          if not works then
+            problems[#problems + 1] = label .. " - " .. tostring(broken)
           end
           local trigger = table.remove(buttons)
           by_trigger[trigger] = by_trigger[trigger] or {}
@@ -278,6 +292,37 @@ end
 
 local function extra_of(settings)
   return type(settings.extra) == "table" and settings.extra or DEFAULTS.extra
+end
+
+-- The config's own map or extra, to be written to: a broken one becomes the
+-- shipped one it was being read as, never the shared default itself.
+local function writable(settings, field)
+  if type(settings[field]) ~= "table" then
+    settings[field] = defaults()[field]
+  end
+  return settings[field]
+end
+
+-- Every spelling in `map` of the gesture whose key is `key`.
+local function spellings_of(map, key, extra_names)
+  local found = {}
+  for _, text in ipairs(sorted_keys(map)) do
+    local buttons = read_gesture(text, extra_names)
+    if buttons ~= nil and gesture_key(buttons) == key then
+      found[#found + 1] = text
+    end
+  end
+  return found
+end
+
+-- A name losing its key: a shipped one stays as the defaults spell it,
+-- holding none, and one of the user's own goes.
+local function forget_key(extra, name)
+  if DEFAULTS.extra[name] ~= nil then
+    extra[name] = false
+  else
+    extra[name] = nil
+  end
 end
 
 local function new(deps)
@@ -603,8 +648,8 @@ local function new(deps)
   function self.problems()
     local settings = config()
     local extra, extra_problems = read_extra(extra_of(settings))
-    local known = type(deps.known) == "function" and deps.known or nil
-    local _, map_problems = read_map(map_of(settings), extra.names, known)
+    local check = type(deps.check) == "function" and deps.check or nil
+    local _, map_problems = read_map(map_of(settings), extra.names, check)
     local out = {}
     for _, list in ipairs({ map_problems, extra_problems }) do
       for _, problem in ipairs(list) do
@@ -612,6 +657,143 @@ local function new(deps)
       end
     end
     return out
+  end
+
+  -- The map and the named keys are read afresh at the next look.
+  local function changed()
+    map_source, extra_source = nil, nil
+  end
+
+  --- Binds a gesture to a behaviour in place of whatever it held, under any
+  --- spelling. Answers the spelling it is kept under, or nil, why and the
+  --- button it does not know where that is why.
+  function self.bind(text, behavior)
+    local settings = config()
+    local names = read_extra(extra_of(settings)).names
+    local buttons, why, missing = read_gesture(text, names)
+    if buttons == nil then
+      return nil, why, missing
+    end
+    local map = writable(settings, "map")
+    for _, spelling in ipairs(spellings_of(map, gesture_key(buttons), names)) do
+      map[spelling] = nil
+    end
+    local spelling = spelling_of(text)
+    map[spelling] = behavior
+    changed()
+    return spelling
+  end
+
+  --- Unbinds a gesture under every spelling; a shipped one is kept as
+  --- false, which the settings merge would otherwise put back. One naming a
+  --- button that has lost its key is found by its spelling alone. Answers
+  --- the spelling, or nil, why and the button it does not know.
+  function self.unbind(text)
+    local settings = config()
+    local map = writable(settings, "map")
+    local names = read_extra(extra_of(settings)).names
+    local buttons, why, missing = read_gesture(text, names)
+    local spelling = type(text) == "string" and spelling_of(text) or nil
+    local found
+    local shipped = {}
+    if buttons ~= nil then
+      found = spellings_of(map, gesture_key(buttons), names)
+      shipped = spellings_of(DEFAULTS.map, gesture_key(buttons), names)
+    elseif spelling ~= nil and map[spelling] ~= nil then
+      found = { spelling }
+    else
+      return nil, why, missing
+    end
+    local bound = false
+    for _, other in ipairs(found) do
+      bound = bound or map[other] ~= false
+    end
+    if not bound then
+      return nil, "not bound"
+    end
+    for _, other in ipairs(found) do
+      map[other] = nil
+    end
+    for _, other in ipairs(shipped) do
+      map[other] = false
+    end
+    changed()
+    return spelling
+  end
+
+  function self.set_enabled(on)
+    config().enabled = on == true
+  end
+
+  --- The pad's own buttons, in the order a poll answers them.
+  function self.buttons()
+    local names = {}
+    for _, list in ipairs(PAD_LISTS) do
+      for _, button in ipairs(list) do
+        names[#names + 1] = button.name
+      end
+    end
+    return names
+  end
+
+  --- Every gesture the map holds, `{ gesture, behavior }`, in spelling
+  --- order, its removals left out.
+  function self.bindings()
+    local map = map_of(config())
+    local out = {}
+    for _, text in ipairs(sorted_keys(map)) do
+      if map[text] ~= false then
+        out[#out + 1] = { gesture = text, behavior = map[text] }
+      end
+    end
+    return out
+  end
+
+  --- Whether a name can be given a key: true, or nil and why not.
+  function self.learnable(name)
+    if type(name) ~= "string" or not name:match(NAME) then
+      return nil, "a name is a plain lowercase word"
+    end
+    if PAD[name] then
+      return nil, name .. " is a pad button"
+    end
+    return true
+  end
+
+  --- Every name with a key, `{ name, key }`, in name order.
+  function self.named_keys()
+    local extra = extra_of(config())
+    local out = {}
+    for _, name in ipairs(sorted_keys(read_extra(extra).names)) do
+      out[#out + 1] = { name = name, key = extra[name] }
+    end
+    return out
+  end
+
+  --- The key a name has, or nil.
+  function self.key_of(name)
+    local dik = extra_of(config())[name]
+    return is_dik(dik) and dik or nil
+  end
+
+  --- Gives a name a key, or takes its key away with false. A key another
+  --- name had moves to this one; answers the name that lost it.
+  function self.set_key(name, dik)
+    local extra = writable(config(), "extra")
+    local lost = nil
+    if dik ~= false then
+      for _, other in ipairs(sorted_keys(extra)) do
+        if other ~= name and extra[other] == dik then
+          lost = lost or other
+          forget_key(extra, other)
+        end
+      end
+      extra[name] = dik
+    else
+      forget_key(extra, name)
+    end
+    changed()
+    return lost
   end
 
   --- What data/gamepad.lua starts from.

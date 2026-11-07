@@ -110,13 +110,17 @@ local function build_stubs(boot, options)
           boot.service_calls[#boot.service_calls + 1] = { name = name, n = select("#", ...), ... }
         end
       end
-      -- The bind-time check, refusing only the type `nope`.
+      -- The bind-time check, refusing only the type `nope`, which is the one
+      -- type it does not know.
       service.actions = {
         validate = function(record)
           if record.type == "nope" then
             return nil, "unknown action type: nope"
           end
           return true
+        end,
+        is_type = function(kind)
+          return kind ~= "nope"
         end,
       }
       boot.service = service
@@ -329,10 +333,13 @@ local function build_core(boot)
     return false
   end
 
-  -- Every behaviour exists unless a spec names the ones that do in
+  -- Every behaviour works unless a spec names the ones that do in
   -- `boot.known_behaviors`.
-  function core.behavior_known(name)
-    return boot.known_behaviors == nil or boot.known_behaviors[name] == true
+  function core.behavior_check(value)
+    if boot.known_behaviors == nil or boot.known_behaviors[value] == true then
+      return true
+    end
+    return nil, "no behavior " .. tostring(value)
   end
 
   -- The bridge's machine-wide settings: a spec sets `boot.gamepad_config`.

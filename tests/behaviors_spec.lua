@@ -1,23 +1,25 @@
 local new_behaviors = require("lib/behaviors")
 
 describe("behaviors", function()
-  local file, sent, fired, delivered, parsed, components, behaviors
+  local sent, fired, delivered, components, behaviors
+
+  -- The action service's own answer, narrowed to the two types used here.
+  local function validate(record)
+    if record.type == "open" and record.action == "map" then
+      return true
+    end
+    if record.type == "ma" and type(record.action) == "string" then
+      return true
+    end
+    return nil, "unknown action type: " .. tostring(record.type)
+  end
 
   local function build(overrides)
     local deps = {
-      config = function()
-        return file
-      end,
       send_key = function(key, down)
         sent[#sent + 1] = { key, down }
       end,
-      parse_action = function(text)
-        parsed[#parsed + 1] = text
-        if text == "open map" then
-          return { type = "open", action = "map" }
-        end
-        return nil, "unknown open target: " .. text
-      end,
+      validate = validate,
       fire_action = function(record)
         fired[#fired + 1] = record
       end,
@@ -35,8 +37,7 @@ describe("behaviors", function()
   end
 
   before_each(function()
-    file = { accept = { key = "enter" }, open_map = { action = "open map" } }
-    sent, fired, delivered, parsed = {}, {}, {}, {}
+    sent, fired, delivered = {}, {}, {}
     components = { "crossbar.left", "crossbar.slot1" }
     behaviors = build()
   end)
@@ -63,32 +64,39 @@ describe("behaviors", function()
       assert.are.same({}, sent)
     end)
 
-    it("lets go of the key it pressed, whatever the file says by then", function()
-      behaviors.edge("accept", true)
-      file.accept = { key = "escape" }
-      behaviors.edge("accept", false)
-      assert.are.same({ { "enter", true }, { "enter", false } }, sent)
-    end)
-
     it("goes up on a cancelled let-go too", function()
       behaviors.edge("accept", true)
       behaviors.edge("accept", false, true)
       assert.are.same({ { "enter", true }, { "enter", false } }, sent)
     end)
 
+    it("can be a gesture's own", function()
+      local own = { key = "numpad*" }
+      behaviors.edge(own, true)
+      behaviors.edge(own, false)
+      assert.are.same({ { "numpad*", true }, { "numpad*", false } }, sent)
+    end)
+
     it("holds a key two behaviours share until both let go", function()
-      file = { accept = { key = "enter" }, confirm = { key = "enter" } }
+      local own = { key = "enter" }
       behaviors.edge("accept", true)
-      behaviors.edge("confirm", true)
+      behaviors.edge(own, true)
       behaviors.edge("accept", false)
       assert.are.same({ { "enter", true } }, sent)
-      behaviors.edge("confirm", false)
+      behaviors.edge(own, false)
       assert.are.same({ { "enter", true }, { "enter", false } }, sent)
     end)
 
+    it("lets go of the key it pressed, whatever the entry says by then", function()
+      local own = { key = "f" }
+      behaviors.edge(own, true)
+      own.key = "g"
+      behaviors.edge(own, false)
+      assert.are.same({ { "f", true }, { "f", false } }, sent)
+    end)
+
     it("refuses a key name that could start a second command", function()
-      file.bad = { key = "enter;quit" }
-      behaviors.edge("bad", true)
+      behaviors.edge({ key = "enter;quit" }, true)
       assert.are.same({}, sent)
     end)
   end)
@@ -107,22 +115,20 @@ describe("behaviors", function()
       assert.are.equal(2, #fired)
     end)
 
-    it("is read once, however often it runs", function()
-      for _ = 1, 3 do
-        behaviors.edge("open_map", true)
-        behaviors.edge("open_map", false)
-      end
-      assert.are.same({ "open map" }, parsed)
+    it("can be a gesture's own, the record a slot would hold", function()
+      local record = { type = "ma", action = "Cure IV", target = "t" }
+      behaviors.edge(record, true)
+      behaviors.edge(record, false)
+      assert.are.same({ record }, fired)
     end)
 
-    it("does nothing when it does not parse", function()
-      file.open_map = { action = "open mapp" }
-      behaviors.edge("open_map", true)
+    it("does nothing when the action service refuses it", function()
+      behaviors.edge({ type = "nope" }, true)
       assert.are.same({}, fired)
     end)
 
     it("does nothing without the action service", function()
-      behaviors = build({ parse_action = false })
+      behaviors = build({ validate = false })
       behaviors.edge("open_map", true)
       assert.are.same({}, fired)
     end)
@@ -155,13 +161,6 @@ describe("behaviors", function()
       assert.are.same({}, delivered)
     end)
 
-    it("cannot be shadowed by an entry in the file", function()
-      file["crossbar.left"] = { key = "a" }
-      behaviors.edge("crossbar.left", true)
-      assert.are.same({}, sent)
-      assert.are.same({ { "crossbar.left", true, false } }, delivered)
-    end)
-
     it("keeps its count when the component throws", function()
       local calls = 0
       behaviors = build({
@@ -180,51 +179,53 @@ describe("behaviors", function()
     end)
   end)
 
-  it("does nothing for a behaviour the file removes", function()
-    file.accept = false
-    behaviors.edge("accept", true)
+  it("does nothing for a name it does not know", function()
+    behaviors.edge("nope", true)
+    behaviors.edge("nope", false)
     assert.are.same({}, sent)
+    assert.are.same({}, fired)
+    assert.are.same({}, delivered)
   end)
 
-  it("reads a file that is not a table as one naming nothing, so the shipped behaviours stand", function()
-    file = nil
-    behaviors.edge("cancel", true)
-    assert.are.same({ { "escape", true } }, sent)
-  end)
-
-  --[[ The file is never merged with them: an entry merged field by field
-       would carry a shipped key into a behaviour the file makes an action. ]]
-  describe("the shipped behaviours", function()
-    it("stand for every name the file leaves out", function()
-      file = {}
-      behaviors.edge("cancel", true)
-      behaviors.edge("open_map", true)
-      assert.are.same({ { "escape", true } }, sent)
-      assert.are.same({ { type = "open", action = "map" } }, fired)
-      assert.is_true(behaviors.known("lockon"))
+  describe("check", function()
+    it("passes the shipped behaviours, the components' and a gesture's own sound ones", function()
+      for _, value in ipairs({
+        "accept",
+        "open_map",
+        "crossbar.left",
+        { key = "numpad*" },
+        { type = "ma", action = "Cure IV", target = "t" },
+      }) do
+        assert.is_true(behaviors.check(value))
+      end
     end)
 
-    it("give way whole to the file's entry, whatever its kind", function()
-      file = { open_map = { key = "m" }, accept = { action = "open map" } }
-      behaviors.edge("open_map", true)
-      behaviors.edge("accept", true)
-      assert.are.same({ { "m", true } }, sent)
-      assert.are.same({ { type = "open", action = "map" } }, fired)
-      assert.are.same({}, behaviors.problems())
+    it("says what is wrong with the rest", function()
+      for _, case in ipairs({
+        { "nope", "no behavior nope" },
+        { "crossbar.nope", "no behavior crossbar.nope" },
+        { { key = "enter;quit" }, "enter;quit is not a key name" },
+        { { key = "enter", type = "ma", action = "Cure" }, "a key or an action, not both" },
+        { {}, "neither a key nor an action" },
+        { { type = "nope" }, "unknown action type: nope" },
+        { 5, "neither a key nor an action" },
+      }) do
+        local ok, why = behaviors.check(case[1])
+        assert.is_nil(ok)
+        assert.are.equal(case[2], why)
+      end
     end)
 
-    it("are named in problems when one cannot work", function()
-      file = {}
-      behaviors = build({ parse_action = false })
-      assert.are.same(
-        { "behaviors: open_map - actions need the action service, which did not load" },
-        behaviors.problems()
-      )
+    it("says an action has nothing to run it without the action service", function()
+      behaviors = build({ validate = false })
+      local ok, why = behaviors.check("open_map")
+      assert.is_nil(ok)
+      assert.are.equal("actions need the action service, which did not load", why)
     end)
   end)
 
   describe("known", function()
-    it("knows the file's behaviours and the components'", function()
+    it("knows the shipped behaviours and the components'", function()
       assert.is_true(behaviors.known("accept"))
       assert.is_true(behaviors.known("open_map"))
       assert.is_true(behaviors.known("crossbar.left"))
@@ -232,53 +233,35 @@ describe("behaviors", function()
       assert.is_false(behaviors.known("crossbar.nope"))
     end)
 
-    it("knows one whose definition is broken, which problems() reports", function()
-      file.bad = { key = "enter;quit" }
-      assert.is_true(behaviors.known("bad"))
-    end)
-
-    it("does not know one the file removes", function()
-      file.accept = false
-      assert.is_false(behaviors.known("accept"))
+    it("knows names alone", function()
+      assert.is_false(behaviors.known({ key = "enter" }))
     end)
   end)
 
-  describe("problems", function()
-    it("has none for a sound file", function()
-      assert.are.same({}, behaviors.problems())
-    end)
+  it("names the shipped behaviours, then the components'", function()
+    assert.are.same({
+      "accept",
+      "autorun",
+      "cancel",
+      "cycle_window",
+      "lockon",
+      "main_menu",
+      "open_map",
+      "crossbar.left",
+      "crossbar.slot1",
+    }, behaviors.names())
+  end)
 
-    it("names each broken entry once, in name order", function()
-      file = {
-        ["Bad Name"] = { key = "enter" },
-        both = { key = "enter", action = "open map" },
-        neither = {},
-        keyless = { key = "enter;quit" },
-        broken = { action = "open mapp" },
-        number = 5,
-        removed = false,
-      }
-      assert.are.same({
-        "behaviors: Bad Name - a name is a plain lowercase word",
-        "behaviors: both - a key or an action, not both",
-        "behaviors: broken - unknown open target: open mapp",
-        "behaviors: keyless - enter;quit is not a key name",
-        "behaviors: neither - neither a key nor an action",
-        "behaviors: number - neither a key nor an action",
-      }, behaviors.problems())
-    end)
-
-    it("says an action has nothing to run it without the action service", function()
-      behaviors = build({ parse_action = false })
-      assert.are.same(
-        { "behaviors: open_map - actions need the action service, which did not load" },
-        behaviors.problems()
-      )
-    end)
+  -- A gesture's bind reads a behaviour's name before a bind type.
+  it("names no behaviour after a bind type", function()
+    local actions = require("lib/actionbar/actions")({})
+    for _, name in ipairs(behaviors.names()) do
+      assert.is_false(actions.is_type(name), name)
+    end
+    assert.is_false(actions.is_type("key"))
   end)
 
   it("ships the game keys and the map", function()
-    file = {}
     for name, key in pairs({
       accept = "enter",
       cancel = "escape",

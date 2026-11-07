@@ -934,9 +934,9 @@ end)
      which. Not in safe mode, which has no render loop to poll it. Its reads
      of core close over the `core` local, which the next step fills in. ]]
 local gamepad = nil
--- A behaviour's action, read as `bind` reads one after the address and
--- validated as a slot's is; nil without the action service.
-local parse_behavior_action = nil
+-- A gesture's action: bind's own parser and labeller, and the action
+-- service's types and validate, the service's three absent without it.
+local behavior_actions = nil
 if not safe_mode then
   local ok, err = pcall(function()
     -- XIPivot's route to a native module, Windower 4 having no ffi: the
@@ -961,16 +961,23 @@ if not safe_mode then
       now = os.clock,
       -- Asked only to name the map's dead entries, so the components are
       -- registered by the time it is.
-      known = function(name)
-        return core ~= nil and core.behavior_known(name)
+      check = function(behavior)
+        if core == nil then
+          return true
+        end
+        return core.behavior_check(behavior)
       end,
       config = function()
         return core and core.gamepad_config() or nil
       end,
     })
-    if action_service ~= nil and action_service.actions ~= nil then
-      parse_behavior_action =
-        require("lib/actionbar/commands")({ validate = action_service.actions.validate }).parse_action
+    local service_actions = action_service ~= nil and action_service.actions or nil
+    local parser = require("lib/actionbar/commands")({ validate = service_actions and service_actions.validate })
+    behavior_actions = { describe = parser.describe_action }
+    if service_actions ~= nil then
+      behavior_actions.parse = parser.parse_action
+      behavior_actions.is_type = service_actions.is_type
+      behavior_actions.validate = service_actions.validate
     end
   end)
   if not ok then
@@ -1018,7 +1025,7 @@ step("building the framework", function()
     send_key = function(name, down)
       send_command("setkey " .. name .. (down and " down" or " up"))
     end,
-    parse_behavior_action = parse_behavior_action,
+    behavior_actions = behavior_actions,
     has_focus = function()
       return windower.has_focus()
     end,

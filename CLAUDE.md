@@ -72,6 +72,8 @@ src/
     config_window.lua     -- `//hud config`: the settings window, a mouse front end to
                              the commands (see Commands below)
     visibility.lua        -- auto-hide suppression resolver
+    gamepad_commands.lua  -- `//hud gamepad`: the switch, the map's bind,
+                             unbind and list, and learn
     gamepad.lua           -- the gamepad bridge: an XInput pad's gestures as
                              behaviour edges (see Gamepad bridge below)
     behaviors.lua         -- what a behaviour does: a key for the game, an
@@ -157,7 +159,7 @@ native/
 
 Per-component isolation: every component owns its own configuration file and can never reach another's.
 
-- **Storage:** every component owns the directory `data/<Character>/<slot>/<component>/`, relative to the addon root, holding two files core writes — `config.lua` (the component's own settings) and `layout.lua` (its placement, which core alone writes) — plus whatever else the component adds beside them. Framework options live in `data/<Character>/core.lua` (`snap`, `slot`, `hideCutscene`, `config_pos` - where the settings window was dragged to - and since 2026-09-06 the action service's tuning - `delay`, `queue` and `queue_locks` - which was never meant to vary by slot (`retry` and `wsgate` sat beside it until 2026-10-16, when the cast retry and the weaponskill gate were removed outright, Kevin; a `core.lua` still carrying either block carries dead weight the settings merge preserves - nothing migrates) and would otherwise need a settings handle for something that is not a component; a slot switch therefore does not switch them and no `//hud reset` reaches them), **outside every slot**: it holds the active-slot pointer, which cannot live in the thing it names. Two files sit outside every character, through `lib/settings`' machine-wide `register_global`: `data/gamepad.lua`, the gamepad bridge's map and switch (Kevin, 2026-10-20 - a pad belongs to the machine, and must work at the character screen, where no character is scoped), and `data/behaviors.lua`, the behaviours that map names (Kevin, 2026-11-05). They are FILES, so nothing that enumerates `data/`'s directories as characters ever offers one, and `//hud copy` and `//hud reset` never reach them. The extra files are the **store**: a component setting `wants_store = true` is handed `store` as `attach`'s third argument, `load(name)` / `save(name, table)` over `<component>/<name>.lua`, same sandboxed read and serialized write as the two core files. A name must be a plain word (`^[%w_]+$`) — it becomes a path segment, so anything else is refused rather than composed — and `config`/`layout` are reserved, case-insensitively, because they are core's and sit in the same directory. Found files are cached until the config is re-read; a *missing* one is re-read from disk on every call, so callers load on their own events (an attach, a job change) and never per frame. `//hud reset <component>` empties that directory (non-recursively — it is flat by construction) **in the active slot only**, and every re-read drops the cache, so `//hud copy`'s reload cannot leave copied bindings stale in memory. `crossbar` and `hotbar` use the store (per-job bindings, `<MAIN>.lua` plus `SHARED.lua`, each in its own directory: a crossbar set and a hotbar set are different things, sixteen slots against ten, and "shared" means shared across jobs, never across bars).
+- **Storage:** every component owns the directory `data/<Character>/<slot>/<component>/`, relative to the addon root, holding two files core writes — `config.lua` (the component's own settings) and `layout.lua` (its placement, which core alone writes) — plus whatever else the component adds beside them. Framework options live in `data/<Character>/core.lua` (`snap`, `slot`, `hideCutscene`, `config_pos` - where the settings window was dragged to - and since 2026-09-06 the action service's tuning - `delay`, `queue` and `queue_locks` - which was never meant to vary by slot (`retry` and `wsgate` sat beside it until 2026-10-16, when the cast retry and the weaponskill gate were removed outright, Kevin; a `core.lua` still carrying either block carries dead weight the settings merge preserves - nothing migrates) and would otherwise need a settings handle for something that is not a component; a slot switch therefore does not switch them and no `//hud reset` reaches them), **outside every slot**: it holds the active-slot pointer, which cannot live in the thing it names. One file sits outside every character, through `lib/settings`' machine-wide `register_global`: `data/gamepad.lua`, the gamepad bridge's map, named keys and switch (Kevin, 2026-10-20 - a pad belongs to the machine, and must work at the character screen, where no character is scoped). It is a FILE, so nothing that enumerates `data/`'s directories as characters ever offers it, and `//hud copy` and `//hud reset` never reach it. The extra files are the **store**: a component setting `wants_store = true` is handed `store` as `attach`'s third argument, `load(name)` / `save(name, table)` over `<component>/<name>.lua`, same sandboxed read and serialized write as the two core files. A name must be a plain word (`^[%w_]+$`) — it becomes a path segment, so anything else is refused rather than composed — and `config`/`layout` are reserved, case-insensitively, because they are core's and sit in the same directory. Found files are cached until the config is re-read; a *missing* one is re-read from disk on every call, so callers load on their own events (an attach, a job change) and never per frame. `//hud reset <component>` empties that directory (non-recursively — it is flat by construction) **in the active slot only**, and every re-read drops the cache, so `//hud copy`'s reload cannot leave copied bindings stale in memory. `crossbar` and `hotbar` use the store (per-job bindings, `<MAIN>.lua` plus `SHARED.lua`, each in its own directory: a crossbar set and a hotbar set are different things, sixteen slots against ten, and "shared" means shared across jobs, never across bars).
 - **Format: Lua, not XML.** Windower's `config` lib can only serialize XML and the bundled `json` lib has no encoder, so `lib/settings` owns persistence itself: files are read with `loadstring` in an **empty environment** behind a `pcall` (config files are code — a broken or hostile one degrades to defaults plus a warning), and written by `lib/serialize` with stable key order for clean diffs.
 - **Defaults merge:** user values win; default keys the user has never seen are added; keys the defaults do not mention are preserved. A component's `defaults.layout` is split off at registration to seed `layout.lua`, and is kept out of what seeds `config.lua` — so a component never sees its own placement in the table it is handed.
 - **Character scoping:** the character name is unknown until login, so components are attached on login and detached on logout, and nothing renders while logged out. Core scopes on the **name alone** — anything else a component needs from the client it waits for itself, because the client fills the player in field by field and no single field vouches for the rest (see `parambar` below). The `login` event is a one-shot that can fire before `get_player()` can name the player, so `on_prerender` keeps looking: every 0.05s while the client says we are logged in, every 1s at character select, re-armed by each login event. A login that cannot be resolved leaves the character already scoped alone — dropping one is the logout's job — and keeps the search running, so logging in as someone else without a logout event still switches.
@@ -191,6 +193,10 @@ Per-component isolation: every component owns its own configuration file and can
                                   item, ranged, interrupted
 //hud gamepad [on|off]         -- the gamepad bridge: which pad it reads and what is wrong
                                   with its map, or switch it
+//hud gamepad list             -- every gesture on the pad and what it does
+//hud gamepad bind <gesture> <type> [<action>] [<target>] | <behavior> | key <name>
+//hud gamepad unbind <gesture> -- a gesture is buttons joined by +, the trigger last: lt+y
+//hud gamepad learn <name> [off] -- the next key pressed is a button XInput cannot see
 //hud config [<component>|global] -- the settings window, opened on that panel
 //hud <component> [...]        -- passthrough to the component's handle_command
 ```
@@ -340,24 +346,23 @@ and the first poll with the bridge on says the same, once. A trigger lets go
 only 10 under the threshold it pressed at, so a resting finger cannot flicker
 a cross.
 A behaviour is one of three kinds (`lib/behaviors`): a GAME KEY, `{ key = }`,
-down through `setkey` while held and up when let go; an ACTION, `{ action = }`,
-anything a bar slot can hold, written as `bind` takes it after the address
-(`open map`, `ma "Cure IV" <t>`), read by bind's own parser
-(`lib/actionbar/commands`' `parse_action`) and run on the press through the
-action service as a slot holding it would be - only with a character, and not
-while suppressed, laying out, or with the settings window or a binder open,
-where a slot's press would not go either (a game key goes regardless, a
-cutscene's dialogue wanting Enter); or a
-COMPONENT's own, `<component>.<name>`, which the component declares
-(`behaviors()`) and hears (`on_behavior`) - the crossbar's sides, WXHB halves,
-set switch, binder and `slot1`..`slot8`, the slot of WHATEVER bar is raised
-(Kevin), so one gesture serves the plain side, WXHB and Expanded and, with the
-switch held, is the set jump. The first two live in `data/behaviors.lua`,
-seeded with nothing and never merged: a name the file leaves out is the shipped
-behaviour, and one it names is its own entry WHOLE, since a field-by-field
-merge would carry a shipped `key` into an entry the file makes an action. A
-component's carries a dot no name in the file may, so the file cannot shadow
-one. Behaviours are reference counted across everything holding them, and let
+down through `setkey` while held and up when let go; an ACTION, the record a
+bar slot would hold, read by bind's own parser (`lib/actionbar/commands`'
+`parse_action`) and run on the press through the action service as a slot
+holding it would be - only with a character, and not while suppressed, laying
+out, or with the settings window or a binder open, where a slot's press would
+not go either (a game key goes regardless, a cutscene's dialogue wanting
+Enter); or a COMPONENT's own, `<component>.<name>`, which the component
+declares (`behaviors()`) and hears (`on_behavior`) - the crossbar's sides,
+WXHB halves, set switch, binder and `slot1`..`slot8`, the slot of WHATEVER bar
+is raised (Kevin), so one gesture serves the plain side, WXHB and Expanded
+and, with the switch held, is the set jump. A gesture names a SHIPPED
+behaviour (the six game keys below and `open_map`, all fixed) or a
+component's, or carries a game key or an action of its own. There is no
+behaviours file: `data/behaviors.lua` came and went on 2026-11-05/06 (Kevin -
+nothing else in the addon needs a hand edit, and a gesture's own key or action
+was everything it was for), and a copy left on disk is never read.
+Behaviours are reference counted across everything holding them, and let
 go as they went down; a game key is counted too, so two behaviours sharing one
 let it up only when both have. The map, `map` in `data/gamepad.lua`, resolves a press
 when its trigger goes down: of the gestures whose other buttons are all held,
@@ -378,14 +383,43 @@ game key's down and up would leave in one frame. One gesture spelled two ways
 is reported, and the user's spelling kept over the shipped one the merge put
 back. Nothing can keep a
 press from the game, which reads the pad itself: the game's own pad bindings
-for the buttons are blanked, the sticks left bound. Both files are one for
+for the buttons are blanked, the sticks left bound. The file is one for
 every character (see Settings). The bridge ships OFF and only an explicit
 `true` turns it on (Kevin): a player whose game still binds the pad would
-otherwise get a second Enter from every A. `//hud gamepad` needs no character,
-the files being nobody's, and re-reads both first, so a hand edit applies at
-once - and since switching saves the bridge's whole file, it refuses to switch
-over a `data/gamepad.lua` it could not read rather than write the defaults
-over it (`settings`' global `load()` answers whether the read was clean). Built in the entry point even without the module or
+otherwise get a second Enter from every A.
+**Nothing about the pad needs a hand edit** (Kevin, 2026-11-06):
+`lib/gamepad_commands` is `//hud gamepad`. `bind <gesture> ...` is a slot's
+`bind` with a gesture where the address goes - ONE word, buttons joined by
+`+`, the trigger last (`b+a` is A with B held), any case, no spaces (a spaced
+one arrives as several words and is refused) - followed by a behaviour's name
+(`bind a accept`, `bind lt crossbar.left`), `key <name>` (`bind l3 key
+numpad*`) or anything a slot can hold, read by bind's parser and refused where
+it would refuse a slot's (`bind lt+l4 ma "Cure IV" <t>`; `alias=`, `icon=` and
+`context=` need a slot). A word that is no type and no behaviour is refused,
+naming the behaviours - the action service's `is_type` says which words are
+types, and `validate` asks it first, so the two cannot disagree. A binding
+replaces what the gesture held under every spelling; `unbind` writes `false`
+over a shipped gesture, which the settings merge would otherwise put back;
+`list` prints each gesture in the words `bind` takes, then the names given
+keys. `learn <name>` arms a capture: the next key pressed while the game has
+focus becomes that name's key in `extra` (any plain name that is no pad
+button, Kevin), both edges swallowed, the file read again before it is
+saved; Escape cancels, and Enter (what sent the chat line) and the modifiers
+(the start of Alt-Tab, which learned would be kept from the game's macro
+chords) are let through; a key another name had MOVES (Kevin); `learn <name>
+off` gives the key back to the game. Core offers each key to `learn` before
+the bridge and every component, so a key another name has is still caught,
+lets go of what `learn` holds when focus goes, and `core.wants_keyboard()`
+counts the bridge so the keyboard handler is there for it. `trigger_threshold` is still a file edit, and there
+is no `reset` (Kevin). Every verb needs no character, the file being
+nobody's, and re-reads it first, so a hand edit applies at once - and since a
+write saves the bridge's whole file, every verb that writes refuses a
+`data/gamepad.lua` it could not read rather than write the defaults over it
+(`settings`' global `load()` answers whether the read was clean). The
+settings window's switch says in chat what its status line cannot hold, the
+map's problems among it. **Unverified in a live client**, like the rest: the
+learned keys, and whether a DIK Steam types arrives as the same number on
+every keyboard layout. Built in the entry point even without the module or
 an XInput DLL, so `//hud gamepad` can say which is missing, and load.log keeps
 the `require` error a DLL that would not load left; not in safe mode.
 **Unverified in a live client**: all of it - in particular that

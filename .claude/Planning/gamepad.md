@@ -106,14 +106,15 @@ xinput.get_keystroke(index)                             -- index 0..3 or xinput.
 
 Three kinds:
 
-| Kind | Defined | Does |
+| Kind | Stored | Does |
 | --- | --- | --- |
-| game key | `data/behaviors.lua`: `{ key = "<setkey name>" }` | `setkey <name> down` while held, `setkey <name> up` when let go |
-| action | `data/behaviors.lua`: `{ action = "<bind grammar>" }` | on the press, runs that action through the action service as a slot holding it would (`service.fire`), with no slot involved |
+| game key | `{ key = "<setkey name>" }` | `setkey <name> down` while held, `setkey <name> up` when let go |
+| action | the record a slot would store (`{ type = "ma", action = "Cure IV", target = "t" }`) | on the press, runs that action through the action service as a slot holding it would (`service.fire`), with no slot involved |
 | component | declared by the component, named `<component>.<name>` | the component's `on_behavior(name, down)` |
 
-**`data/behaviors.lua`** - machine-wide, beside `data/gamepad.lua` (Kevin),
-read before any login so a game key works at the character screen. Shipped:
+A gesture names one of the SHIPPED behaviours, or a component's, or carries a
+game key or an action of its own, bound with `//hud gamepad bind` (Commands,
+below). The shipped ones are fixed:
 
 ```lua
 accept       = { key = "enter" },
@@ -122,27 +123,23 @@ cycle_window = { key = "numpad+" },
 main_menu    = { key = "numpad-" },
 lockon       = { key = "numpad*" },
 autorun      = { key = "r" },
-open_map     = { action = "open map" },
+open_map     = { type = "open", action = "map" },
 ```
 
-- A name is a plain word (`^[%l%d_]+$`), so it can never be mistaken for a
-  component's (`crossbar.left`). `false` removes a shipped one.
-- The file is seeded with nothing and never merged with the shipped
-  behaviours: a name it leaves out IS the shipped behaviour, and one it names
-  is its own entry, whole, so `open_map = { key = "m" }` makes Back a key with
-  no shipped `action` mixed in (found by review, round 1).
-- **An action is anything a slot can hold** (Kevin): written as `bind` takes
-  it after the address - `open map`, `ma "Cure IV" <t>`, `ct /echo hi` - and
-  parsed by the same code (`bind`'s record parse, pulled out of
-  `lib/actionbar/commands` into a function both call, its behaviour and specs
-  untouched). It is parsed when the file is read; one that does not parse is
-  reported and does nothing. `alias=`, `icon=` and `context=` mean nothing
-  without a slot and are refused. It needs a character and the action service:
-  without either, the press does nothing. Nor does it go where a slot's press
-  would not - suppressed, in layout mode, the settings window or a binder open
-  (review, round 2) - while a game key goes regardless.
+- **`data/behaviors.lua` is gone** (Kevin, 2026-11-06): nothing else in the
+  addon needs a hand edit, and a gesture carrying its own key or action is
+  everything the file was for. A copy left on disk is never read (nothing
+  migrates). A named-behaviour file can come back with the keyboard mapper if
+  that needs one.
+- **An action is anything a slot can hold** (Kevin), read by `bind`'s own
+  parser (`lib/actionbar/commands`). It needs a character and the action
+  service: without either, the press does nothing. Nor does it go where a
+  slot's press would not - suppressed, in layout mode, the settings window or
+  a binder open (review, round 2) - while a game key goes regardless.
 - A game key two behaviours share is counted by the key: it comes up when
-  both have let go.
+  both have let go. A gesture's own key or action is held by that gesture
+  alone; a shipped or component behaviour two gestures name is counted
+  across them.
 
 **The crossbar's behaviours** (built in, declared by the widget):
 
@@ -172,7 +169,7 @@ open_map     = { action = "open map" },
 
 `data/gamepad.lua`: `enabled` (ships `false`; only an explicit `true` turns it
 on), `trigger_threshold`, `extra` (below) and `map`, a gesture to a behaviour
-name. Shipped (Kevin, 2026-11-05):
+name, a `{ key = }` or an action's record. Shipped (Kevin, 2026-11-05):
 
 | Gesture | Behaviour |
 | --- | --- |
@@ -254,6 +251,74 @@ too), but it may not shadow an XInput button.
   pump's guard switched it off would wait for a poll that never comes.
 - Pick keys nothing else uses. Steam's current `;`+`\` / `'`+`\` back buttons
   would raise the crossbar through its own keys and never reach the map.
+- A key is named with `//hud gamepad learn <name>` (below), never typed as a
+  number.
+
+## Commands (Kevin, 2026-11-06)
+
+Nothing else in the addon needs a hand edit, so neither does the pad:
+
+```
+//hud gamepad                       status, then what is wrong with the map
+//hud gamepad on|off
+//hud gamepad list                  every gesture and what it does
+//hud gamepad bind <gesture> <type> [<action>] [<target>]
+//hud gamepad bind <gesture> <behavior>
+//hud gamepad bind <gesture> key <key name>
+//hud gamepad unbind <gesture>
+//hud gamepad learn <name> [off]    the next key pressed is that button's
+```
+
+- **`bind` is a slot's `bind` with a gesture where the address goes** (Kevin):
+  ONE word, buttons joined by `+`, the trigger last - `b+a` is A pressed with
+  B held - in any case, with no spaces. A spaced one (`lt + y`) arrives as
+  several words and is refused, naming the form. What follows is one of three
+  (Kevin):
+  - a shipped behaviour's name or a component's, alone: `bind a accept`,
+    `bind lt crossbar.left`;
+  - `key <name>`, a game key held for as long as the gesture is: `bind l3 key
+    numpad*`;
+  - anything a slot can hold, read by `bind`'s own record parser and validated
+    as a slot's is: `bind lt+l4 ma "Cure IV" <t>`, `bind back open map`.
+    `alias=`, `icon=` and `context=` need a slot and are refused.
+  No behaviour name is a slot type, and a spec pins that, so the three cannot
+  be mistaken for each other. A word that is none of them is refused, naming
+  the behaviours.
+- The binding replaces whatever the gesture held, under every spelling: one
+  gesture is stored once, under the shipped spelling where there is one, so
+  the settings merge cannot put a second copy back.
+- A gesture naming a button nothing has learned is refused, pointing at
+  `learn`.
+- `unbind <gesture>` removes it. A shipped gesture is written `false`, which
+  the settings merge would otherwise put back.
+- `list` prints each gesture and what it does in the words `bind` takes, so a
+  row retyped after `bind` binds the same thing - a `jc` record keeps no
+  alias for it (review) - then the names given keys.
+- **`learn <name>`** arms a capture: the next key pressed while the game has
+  focus becomes that name's key in `extra`, both its edges swallowed, the
+  file read again first (review: it waited on a keypress, and a write must
+  not go over a hand edit or a broken file), saved and said - `l4 is key 88`.
+  Escape cancels it; Enter (what sent the chat line) and the modifiers (Ctrl,
+  Shift, Alt, Windows - the start of Alt-Tab, which learned would be kept
+  from the game's macro chords; review) go through and it goes on waiting. A
+  key another name already has MOVES to this one, and the reply says which
+  name lost it (Kevin) - which is why core offers each key to `learn` before
+  the bridge, which would otherwise take it as the old name (pinned by a
+  spec, review). Any plain lowercase name that is not a pad button can be
+  learned (Kevin), as `extra` allows. `learn <name> off` gives the key back
+  to the game (Kevin). It works with the bridge off, so keys are set up before
+  it goes on, and `core.wants_keyboard()` now counts the bridge, so the
+  keyboard handler is registered for it - a review follow-up that `learn`
+  makes load-bearing. A lost focus lets go of the keys it took, whose ups
+  will not come (review).
+- A refusal naming a button nothing knows lists the pad's buttons and the
+  learned names.
+- Every verb that edits re-reads `data/gamepad.lua` first and refuses one it
+  could not read, as switching does.
+- `trigger_threshold` stays a file edit, and there is no `reset` (Kevin).
+- An action's name is not second-guessed against the resources as a slot's
+  is (`ws Savage Blade Zeid`): the bar's lookup is its own, and the parse
+  stays where `parse_action` had it. A follow-up.
 
 ## Behaviour of the bridge
 
@@ -277,7 +342,7 @@ too), but it may not shadow an XInput button.
 - `//hud gamepad` says `looking for a pad` until every slot has been asked,
   and only then `no pad connected`; switching off forgets the pad, so
   switching on starts the search over. It lists the map's problems after.
-- `//hud gamepad` re-reads both files first, so a hand edit applies at once;
+- `//hud gamepad` re-reads the file first, so a hand edit applies at once;
   switching saves the whole of `data/gamepad.lua`, so it refuses to switch
   over a file it could not read rather than write the defaults over it
   (review, round 2).
@@ -286,6 +351,10 @@ too), but it may not shadow an XInput button.
   the pump or the keyboard handler, which report through their guards.
 
 ## Code
+
+As built on 2026-11-05, with `data/behaviors.lua`; what the commands changed
+of it (the file gone, `check` for `known`, actions as records) follows the
+list.
 
 - `lib/xinput.lua` - unchanged: `new(module) -> reader | nil, reason`.
 - `lib/behaviors.lua` (new, pure) - `new(deps)` over `config()`
@@ -330,6 +399,35 @@ too), but it may not shadow an XInput button.
 - Gone: `buttons`, `chords`, `bare`, `activators` and the bars' DIKs from the
   pad. A `data/gamepad.lua` still holding them carries dead weight (nothing
   migrates; the bridge ships off and has not run in a client).
+
+The commands (2026-11-06):
+
+- `lib/behaviors` - no file: deps `validate` (a record -> true | nil, why)
+  where `config` and `parse_action` were. `edge(value, ...)` takes a name or a
+  gesture's own entry, each held by itself; `check(value) -> true | nil, why`
+  replaces `problems`, while `known(name)` stays for `bind` to tell a
+  behaviour's name from a type; `names()` lists the shipped and the
+  components' for a refusal. `open_map` becomes a record.
+- `lib/gamepad` - a map value may be a gesture's own entry; a `check` dep
+  replaces `known`. Edits, each dropping the cached reading:
+  `bind(text, value) -> spelling | nil, why`, `unbind(text)`, `bindings()`
+  (in order, removals left out), `learnable(name)` and `set_key(name, dik |
+  false) -> the name that lost it`.
+- `lib/gamepad_commands` (new, pure) - the `//hud gamepad` grammar: the status
+  and the switch (moved out of core), `bind`, `unbind`, `list`, `learn` and
+  its capture (`on_key(dik, down) -> taken`), over the bridge, the behaviours,
+  the action parser and labeller, `reload` / `save` / `say` and `focused`.
+- `lib/actionbar/commands` - `parse_action(words)` over the words as the
+  client hands them (the text splitter goes with the file) and
+  `describe_action(record)`, the listing's label.
+- core - builds `lib/gamepad_commands` and hands it `//hud gamepad`; offers
+  each key to its `on_key` before the bridge's; drops the behaviours handle;
+  `wants_keyboard()` counts the bridge; `behavior_check` replaces
+  `behavior_known`.
+- entry point - the bridge's `check`; the parser built over words, with
+  `describe_action` beside it.
+- CLAUDE.md - the commands block, the Gamepad bridge paragraph, Settings (one
+  machine-wide file).
 
 ## Unverified in a live client
 

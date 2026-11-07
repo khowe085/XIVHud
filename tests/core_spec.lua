@@ -1,5 +1,7 @@
 local new_core = require("lib/core")
 local new_queue = require("lib/actionbar/queue")
+local new_gamepad = require("lib/gamepad")
+local new_bar_commands = require("lib/actionbar/commands")
 local fakes = require("tests/support/fakes")
 
 local MOVE, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, WHEEL = 0, 1, 2, 4, 10
@@ -528,6 +530,9 @@ describe("core", function()
       function pad.problems()
         return pad.broken
       end
+      function pad.set_enabled(on)
+        core.gamepad_config().enabled = on
+      end
       return pad
     end
 
@@ -581,8 +586,13 @@ describe("core", function()
       return service
     end
 
-    local function parse_open(text)
-      return { type = "open", action = text:match("^open (%a+)$") }
+    -- The action service's typed-action half, passing every record.
+    local function sound_actions()
+      return {
+        validate = function()
+          return true
+        end,
+      }
     end
 
     it("hands a component its own behaviours, in order", function()
@@ -619,29 +629,23 @@ describe("core", function()
       assert.are.same({ "left", false, true }, widget.heard[2])
     end)
 
-    it("sends a game key behaviour to the game, as data/behaviors.lua defines it", function()
-      pad_core({ ["data/behaviors.lua"] = 'return { accept = { key = "f1" } }' })
-      pad.queued = { { behavior = "accept", down = true }, { behavior = "accept", down = false } }
+    it("sends a gesture's own game key to the game", function()
+      pad_core()
+      local own = { key = "f1" }
+      pad.queued = { { behavior = own, down = true }, { behavior = own, down = false } }
       core.pump_gamepad()
       assert.are.same({ { "f1", true }, { "f1", false } }, keys)
     end)
 
-    it("ships the game keys where there is no file", function()
+    it("sends a shipped behaviour's game key", function()
       pad_core()
       pad.queued = { { behavior = "cancel", down = true } }
       core.pump_gamepad()
       assert.are.same({ { "escape", true } }, keys)
     end)
 
-    it("takes a shipped behaviour the file redefines whole, whatever its kind", function()
-      pad_core({ ["data/behaviors.lua"] = 'return { open_map = { key = "m" } }' })
-      pad.queued = { { behavior = "open_map", down = true } }
-      core.pump_gamepad()
-      assert.are.same({ { "m", true } }, keys)
-    end)
-
     it("runs an action behaviour through the action service, with a character only", function()
-      pad_core(nil, { actions = firing_service(), parse_behavior_action = parse_open })
+      pad_core(nil, { actions = firing_service(), behavior_actions = sound_actions() })
       pad.queued = { { behavior = "open_map", down = true }, { behavior = "open_map", down = false } }
       core.pump_gamepad()
       assert.are.same({}, fired, "logged out")
@@ -657,7 +661,7 @@ describe("core", function()
       service.edit_owner = function()
         return editing and "crossbar" or nil
       end
-      pad_core(nil, { actions = service, parse_behavior_action = parse_open })
+      pad_core(nil, { actions = service, behavior_actions = sound_actions() })
       login()
       local function press()
         pad.queued = { { behavior = "open_map", down = true }, { behavior = "open_map", down = false } }
@@ -690,23 +694,24 @@ describe("core", function()
     end)
 
     it("runs no action without the action service", function()
-      pad_core(nil, { parse_behavior_action = parse_open })
+      pad_core(nil, { behavior_actions = sound_actions() })
       login()
       pad.queued = { { behavior = "open_map", down = true } }
       assert.has_no.errors(core.pump_gamepad)
     end)
 
-    it("knows the file's behaviours and every registered component's", function()
+    it("checks the shipped behaviours, every registered component's and a gesture's own", function()
       pad_core()
       core.register(behaving_widget())
-      assert.is_true(core.behavior_known("accept"))
-      assert.is_true(core.behavior_known("crossbar.slot1"))
-      assert.is_false(core.behavior_known("crossbar.right"))
-      assert.is_false(core.behavior_known("nope"))
+      assert.is_true(core.behavior_check("accept"))
+      assert.is_true(core.behavior_check("crossbar.slot1"))
+      assert.is_true(core.behavior_check({ key = "f1" }))
+      assert.are.same({ nil, "no behavior crossbar.right" }, { core.behavior_check("crossbar.right") })
+      assert.are.same({ nil, "no behavior nope" }, { core.behavior_check("nope") })
     end)
 
-    it("knows no behaviour without a bridge", function()
-      assert.is_false(core.behavior_known("accept"))
+    it("checks no behaviour without a bridge", function()
+      assert.are.same({ nil, "the gamepad bridge did not load" }, { core.behavior_check("accept") })
     end)
 
     it("leaves the pad to its own pump, out of the frame tick", function()
@@ -776,15 +781,6 @@ describe("core", function()
         assert.are.equal(1, count)
       end)
 
-      it("says the behaviours file's too", function()
-        pad_core({
-          ["data/gamepad.lua"] = "return { enabled = true }",
-          ["data/behaviors.lua"] = 'return { bad = { key = "a;b" } }',
-        })
-        core.pump_gamepad()
-        assert.is_not_nil(env.said():find("behaviors: bad - a;b is not a key name", 1, true))
-      end)
-
       it("says nothing while the bridge is off", function()
         pad_core()
         pad.broken = { "gamepad: x - no behavior nope" }
@@ -818,15 +814,6 @@ describe("core", function()
         core.on_command({ "gamepad", "on" })
         assert.are.equal("return { enabled = ", env.fs.files["data/gamepad.lua"])
         assert.is_not_nil(env.said():find("gamepad: data/gamepad.lua could not be read", 1, true))
-      end)
-
-      it("re-reads data/behaviors.lua with the status, so a hand edit applies at once", function()
-        pad_core()
-        env.fs.files["data/behaviors.lua"] = 'return { cancel = { key = "f2" } }'
-        core.on_command({ "gamepad" })
-        pad.queued = { { behavior = "cancel", down = true } }
-        core.pump_gamepad()
-        assert.are.same({ { "f2", true } }, keys)
       end)
 
       it("lists nothing after the form", function()
@@ -1013,6 +1000,102 @@ describe("core", function()
       login()
       core.on_command({ "gamepad" })
       assert.is_not_nil(env.said():find("the gamepad bridge did not load", 1, true))
+    end)
+
+    -- The real bridge under the verbs, wired as the entry point wires it.
+    describe("changing the map", function()
+      -- `files` are on disk before core is built; `state` is the pad the
+      -- bridge reads, nil for none.
+      local function real_pad_core(overrides, files, state)
+        overrides = overrides or {}
+        keys = {}
+        overrides.send_key = function(key, down)
+          keys[#keys + 1] = { key, down }
+        end
+        overrides.gamepad = new_gamepad({
+          read = function()
+            return state
+          end,
+          now = function()
+            return 0
+          end,
+          config = function()
+            return core.gamepad_config()
+          end,
+          check = function(value)
+            return core.behavior_check(value)
+          end,
+        })
+        deps, env = fakes.core_deps(overrides)
+        for path, contents in pairs(files or {}) do
+          env.fs.files[path] = contents
+        end
+        core = new_core(deps)
+      end
+
+      it("learns a key another name has, before the bridge can take it as that name", function()
+        real_pad_core(nil, {
+          ["data/gamepad.lua"] = 'return { enabled = true, extra = { r4 = 100 }, map = { r4 = "accept" } }',
+        }, { buttons = 0, left_trigger = 0, right_trigger = 0 })
+        core.pump_gamepad()
+        core.on_command({ "gamepad", "learn", "l4" })
+        assert.is_true(core.on_keyboard(100, true, 0, false))
+        assert.is_true(core.on_keyboard(100, false, 0, false))
+        core.pump_gamepad()
+        assert.is_not_nil(env.said():find("gamepad: l4 is key 100 - r4 has no key now", 1, true))
+        assert.are.same({}, keys)
+      end)
+
+      it("forgets the keys learn took as focus goes", function()
+        real_pad_core()
+        local widget = core.register(keyboard_widget())
+        core.on_command({ "gamepad", "learn", "l4" })
+        core.on_keyboard(100, true, 0, false)
+        core.on_focus(false)
+        core.on_focus(true)
+        core.on_keyboard(100, true, 0, false)
+        assert.are.same({ { 100, true, 0, false } }, widget.keys)
+      end)
+
+      it("binds a gesture, writing data/gamepad.lua at once", function()
+        real_pad_core()
+        core.on_command({ "gamepad", "bind", "b+a", "accept" })
+        assert.is_not_nil(env.said():find("gamepad: bound b+a to accept", 1, true))
+        assert.is_not_nil(env.fs.files["data/gamepad.lua"]:find('["b+a"] = "accept"', 1, true))
+      end)
+
+      it("binds an action as a slot's bind reads one", function()
+        local parser = new_bar_commands({ validate = sound_actions().validate })
+        real_pad_core({
+          behavior_actions = {
+            parse = parser.parse_action,
+            describe = parser.describe_action,
+            is_type = function(kind)
+              return kind == "ma"
+            end,
+            validate = sound_actions().validate,
+          },
+        })
+        core.on_command({ "gamepad", "bind", "lt+r3", "ma", "Cure IV", "<t>" })
+        assert.is_not_nil(env.said():find("gamepad: bound lt+r3 to ma Cure IV <t>", 1, true))
+        assert.are.same({ type = "ma", action = "Cure IV", target = "t" }, core.gamepad_config().map["lt+r3"])
+      end)
+
+      it("learns a key from the keyboard, before the bridge or any component sees it", function()
+        real_pad_core()
+        local widget = core.register(keyboard_widget())
+        core.on_command({ "gamepad", "learn", "l4" })
+        assert.is_true(core.on_keyboard(100, true, 0, false))
+        assert.is_true(core.on_keyboard(100, false, 0, false))
+        assert.are.same({}, widget.keys)
+        assert.is_not_nil(env.said():find("gamepad: l4 is key 100", 1, true))
+        assert.is_not_nil(env.fs.files["data/gamepad.lua"]:find("l4 = 100", 1, true))
+      end)
+
+      it("wants the keyboard for the bridge, with no component wanting it", function()
+        real_pad_core()
+        assert.is_true(core.wants_keyboard())
+      end)
     end)
 
     it("is listed in help", function()
@@ -3162,8 +3245,16 @@ describe("core", function()
         function pad.status()
           return pad.enabled() and "gamepad: on" or "gamepad: off"
         end
+        function pad.set_enabled(on)
+          core.gamepad_config().enabled = on
+        end
+        pad.broken = {}
+        function pad.problems()
+          return pad.broken
+        end
         deps, env = fakes.core_deps({ gamepad = pad })
         core = new_core(deps)
+        return pad
       end
 
       it("carries the gamepad switch where the bridge can read a pad, through its own verb", function()
@@ -3174,6 +3265,15 @@ describe("core", function()
         assert.is_true(core.gamepad_config().enabled)
         assert.is_not_nil(live_text("gamepad: on"), "the answer is on the status line")
         assert.is_not_nil(live_text("[ on ]", live_text("Gamepad").y))
+      end)
+
+      it("says in chat what is wrong with the map as its switch turns the bridge on", function()
+        local pad = pad_core(true)
+        pad.broken = { "gamepad: x - no behavior nope" }
+        login()
+        core.on_command({ "config" })
+        click_control("Gamepad", "[ off ]")
+        assert.is_not_nil(env.said():find("gamepad: x - no behavior nope", 1, true))
       end)
 
       it("carries no gamepad switch where the bridge has nothing to read with", function()
