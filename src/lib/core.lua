@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      - Character scoping. Configs do not exist until login, so components are
        attached on login and detached on logout. ]]
 
+local new_behaviors = require("lib/behaviors")
 local new_buffs = require("lib/buffs")
 local new_commands = require("lib/commands")
 local new_config_window = require("lib/config_window")
@@ -62,6 +63,7 @@ local CHARACTER_RETRY_SECONDS = 1
 local LOADING_RETRY_SECONDS = 0.05
 
 local CORE_NAMESPACE = "core"
+local GAMEPAD_FORM = "gamepad [on|off]"
 -- Windower's mouse type for a move, as layout_mode names it.
 local MOUSE_MOVE = 0
 -- What the client puts in an unused buff slot.
@@ -113,8 +115,8 @@ local HELP = {
   "  //hud queue lock [<kind> <seconds>]",
   "                            how long the queue waits after an action: spell,",
   "                            weaponskill, ability, item, ranged or interrupted",
-  "  //hud gamepad [on|off]     whether an XInput pad's buttons reach the bars",
-  "                            as keys, and which pad is being read",
+  "  //hud gamepad [on|off]     whether an XInput pad's gestures drive their",
+  "                            behaviors, which pad is read, and the map's problems",
   "  //hud config [<name>]      the settings window: the options above and the",
   "                            components' own, changed with a click; name a",
   "                            component, or global, to open on its panel",
@@ -132,8 +134,6 @@ local function new(deps)
   local config_window
   local next_character_check = nil
   local awaiting_login = false
-  -- DIK -> true while down on the keyboard.
-  local keys_down = {}
   -- Asked of the client once, at load - an addon (re)loaded in a background
   -- client must not read the pad - and told by the focus events after. One
   -- that cannot be asked is taken as focused, as it was before the asking.
@@ -142,14 +142,14 @@ local function new(deps)
     local asked, answer = pcall(deps.has_focus)
     focused = not asked or answer ~= false
   end
-  -- Hands a list of the pad's edges to the components; defined beside the
+  -- Hands a list of the pad's edges to the behaviours; defined beside the
   -- keyboard dispatch, far below, and used by the unload above it.
   local deliver_pad
 
-  -- Lets go of everything the pad holds, bar keys and game keys alike, on the
-  -- paths that must finish whatever a component or the injection does: a
-  -- lost focus has the bars still to tell, and an unload a teardown still to
-  -- run.
+  -- Lets go of everything the pad holds, game keys and components' behaviours
+  -- alike, on the paths that must finish whatever a component or the
+  -- injection does: a lost focus has the bars still to tell, and an unload a
+  -- teardown still to run.
   local function release_pad()
     if deps.gamepad ~= nil then
       pcall(function()
@@ -197,6 +197,82 @@ local function new(deps)
   function self.gamepad_config()
     return gamepad_handle and gamepad_handle.get() or nil
   end
+
+  -- Every behaviour a registered component declares, as `<component>.<name>`.
+  local function component_behaviors()
+    local names = {}
+    for _, component in ipairs(registry.all()) do
+      local declared = type(component.behaviors) == "function" and component.behaviors() or nil
+      if type(declared) == "table" then
+        for _, name in ipairs(declared) do
+          names[#names + 1] = component.name .. "." .. name
+        end
+      end
+    end
+    return names
+  end
+
+  local function deliver_behavior(qualified, down, cancelled)
+    local name, behavior = qualified:match("^([^.]+)%.(.+)$")
+    local component = name ~= nil and registry.get(name) or nil
+    if component ~= nil and type(component.on_behavior) == "function" then
+      component.on_behavior(behavior, down, cancelled)
+    end
+  end
+
+  --[[ The bridge's behaviours (lib/behaviors) and their file, data/behaviors.lua,
+       machine-wide beside the bridge's own (Kevin, 2026-11-05) so a game key
+       works at the character screen. Only where there is a bridge to drive
+       them. An action needs a character: logged out, it does nothing. ]]
+  local behaviors_handle = nil
+  local behaviors = nil
+  if deps.gamepad ~= nil then
+    behaviors = new_behaviors({
+      config = function()
+        return behaviors_handle and behaviors_handle.get() or nil
+      end,
+      send_key = deps.send_key,
+      parse_action = deps.parse_behavior_action,
+      -- Where a slot's press would not go, neither does a behaviour's action.
+      fire_action = function(record)
+        if deps.actions == nil or settings.character() == nil then
+          return
+        end
+        if self.suppressed() or self.layout_active() or self.config_active() then
+          return
+        end
+        if deps.actions.edit_owner ~= nil and deps.actions.edit_owner() ~= nil then
+          return
+        end
+        deps.actions.fire(record)
+      end,
+      components = component_behaviors,
+      deliver = deliver_behavior,
+    })
+    -- Seeded with nothing: lib/behaviors stands the shipped ones in for any
+    -- name the file leaves out, and a merge would mix a shipped entry's
+    -- fields into the file's own.
+    behaviors_handle = settings.register_global("behaviors", {})
+  end
+
+  --- Whether a behaviour of that name exists: the file's, or a registered
+  --- component's. The bridge asks, to name the map's dead entries.
+  function self.behavior_known(name)
+    return behaviors ~= nil and behaviors.known(name)
+  end
+
+  -- What is wrong with the map and the behaviours, the bridge's lines first.
+  local function gamepad_problems()
+    local lines = {}
+    for _, list in ipairs({ deps.gamepad.problems(), behaviors.problems() }) do
+      for _, line in ipairs(list) do
+        lines[#lines + 1] = line
+      end
+    end
+    return lines
+  end
+  -- Said once a load, at the first poll with the bridge on, or by the verb.
+  local gamepad_problems_said = false
 
   --[[ The action service's tuning lives in core.lua beside snap and
        hideCutscene: the travel delay was never meant to vary by slot, and a
@@ -831,28 +907,25 @@ local function new(deps)
     return block
   end
 
-  -- The keyboard's events: a pad's keys go through `pump_gamepad` instead,
-  -- so `keys_down` is the keyboard's alone and the bridge, which knows its
-  -- own, never reads one of them back a frame late.
+  -- The keyboard's events. The bridge is offered each key first: the ones
+  -- Steam Input types for the buttons XInput cannot see are its own, kept
+  -- from the components and the game alike - but not while the game is out
+  -- of focus, where nothing polls what it would take.
   function self.on_keyboard(key, down, flags, blocked)
-    keys_down[key] = down and true or nil
+    if deps.gamepad ~= nil and focused and deps.gamepad.on_key(key, down) then
+      return true
+    end
     return deliver_key(key, down, flags, blocked)
   end
 
-  --- Whether `key` is down on the keyboard: the bridge asks so a side held
-  --- there - or a back button mapped to one - still chords a face button.
-  function self.key_held(key)
-    return keys_down[key] == true
-  end
-
   --[[ Every edge is delivered even when a component throws on one - a lost
-       key-up would leave a side held - and the first error is raised after,
+       let-go would leave a side held - and the first error is raised after,
        for the entry point's own guard to report: the pad has a handler of
        its own, so a failure here never counts against the frame tick. ]]
   deliver_pad = function(edges)
     local failure = nil
     for _, edge in ipairs(edges) do
-      local ok, err = pcall(deliver_key, edge.dik, edge.down, 0, false)
+      local ok, err = pcall(behaviors.edge, edge.behavior, edge.down, edge.cancelled)
       if not ok and failure == nil then
         failure = err
       end
@@ -862,21 +935,28 @@ local function new(deps)
     end
   end
 
-  --- One poll of the pad, its edges handed to the components as keys - logged
-  --- in or not, as keyboard delivery runs, but never out of focus: XInput
-  --- reads the pad whichever window has it.
+  --- One poll of the pad, its edges handed to the behaviours - logged in or
+  --- not, as keyboard delivery runs, but never out of focus: XInput reads the
+  --- pad whichever window has it. The first with the bridge on says what is
+  --- wrong with the map, once.
   function self.pump_gamepad()
-    if deps.gamepad ~= nil and focused then
-      deliver_pad(deps.gamepad.poll())
+    if deps.gamepad == nil or not focused then
+      return
     end
+    if not gamepad_problems_said and deps.gamepad.enabled() then
+      gamepad_problems_said = true
+      for _, line in ipairs(gamepad_problems()) do
+        say(line)
+      end
+    end
+    deliver_pad(deps.gamepad.poll())
   end
 
-  --- A lost focus strands every key held: the keyboard's ups never come, so
-  --- they are forgotten, and the pad lets go of its own.
+  --- A lost focus strands everything held: the pad lets go of its own, and
+  --- the keyboard's ups never come - the components forget those themselves.
   function self.on_focus(gained)
     focused = gained
     if not gained then
-      keys_down = {}
       release_pad()
     end
   end
@@ -1476,12 +1556,24 @@ local function new(deps)
   -- and a key held when it goes off is let go by the next poll.
   local function tune_gamepad(words)
     if #words > 1 then
-      return "gamepad [on|off]"
+      return GAMEPAD_FORM
     end
+    local on = nil
     if words[1] ~= nil then
-      local on = parse_switch(words[1])
+      on = parse_switch(words[1])
       if on == nil then
-        return "gamepad [on|off]"
+        return GAMEPAD_FORM
+      end
+    end
+    --[[ Both files are re-read first, a hand edit being the only way to the
+         map: switching saves the bridge's whole file, which must not put an
+         older copy back over one edited since it was read - nor the defaults
+         over one that could not be read. ]]
+    local readable = gamepad_handle.load()
+    behaviors_handle.load()
+    if on ~= nil then
+      if not readable then
+        return "gamepad: data/gamepad.lua could not be read - fix it before switching the bridge"
       end
       gamepad_handle.get().enabled = on
       gamepad_handle.save()
@@ -1582,7 +1674,14 @@ local function new(deps)
     -- The bridge's file is no character's, so it needs none scoped.
     if action.verb == "gamepad" then
       if require_gamepad() then
-        say(tune_gamepad(action.words))
+        local reply = tune_gamepad(action.words)
+        say(reply)
+        if reply ~= GAMEPAD_FORM then
+          gamepad_problems_said = true
+          for _, line in ipairs(gamepad_problems()) do
+            say(line)
+          end
+        end
       end
       return
     end

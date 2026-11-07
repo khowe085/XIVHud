@@ -110,6 +110,15 @@ local function build_stubs(boot, options)
           boot.service_calls[#boot.service_calls + 1] = { name = name, n = select("#", ...), ... }
         end
       end
+      -- The bind-time check, refusing only the type `nope`.
+      service.actions = {
+        validate = function(record)
+          if record.type == "nope" then
+            return nil, "unknown action type: nope"
+          end
+          return true
+        end,
+      }
       boot.service = service
       return service
     end,
@@ -320,10 +329,10 @@ local function build_core(boot)
     return false
   end
 
-  -- The keys core has seen go down and not yet come up: a spec sets
-  -- `boot.keys_held`.
-  function core.key_held(dik)
-    return boot.keys_held ~= nil and boot.keys_held[dik] == true
+  -- Every behaviour exists unless a spec names the ones that do in
+  -- `boot.known_behaviors`.
+  function core.behavior_known(name)
+    return boot.known_behaviors == nil or boot.known_behaviors[name] == true
   end
 
   -- The bridge's machine-wide settings: a spec sets `boot.gamepad_config`.

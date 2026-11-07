@@ -6146,3 +6146,81 @@ describe("crossbar live widget", function()
     end)
   end)
 end)
+
+-- A behaviour reaches the bar through the machine its keys do, and moves it
+-- the same way.
+describe("crossbar behaviours", function()
+  local ctx, prims, widget
+
+  before_each(function()
+    prims = fakes.prims()
+    ctx = {
+      screen = function()
+        return 1920, 1080
+      end,
+      say = function() end,
+      chat_open = function()
+        return false
+      end,
+      suppressed = function()
+        return false
+      end,
+      layout_active = function()
+        return false
+      end,
+      new_image = prims.new_image,
+      new_text = prims.new_text,
+      asset = function(path)
+        return "addon/" .. path
+      end,
+    }
+    ctx.actions = fakes.action_service(ctx)
+    service_under_test = ctx.actions
+    widget = new_crossbar(ctx)
+  end)
+
+  local function panel()
+    for _, prim in ipairs(prims.images) do
+      if prim.x == 100 and prim.y == 900 and prim.last.path == "addon/assets/own/bar_bg_compact.png" then
+        return prim
+      end
+    end
+    return nil
+  end
+
+  it("declares the sides, the WXHB halves, the switch, the binder and eight slots", function()
+    assert.are.same({
+      "left",
+      "right",
+      "wxhb_left",
+      "wxhb_right",
+      "switch",
+      "binder",
+      "slot1",
+      "slot2",
+      "slot3",
+      "slot4",
+      "slot5",
+      "slot6",
+      "slot7",
+      "slot8",
+    }, widget.behaviors())
+  end)
+
+  it("hears nothing before it is attached", function()
+    assert.has_no.errors(function()
+      widget.on_behavior("left", true)
+    end)
+  end)
+
+  it("panels the side its behaviour holds, and clears it on the let-go", function()
+    widget.attach(widget.defaults)
+    place_all(widget, 100, 900)
+    widget.show()
+    widget.on_behavior("left", true)
+    assert.is_not_nil(panel(), "the left panel sits at the anchor origin")
+    assert.is_true(panel().visible)
+    widget.on_behavior("left", false)
+    assert.is_false(panel().visible)
+  end)
+end)

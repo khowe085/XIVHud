@@ -57,6 +57,17 @@ describe("settings", function()
       assert.is_true(handle.get().enabled)
       assert.are.equal("data/gamepad.lua", handle.path())
     end)
+
+    it("answers from a re-read whether the file could be read, absent counting as read", function()
+      local handle = service.register_global("gamepad", { enabled = false })
+      assert.is_true(handle.load(), "absent")
+      fs.files["data/gamepad.lua"] = "return { enabled = true }"
+      assert.is_true(handle.load())
+      assert.is_true(handle.get().enabled, "and takes what it read")
+      fs.files["data/gamepad.lua"] = "return { enabled = "
+      assert.is_false(handle.load())
+      assert.is_false(handle.get().enabled, "the defaults stand in")
+    end)
   end)
 
   describe("namespaces", function()

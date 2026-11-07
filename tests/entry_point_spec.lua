@@ -122,22 +122,34 @@ describe("entry point", function()
     end)
 
     it("reads the pad through the module where it loads", function()
-      boot = harness.boot({ xinput = fake_module(0x0001) })
-      boot.gamepad_config = { enabled = true }
-      assert.are.same({ { dik = 6, down = true } }, boot.core_deps.gamepad.poll())
-      assert.are.equal("gamepad: on - pad 1 connected", boot.core_deps.gamepad.status())
-    end)
-
-    it("sends a bare face button to the game with setkey, held as long as the button is", function()
       boot = harness.boot({ xinput = fake_module(0x1000) })
       boot.gamepad_config = { enabled = true }
-      boot.core_deps.gamepad.poll()
-      assert.are.same({ "setkey enter down" }, boot.commands)
-      boot.core_deps.gamepad.poll()
-      assert.are.same({ "setkey enter down" }, boot.commands, "nothing while it stays down")
+      assert.are.same({ { behavior = "accept", down = true } }, boot.core_deps.gamepad.poll())
+      assert.are.equal("gamepad: on - pad 1 connected", boot.core_deps.gamepad.status())
       pad_buttons = 0
-      boot.core_deps.gamepad.poll()
+      assert.are.same({ { behavior = "accept", down = false } }, boot.core_deps.gamepad.poll())
+    end)
+
+    it("hands core a behaviour's game key as setkey, down and then up", function()
+      boot.core_deps.send_key("enter", true)
+      boot.core_deps.send_key("enter", false)
       assert.are.same({ "setkey enter down", "setkey enter up" }, boot.commands)
+    end)
+
+    it("hands core bind's own reading of a behaviour's action, validated as a slot's is", function()
+      assert.are.same({ type = "open", action = "map" }, boot.core_deps.parse_behavior_action("open map"))
+      local record, why = boot.core_deps.parse_behavior_action("nope x")
+      assert.is_nil(record)
+      assert.are.equal("unknown action type: nope", why)
+    end)
+
+    it("asks core which behaviours exist, to name the map's dead entries", function()
+      boot = harness.boot({ xinput = fake_module(0) })
+      boot.gamepad_config = { enabled = true, map = { a = "nope" } }
+      boot.known_behaviors = {}
+      assert.are.same({ "gamepad: a - no behavior nope" }, boot.core_deps.gamepad.problems())
+      boot.known_behaviors = { nope = true }
+      assert.are.same({}, boot.core_deps.gamepad.problems())
     end)
 
     it("pumps the pad every frame through a handler of its own", function()
@@ -161,14 +173,6 @@ describe("entry point", function()
       boot.handlers["lose focus"]()
       boot.handlers["gain focus"]()
       assert.are.same({ false, true }, boot.focus)
-    end)
-
-    it("counts a side held on the keyboard as core saw it", function()
-      boot = harness.boot({ xinput = fake_module(0x1000) })
-      boot.gamepad_config = { enabled = true }
-      boot.keys_held = { [39] = true }
-      assert.are.same({ { dik = 4, down = true } }, boot.core_deps.gamepad.poll())
-      assert.are.same({}, boot.commands)
     end)
 
     it("takes its settings from core's machine-wide file, and is off without one", function()

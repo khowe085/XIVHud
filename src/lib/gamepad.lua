@@ -26,24 +26,30 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ One XInput pad as a stream of key edges.
+--[[ One XInput pad as a stream of behaviour edges.
 
-     The bars read keys, so a controller reaches them as keys: each poll turns
-     the pad's state into the (DIK, down) edges a keyboard would have
-     delivered, and core hands those to the same dispatch a real key takes.
-     The crossbar's input machine and the hotbar's arbitration see nothing
-     new. Nothing here can keep a button from the game - the game's own
-     controller bindings have to be blanked for that.
+     Each poll turns the pad's state into GESTURES - a button, or a chord of
+     buttons ending in one - and each gesture into the behaviour the map
+     names for it (`map`, in data/gamepad.lua): `{ behavior, down }` edges
+     for lib/behaviors, which alone knows what a behaviour does. Nothing here
+     knows a key or a bar.
 
-     A press is CHORDED while one of the `activators` keys is held - the
-     bars' sides and set switch, held by this pad or by the keyboard, so a
-     back button Steam Input maps to `;` counts. Chorded, a button sends its
-     bar key. Bare, a button with a game key sends the game that instead,
-     through `inject`, and the bars hear nothing: what a Steam Input chord
-     did. Which of the two a press is, is settled when it goes down.
+     A gesture is `lt+y`: the last button is the trigger, the rest held
+     before it. It is resolved as the trigger goes down, against what is held
+     then - the gesture naming the most held buttons wins, a tie going to the
+     one whose newest button went down last - and it lasts while every button
+     it names is held: the first of them up lets its behaviour go (Kevin,
+     2026-11-06), so letting go of LT lowers WXHB left with LB still down.
+     The trigger of a broken chord holds nothing until it is pressed again.
 
-     Pure: the read, the clock, the config, the injection and the keyboard's
-     state arrive as deps. ]]
+     The buttons XInput has no name for (the back buttons) reach the game as
+     keys Steam Input types, named in `extra`. Core offers every key to
+     `on_key`, which takes a named one while the bridge is on; the next poll
+     answers it as a button.
+
+     Pure: the read, the clock and the config arrive as deps, and so does
+     `known(name)`, asked only to say which behaviours the map names that do
+     not exist. ]]
 
 -- XInput's own XINPUT_GAMEPAD_TRIGGER_THRESHOLD.
 local DEFAULT_THRESHOLD = 30
@@ -53,13 +59,20 @@ local RELEASE_BAND = 10
 -- XInputGetState on a slot with nothing in it is slow enough to stall a
 -- frame, so a search that found nothing waits this long before the next.
 local PROBE_SECONDS = 1
+-- A named key is taken only while polls are running, or what it took would
+-- wait for one that never comes - the pump's guard switched it off.
+local STALL_SECONDS = 1
 local SLOTS = 4
+local NAME = "^[%l%d_]+$"
 
--- The order edges are reported in. Triggers first, so both sides pressed on
--- one frame reach the crossbar left first.
-local BUTTONS = {
+-- The order presses are answered in: the triggers first, so both pressed on
+-- one frame reach the crossbar left first, the `extra` keys next, in the
+-- order they came, and then these.
+local TRIGGERS = {
   { name = "lt", trigger = "left_trigger" },
   { name = "rt", trigger = "right_trigger" },
+}
+local BUTTONS = {
   { name = "lb", bit = 0x0100 },
   { name = "rb", bit = 0x0200 },
   { name = "back", bit = 0x0020 },
@@ -75,74 +88,201 @@ local BUTTONS = {
   { name = "down", bit = 0x0002 },
   { name = "left", bit = 0x0004 },
 }
+local PAD_LISTS = { TRIGGERS, BUTTONS }
+local PAD = {}
+for _, list in ipairs(PAD_LISTS) do
+  for _, button in ipairs(list) do
+    PAD[button.name] = true
+  end
+end
+
+-- The crossbar's slots in its own order: the face buttons clockwise from the
+-- top, then the D-pad the same way.
+local SLOT_BUTTONS = { "y", "b", "a", "x", "up", "right", "down", "left" }
 
 local function defaults()
+  local map = {
+    a = "accept",
+    b = "cancel",
+    x = "cycle_window",
+    y = "main_menu",
+    lb = "autorun",
+    rb = "crossbar.switch",
+    lt = "crossbar.left",
+    rt = "crossbar.right",
+    ["lt+lb"] = "crossbar.wxhb_left",
+    ["rt+rb"] = "crossbar.wxhb_right",
+    ["lt+start"] = "crossbar.binder",
+    ["rt+start"] = "crossbar.binder",
+    back = "open_map",
+    l3 = "lockon",
+  }
+  -- A slot under either side, and under the set switch, where it is a jump.
+  for _, modifier in ipairs({ "lt", "rt", "rb" }) do
+    for slot, button in ipairs(SLOT_BUTTONS) do
+      map[modifier .. "+" .. button] = "crossbar.slot" .. slot
+    end
+  end
   return {
     -- Off until switched on (Kevin): a player whose game still binds the pad
     -- would otherwise get a second Enter from every A.
     enabled = false,
     trigger_threshold = DEFAULT_THRESHOLD,
-    -- The DIK each button sends; false sends nothing.
-    buttons = {
-      lt = 39, -- ; the crossbar's left side
-      rt = 40, -- ' its right side
-      lb = 43, -- \ the WXHB layer
-      rb = 41, -- ` the set switch
-      back = 13, -- = Select
-      start = false,
-      l3 = false,
-      r3 = false,
-      y = 2, -- 1-4: the face cross, slots 1-4
-      b = 3,
-      a = 4,
-      x = 5,
-      up = 6, -- 5-8: the D-pad cross, slots 5-8
-      right = 7,
-      down = 8,
-      left = 9,
-    },
-    -- A button's DIK while another is held, picked when it goes down: RB with
-    -- RT held is the WXHB layer, so each WXHB half is a trigger and its own
-    -- bumper. false drops a chord.
-    chords = {
-      rb = { rt = 43 },
-    },
-    -- What a button sends the GAME when pressed bare, by Windower `setkey`
-    -- name; false sends the bars its own key instead.
-    bare = {
-      a = "enter",
-      b = "escape",
-      x = "numpad+",
-      y = "numpad-",
-    },
-    -- The keys whose being held makes a press chorded. false removes an
-    -- entry: the settings merge refills a nil one.
-    activators = { 39, 40, 41 },
+    -- The key Steam Input types for each button XInput cannot see; false is
+    -- none.
+    extra = { l4 = false, l5 = false, r4 = false, r5 = false },
+    map = map,
   }
 end
 local DEFAULTS = defaults()
--- One empty list, read only and never handed anything: every poll of a
--- bridge switched off and holding nothing, and a section switched off.
-local EMPTY = {}
+-- What every poll of a bridge switched off and holding nothing answers, never
+-- written to here - and kept apart from the empty list `resolve` walks, so a
+-- caller that wrote to it could not reach that.
+local NO_EDGES = {}
+local NO_GESTURES = {}
+local NO_MODIFIERS = {}
 
 local function is_dik(value)
   return type(value) == "number" and value >= 1 and value <= 255 and value == math.floor(value)
-end
-
--- A word `setkey` could take and nothing more: the name is spliced into a
--- console command, where a `;` would start another.
-local function is_key_name(value)
-  return type(value) == "string" and value:match("^[%w%+%-%*/%.]+$") ~= nil
 end
 
 local function number_or_zero(value)
   return type(value) == "number" and value or 0
 end
 
+local function sorted_keys(entries)
+  local keys = {}
+  for key in pairs(entries) do
+    keys[#keys + 1] = key
+  end
+  table.sort(keys, function(a, b)
+    return tostring(a) < tostring(b)
+  end)
+  return keys
+end
+
+-- The spelling the shipped map uses: lowercase, unspaced.
+local function shipped_spelling(text)
+  return type(text) == "string" and text == (text:lower():gsub("%s", ""))
+end
+
+-- The map's gestures, every other spelling ahead of the shipped kind, so the
+-- one a user wrote comes before the one the settings merge put back.
+local function map_order(map)
+  local keys = sorted_keys(map)
+  table.sort(keys, function(a, b)
+    local shipped_a, shipped_b = shipped_spelling(a), shipped_spelling(b)
+    if shipped_a ~= shipped_b then
+      return shipped_b
+    end
+    return tostring(a) < tostring(b)
+  end)
+  return keys
+end
+
+-- The named keys: `{ names = { <name> = true }, by_dik = { <dik> = <name> } }`,
+-- and why each entry left out was. A key two names claim is the first's.
+local function read_extra(extra)
+  local reading, problems = { names = {}, by_dik = {} }, {}
+  for _, name in ipairs(sorted_keys(extra)) do
+    local dik = extra[name]
+    local label = "extra." .. tostring(name)
+    if dik ~= false then
+      if type(name) ~= "string" or not name:match(NAME) then
+        problems[#problems + 1] = label .. " - a name is a plain lowercase word"
+      elseif PAD[name] then
+        problems[#problems + 1] = label .. " - an XInput button's name"
+      elseif not is_dik(dik) then
+        problems[#problems + 1] = label .. " - not a key number"
+      elseif reading.by_dik[dik] ~= nil then
+        problems[#problems + 1] = "extra." .. reading.by_dik[dik] .. " and " .. label .. " - both key " .. dik
+      else
+        reading.names[name] = true
+        reading.by_dik[dik] = name
+      end
+    end
+  end
+  return reading, problems
+end
+
+-- A gesture's buttons, trigger last, or nil and why.
+local function read_gesture(text, extra_names)
+  if type(text) ~= "string" then
+    return nil, "not a gesture"
+  end
+  local buttons, seen = {}, {}
+  for part in (text:lower():gsub("%s", "") .. "+"):gmatch("([^+]*)%+") do
+    if part == "" then
+      return nil, "an empty button"
+    end
+    if not PAD[part] and not extra_names[part] then
+      return nil, "no button " .. part
+    end
+    if seen[part] then
+      return nil, "names " .. part .. " twice"
+    end
+    seen[part] = true
+    buttons[#buttons + 1] = part
+  end
+  return buttons
+end
+
+-- One gesture however it is spelled: its modifiers in order, then its trigger.
+local function gesture_key(buttons)
+  local modifiers = { unpack(buttons, 1, #buttons - 1) }
+  table.sort(modifiers)
+  modifiers[#modifiers + 1] = buttons[#buttons]
+  return table.concat(modifiers, "+")
+end
+
+--[[ The map as trigger -> its gestures, `{ modifiers, behavior }`, and why
+     each entry left out was. Two spellings of one gesture - a removal among
+     them - are reported and the first in `map_order` kept, which is the one
+     a user wrote. `known`, when given, is asked of each behaviour named; one
+     it does not know stays in the map, inert, and is reported. ]]
+local function read_map(map, extra_names, known)
+  local by_trigger, problems, seen = {}, {}, {}
+  for _, text in ipairs(map_order(map)) do
+    local behavior = map[text]
+    local label = tostring(text)
+    local buttons, why = read_gesture(text, extra_names)
+    if buttons == nil then
+      if behavior ~= false then
+        problems[#problems + 1] = label .. " - " .. why
+      end
+    else
+      local key = gesture_key(buttons)
+      if seen[key] ~= nil then
+        problems[#problems + 1] = seen[key] .. " and " .. label .. " - the same gesture"
+      else
+        seen[key] = label
+        if behavior ~= false and type(behavior) ~= "string" then
+          problems[#problems + 1] = label .. " - not a behavior name"
+        elseif behavior ~= false then
+          if known ~= nil and not known(behavior) then
+            problems[#problems + 1] = label .. " - no behavior " .. behavior
+          end
+          local trigger = table.remove(buttons)
+          by_trigger[trigger] = by_trigger[trigger] or {}
+          table.insert(by_trigger[trigger], { modifiers = buttons, behavior = behavior })
+        end
+      end
+    end
+  end
+  return by_trigger, problems
+end
+
+local function map_of(settings)
+  return type(settings.map) == "table" and settings.map or DEFAULTS.map
+end
+
+local function extra_of(settings)
+  return type(settings.extra) == "table" and settings.extra or DEFAULTS.extra
+end
+
 local function new(deps)
   local self = {}
   local read = type(deps.read) == "function" and deps.read or nil
-  local inject = type(deps.inject) == "function" and deps.inject or nil
 
   -- The slot being read, or nil while searching; the slot a search reads next;
   -- how many slots in a row the search has found empty.
@@ -150,18 +290,40 @@ local function new(deps)
   local probe = 0
   local next_probe = nil
   local empty_probes = 0
-  -- Button name -> `{ dik = , bare = }`, what it went down sending: a bar
-  -- key, a game key, or neither. A button is in here exactly while it is
-  -- held.
+  -- Button name -> `{ behavior = <name>|false, modifiers = { ... }, order =
+  -- n, poll = n }`: what its press resolved to and the buttons that gesture
+  -- leans on, and when it went down - in presses and in polls. In here
+  -- exactly while it is held; `behavior` goes false once its chord breaks.
   local held = {}
-  -- How many held buttons are sending each bar key and each game key, so a
-  -- key two buttons share comes up only when both have.
-  local senders = {}
-  local injected = {}
+  local presses = 0
+  local polls = 0
+  local last_poll = nil
+  -- The named keys' edges since the last poll, `{ name, down }`, in order;
+  -- and dik -> name for each key whose down was taken, so its up is too.
+  local key_edges = {}
+  local latched = {}
+  -- The map and the named keys as last read, and the tables they came from.
+  local gestures, named = {}, { names = {}, by_dik = {} }
+  local map_source, extra_source = nil, nil
 
   local function config()
     local value = deps.config and deps.config() or nil
     return type(value) == "table" and value or {}
+  end
+
+  -- Only an explicit true: a hand-broken file must not switch on a bridge
+  -- nobody asked for.
+  local function is_enabled(settings)
+    return settings.enabled == true
+  end
+
+  local function refresh(settings)
+    local map, extra = map_of(settings), extra_of(settings)
+    if map ~= map_source or extra ~= extra_source then
+      map_source, extra_source = map, extra
+      named = read_extra(extra)
+      gestures = read_map(map, named.names)
+    end
   end
 
   local function threshold(settings)
@@ -172,122 +334,87 @@ local function new(deps)
     return DEFAULT_THRESHOLD
   end
 
-  -- Each key falls back to its default on its own, so a config written before
-  -- a button was mapped still sends it; a whole section set to false is off.
-  local function entry(settings, section, name)
-    local entries = settings[section]
-    if entries == false then
-      return nil
-    end
-    if type(entries) ~= "table" then
-      entries = DEFAULTS[section]
-    end
-    local value = entries[name]
-    if value == nil then
-      value = DEFAULTS[section][name]
-    end
-    return value
-  end
-
-  local function key_for(settings, name, down)
-    local chord = entry(settings, "chords", name)
-    if type(chord) == "table" then
-      for _, button in ipairs(BUTTONS) do
-        local dik = chord[button.name]
-        if down[button.name] and is_dik(dik) then
-          return dik
-        end
-      end
-    end
-    local dik = entry(settings, "buttons", name)
-    return is_dik(dik) and dik or false
-  end
-
-  local function activators(settings)
-    local list = settings.activators
-    if list == false then
-      return EMPTY
-    end
-    return type(list) == "table" and list or DEFAULTS.activators
-  end
-
-  local function is_activator(settings, dik)
-    for _, key in pairs(activators(settings)) do
-      if key == dik then
-        return true
-      end
-    end
-    return false
-  end
-
-  local function chorded(settings)
-    for _, dik in pairs(activators(settings)) do
-      if is_dik(dik) and (senders[dik] ~= nil or (deps.key_held ~= nil and deps.key_held(dik))) then
-        return true
-      end
-    end
-    return false
-  end
-
-  -- nil where the press goes to the bars: chorded, no game key, or no way to
-  -- reach the game.
-  local function game_key(settings, name)
-    if inject == nil or chorded(settings) then
-      return nil
-    end
-    local key = entry(settings, "bare", name)
-    return is_key_name(key) and key or nil
-  end
-
   local function pressed_in(state, settings)
     local down = {}
-    local buttons = number_or_zero(state.buttons)
     local floor = threshold(settings)
+    for _, button in ipairs(TRIGGERS) do
+      local bar = held[button.name] ~= nil and math.max(floor - RELEASE_BAND, 0) or floor
+      down[button.name] = number_or_zero(state[button.trigger]) > bar
+    end
+    local buttons = number_or_zero(state.buttons)
     for _, button in ipairs(BUTTONS) do
-      if button.trigger then
-        local bar = held[button.name] ~= nil and math.max(floor - RELEASE_BAND, 0) or floor
-        down[button.name] = number_or_zero(state[button.trigger]) > bar
-      else
-        down[button.name] = math.floor(buttons / button.bit) % 2 == 1
-      end
+      down[button.name] = math.floor(buttons / button.bit) % 2 == 1
     end
     return down
   end
 
-  -- Counts one more or one fewer sender of `key`; true when that crossed
-  -- zero, which is when the key itself goes down or comes up.
-  local function count(counts, key, delta)
-    local now = (counts[key] or 0) + delta
-    counts[key] = now > 0 and now or nil
-    return (delta > 0 and now == 1) or (delta < 0 and now == 0)
-  end
-
-  local function lift(name, out)
-    local sent = held[name]
-    held[name] = nil
-    if sent.dik and count(senders, sent.dik, -1) then
-      out[#out + 1] = { dik = sent.dik, down = false }
-    end
-    if sent.bare and count(injected, sent.bare, -1) then
-      inject(sent.bare, false)
-    end
-  end
-
-  local function press(name, settings, down, out)
-    local dik = key_for(settings, name, down)
-    -- A button that IS a side is never bare: it would hold the side for the
-    -- bars and press a key in the game at once.
-    local bare = not (dik and is_activator(settings, dik)) and game_key(settings, name) or nil
-    if bare then
-      held[name] = { bare = bare }
-      if count(injected, bare, 1) then
-        inject(bare, true)
+  local function resolve(button)
+    local best, best_count, best_newest = nil, -1, -1
+    for _, gesture in ipairs(gestures[button] or NO_GESTURES) do
+      local newest, all_held = 0, true
+      for _, modifier in ipairs(gesture.modifiers) do
+        local holding = held[modifier]
+        if holding == nil then
+          all_held = false
+          break
+        end
+        newest = math.max(newest, holding.order)
       end
-      return
+      local count = #gesture.modifiers
+      if all_held and (count > best_count or (count == best_count and newest > best_newest)) then
+        best, best_count, best_newest = gesture, count, newest
+      end
     end
-    held[name] = { dik = dik or nil }
-    if dik and count(senders, dik, 1) then
-      out[#out + 1] = { dik = dik, down = true }
+    return best
+  end
+
+  local function press(button, out)
+    presses = presses + 1
+    local gesture = resolve(button)
+    held[button] = {
+      behavior = gesture and gesture.behavior or false,
+      modifiers = gesture and gesture.modifiers or NO_MODIFIERS,
+      order = presses,
+      poll = polls,
+    }
+    if gesture then
+      out[#out + 1] = { behavior = gesture.behavior, down = true }
+    end
+  end
+
+  local function let_go(holding, out, cancelled)
+    if holding.behavior then
+      out[#out + 1] = { behavior = holding.behavior, down = false, cancelled = cancelled or nil }
+      holding.behavior = false
+    end
+  end
+
+  local function leans_on(holding, button)
+    for _, modifier in ipairs(holding.modifiers) do
+      if modifier == button then
+        return true
+      end
+    end
+    return false
+  end
+
+  -- A button up lets go of its own behaviour and of every chord it was a
+  -- modifier of, those in the order they went down.
+  local function lift(button, out, cancelled)
+    local holding = held[button]
+    held[button] = nil
+    let_go(holding, out, cancelled)
+    local broken = {}
+    for _, other in pairs(held) do
+      if other.behavior and leans_on(other, button) then
+        broken[#broken + 1] = other
+      end
+    end
+    table.sort(broken, function(a, b)
+      return a.order < b.order
+    end)
+    for _, other in ipairs(broken) do
+      let_go(other, out, cancelled)
     end
   end
 
@@ -320,16 +447,27 @@ local function new(deps)
     return state
   end
 
-  --- The bars' ups for everything held, game keys let go as well. Afterwards
-  --- nothing is held, so a button still down is pressed again by the next
-  --- poll that reads it.
+  --- The ups, cancelled, for everything held. Afterwards nothing is held and
+  --- no key is owed: a button still down is pressed again by the next poll
+  --- that reads it, and a named key's up goes to the game.
   function self.release()
     local out = {}
-    for _, button in ipairs(BUTTONS) do
+    for _, button in ipairs(TRIGGERS) do
       if held[button.name] ~= nil then
-        lift(button.name, out)
+        lift(button.name, out, true)
       end
     end
+    for _, name in ipairs(sorted_keys(held)) do
+      if not PAD[name] then
+        lift(name, out, true)
+      end
+    end
+    for _, button in ipairs(BUTTONS) do
+      if held[button.name] ~= nil then
+        lift(button.name, out, true)
+      end
+    end
+    key_edges, latched = {}, {}
     return out
   end
 
@@ -338,20 +476,46 @@ local function new(deps)
     return read ~= nil
   end
 
-  -- Only an explicit true: a hand-broken file must not switch on a bridge
-  -- nobody asked for.
-  local function is_enabled(settings)
-    return settings.enabled == true
-  end
-
   function self.enabled()
     return is_enabled(config())
   end
 
-  --- This frame's edges for the bars, as `{ dik, down }` in order: every
-  --- release, then every press. Game keys go out through `inject` as they
-  --- happen. A pad that stops answering, or a bridge switched off, releases
-  --- everything held.
+  --- Whether the bridge takes this key: a named one's down while it is on,
+  --- and the up of every down it took. Its edge is answered at the next poll.
+  function self.on_key(dik, down)
+    if not down then
+      local name = latched[dik]
+      if name == nil then
+        return false
+      end
+      latched[dik] = nil
+      key_edges[#key_edges + 1] = { name = name, down = false }
+      return true
+    end
+    local settings = config()
+    if read == nil or not is_enabled(settings) then
+      return false
+    end
+    if last_poll == nil or deps.now() - last_poll > STALL_SECONDS then
+      return false
+    end
+    refresh(settings)
+    local name = named.by_dik[dik]
+    if name == nil then
+      return false
+    end
+    -- A held key's repeats are the bridge's too, and change nothing.
+    if latched[dik] == nil then
+      latched[dik] = name
+      key_edges[#key_edges + 1] = { name = name, down = true }
+    end
+    return true
+  end
+
+  --- This frame's behaviour edges, `{ behavior, down, cancelled }` in order:
+  --- the pad's releases, its triggers' presses, the named keys' edges as they
+  --- came, then its other presses. A pad that stops answering, or a bridge
+  --- switched off, lets go of everything it held, cancelled.
   function self.poll()
     local settings = config()
     if not is_enabled(settings) then
@@ -362,22 +526,56 @@ local function new(deps)
       slot, next_probe, empty_probes = nil, nil, 0
       -- Every frame, off being the shipped state: nothing allocated for a
       -- bridge that holds nothing.
-      return next(held) == nil and EMPTY or self.release()
+      if next(held) == nil and next(latched) == nil and #key_edges == 0 then
+        return NO_EDGES
+      end
+      return self.release()
     end
     if read == nil then
       return {}
     end
+    refresh(settings)
+    polls = polls + 1
+    last_poll = deps.now()
     local state = current_state()
     local down = state ~= nil and pressed_in(state, settings) or {}
     local out = {}
-    for _, button in ipairs(BUTTONS) do
-      if held[button.name] ~= nil and not down[button.name] then
-        lift(button.name, out)
+    for _, list in ipairs(PAD_LISTS) do
+      for _, button in ipairs(list) do
+        if held[button.name] ~= nil and not down[button.name] then
+          lift(button.name, out, state == nil)
+        end
+      end
+    end
+    for _, button in ipairs(TRIGGERS) do
+      if down[button.name] and held[button.name] == nil then
+        press(button.name, out)
+      end
+    end
+    if #key_edges > 0 then
+      local edges = key_edges
+      key_edges = {}
+      for index, edge in ipairs(edges) do
+        local holding = held[edge.name]
+        if not edge.down and holding ~= nil and holding.poll == polls then
+          -- A tap between two polls is held for this one and let go at the
+          -- next, or a game key's down and up would leave in one frame, which
+          -- the client never samples.
+          for rest = index, #edges do
+            key_edges[#key_edges + 1] = edges[rest]
+          end
+          break
+        end
+        if edge.down and holding == nil then
+          press(edge.name, out)
+        elseif not edge.down and holding ~= nil then
+          lift(edge.name, out, false)
+        end
       end
     end
     for _, button in ipairs(BUTTONS) do
       if down[button.name] and held[button.name] == nil then
-        press(button.name, settings, down, out)
+        press(button.name, out)
       end
     end
     return out
@@ -399,6 +597,21 @@ local function new(deps)
       return "gamepad: on - no pad connected"
     end
     return "gamepad: on - looking for a pad"
+  end
+
+  --- Why each gesture and named key left out of the map was, in order.
+  function self.problems()
+    local settings = config()
+    local extra, extra_problems = read_extra(extra_of(settings))
+    local known = type(deps.known) == "function" and deps.known or nil
+    local _, map_problems = read_map(map_of(settings), extra.names, known)
+    local out = {}
+    for _, list in ipairs({ map_problems, extra_problems }) do
+      for _, problem in ipairs(list) do
+        out[#out + 1] = "gamepad: " .. problem
+      end
+    end
+    return out
   end
 
   --- What data/gamepad.lua starts from.

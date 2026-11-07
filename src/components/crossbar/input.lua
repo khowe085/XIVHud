@@ -132,9 +132,19 @@ local function new(deps)
     return conflicts
   end
 
-  -- Held DIKs per role: a role is held while any of its keys is down.
-  local held = { left = {}, right = {}, layer = {}, switch = {} }
+  --[[ Held DIKs per role: a role is held while any of its keys is down. A
+       behaviour holds its role under BEHAVIOR, beside the keys, so a side held
+       both ways is let go only when both have. The WXHB halves are held by
+       behaviours alone; a key reaches them through the layer instead. ]]
+  local BEHAVIOR = "behavior"
+  local function no_holds()
+    return { left = {}, right = {}, layer = {}, switch = {}, wxhb_left = {}, wxhb_right = {} }
+  end
+  local held = no_holds()
   local first_side = nil
+  -- When each WXHB half last went up, so the newer of two held is the one up.
+  local raised_at = {}
+  local raises = 0
 
   -- Every mapped DIK currently down. Windows auto-repeat re-delivers
   -- pressed=true for held keys, so everything fires on a state CHANGE only.
@@ -157,9 +167,22 @@ local function new(deps)
     return next(held[role]) ~= nil
   end
 
+  -- A side or a WXHB half: what makes the switch inert and a shortcut chorded.
+  local function raised()
+    return role_held("left") or role_held("right") or role_held("wxhb_left") or role_held("wxhb_right")
+  end
+
   -- The active hold state is a pure function of what is held. `\` is a layer,
   -- not a side: it turns a held side into its WXHB state and alone does nothing.
+  -- A WXHB half a behaviour holds is up whatever else is held.
   function self.hold_state()
+    local wxhb_left, wxhb_right = role_held("wxhb_left"), role_held("wxhb_right")
+    if wxhb_left and wxhb_right then
+      return raised_at.wxhb_left > raised_at.wxhb_right and "wxhb_left" or "wxhb_right"
+    end
+    if wxhb_left or wxhb_right then
+      return wxhb_left and "wxhb_left" or "wxhb_right"
+    end
     if role_held("left") and role_held("right") then
       return first_side == "left" and "expanded_lr" or "expanded_rl"
     end
@@ -177,7 +200,7 @@ local function new(deps)
   -- refocus is harmless where a swallowed one is not.
   function self.focus_lost()
     local before = self.hold_state()
-    held = { left = {}, right = {}, layer = {}, switch = {} }
+    held = no_holds()
     first_side = nil
     down = {}
     latched = {}
@@ -189,21 +212,12 @@ local function new(deps)
     return {}
   end
 
-  -- The full keyboard-event signature; `flags` (a modifier bitmask) is
-  -- accepted but unused - v4 holds no modifiers.
-  function self.on_key(dik, pressed, _flags, blocked)
-    local role = role_of[dik]
-    local slot = slot_of[dik]
-    local shortcut = shortcut_of[dik]
-    if not role and not slot and not shortcut then
-      return {}, false
-    end
-
-    pressed = not not pressed
-    local was_down = down[dik] and true or false
+  --[[ One edge of one input - a key under its DIK, a behaviour under
+       BEHAVIOR - through the hold state, the switch and the guards. Answers
+       the intents, and what the keyboard's block verdict is read from. A
+       `cancelled` let-go ends a hold without acting on it. ]]
+  local function step(id, role, slot, shortcut, pressed, was_down, blocked_in, cancelled)
     local press_edge = pressed and not was_down
-    down[dik] = pressed and true or nil
-
     local before = self.hold_state()
 
     if role == "left" or role == "right" then
@@ -214,24 +228,33 @@ local function new(deps)
       if pressed and not role_held(role) then
         first_side = role_held(other) and other or role
       end
-      held[role][dik] = pressed and true or nil
+      held[role][id] = pressed and true or nil
       if not role_held("left") and not role_held("right") then
         first_side = nil
       end
       if pressed and role_held("switch") then
         switch_poisoned = true
       end
+    elseif role == "wxhb_left" or role == "wxhb_right" then
+      if pressed and not role_held(role) then
+        raises = raises + 1
+        raised_at[role] = raises
+      end
+      held[role][id] = pressed and true or nil
+      if pressed and role_held("switch") then
+        switch_poisoned = true
+      end
     elseif role == "layer" then
-      held[role][dik] = pressed and true or nil
+      held[role][id] = pressed and true or nil
     elseif role == "switch" then
       if pressed and not role_held("switch") then
         switch_chorded = false
-        switch_poisoned = role_held("left") or role_held("right")
+        switch_poisoned = raised()
       end
-      held[role][dik] = pressed and true or nil
+      held[role][id] = pressed and true or nil
     end
 
-    local switch_released = role == "switch" and not pressed and was_down and not role_held("switch")
+    local switch_released = role == "switch" and not pressed and was_down and not role_held("switch") and not cancelled
     -- Edge, not level: a slot key already down before the switch went down was
     -- not chorded during this hold, and its OS auto-repeats must not say it was.
     if slot and press_edge and role_held("switch") then
@@ -243,7 +266,6 @@ local function new(deps)
     local disabled = flag(deps.disabled)
     local edit_mode = flag(deps.edit_mode)
     local layout_mode = flag(deps.layout_mode)
-    local blocked_in = blocked and true or false
 
     local after = self.hold_state()
     local intents = {}
@@ -300,14 +322,44 @@ local function new(deps)
         end
       elseif shortcut and press_edge then
         -- "Chorded" means a SIDE is held - the pad chord is trigger+Select;
-        -- the layer and switch deliberately do not count.
-        local side_held = role_held("left") or role_held("right")
-        local verb = side_held and shortcut.chorded or shortcut.tap
+        -- the layer and switch deliberately do not count, a WXHB half does.
+        local verb = raised() and shortcut.chorded or shortcut.tap
         if verb then
           intents[#intents + 1] = { type = "shortcut", verb = verb }
         end
       end
     end
+
+    return intents,
+      {
+        press_edge = press_edge,
+        after = after,
+        chat_open = chat_open,
+        suppressed = suppressed,
+        disabled = disabled,
+        edit_mode = edit_mode,
+        layout_mode = layout_mode,
+      }
+  end
+
+  -- The full keyboard-event signature; `flags` (a modifier bitmask) is
+  -- accepted but unused - v4 holds no modifiers.
+  function self.on_key(dik, pressed, _flags, blocked)
+    local role = role_of[dik]
+    local slot = slot_of[dik]
+    local shortcut = shortcut_of[dik]
+    if not role and not slot and not shortcut then
+      return {}, false
+    end
+
+    pressed = not not pressed
+    local was_down = down[dik] and true or false
+    down[dik] = pressed and true or nil
+    local blocked_in = blocked and true or false
+    local intents, seen = step(dik, role, slot, shortcut, pressed, was_down, blocked_in, false)
+    local press_edge, after = seen.press_edge, seen.after
+    local chat_open, suppressed, disabled = seen.chat_open, seen.suppressed, seen.disabled
+    local edit_mode, layout_mode = seen.edit_mode, seen.layout_mode
 
     local block
     if not pressed then
@@ -360,6 +412,31 @@ local function new(deps)
     end
 
     return intents, block
+  end
+
+  local BEHAVIOR_ROLES =
+    { left = "left", right = "right", wxhb_left = "wxhb_left", wxhb_right = "wxhb_right", switch = "switch" }
+  local BEHAVIOR_SLOTS = {}
+  for slot = 1, 8 do
+    BEHAVIOR_SLOTS["slot" .. slot] = slot
+  end
+  -- The binder toggles whatever is held, where Select only does chorded.
+  local BINDER = { tap = "edit", chorded = "edit" }
+
+  --- One edge of a behaviour - `left`, `right`, `wxhb_left`, `wxhb_right`,
+  --- `switch`, `binder` or `slot1`..`slot8` - through the machine the keys go
+  --- through. Answers the intents: a behaviour is no key event, so there is
+  --- nothing to block.
+  function self.on_behavior(name, pressed, cancelled)
+    local role, slot = BEHAVIOR_ROLES[name], BEHAVIOR_SLOTS[name]
+    local shortcut = name == "binder" and BINDER or nil
+    if not role and not slot and not shortcut then
+      return {}
+    end
+    pressed = not not pressed
+    local was_down = down[name] and true or false
+    down[name] = pressed and true or nil
+    return (step(BEHAVIOR, role, slot, shortcut, pressed, was_down, false, cancelled == true))
   end
 
   return self

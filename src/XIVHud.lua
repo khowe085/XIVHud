@@ -925,15 +925,18 @@ local action_service = step("building the action service", function()
 end)
 
 --[[ The gamepad bridge (lib/gamepad): an XInput pad read through
-     _LuaXInput, the native module in native/xinput, a chorded press handed
-     to the bars as a key by `core.pump_gamepad` (driven from prerender under
-     a guard of its own, below) and a bare one sent to the game with
-     `setkey`. Optional, like the libraries above - a failure here costs the
-     pad, not the addon - and built even when the module or the XInput DLL is
-     missing, so `//hud gamepad` can say which. Not in safe mode, which has no render loop to poll it. Its
-     reads of core close over the `core` local, which the next step fills
-     in. ]]
+     _LuaXInput, the native module in native/xinput, each gesture handed to
+     core as a behaviour by `core.pump_gamepad` (driven from prerender under
+     a guard of its own, below), which lib/behaviors makes a game key sent
+     with `setkey`, an action, or a bar's own. Optional, like the libraries
+     above - a failure here costs the pad, not the addon - and built even
+     when the module or the XInput DLL is missing, so `//hud gamepad` can say
+     which. Not in safe mode, which has no render loop to poll it. Its reads
+     of core close over the `core` local, which the next step fills in. ]]
 local gamepad = nil
+-- A behaviour's action, read as `bind` reads one after the address and
+-- validated as a slot's is; nil without the action service.
+local parse_behavior_action = nil
 if not safe_mode then
   local ok, err = pcall(function()
     -- XIPivot's route to a native module, Windower 4 having no ffi: the
@@ -956,16 +959,19 @@ if not safe_mode then
       read = reader and reader.read or nil,
       unavailable = unavailable,
       now = os.clock,
-      inject = function(name, down)
-        send_command("setkey " .. name .. (down and " down" or " up"))
-      end,
-      key_held = function(dik)
-        return core ~= nil and core.key_held(dik)
+      -- Asked only to name the map's dead entries, so the components are
+      -- registered by the time it is.
+      known = function(name)
+        return core ~= nil and core.behavior_known(name)
       end,
       config = function()
         return core and core.gamepad_config() or nil
       end,
     })
+    if action_service ~= nil and action_service.actions ~= nil then
+      parse_behavior_action =
+        require("lib/actionbar/commands")({ validate = action_service.actions.validate }).parse_action
+    end
   end)
   if not ok then
     trace("gamepad bridge unavailable: " .. tostring(err))
@@ -1008,6 +1014,11 @@ step("building the framework", function()
     -- `//hud warp` and its kin, and the tuning core.lua carries for them.
     actions = action_service,
     gamepad = gamepad,
+    -- A behaviour's game key: down while it is held, up when it lets go.
+    send_key = function(name, down)
+      send_command("setkey " .. name .. (down and " down" or " up"))
+    end,
+    parse_behavior_action = parse_behavior_action,
     has_focus = function()
       return windower.has_focus()
     end,

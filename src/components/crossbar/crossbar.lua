@@ -1005,11 +1005,8 @@ local function new(ctx)
     refresh()
   end
 
-  function self.on_keyboard(key, down, flags, blocked)
-    if not machine then
-      return false
-    end
-    local intents, block = machine.on_key(key, down, flags, blocked)
+  -- The machine's intents, from a key or a behaviour alike.
+  local function apply(intents)
     for _, intent in ipairs(intents) do
       if intent.type == "activate" then
         --[[ Activations are silent: the panel shows which side is active.
@@ -1069,7 +1066,37 @@ local function new(ctx)
         end
       end
     end
+  end
+
+  function self.on_keyboard(key, down, flags, blocked)
+    if not machine then
+      return false
+    end
+    local intents, block = machine.on_key(key, down, flags, blocked)
+    apply(intents)
     return block
+  end
+
+  local BEHAVIORS = { "left", "right", "wxhb_left", "wxhb_right", "switch", "binder" }
+  for slot = 1, 8 do
+    BEHAVIORS[#BEHAVIORS + 1] = "slot" .. slot
+  end
+
+  --- What this bar answers as a behaviour, `crossbar.<name>` to everything
+  --- outside it.
+  function self.behaviors()
+    local names = {}
+    for index, name in ipairs(BEHAVIORS) do
+      names[index] = name
+    end
+    return names
+  end
+
+  --- A behaviour's edge, through the machine the keys go through.
+  function self.on_behavior(name, down, cancelled)
+    if machine ~= nil then
+      apply(machine.on_behavior(name, down, cancelled))
+    end
   end
 
   function self.update(event, a, ...)
