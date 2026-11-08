@@ -528,7 +528,7 @@ describe("the action queue", function()
         assert.are.equal(command("Cure"), queue.held().command)
       end)
 
-      it("is dropped when its recast is still 2s off as the lock ends", function()
+      it("is dropped when its recast is more than 2s off as the lock ends", function()
         local queue, env = world()
         finish_cast(queue)
         env.recast.Cure = 4
@@ -537,6 +537,24 @@ describe("the action queue", function()
         env.recast.Cure = 2.01
         assert.is_nil(queue.step())
         assert.is_nil(queue.held())
+      end)
+
+      it("is held when its recast ends exactly 2s after the lock", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = ((env.now + 2.7) - env.now) + 2
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+      end)
+
+      it("waits when its recast is exactly 2s off as the lock ends", function()
+        local queue, env = world()
+        start_cast(queue)
+        queue.press(spell("Cure"), command("Cure"))
+        finish_cast(queue)
+        env.now = env.now + 2.71
+        env.recast.Cure = 2
+        assert.is_nil(queue.step())
+        assert.are.equal(command("Cure"), queue.held().command)
       end)
 
       it("waits out the recast once the lock is over", function()
@@ -851,7 +869,7 @@ describe("the action queue", function()
       assert.are.equal(AIMED, queue.held().command)
     end)
 
-    it("holds at OK a spell whose recast ends within a second of the lock", function()
+    it("holds at OK a spell whose recast ends within two seconds of the lock", function()
       local queue, env = world()
       finish_cast(queue)
       cursor_up(queue)
@@ -1553,6 +1571,26 @@ describe("the action queue", function()
       queue.on_action(action(4, 1))
       env.now = env.now + 2.69
       assert.is_true(queue.busy())
+      env.now = env.now + 0.02
+      assert.is_false(queue.busy(), "the finish's own lock, not the start's wait")
+    end)
+
+    --[[ A paralysis round is a spell finish naming no spell. One arriving while
+         a cast runs would start the lock early and close the window on the real
+         finish (Kevin, 2026-11-08). ]]
+    it("ignores a finish naming no spell while the cast is still running", function()
+      local queue, env = world()
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 1
+      queue.on_action(action(4, 0))
+      env.now = env.now + 2.71
+      assert.is_true(queue.busy(), "still the start's wait")
+      env.now = env.now + 2.5
+      queue.step()
+      assert.is_false(queue.busy(), "the start's wait and its lock are over")
+      queue.on_action(action(4, 511))
+      assert.is_true(queue.busy(), "the real finish locks")
     end)
 
     it("takes any finish after a wait whose start named nothing", function()
@@ -1627,7 +1665,7 @@ describe("the action queue", function()
       local queue = world()
       queue.on_action(start_of(8, 511))
       queue.clear("zone")
-      queue.on_action(action(4, 1))
+      queue.on_action(action(4, 511))
       assert.is_false(queue.busy())
     end)
 
@@ -1967,6 +2005,27 @@ describe("the action queue", function()
         queue.on_action(action(4, 0))
       end)
       assert.is_not_nil(logged(env):find("ignored a finish with no cast running", 1, true))
+    end)
+
+    it("says a finish naming no spell was ignored though a cast was running", function()
+      local queue, env = world({ mode = "debug" })
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 1
+      queue.on_action(action(4, 0))
+      assert.is_not_nil(logged(env):find("ignored a finish naming no spell", 1, true))
+    end)
+
+    it("says a finish naming another spell was ignored after a start's wait", function()
+      local queue, env = world({ mode = "debug" })
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 3.41
+      queue.step()
+      env.now = env.now + 2.71
+      queue.step()
+      queue.on_action(action(4, 1))
+      assert.is_not_nil(logged(env):find("ignored a finish naming another spell", 1, true))
     end)
 
     it("says the arrow, so a cursor that never raised one shows", function()

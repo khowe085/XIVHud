@@ -394,7 +394,10 @@ held; a zone, a death, a job change, a logout, an unload and `off` forget the
 lock too, and a newer finish replaces a lock, since an action the server accepted
 proves the old one over. A spell finish with no cast running is ignored: these
 arrived a melee round apart while Kevin was paralyzed, and sends straight after
-them were accepted, so nothing locks. The exception is a spell that went out, from
+them were accepted, so nothing locks. One naming no spell (`param` 0, a paralysis
+round) is ignored even with a cast running, where it would start the lock early and
+close the window on the real finish (Kevin, 2026-11-08; Kevin's own paralyzed run that
+day logged about 45 of them, none of them inside a cast, and no refusal). The exception is a spell that went out, from
 anything, and is still unanswered (Kevin, 2026-11-06: lag lost seven starts whose
 finishes came, and the next send went into the lock): it waits for an answer for
 its `cast_time` plus 0.4s where that is longer than 2s, and a finish inside that

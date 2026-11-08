@@ -550,14 +550,19 @@ local function new(deps)
     --[[ A spell finish with neither a cast running nor a spell gone out is not
          one. These came a melee round apart while Kevin was paralyzed, and sends
          straight after them were accepted, so nothing locks. One naming a spell
-         that went out and is unanswered is that spell's: lag lost its start. ]]
+         that went out and is unanswered is that spell's: lag lost its start.
+         One naming no spell is a paralysis round even with a cast running, where
+         it would start the lock early (Kevin, 2026-11-08). ]]
     local awaited = sent_spell ~= nil and act.param == sent_spell and running(sent_until)
     --[[ Once a start's wait has locked, the bar is idle, and only a finish
          naming what it started is that start's. ]]
     local open = running(open_until) and (running(acting_until) or acting_id == nil or act.param == acting_id)
-    if act.category == SPELL_FINISH and not open and not awaited then
+    if act.category == SPELL_FINISH and (act.param == 0 or not open) and not awaited then
       local message = first_message(act)
-      note("ignored a finish with no cast running" .. (message ~= nil and ", message " .. message or ""))
+      local why = not running(open_until) and "with no cast running"
+        or act.param == 0 and "naming no spell"
+        or "naming another spell"
+      note("ignored a finish " .. why .. (message ~= nil and ", message " .. message or ""))
       return
     end
     answered()
