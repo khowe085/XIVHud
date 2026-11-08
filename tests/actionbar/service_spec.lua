@@ -1221,7 +1221,7 @@ describe("the action service", function()
 
     it("leaves a spell on its own recast to the game", function()
       local service, env = queued()
-      env.spell_recasts[1] = 120
+      env.spell_recasts[1] = 180
       start_cast(service)
       service.fire(CURE, {})
       assert.are.same({ CURE_COMMAND }, env.commands)
@@ -1236,10 +1236,10 @@ describe("the action service", function()
       assert.are.equal(CURE_COMMAND, service.queue.held().command)
     end)
 
-    it("leaves a spell whose recast outlasts the lock by more than a second to the game", function()
+    it("leaves a spell whose recast outlasts the lock by more than two seconds to the game", function()
       local service, env = queued()
       finish_cast(service)
-      env.spell_recasts[1] = 240
+      env.spell_recasts[1] = 300
       service.fire(CURE, {})
       assert.are.same({ CURE_COMMAND }, env.commands)
     end)
@@ -1253,10 +1253,10 @@ describe("the action service", function()
       assert.is_not_nil(service.queue.held())
     end)
 
-    it("leaves an ability whose recast outlasts the lock by more than a second to the game", function()
+    it("leaves an ability whose recast outlasts the lock by more than two seconds to the game", function()
       local service, env = queued()
       finish_cast(service)
-      env.ability_recasts[5] = 4
+      env.ability_recasts[5] = 5
       service.fire({ type = "ja", action = "Provoke", target = "t" }, {})
       assert.are.same({ 'input /ja "Provoke" <t>' }, env.commands)
     end)
@@ -1310,7 +1310,7 @@ describe("the action service", function()
 
     it("keeps that to abilities: a spell on the same number is on its own recast", function()
       local service, env = queued()
-      env.spell_recasts[231] = 120
+      env.spell_recasts[231] = 180
       start_cast(service)
       service.fire(CURE, {})
       service.fire({ type = "ma", action = "Bio II", target = "me" }, {})
@@ -1331,7 +1331,7 @@ describe("the action service", function()
       start_cast(service)
       service.fire(CURE, {})
       finish_cast(service)
-      env.spell_recasts[1] = 120
+      env.spell_recasts[1] = 180
       past_the_lock(service, env)
       env.spell_recasts[1] = 0
       env.now = env.now + 5

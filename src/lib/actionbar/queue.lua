@@ -112,10 +112,11 @@ local WEAPONSKILL_BACKSTOP = 3
 local ITEM_SLACK = 1
 --[[ How long past the lock a press waits for its own recast. Shell V cast on
      target after target ends its recast just after its lock, and sent on it the
-     press was refused (Kevin, 2026-11-07). A press whose recast runs longer is
-     sent to be refused, and a held one whose recast is still that far off when
-     the lock clears is dropped. ]]
-local RECAST_GRACE = 1
+     press was refused (Kevin, 2026-11-07). Without haste that was 1.28 to 1.31s
+     after, eleven times of eleven, so 2 (Kevin, 2026-11-08). A press whose recast
+     runs longer is sent to be refused, and a held one whose recast is still that
+     far off when the lock clears is dropped. ]]
+local RECAST_GRACE = 2
 
 local MODES = { "off", "on", "debug" }
 local KNOWN_MODES = { off = true, on = true, debug = true }
@@ -342,14 +343,14 @@ local function new(deps)
     return type(tp) == "number" and tp < WEAPONSKILL_TP
   end
 
-  --[[ Whether the recast runs more than RECAST_GRACE past the lock. Only a lock
-       counts: nothing says when a cast will end, though its lock is still to
-       come. All 16 presses of Cure IV in its own lock went out on a recast that
-       was over by +2.72, and the lock refused them. ]]
   local function lock_left()
     return running(lock_until) and lock_until - now() or 0
   end
 
+  --[[ Whether the recast runs more than RECAST_GRACE past the lock. Only a lock
+       counts: nothing says when a cast will end, though its lock is still to
+       come. All 16 presses of Cure IV in its own lock went out on a recast that
+       was over by +2.72, and the lock refused them. ]]
   local function outlasts_lock(recast)
     return recast > lock_left() + RECAST_GRACE
   end

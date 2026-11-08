@@ -447,12 +447,12 @@ describe("the action queue", function()
         assert.are.equal(command("Cure"), queue.step())
       end)
 
-      it("is dropped if its recast is still running more than a second on then", function()
+      it("is dropped if its recast is still running more than two seconds on then", function()
         local queue, env = world()
         finish_cast(queue)
         env.recast.Cure = 1
         queue.press(spell("Cure"), command("Cure"))
-        env.recast.Cure = 1.01
+        env.recast.Cure = 2.01
         env.now = env.now + 2.71
         assert.is_nil(queue.step())
         assert.is_nil(queue.held())
@@ -469,7 +469,7 @@ describe("the action queue", function()
         local queue, env = world()
         finish_cast(queue)
         env.now = env.now + 2
-        env.recast.Cure = 1.71
+        env.recast.Cure = 2.71
         assert.is_false(queue.press(spell("Cure"), command("Cure")))
         assert.is_nil(queue.held())
       end)
@@ -483,17 +483,17 @@ describe("the action queue", function()
         assert.are.equal(command("Cure"), queue.held().command)
       end)
 
-      it("is held during a cast when its recast is within a second, the lock being still to come", function()
+      it("is held during a cast when its recast is within two seconds, the lock being still to come", function()
         local queue, env = world()
         start_cast(queue)
-        env.recast.Cure = 1
+        env.recast.Cure = 2
         assert.is_true((queue.press(spell("Cure"), command("Cure"))))
       end)
 
       it("is not held during a cast when its recast is longer, the cast's end being unknown", function()
         local queue, env = world()
         start_cast(queue)
-        env.recast.Cure = 1.01
+        env.recast.Cure = 2.01
         assert.is_false(queue.press(spell("Cure"), command("Cure")))
       end)
 
@@ -507,8 +507,8 @@ describe("the action queue", function()
 
     --[[ Shell V cast on target after target: its own recast ends a little after
          the lock, and a press sent on it at +2.45 was refused by the lock (Kevin,
-         2026-11-07). Within a second of the lock it waits for the recast too. ]]
-    describe("whose recast ends within a second of the lock", function()
+         2026-11-07). Within two seconds of the lock it waits for the recast too. ]]
+    describe("whose recast ends within two seconds of the lock", function()
       it("is held", function()
         local queue, env = world()
         finish_cast(queue)
@@ -516,6 +516,27 @@ describe("the action queue", function()
         env.recast.Cure = 1.2
         assert.is_true((queue.press(spell("Cure"), command("Cure"))))
         assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      -- Shell V's recast without haste ended 1.28 to 1.31s after the lock, eleven
+      -- times of eleven (Kevin, 2026-11-08), and every one was refused.
+      it("is held when its recast ends 1.3s after the lock", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 4
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("is dropped when its recast is still 2s off as the lock ends", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 4
+        queue.press(spell("Cure"), command("Cure"))
+        env.now = env.now + 2.71
+        env.recast.Cure = 2.01
+        assert.is_nil(queue.step())
+        assert.is_nil(queue.held())
       end)
 
       it("waits out the recast once the lock is over", function()
@@ -577,7 +598,7 @@ describe("the action queue", function()
         env.now = env.now + 2.71
         env.recast.Cure = 0.5
         queue.step()
-        env.recast.Stone = 1.01
+        env.recast.Stone = 2.01
         assert.is_false(queue.press(spell("Stone"), command("Stone")))
         assert.are.equal(command("Cure"), queue.held().command)
       end)
@@ -585,7 +606,7 @@ describe("the action queue", function()
       it("is not held further out than that", function()
         local queue, env = world()
         finish_cast(queue)
-        env.recast.Cure = 3.71
+        env.recast.Cure = 4.71
         assert.is_false(queue.press(spell("Cure"), command("Cure")))
         assert.is_nil(queue.held())
       end)
@@ -812,7 +833,7 @@ describe("the action queue", function()
       local queue, env = world()
       finish_cast(queue)
       cursor_up(queue)
-      env.recast["Shell V"] = 4
+      env.recast["Shell V"] = 5
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
       assert.are.equal(AIMED, send)
@@ -1706,7 +1727,7 @@ describe("the action queue", function()
       start_cast(queue)
       queue.press(spell("Cure"), command("Cure"))
       finish_cast(queue)
-      env.recast.Cure = 2
+      env.recast.Cure = 2.5
       env.now = env.now + 3.01
       assert.is_nil(queue.step())
       assert.is_nil(queue.held())
@@ -2115,7 +2136,7 @@ describe("the action queue", function()
       start_cast(queue)
       queue.press(spell("Cure"), command("Cure"))
       finish_cast(queue)
-      env.recast.Cure = 2
+      env.recast.Cure = 2.5
       env.now = env.now + 3.01
       queue.step()
       assert.is_not_nil(logged(env):find("dropped Cure: on recast", 1, true))
@@ -2126,28 +2147,28 @@ describe("the action queue", function()
       start_cast(queue)
       queue.press(spell("Cure"), command("Cure"))
       finish_cast(queue)
-      env.recast.Cure = 1.12
+      env.recast.Cure = 2.12
       env.now = env.now + 3.01
       queue.step()
-      assert.is_not_nil(logged(env):find("dropped Cure: on recast 1.12s", 1, true))
+      assert.is_not_nil(logged(env):find("dropped Cure: on recast 2.12s", 1, true))
     end)
 
     it("says how much recast and lock a press not held had", function()
       local queue, env = world({ mode = "debug" })
       finish_cast(queue)
-      env.recast.Cure = 4
+      env.recast.Cure = 5
       queue.press(spell("Cure"), command("Cure"))
-      assert.is_not_nil(logged(env):find("not held: Cure on recast 4.00s, lock 2.70s", 1, true))
+      assert.is_not_nil(logged(env):find("not held: Cure on recast 5.00s, lock 2.70s", 1, true))
     end)
 
     it("says how much recast and lock an OK not held had", function()
       local queue, env = world({ mode = "debug" })
       finish_cast(queue)
-      env.recast["Shell V"] = 4
+      env.recast["Shell V"] = 5
       queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
       queue.on_text("/ta 777")
       queue.on_text("/ta 12345")
-      assert.is_not_nil(logged(env):find("not held: Shell V on recast 4.00s, lock 2.70s", 1, true))
+      assert.is_not_nil(logged(env):find("not held: Shell V on recast 5.00s, lock 2.70s", 1, true))
     end)
 
     it("says a backstop fired, which is the case worth seeing", function()

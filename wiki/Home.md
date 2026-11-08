@@ -313,12 +313,12 @@ off, every press goes at once and the game decides.
 - **Pressing again.** While the game has yet to answer a press, pressing the
   same action at the same target again does nothing, so mashing a slot cannot
   spend a weaponskill or an item twice.
-- **Recasts.** A held press waits on its own recast for a second at most: a
-  spell, job ability or pet command whose recast ends within a second of when
+- **Recasts.** A held press waits on its own recast for two seconds at most: a
+  spell, job ability or pet command whose recast ends within two seconds of when
   you could act is held until it ends, and one further off is dropped. A press
   made while you are locked out after an action is held if its recast ends no
-  more than a second after the lockout; one made during a cast, only if its
-  recast has a second or less to run. Otherwise it goes out at once, as does one
+  more than two seconds after the lockout; one made during a cast, only if its
+  recast has two seconds or less to run. Otherwise it goes out at once, as does one
   made while nothing is going on, recast or not. While a held press waits on its
   recast, a newer press replaces it, as during a cast. Stratagems, Quick Draw and Ready have charges, so their recast
   does not count.
@@ -334,7 +334,7 @@ off, every press goes at once and the game decides.
   is decided when you press OK rather than when you press the slot, so you can
   pick your target during a cast and press OK whenever you like. OK is then
   judged as a press is: a weaponskill under 1000 TP sends nothing, an action
-  whose recast outlasts the lockout by more than a second goes at once, and
+  whose recast outlasts the lockout by more than two seconds goes at once, and
   otherwise it is held or goes
   at once as the queue stands. Pressing another cursor slot while the arrow is
   up sends nothing and only changes what OK will cast; an arrow a macro raised
