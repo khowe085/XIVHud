@@ -28,6 +28,9 @@ edit by hand to get started.
   logged out, and comes back on its own.
 - **Short names.** Every component answers to a short alias wherever its
   name is taken (`//hud show pb`).
+- **Gamepad.** XIVHud can read an Xbox-style pad itself and play the crossbar
+  from it, with what every button and chord does changed by command (see
+  [Gamepad](gamepad.md)). It is off until you switch it on.
 
 ## Installation
 
@@ -44,7 +47,9 @@ edit by hand to get started.
 4. To load it every time you start the game, add the line `lua load xivhud`
    to `Windower4/scripts/init.txt`.
 
-To update, unzip the new release over the old folder. Your settings (`data/`),
+To update, close the game and unzip the new release over the old folder:
+Windows will not replace `libs/_LuaXInput.dll` while the game has it loaded.
+Your settings (`data/`),
 your own art (`icons/custom/`) and the icon cache (`cache/`) are not in the zip
 and survive the update.
 
@@ -93,7 +98,9 @@ empty. It also changes set on CTRL+Up and CTRL+Down, which the game still sees.
 The bars also take a left-click on a drawn slot or the sword, and the status
 bar a click on one of its icons. If you would
 rather keep those keys, switch the component off with `//hud hide crossbar`
-or `//hud hide hotbar`; a hotbar row you hide gives its chord back too.
+or `//hud hide hotbar`; a hotbar row you hide gives its chord back too. The
+[gamepad bridge](gamepad.md), while it is on, also takes any key you have
+taught it with `//hud gamepad learn`, logged in or not.
 
 Components can also be switched from the console: `//hud hide giltracker`,
 `//hud show partylist alliance1`.
@@ -102,7 +109,7 @@ Components can also be switched from the console: `//hud hide giltracker`,
 
 | Component | Alias | On by default | What it shows |
 | --- | --- | --- | --- |
-| [Crossbar](components/crossbar.md) | `cb` | yes | FFXIV's cross hotbar: sixteen slots per set, driven by held keys, or a controller through Steam Input |
+| [Crossbar](components/crossbar.md) | `cb` | yes | FFXIV's cross hotbar: sixteen slots per set, driven by held keys or a [gamepad](gamepad.md) |
 | [Hotbar](components/hotbar.md) | `hb` | yes (row 1) | FFXIV's hotbar: ten slots in a row on the number keys, up to eight rows, with the same kinds of binding and the same commands as the crossbar |
 | [Parameter bar](components/parambar.md) | `pb` | yes | HP, MP and TP bars with numbers |
 | [Party list](components/partylist.md) | `pl` | yes (main party) | your party (HP/MP/TP, jobs, buffs, distance) and both alliance parties (HP and MP) |
@@ -121,8 +128,8 @@ All commands start with `//hud` (`//xivhud` is registered as a second name).
 Verbs and component names are not case-sensitive, and a component's alias
 stands in for its name anywhere: `//hud reset tb` is `//hud reset targetbar`.
 Settings are per character, so until one is loaded everything but `help`,
-`list` and `copy` answers `log in first - XIVHud configuration is per
-character`.
+`list`, `copy` and `gamepad` answers `log in first - XIVHud configuration is
+per character`.
 
 | Command | What it does |
 | --- | --- |
@@ -145,6 +152,8 @@ character`.
 | `//hud queue [on\|debug\|off]` | hold a bar press made during a cast or the moment after it, and send it when you can act; on by default. Without a word it prints the current setting (see [The action queue](#the-action-queue)) |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action |
 | `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default, and a change applies at once. Without a word it prints the current setting |
+| `//hud gamepad [on\|off]` | the [gamepad bridge](gamepad.md): which pad it reads, or switch it on or off; off by default |
+| `//hud gamepad list`, `bind`, `unbind`, `learn` | what each button and chord of the pad does, changed in game (see [Gamepad](gamepad.md#commands)) |
 | `//hud config [<component>\|global]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
 
@@ -236,8 +245,9 @@ control at its limit does nothing, and a press that slides off a control
 before release does nothing either.
 
 `global` holds the travel delay, the action queue and its waits (see
-[Action commands](#action-commands)) and whether the HUD hides during
-cutscenes. The components with a page of their own are the parameter bar,
+[Action commands](#action-commands)), whether the HUD hides during cutscenes,
+and the [gamepad bridge](gamepad.md)'s switch, unless `//hud gamepad` says the
+bridge is unavailable. The components with a page of their own are the parameter bar,
 target bar, party list, status bar, equipment viewer, inventory tracker,
 crossbar and hotbar; each one's page says what is on it. A number that needs a
 value the steps do not land on, the buff order and filter lists, and anything
@@ -399,6 +409,7 @@ Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/config.lua  the comp
 Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/layout.lua  its position, scale and on/off state
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/<JOB>.lua     the crossbar's bindings for that job (the hotbar's sit beside it in hotbar/)
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/SHARED.lua    the bindings of the sets marked shared across jobs
+Windower4/addons/XIVHud/data/gamepad.lua                                the gamepad map, one for every character
 Windower4/addons/XIVHud/cache/items/                                    item icons read from the game (a cache: delete it only with the addon unloaded)
 Windower4/addons/XIVHud/cache/packets/<Character>/                      the last character-stats packet per job, for the experience bar and the binder's subjob level cap (a cache)
 Windower4/addons/XIVHud/icons/custom/                                   your own crossbar and hotbar art
@@ -503,14 +514,18 @@ when the message changes, not every frame. After five errors in one handler
 over the session chat says `the <name> handler has been disabled after 5
 failures - '//lua reload xivhud' to try again` and that part of the addon
 stops: a disabled mouse or keyboard handler hands your input back to the game,
-a disabled `prerender` handler freezes the whole HUD, and a disabled `command`
-handler leaves `//hud` silent. Reload to try again, and report the message.
+a disabled `prerender` handler freezes the whole HUD, a disabled `command`
+handler leaves `//hud` silent, and a disabled `gamepad` handler stops the pad,
+leaving any key it held down until the game next loses focus. Reload to try again, and report the message.
 
 **`item icons are not being read: the game's item data has changed`.** A game
 update has moved the item icons and XIVHud needs an update. It applies to the
 equipment viewer and both action bars, which share one icon cache; the
 [equipment viewer](components/equipviewer.md) page has `icons probe` and the
 rest.
+
+**The gamepad does nothing.** `//hud gamepad` says why; the
+[gamepad page](gamepad.md#troubleshooting) lists its answers.
 
 **`crossbar: DIK <n> is bound to more than one thing`.** A hand-edited key map
 in the crossbar's `config.lua` gives one key two jobs; the first keeps it.

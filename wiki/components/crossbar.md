@@ -42,9 +42,9 @@ keeps its own bindings; what you learn on one applies to the other.
 Bindings are made with the mouse: `//hud crossbar edit` opens a binder, you
 click a slot, pick which layer you are editing, and pick an action.
 
-Everything is driven by keys, so **a controller is optional**. Pad support is
-a Steam Input layout that presses those keys for you; from a keyboard you
-press them yourself.
+It is played from the keyboard, or from a gamepad that XIVHud reads itself -
+the [gamepad bridge](../gamepad.md), off until you switch it on - so **a
+controller is optional**.
 
 ## Features
 
@@ -72,8 +72,9 @@ press them yourself.
   a cast until you can act.
 - **The mouse**: a left-click fires a slot, and a left-click on the sword draws
   or sheathes.
-- **Controller friendly**: everything is a key, so a Steam Input layout that
-  presses those keys gives you a full pad cross hotbar.
+- **Controller friendly**: with the [gamepad bridge](../gamepad.md) on, an
+  Xbox-style pad plays it directly - the triggers raise the sides, the face
+  buttons and D-pad fire the slots, RB switches sets.
 
 ## Configuration options
 
@@ -457,13 +458,9 @@ does, rung by rung, is under [Built-ins](#built-ins).
 
 ---
 
-## Steam Input mapping
+## Keys
 
-The addon reads keys. Turning a controller into those keys is Steam Input's
-job, so nothing here is enforced by the addon - any layout that emits the
-right keys works, and a keyboard player can press them directly.
-
-Six keys drive everything:
+Six keys drive the crossbar from the keyboard:
 
 | Key | Role |
 | --- | --- |
@@ -471,7 +468,7 @@ Six keys drive everything:
 | `'` | right side |
 | `\` | the W-layer - hold with a side for its WXHB bar |
 | `` ` `` | set switch - tap to cycle, hold and press a button to jump; ignored while a side is held |
-| `=` | Select - nothing on its own, except leaving edit mode; with a side held, opens the binder |
+| `=` | nothing on its own, except leaving edit mode; with a side held, opens the binder |
 | `1`-`8` | the eight slots - but only while a side or the switch is held; otherwise they reach the game as usual |
 
 You can still type them: once the chat box has focus the crossbar hands every
@@ -487,84 +484,42 @@ and alt-tabbing releases a held side.
 **No modifiers are used.** The bar never uses Ctrl or Alt, so FFXI's own
 macro palette on those chords is untouched.
 
-A controller layout that produces them:
-
-| Pad input | Emits | You get |
-| --- | --- | --- |
-| **LT** held | `;` | activates the XHB's left side |
-| **RT** held | `'` | activates its right side |
-| **LT + RT** | both | Expanded Hold takes over the screen - which one depends on the order you pressed them |
-| **LT + LB** | `\` | activates the WXHB's left side (bringing it on screen if it was not) |
-| **RT + RB** | `\` | the WXHB's right side |
-| **LB** tapped | the pad's own button | whatever the game has that button doing - the crossbar never sees it |
-| **LB** long-pressed | `\` | held for the draw gesture below |
-| **RB** | `` ` `` | tap cycles sets; hold and press any slot button to jump to that set, 1 to 8 (no trigger held) |
-| **Select** | `=` | nothing on its own, except leaving edit mode; with a side held, the binder |
-| **face / D-pad** while LT, RT or RB is held | `1`-`8` | the eight slots |
-
-### Button chords
-
-Several controls mean different things depending on what else is held. All of
-it is done with **button chords** - a binding that only fires while another
-button is held. Nothing here uses action sets or mode shifts.
-
-The face buttons and D-pad carry the eight slots while you are reaching for
-the crossbar, and are your normal game buttons the rest of the time. Steam
-lets one chord list several trigger buttons and fire on **any of them**, so
-each slot button needs one chord rather than three:
-
-| Chord | Emits |
-| --- | --- |
-| Y + LT, RT or RB | `1` |
-| B + LT, RT or RB | `2` |
-| A + LT, RT or RB | `3` |
-| X + LT, RT or RB | `4` |
-| D-pad ↑ + LT, RT or RB | `5` |
-| D-pad → + LT, RT or RB | `6` |
-| D-pad ↓ + LT, RT or RB | `7` |
-| D-pad ← + LT, RT or RB | `8` |
-| LB + LT | `\` |
-| RB + RT | `\` |
-| Select + LT or RT | `=` |
-
-Eleven chords. Everything else on the pad is a plain binding, listed in the
-table above.
-
-The Select chord is what opens the binder: `=` on its own only ever leaves
-edit mode, and the crossbar treats it as "open the binder" only when a side is
-already held.
-Select emits `=` as a plain binding too, so the chord is there to make sure it
-still does while a trigger is down.
-
-**RB belongs in the slot chords, not just the triggers.** Jumping to a set is
-`` ` `` held plus a slot button - leave RB out and you have a switch key with
-no numbers to press against it, and set jumping does nothing at all.
-
-**The bumpers need more than one binding each.** LB carries **three**: the
-pad's own button on a tap, `\` on a long press, and `\` again in the LT + LB
-chord. RB is `` ` `` on a press. Their chords are in the table above.
-
-**Mark the LT + LB chord as not interruptable in Steam Input.** Three
-bindings on one button is what makes this necessary: left interruptable, the
-chord gives way to LB's other two and the WXHB's left side does not come up
-reliably. The RT + RB chord carries only two bindings on RB and does not need
-it.
-
-Two more things:
-
-- **Set switching only works when no side is held.** Holding a side means you
-  are using the crossbar, so the switch key is ignored until you let go. From
-  RT the pad enforces it as well, since RB emits `\` in that chord; from LT
-  the key still arrives and the crossbar is what ignores it.
-- **Leave Select alone.** It is `=` in every state, chorded or not - the
-  crossbar reads the chord itself, so the binder stays reachable whatever
-  you are holding. On its own the key does nothing but leave edit mode: it is
-  still the crossbar's, so the game never sees it, but a key you cannot use
-  for anything else should not fire something you did not ask for either.
-
 **Sheathe / unsheathe** is a gesture: hold `\` and tap `` ` `` with no side
-held - on the pad, hold **LB** and tap **RB**. Mounted, the same gesture
-dismounts.
+held. Mounted, the same gesture dismounts.
+
+## Gamepad
+
+With the [gamepad bridge](../gamepad.md) on, XIVHud reads an XInput pad
+itself and plays the crossbar from it. The crossbar declares these
+behaviours, and the bridge's map puts them on the pad:
+
+| Behaviour | Shipped on | Does |
+| --- | --- | --- |
+| `crossbar.left` / `crossbar.right` | LT / RT | held, raise that side, as `;` and `'` do; both at once is Expanded Hold, which one depending on the order they went down |
+| `crossbar.wxhb_left` / `crossbar.wxhb_right` | LT+LB / RT+RB | held, raise that half of the WXHB, as `\` does with a side |
+| `crossbar.switch` | RB | the set switch, as `` ` ``: a tap moves to the next set in the rotation; held, a slot button jumps to that set |
+| `crossbar.slot1` - `crossbar.slot8` | Y, B, A, X, then D-pad ↑ → ↓ ←, each with LT, RT or RB held | fire that slot on whichever bar is raised - an XHB side, a WXHB half or Expanded Hold - or, with the switch held, jump to that set |
+| `crossbar.binder` | LT+Start, RT+Start | open or close edit mode, whatever else is held |
+
+- **A slot button fires whatever is raised**: Y under a trigger is slot 1 of
+  that side, of a WXHB half while its bumper is held too, and of Expanded Hold
+  while both triggers are.
+- **They follow the crossbar's rules**, exactly as its keys do: nothing fires
+  while the chat line is open, while the HUD or the crossbar is hidden, or in
+  layout mode, and in edit mode only the binder and the set switch work.
+- **Keys and the pad mix.** A side held on the keyboard and the same side held
+  on the pad are one side, which drops when both have let go.
+- **Draw and sheathe** have no gesture in the shipped map. Bind one to the
+  `draw` action - `//hud gamepad bind r3 draw` - or use `//hud draw` or the
+  sword.
+- **Any of them can move** with `//hud gamepad bind`: `bind l4
+  crossbar.wxhb_left` puts the WXHB's left half on a back button. A button
+  that raises a bar on its own needs slot chords of its own (`l4+y` bound to
+  `crossbar.slot1`, and so on), since the shipped ones are under LT, RT and RB
+  only.
+
+The [gamepad page](../gamepad.md) has the whole map, how chords are read, and
+how to use buttons XInput cannot see.
 
 ---
 
@@ -822,9 +777,9 @@ the screen the window will cover it, and slots underneath cannot be clicked
 while it is up. They can still be dropped onto: the window is out of the way
 for as long as you are dragging a slot.
 
-**Changing set.** The set switch still works in edit mode - tap `` ` `` to
-cycle, or hold it and press a number to jump - because which set is on screen
-is the thing you are editing. If a window is open when the set changes it is
+**Changing set.** The set switch still works in edit mode - tap `` ` `` (RB
+on the pad) to cycle, or hold it and press a slot's key or button to jump -
+because which set is on screen is the thing you are editing. If a window is open when the set changes it is
 put away, since it remembers the slot it was opened on and would otherwise
 bind into a set you are no longer looking at. Edit mode itself stays on.
 
@@ -832,8 +787,9 @@ bind into a set you are no longer looking at. Edit mode itself stays on.
 side activates, no slot fires, and the bar holds still under the binder. The
 side you were holding to open it goes dark as the mode opens, since it is inert
 from that moment; the display picks the real keys back up when you leave. Leave
-it with `//hud crossbar edit` again, with **any press of the Select key**
-(`=`), or by entering `//hud layout` or opening `//hud config`, each of which
+it with `//hud crossbar edit` again, with **any press of `=`** or the pad's
+LT+Start or RT+Start, or by entering `//hud layout` or
+opening `//hud config`, each of which
 takes over from it. Edit mode needs the crossbar visible and a job loaded to
 open at all, and refuses while `//hud layout` or the settings window is up.
 Leaving takes the hotbar out of edit mode with it. A cutscene or a zone closes
