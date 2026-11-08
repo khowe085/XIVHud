@@ -432,15 +432,28 @@ Action queue. `//hud queue on|debug|off` (Kevin, 2026-10-31, plan in
 `.claude/Planning/queue.md`), `core.lua`'s `queue`, shipping on (Kevin, 2026-11-01;
 nothing migrates, so a file already holding `off` stays off): FFXIV's
 queue, in `lib/actionbar/queue`. A crossbar or hotbar press made during a cast
-or the lock after it is held and goes as invoked when the lock clears. There is
+or the lock after it is held and goes as invoked when the lock clears (or its
+recast, two seconds at most later, below). There is
 one held press, the newest; a press while nothing is busy goes at once, as it
 always did; a release is sent once and never again, refused or not. **It never
-waits on a recast**, which is what made Selindrile's MiniQueue unusable: a press
-on its own recast goes out and the game refuses it, and a held press whose
-recast is running when the lock clears is dropped. A press whose recast ends inside
+waits long on a recast**, which is what made Selindrile's MiniQueue unusable: a
+press whose own recast runs more than two seconds past the lock goes out and the game
+refuses it, and a held press whose recast is that far off when the lock clears is
+dropped. A press whose recast ends inside
 the lock running is held all the same (Kevin, 2026-11-01): the wait is then the
-lock's, and sent it could only be refused, as all 16 of Cure IV's were. It takes a
-lock, since nothing says when a cast will end. Three rules beside that one
+lock's, and sent it could only be refused, as all 16 of Cure IV's were. So is one
+whose recast ends within two seconds AFTER the lock (Kevin, 2026-11-07: Shell V cast on
+target after target ends its recast just past its lock, and one sent at +2.45 was
+refused; it was a second until 2026-11-08, when Shell V without haste ended its
+recast 1.28 to 1.31s past the lock eleven times of eleven, each sent and refused), and its release then waits for the recast. While it waits, a press or
+an OK treats the queue as engaged though `busy()` stays false (Kevin, 2026-11-08:
+read as idle, a mash of the slot went out beside it): a newer one replaces it, unless
+its own recast runs more than two seconds on, which goes out as against a lock of
+nothing. A cast still running counts as a lock of nothing too, its own still to
+come. A press on its recast with nothing busy and nothing held on its recast goes
+out as before. **The grace is unverified in a live client at two seconds** (row 34 of the plan). The
+`not held` and `dropped ... on recast` lines in `debug` say the recast and lock left, which
+is how the margin was measured. Three rules beside that one
 (Kevin, 2026-10-31): the four ABILITY recasts a charged family shares read as no
 recast at all (231 stratagems, 195 Quick Draw, 102 and 255 Ready, the ids
 Selindrile's `check_recast` skips), since the timer running there says a charge was spent,
@@ -462,7 +475,15 @@ server packets show none), so the lock's LENGTH is the one constant, and it is
 taken from the finish packet with nothing subtracted. The server starts the
 lock no later than it sends that packet, so latency can only make a release
 late, never early - where MiniQueue takes a guessed `latency = .5` off the same
-anchor and aims early. Everything else is a packet, whoever caused it: outgoing
+anchor and aims early. The one exception is a finish that never comes (Kevin,
+2026-11-06: lag lost several in one event, and each held the bar for 30s): a
+start then counts as finished at its spell's `cast_time` plus 0.4s, 3s for a
+weaponskill or an item's `cast_time` plus 1s, and that lock is the one anchor
+that is not a packet, so a cast lengthened past it can release early. A held
+press then goes once that lock ends; a finish arriving late still replaces the
+lock, but a spell finish then has to name the spell the start named (Kevin,
+2026-11-07), so a paralysis round cannot lock an idle bar. A start nothing can time (ranged, an unknown id) keeps the 30s backstop,
+and what it held is dropped. Everything else is a packet, whoever caused it: outgoing
 `0x01A`/`0x037` (the only sight of a macro or of what GearSwap injects),
 `0x028` starts, finishes and interrupts, `0x029` refusals (GearSwap's
 `unable_to_use` list), all through handlers the resource libraries gate, so with
@@ -489,7 +510,8 @@ handler, and blocking the packet afterwards would leave it `midaction` for good.
 So the press opens the same cursor over `/ta <token>`, free or busy, which GearSwap
 ignores, and `queue.on_text` takes the second number: the line is blocked, so
 your target never moves, and the real `/ma "..." <id>` is held, or sent at once
-if the lock has cleared or the recast outlasts it. GearSwap sees nothing until
+if the lock has cleared (and no held press waits on its recast) or the recast
+outlasts it by more than two seconds. GearSwap sees nothing until
 then, and its numeric path runs precast as it does after any OK. No load order
 is needed. Free counts too because a lock can begin after the press: GearSwap
 sends weaponskills of its own, and a Sleep II opened free and OK'd in one went
@@ -513,9 +535,18 @@ without a packet, and the next press must not wait on an answer that cannot
 come. A config mode, suppression and a re-attach drop what is
 held; a zone, a death, a job change, a logout, an unload and `off` forget the
 lock too, and a newer finish replaces a lock, since an action the server accepted
-proves the old one over. A spell finish with no cast running is ignored: a cast
-always sends its start first, these arrived a melee round apart while Kevin was
-paralyzed, and sends straight after them were accepted, so nothing locks.
+proves the old one over. A spell finish with no cast running is ignored: these
+arrived a melee round apart while Kevin was paralyzed, and sends straight after
+them were accepted, so nothing locks. One naming no spell (`param` 0, a paralysis
+round) is ignored even with a cast running, where it would start the lock early and
+close the window on the real finish (Kevin, 2026-11-08; Kevin's own paralyzed run that
+day logged about 45 of them, none of them inside a cast, and no refusal). The exception is a spell that went out, from
+anything, and is still unanswered (Kevin, 2026-11-06: lag lost seven starts whose
+finishes came, and the next send went into the lock): it waits for an answer for
+its `cast_time` plus 0.4s where that is longer than 2s, and a finish inside that
+naming it (its `param`) is its own and locks - one naming any other spell, or a
+paralysis round, is ignored (Kevin, 2026-11-07). A refusal still ends the wait at once; a spell the server
+drops without one holds the bar that long.
 
 `debug` is `on` plus a line per edge in `<addon>/debug.log`, appended with raw `io`,
 dated and stamped with the clock, and never in chat (Kevin, 2026-11-01; the client

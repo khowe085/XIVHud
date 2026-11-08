@@ -16,6 +16,7 @@ local function world(opts)
     log = {},
     recast = {},
     names = {},
+    casts = { spell = {}, item = {} },
     blocked = nil,
     pins = {},
   }
@@ -51,6 +52,9 @@ local function world(opts)
     name_of = function(_, id)
       return env.names[id]
     end,
+    cast_seconds = function(kind, id)
+      return env.casts[kind] ~= nil and env.casts[kind][id] or nil
+    end,
     arrow_up = function()
       return env.arrow_up == true
     end,
@@ -76,6 +80,13 @@ end
 
 local function start_cast(queue)
   queue.on_action(action(8, STARTING))
+end
+
+-- A start naming what it starts, where the game puts the spell or item id.
+local function start_of(category, id)
+  local start = action(category, STARTING)
+  start.targets = { { actions = { { param = id } } } }
+  return start
 end
 
 -- A cast's finish, with the start the game always sends ahead of one.
@@ -436,11 +447,12 @@ describe("the action queue", function()
         assert.are.equal(command("Cure"), queue.step())
       end)
 
-      it("is dropped if its recast is still running then", function()
+      it("is dropped if its recast is still running more than two seconds on then", function()
         local queue, env = world()
         finish_cast(queue)
         env.recast.Cure = 1
         queue.press(spell("Cure"), command("Cure"))
+        env.recast.Cure = 2.01
         env.now = env.now + 2.71
         assert.is_nil(queue.step())
         assert.is_nil(queue.held())
@@ -457,7 +469,7 @@ describe("the action queue", function()
         local queue, env = world()
         finish_cast(queue)
         env.now = env.now + 2
-        env.recast.Cure = 1
+        env.recast.Cure = 2.71
         assert.is_false(queue.press(spell("Cure"), command("Cure")))
         assert.is_nil(queue.held())
       end)
@@ -471,10 +483,17 @@ describe("the action queue", function()
         assert.are.equal(command("Cure"), queue.held().command)
       end)
 
-      it("is not held during a cast, whose end nothing says", function()
+      it("is held during a cast when its recast is within two seconds, the lock being still to come", function()
         local queue, env = world()
         start_cast(queue)
-        env.recast.Cure = 1
+        env.recast.Cure = 2
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+      end)
+
+      it("is not held during a cast when its recast is longer, the cast's end being unknown", function()
+        local queue, env = world()
+        start_cast(queue)
+        env.recast.Cure = 2.01
         assert.is_false(queue.press(spell("Cure"), command("Cure")))
       end)
 
@@ -483,6 +502,131 @@ describe("the action queue", function()
         env.recast.Cure = 1
         assert.is_false(queue.press(spell("Cure"), command("Cure")))
         assert.is_false(queue.busy())
+      end)
+    end)
+
+    --[[ Shell V cast on target after target: its own recast ends a little after
+         the lock, and a press sent on it at +2.45 was refused by the lock (Kevin,
+         2026-11-07). Within two seconds of the lock it waits for the recast too. ]]
+    describe("whose recast ends within two seconds of the lock", function()
+      it("is held", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.now = env.now + 2.43
+        env.recast.Cure = 1.2
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      -- Shell V's recast without haste ended 1.28 to 1.31s after the lock, eleven
+      -- times of eleven (Kevin, 2026-11-08), and every one was refused.
+      it("is held when its recast ends 1.3s after the lock", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 4
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("is dropped when its recast is more than 2s off as the lock ends", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 4
+        queue.press(spell("Cure"), command("Cure"))
+        env.now = env.now + 2.71
+        env.recast.Cure = 2.01
+        assert.is_nil(queue.step())
+        assert.is_nil(queue.held())
+      end)
+
+      it("is held when its recast ends exactly 2s after the lock", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = ((env.now + 2.7) - env.now) + 2
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+      end)
+
+      it("waits when its recast is exactly 2s off as the lock ends", function()
+        local queue, env = world()
+        start_cast(queue)
+        queue.press(spell("Cure"), command("Cure"))
+        finish_cast(queue)
+        env.now = env.now + 2.71
+        env.recast.Cure = 2
+        assert.is_nil(queue.step())
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("waits out the recast once the lock is over", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 3.5
+        queue.press(spell("Cure"), command("Cure"))
+        env.now = env.now + 2.71
+        env.recast.Cure = 0.79
+        assert.is_nil(queue.step())
+        assert.are.equal(command("Cure"), queue.held().command)
+        env.now = env.now + 0.79
+        env.recast.Cure = 0
+        assert.are.equal(command("Cure"), queue.step())
+      end)
+
+      --[[ Read as idle while it waited, a mash of the slot went out and could
+           be accepted, and the held press then went too, into the cast. ]]
+      it("takes a re-press while it waits on its recast, sending nothing", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 1
+        queue.press(spell("Cure"), command("Cure"))
+        env.now = env.now + 2.71
+        env.recast.Cure = 0.1
+        queue.step()
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("takes a re-press made as the lock ends, before the next frame", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 1
+        queue.press(spell("Cure"), command("Cure"))
+        env.now = env.now + 2.71
+        env.recast.Cure = 0.5
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("is replaced while it waits by a newer press with no recast", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 1
+        queue.press(spell("Cure"), command("Cure"))
+        env.now = env.now + 2.71
+        env.recast.Cure = 0.5
+        queue.step()
+        assert.is_true((queue.press(spell("Stone"), command("Stone"))))
+        assert.are.equal(command("Stone"), queue.step())
+      end)
+
+      it("leaves a newer press on a longer recast to the game while it waits", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 1
+        queue.press(spell("Cure"), command("Cure"))
+        env.now = env.now + 2.71
+        env.recast.Cure = 0.5
+        queue.step()
+        env.recast.Stone = 2.01
+        assert.is_false(queue.press(spell("Stone"), command("Stone")))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("is not held further out than that", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = 4.71
+        assert.is_false(queue.press(spell("Cure"), command("Cure")))
+        assert.is_nil(queue.held())
       end)
     end)
 
@@ -707,7 +851,7 @@ describe("the action queue", function()
       local queue, env = world()
       finish_cast(queue)
       cursor_up(queue)
-      env.recast["Shell V"] = 4
+      env.recast["Shell V"] = 5
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
       assert.are.equal(AIMED, send)
@@ -719,6 +863,43 @@ describe("the action queue", function()
       finish_cast(queue)
       cursor_up(queue)
       env.recast["Shell V"] = 1
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.is_nil(send)
+      assert.are.equal(AIMED, queue.held().command)
+    end)
+
+    it("holds at OK a spell whose recast ends within two seconds of the lock", function()
+      local queue, env = world()
+      finish_cast(queue)
+      cursor_up(queue)
+      env.now = env.now + 2.43
+      env.recast["Shell V"] = 1.2
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.is_nil(send)
+      assert.are.equal(AIMED, queue.held().command)
+    end)
+
+    it("sends OK at once on a recast with nothing busy, and the queue stays free", function()
+      local queue, env = world()
+      cursor_up(queue)
+      env.recast["Shell V"] = 0.5
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.are.equal(AIMED, send)
+      assert.is_false(queue.busy())
+    end)
+
+    it("replaces at OK a press waiting on its recast, the newest winning", function()
+      local queue, env = world()
+      finish_cast(queue)
+      queue.press(spell("Cure"), command("Cure"))
+      cursor_up(queue)
+      env.recast.Cure = 0.5
+      env.now = env.now + 2.71
+      queue.step()
+      env.recast["Shell V"] = 0.5
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
       assert.is_nil(send)
@@ -971,6 +1152,154 @@ describe("the action queue", function()
       assert.is_false(queue.busy())
     end)
 
+    --[[ Kevin's lag (2026-11-06) lost seven starts whose finishes came, each a
+         real cast, and the next send went into its lock: a Refresh III refused,
+         a Cure IV that went unanswered. A spell that went out keeps the bar busy
+         for its cast time, and a finish inside that is its own. ]]
+    describe("a spell that went out but whose start was lost", function()
+      local HASTE_II = 511
+
+      local function haste_out(queue, env)
+        env.casts.spell[HASTE_II] = 3
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, HASTE_II))
+      end
+
+      it("keeps the bar busy for its cast time and the server's beat", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        env.now = env.now + 3.39
+        assert.is_true(queue.busy())
+        env.now = env.now + 0.02
+        assert.is_false(queue.busy())
+      end)
+
+      it("keeps the bar busy the 2s an answer gets when the cast is shorter", function()
+        local queue, env = world()
+        env.casts.spell[HASTE_II] = 1
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, HASTE_II))
+        env.now = env.now + 1.99
+        assert.is_true(queue.busy())
+      end)
+
+      it("keeps the 2s an answer gets when the cast time is unknown", function()
+        local queue, env = world()
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, 999))
+        env.now = env.now + 1.99
+        assert.is_true(queue.busy())
+        env.now = env.now + 0.02
+        assert.is_false(queue.busy())
+      end)
+
+      it("takes a finish inside the cast time for its own and locks", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        env.now = env.now + 2.36
+        queue.on_action(action(4, HASTE_II))
+        env.now = env.now + 2.69
+        assert.is_true(queue.busy())
+        env.now = env.now + 0.02
+        assert.is_false(queue.busy())
+      end)
+
+      it("holds a press through the cast and its lock and then sends it", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        env.now = env.now + 2
+        assert.is_true(queue.press(spell("Refresh III"), command("Refresh III")))
+        env.now = env.now + 0.36
+        queue.on_action(action(4, HASTE_II))
+        assert.is_nil(queue.step())
+        env.now = env.now + 2.69
+        assert.is_nil(queue.step())
+        env.now = env.now + 0.02
+        assert.are.equal(command("Refresh III"), queue.step())
+      end)
+
+      it("takes the stored spell lock when a start's wait runs out", function()
+        local queue, env = world()
+        env.casts.spell[HASTE_II] = 3
+        env.locks = { spell = 1.2 }
+        queue.on_action(start_of(8, HASTE_II))
+        env.now = env.now + 3.4
+        queue.step()
+        env.now = env.now + 1.19
+        assert.is_true(queue.busy())
+        env.now = env.now + 0.02
+        assert.is_false(queue.busy())
+      end)
+
+      --[[ Kevin's log (2026-11-07): a Cure IV went out while he was paralyzed,
+           and a finish came 0.49s later, ahead of its start, and locked. A
+           finish answers what went out only when it names that spell. ]]
+      it("ignores a finish naming another spell, and the wait ends on time", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        env.now = env.now + 2.36
+        queue.on_action(action(4, 1))
+        env.now = env.now + 1.05
+        assert.is_false(queue.busy())
+      end)
+
+      it("ignores a paralyzed round inside the cast time", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        env.now = env.now + 2.36
+        queue.on_action(paralyzed_round())
+        env.now = env.now + 1.05
+        assert.is_false(queue.busy())
+      end)
+
+      it("is ended at once by a refusal", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        queue.on_message(battle_message(ME, 17))
+        assert.is_false(queue.busy())
+      end)
+
+      it("ignores a finish after the cast time", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        env.now = env.now + 3.41
+        queue.on_action(action(4, HASTE_II))
+        assert.is_false(queue.busy())
+      end)
+
+      it("ignores a finish after a refusal", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        queue.on_message(battle_message(ME, 17))
+        queue.on_action(action(4, HASTE_II))
+        assert.is_false(queue.busy())
+      end)
+
+      it("ignores a spell finish while what went out was not a spell", function()
+        local queue, env = world()
+        queue.on_outgoing(0x01A, outgoing_action(ABILITY, HASTE_II))
+        queue.on_action(action(4, HASTE_II))
+        env.now = env.now + 2.01
+        assert.is_false(queue.busy())
+      end)
+
+      it("takes no finish as the answer to a spell sent without its id", function()
+        local queue, env = world()
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+        env.now = env.now + 1.5
+        queue.on_action(paralyzed_round())
+        env.now = env.now + 0.51
+        assert.is_false(queue.busy())
+      end)
+
+      it("ignores a spell finish once a later press is on its way instead", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        queue.on_message(battle_message(ME, 17))
+        queue.press({ type = "ja", action = "Composure", target = "me" }, "input /ja Composure <me>")
+        queue.on_action(action(4, HASTE_II))
+        env.now = env.now + 0.61
+        assert.is_false(queue.busy())
+      end)
+    end)
+
     it("leaves a held press alone through one", function()
       local queue, env = world()
       finish_cast(queue)
@@ -1145,6 +1474,216 @@ describe("the action queue", function()
       assert.is_false(queue.busy())
     end)
 
+    it("waits on a spell's finish for its cast time and one server beat, then its lock", function()
+      local queue, env = world()
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 6.09
+      queue.step()
+      assert.is_true(queue.busy())
+      env.now = env.now + 0.02
+      queue.step()
+      assert.is_false(queue.busy())
+    end)
+
+    it("still locks on a finish that lands after that wait", function()
+      local queue, env = world()
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 4
+      queue.step()
+      queue.on_action(action(4, 511))
+      env.now = env.now + 2.2
+      queue.step()
+      assert.is_true(queue.busy())
+    end)
+
+    it("takes that wait's end for a finish, and sends what it held after the lock", function()
+      local queue, env = world()
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      queue.press(spell(), command())
+      env.now = env.now + 3.41
+      assert.is_nil(queue.step())
+      assert.is_not_nil(queue.held())
+      env.now = env.now + 2.7
+      assert.are.equal(command(), queue.step())
+    end)
+
+    it("holds a press that lands after that wait but before the next tick", function()
+      local queue, env = world()
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 3.41
+      assert.is_true(queue.press(spell(), command()))
+    end)
+
+    it("lets a finish that lands after that wait replace the lock it was given", function()
+      local queue, env = world()
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 3.41
+      queue.step()
+      env.now = env.now + 1
+      queue.on_action(action(4, 511))
+      env.now = env.now + 2.69
+      queue.step()
+      assert.is_true(queue.busy())
+    end)
+
+    --[[ Once that wait has locked and the lock has cleared, the bar is idle,
+         and a stray finish must not lock it again (Kevin, 2026-11-07). ]]
+    local function past_the_wait(queue, env)
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 3.41
+      queue.step()
+      env.now = env.now + 2.71
+      queue.step()
+    end
+
+    it("ignores a finish naming another spell once that wait has locked", function()
+      local queue, env = world()
+      past_the_wait(queue, env)
+      queue.on_action(action(4, 1))
+      assert.is_false(queue.busy())
+    end)
+
+    it("ignores a paralyzed round once that wait has locked", function()
+      local queue, env = world()
+      past_the_wait(queue, env)
+      queue.on_action(paralyzed_round())
+      assert.is_false(queue.busy())
+    end)
+
+    it("takes a finish naming the started spell once that wait has locked", function()
+      local queue, env = world()
+      past_the_wait(queue, env)
+      queue.on_action(action(4, 511))
+      assert.is_true(queue.busy())
+    end)
+
+    it("takes any finish while the cast is still running", function()
+      local queue, env = world()
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 1
+      queue.on_action(action(4, 1))
+      env.now = env.now + 2.69
+      assert.is_true(queue.busy())
+      env.now = env.now + 0.02
+      assert.is_false(queue.busy(), "the finish's own lock, not the start's wait")
+    end)
+
+    --[[ A paralysis round is a spell finish naming no spell. One arriving while
+         a cast runs would start the lock early and close the window on the real
+         finish (Kevin, 2026-11-08). ]]
+    it("ignores a finish naming no spell while the cast is still running", function()
+      local queue, env = world()
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 1
+      queue.on_action(action(4, 0))
+      env.now = env.now + 2.71
+      assert.is_true(queue.busy(), "still the start's wait")
+      env.now = env.now + 2.5
+      queue.step()
+      assert.is_false(queue.busy(), "the start's wait and its lock are over")
+      queue.on_action(action(4, 511))
+      assert.is_true(queue.busy(), "the real finish locks")
+    end)
+
+    it("takes any finish after a wait whose start named nothing", function()
+      local queue, env = world()
+      queue.on_action(action(7, STARTING))
+      env.now = env.now + 3.01
+      queue.step()
+      env.now = env.now + 2.41
+      queue.step()
+      queue.on_action(action(4, 1))
+      assert.is_true(queue.busy())
+    end)
+
+    it("reads a cast time that is not a usable number as unknown", function()
+      for _, seconds in ipairs({ -1, 0 / 0, "3" }) do
+        local queue, env = world()
+        env.casts.spell[511] = seconds
+        queue.on_action(start_of(8, 511))
+        env.now = env.now + 29.99
+        queue.step()
+        assert.is_true(queue.busy())
+      end
+    end)
+
+    it("keeps a press held behind a later send when an old start's finish window closes", function()
+      local queue, env = world()
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 3.41
+      queue.step()
+      env.now = env.now + 26.2
+      queue.step()
+      assert.is_false(queue.press(spell("Cure"), command("Cure")))
+      assert.is_true(queue.press(spell("Fire"), command("Fire")))
+      env.now = env.now + 0.4
+      queue.step()
+      assert.is_not_nil(queue.held())
+    end)
+
+    it("waits out the full backstop on a spell whose cast time is unknown", function()
+      local queue, env = world()
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 29.99
+      queue.step()
+      assert.is_true(queue.busy())
+    end)
+
+    it("waits on a weaponskill's finish for three seconds, then its lock", function()
+      local queue, env = world()
+      queue.on_action(start_of(7, 42))
+      env.now = env.now + 5.39
+      queue.step()
+      assert.is_true(queue.busy())
+      env.now = env.now + 0.02
+      queue.step()
+      assert.is_false(queue.busy())
+    end)
+
+    it("waits on an item's finish for its cast time and a second, then its lock", function()
+      local queue, env = world()
+      env.casts.item[4148] = 2
+      queue.on_action(start_of(9, 4148))
+      env.now = env.now + 3.99
+      queue.step()
+      assert.is_true(queue.busy())
+      env.now = env.now + 0.02
+      queue.step()
+      assert.is_false(queue.busy())
+    end)
+
+    it("reads a finish after a clear as no finish, though the start's 30s window was open", function()
+      local queue = world()
+      queue.on_action(start_of(8, 511))
+      queue.clear("zone")
+      queue.on_action(action(4, 511))
+      assert.is_false(queue.busy())
+    end)
+
+    it("sends a press that lands as the 30s backstop runs out, before the next tick", function()
+      local queue, env = world()
+      start_cast(queue)
+      env.now = env.now + 30.01
+      assert.is_false(queue.press(spell(), command()))
+    end)
+
+    it("waits out the full backstop on a ranged attack", function()
+      local queue, env = world()
+      queue.on_action(start_of(12, 0))
+      env.now = env.now + 29.99
+      queue.step()
+      assert.is_true(queue.busy())
+    end)
+
     it("drops what it held when the finish never came, rather than firing it late", function()
       local queue, env = world()
       start_cast(queue)
@@ -1226,7 +1765,7 @@ describe("the action queue", function()
       start_cast(queue)
       queue.press(spell("Cure"), command("Cure"))
       finish_cast(queue)
-      env.recast.Cure = 2
+      env.recast.Cure = 2.5
       env.now = env.now + 3.01
       assert.is_nil(queue.step())
       assert.is_nil(queue.held())
@@ -1468,6 +2007,27 @@ describe("the action queue", function()
       assert.is_not_nil(logged(env):find("ignored a finish with no cast running", 1, true))
     end)
 
+    it("says a finish naming no spell was ignored though a cast was running", function()
+      local queue, env = world({ mode = "debug" })
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 1
+      queue.on_action(action(4, 0))
+      assert.is_not_nil(logged(env):find("ignored a finish naming no spell", 1, true))
+    end)
+
+    it("says a finish naming another spell was ignored after a start's wait", function()
+      local queue, env = world({ mode = "debug" })
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 3.41
+      queue.step()
+      env.now = env.now + 2.71
+      queue.step()
+      queue.on_action(action(4, 1))
+      assert.is_not_nil(logged(env):find("ignored a finish naming another spell", 1, true))
+    end)
+
     it("says the arrow, so a cursor that never raised one shows", function()
       local queue, env = world({ mode = "debug" })
       start_cast(queue)
@@ -1617,15 +2177,57 @@ describe("the action queue", function()
       assert.is_not_nil(logged(env):find("no OK for Shell V", 1, true))
     end)
 
+    it("says once that a release waits on its recast", function()
+      local queue, env = world({ mode = "debug" })
+      finish_cast(queue)
+      env.recast.Cure = 1
+      queue.press(spell("Cure"), command("Cure"))
+      env.now = env.now + 2.71
+      queue.step()
+      env.now = env.now + 0.1
+      queue.step()
+      local _, count = logged(env):gsub("Cure waits 1.00s on its recast", "")
+      assert.are.equal(1, count)
+    end)
+
     it("says a release lost to its recast", function()
       local queue, env = world({ mode = "debug" })
       start_cast(queue)
       queue.press(spell("Cure"), command("Cure"))
       finish_cast(queue)
-      env.recast.Cure = 2
+      env.recast.Cure = 2.5
       env.now = env.now + 3.01
       queue.step()
       assert.is_not_nil(logged(env):find("dropped Cure: on recast", 1, true))
+    end)
+
+    it("says how much recast a dropped release had left", function()
+      local queue, env = world({ mode = "debug" })
+      start_cast(queue)
+      queue.press(spell("Cure"), command("Cure"))
+      finish_cast(queue)
+      env.recast.Cure = 2.12
+      env.now = env.now + 3.01
+      queue.step()
+      assert.is_not_nil(logged(env):find("dropped Cure: on recast 2.12s", 1, true))
+    end)
+
+    it("says how much recast and lock a press not held had", function()
+      local queue, env = world({ mode = "debug" })
+      finish_cast(queue)
+      env.recast.Cure = 5
+      queue.press(spell("Cure"), command("Cure"))
+      assert.is_not_nil(logged(env):find("not held: Cure on recast 5.00s, lock 2.70s", 1, true))
+    end)
+
+    it("says how much recast and lock an OK not held had", function()
+      local queue, env = world({ mode = "debug" })
+      finish_cast(queue)
+      env.recast["Shell V"] = 5
+      queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+      queue.on_text("/ta 777")
+      queue.on_text("/ta 12345")
+      assert.is_not_nil(logged(env):find("not held: Shell V on recast 5.00s, lock 2.70s", 1, true))
     end)
 
     it("says a backstop fired, which is the case worth seeing", function()
@@ -1644,6 +2246,15 @@ describe("the action queue", function()
       env.now = env.now + 30.01
       queue.step()
       assert.is_not_nil(logged(env):find("no finish for the last start", 1, true))
+    end)
+
+    it("says a start's wait ran out, and the lock it took for the finish", function()
+      local queue, env = world({ mode = "debug" })
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 3.41
+      queue.step()
+      assert.is_not_nil(logged(env):find("no finish yet for the last start, lock 2.70s", 1, true))
     end)
 
     it("says when the lock clears, once", function()

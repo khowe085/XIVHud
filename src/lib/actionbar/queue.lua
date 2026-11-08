@@ -34,14 +34,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      The server starts the lock no later than it sends that packet, so a release
      can only arrive late, by about a round trip, and never early. Everything
      else is a packet: what went out, what started, what finished and what was
-     refused - a macro's as much as a bar's. Nothing computes a cast time.
+     refused - a macro's as much as a bar's. A cast time bounds only how long a
+     spell or a start may go unanswered when lag loses its packet.
 
-     It holds ONE press, the newest, and sends it once. It never waits on a
-     recast, which is the defect that made Selindrile's MiniQueue unusable: a
-     press on recast goes out as it always did and the game refuses it, and a
-     held press whose recast is running when the lock clears is dropped. A
-     press whose recast ends inside the lock is held, since it waits on the lock
-     alone and sent it could only be refused. A weaponskill under its TP goes
+     It holds ONE press, the newest, and sends it once. It never waits long on
+     a recast, which is the defect that made Selindrile's MiniQueue unusable: a
+     press whose recast runs more than RECAST_GRACE past the lock goes out as it
+     always did and the game refuses it, and a held press whose recast is that
+     far off when the lock clears is dropped. A press whose recast ends inside
+     the lock, or within RECAST_GRACE after it, is held, since sent it could only
+     be refused, and its release waits for the recast. A weaponskill under its TP goes
      nowhere, for want of anything to wait on. A
      cursor slot is judged the same way at OK, when its command is really sent,
      rather than at the press. ]]
@@ -91,6 +93,30 @@ local LEAVE_BACKSTOP = 0.6
 local ANSWER_BACKSTOP = 2
 -- Past the longest cast there is, and the longest a press is held.
 local FINISH_BACKSTOP = 30
+--[[ How long a start keeps the bar busy without its finish (Kevin, 2026-11-06:
+     lag lost finishes, and FINISH_BACKSTOP made each one 30s of a dead bar).
+     Fast Cast shortens a spell's resource cast time, so SPELL_SLACK covers the
+     server's 0.4s beat. The wait's end is taken for the lost finish and starts
+     that kind's lock, since the server locked from the real one. A finish later
+     than this still locks: a start stays open for one until FINISH_BACKSTOP,
+     though a spell finish then has to name the spell the start named.
+     UNVERIFIED: what lengthens a cast (Addle, an Arts penalty). A cast that
+     overruns its wait, or a finish lag delays past the wait and the lock,
+     releases a held press inside the cast, where it is refused and GearSwap
+     leaves its midcast set. WEAPONSKILL_BACKSTOP and ITEM_SLACK are guesses,
+     as are the items resource's `cast_time` being the seconds from an item's
+     start to its finish and a category 9 start naming its item in
+     `targets[1].actions[1].param`. ]]
+local SPELL_SLACK = 0.4
+local WEAPONSKILL_BACKSTOP = 3
+local ITEM_SLACK = 1
+--[[ How long past the lock a press waits for its own recast. Shell V cast on
+     target after target ends its recast just after its lock, and sent on it the
+     press was refused (Kevin, 2026-11-07). Without haste that was 1.28 to 1.31s
+     after, eleven times of eleven, so 2 (Kevin, 2026-11-08). A press whose recast
+     runs longer is sent to be refused, and a held one whose recast is still that
+     far off when the lock clears is dropped. ]]
+local RECAST_GRACE = 2
 
 local MODES = { "off", "on", "debug" }
 local KNOWN_MODES = { off = true, on = true, debug = true }
@@ -159,11 +185,37 @@ local function u32(data, offset)
   return b1 + b2 * 256 + b3 * 65536 + b4 * 16777216
 end
 
-local function first_message(act)
+local function first_action(act)
   local target = type(act.targets) == "table" and act.targets[1] or nil
   local actions = type(target) == "table" and target.actions or nil
   local action = type(actions) == "table" and actions[1] or nil
-  return type(action) == "table" and action.message or nil
+  return type(action) == "table" and action or {}
+end
+
+local function first_message(act)
+  return first_action(act).message
+end
+
+local function cast_seconds(deps, kind, id)
+  if deps.cast_seconds == nil or type(id) ~= "number" then
+    return nil
+  end
+  local seconds = deps.cast_seconds(kind, id)
+  return type(seconds) == "number" and seconds >= 0 and seconds or nil
+end
+
+-- How long the start `act` of `started` may go unfinished.
+local function finish_backstop(deps, started, act)
+  if started == "weaponskill" then
+    return WEAPONSKILL_BACKSTOP
+  end
+  if started == "spell" or started == "item" then
+    local seconds = cast_seconds(deps, started, first_action(act).param)
+    if seconds ~= nil then
+      return seconds + (started == "item" and ITEM_SLACK or SPELL_SLACK)
+    end
+  end
+  return FINISH_BACKSTOP
 end
 
 local function new(deps)
@@ -176,8 +228,14 @@ local function new(deps)
   local cursor = nil
   -- Each nil until its packet sets it, and the moment it stops counting after.
   local sent_until, acting_until, lock_until = nil, nil, nil
+  -- Until when a finish still answers the last start, which outlasts `acting_until`.
+  local open_until, acting_kind = nil, nil
+  -- The id the last start named, which a finish must name once its wait has locked.
+  local acting_id = nil
   -- Whether what `sent_until` waits on has been seen leaving the client.
   local sent_left = false
+  -- The id of the spell `sent_until` waits on, whose finish can come without its start.
+  local sent_spell = nil
   local finished_at = nil
 
   local function now()
@@ -238,14 +296,20 @@ local function new(deps)
 
   --- Nothing can be sent yet: an action is unanswered, casting, or locking.
   function self.busy()
-    return running(sent_until) or running(acting_until) or running(lock_until)
+    --[[ A start's wait that ran out since the last tick is already locking,
+         unless it was the 30s backstop, which drops rather than locks. ]]
+    local waited = acting_until
+    if waited ~= nil and open_until ~= nil and waited < open_until then
+      waited = waited + self.lock(acting_kind)
+    end
+    return running(sent_until) or running(waited) or running(lock_until)
   end
 
   --- A press or a release on its way out. Nothing says how soon `outgoing
   --- chunk` fires after one, and a second press inside that gap must not go
   --- straight out too.
   local function leaving(record)
-    sent_until, sent_left, going = now() + LEAVE_BACKSTOP, false, record
+    sent_until, sent_left, sent_spell, going = now() + LEAVE_BACKSTOP, false, nil, record
   end
 
   local function answered()
@@ -279,17 +343,42 @@ local function new(deps)
     return type(tp) == "number" and tp < WEAPONSKILL_TP
   end
 
-  --[[ Only a lock counts: nothing says when a cast will end. All 16 presses of
-       Cure IV in its own lock went out on a recast that was over by +2.72, and
-       the lock refused them. ]]
-  local function outlasts_lock(record)
-    local lock_left = running(lock_until) and lock_until - now() or 0
-    return deps.recast_left(record) > lock_left
+  local function lock_left()
+    return running(lock_until) and lock_until - now() or 0
+  end
+
+  --[[ Whether the recast runs more than RECAST_GRACE past the lock. Only a lock
+       counts: nothing says when a cast will end, though its lock is still to
+       come. All 16 presses of Cure IV in its own lock went out on a recast that
+       was over by +2.72, and the lock refused them. ]]
+  local function outlasts_lock(recast)
+    return recast > lock_left() + RECAST_GRACE
+  end
+
+  local function not_held_on_recast(name, record)
+    note(("not held: %s on recast %.2fs, lock %.2fs"):format(name, deps.recast_left(record), lock_left()))
+  end
+
+  --[[ Busy, or holding a press whose recast runs past the lock. Read as idle
+       there, a mash of the slot went out and could be accepted, and the held
+       press then went into its cast. Asked of the recast itself, since a press
+       can land between the lock's end and the next step. ]]
+  local function engaged()
+    return self.busy() or (held ~= nil and deps.recast_left(held.record) > 0)
+  end
+
+  --[[ Whether a press goes to the game on its recast: one running more than
+       RECAST_GRACE past the lock, or any with nothing engaged, which counts for
+       nothing as a GearSwap filter may well cancel it. ]]
+  local function on_recast(record)
+    local recast = deps.recast_left(record)
+    return outlasts_lock(recast) or (recast > 0 and not engaged())
   end
 
   local function forget()
     held, going, cursor = nil, nil, nil
     sent_until, acting_until, lock_until, finished_at = nil, nil, nil, nil
+    open_until, acting_kind, acting_id = nil, nil, nil
   end
 
   local function hold(name, record, command)
@@ -351,7 +440,7 @@ local function new(deps)
 
   --[[ A bar's press, with the command it resolved to. Answers whether it was
        taken: false sends it as it always was, which is every press made while
-       nothing is busy, and a second answer is what to send in its place. A
+       nothing is busy or held waiting on its recast, and a second answer is what to send in its place. A
        press that is not held leaves one that is alone. ]]
   function self.press(record, command)
     if not self.enabled() or not HELD_TYPES[record.type] then
@@ -367,11 +456,11 @@ local function new(deps)
     end
     -- Asked first because it counts for nothing either way: a GearSwap filter
     -- may well cancel it, and nothing that follows should wait on that.
-    if outlasts_lock(record) then
-      note("not held: " .. name .. " on recast")
+    if on_recast(record) then
+      not_held_on_recast(name, record)
       return false
     end
-    if not self.busy() then
+    if not engaged() then
       -- The lock can run out between two frames, with the release still owed.
       self.drop("replaced by " .. name)
       leaving(record)
@@ -432,11 +521,11 @@ local function new(deps)
       return true
     end
     local aimed = open.command:gsub("<[^<>]*>$", id)
-    if outlasts_lock(open.record) then
-      note("not held: " .. open.name .. " on recast")
+    if on_recast(open.record) then
+      not_held_on_recast(open.name, open.record)
       return true, aimed
     end
-    if not self.busy() then
+    if not engaged() then
       self.drop("replaced by " .. open.name)
       leaving(open.record)
       return true, aimed
@@ -458,24 +547,38 @@ local function new(deps)
     if player == nil or act.actor_id ~= player.id then
       return
     end
-    --[[ A spell finish with no cast running is not one: a cast always sends its
-         start first. These came a melee round apart while Kevin was paralyzed,
-         and sends straight after them were accepted, so nothing locks. ]]
-    if act.category == SPELL_FINISH and not running(acting_until) then
+    --[[ A spell finish with neither a cast running nor a spell gone out is not
+         one. These came a melee round apart while Kevin was paralyzed, and sends
+         straight after them were accepted, so nothing locks. One naming a spell
+         that went out and is unanswered is that spell's: lag lost its start.
+         One naming no spell is a paralysis round even with a cast running, where
+         it would start the lock early (Kevin, 2026-11-08). ]]
+    local awaited = sent_spell ~= nil and act.param == sent_spell and running(sent_until)
+    --[[ Once a start's wait has locked, the bar is idle, and only a finish
+         naming what it started is that start's. ]]
+    local open = running(open_until) and (running(acting_until) or acting_id == nil or act.param == acting_id)
+    if act.category == SPELL_FINISH and (act.param == 0 or not open) and not awaited then
       local message = first_message(act)
-      note("ignored a finish with no cast running" .. (message ~= nil and ", message " .. message or ""))
+      local why = not running(open_until) and "with no cast running"
+        or act.param == 0 and "naming no spell"
+        or "naming another spell"
+      note("ignored a finish " .. why .. (message ~= nil and ", message " .. message or ""))
       return
     end
     answered()
     if started ~= nil and act.param ~= INTERRUPT_PARAM then
       note("start " .. started .. since_finish())
-      acting_until = now() + FINISH_BACKSTOP
+      local at = now()
+      acting_until = at + finish_backstop(deps, started, act)
+      open_until = at + FINISH_BACKSTOP
+      acting_kind = started
+      acting_id = first_action(act).param
       lock_until = nil
       return
     end
     local lock = self.lock(finished or "interrupted")
     note(("%s, lock %.2fs"):format(finished ~= nil and "finish " .. finished or "interrupted " .. started, lock))
-    acting_until = nil
+    acting_until, open_until, acting_kind, acting_id = nil, nil, nil, nil
     finished_at = now()
     lock_until = finished_at + lock
   end
@@ -503,7 +606,7 @@ local function new(deps)
     if (id ~= ACTION_OUT and id ~= ITEM_OUT) or not self.enabled() then
       return
     end
-    local kind, name = "item", ""
+    local kind, name, action = "item", "", 0
     if id == ACTION_OUT then
       if type(data) ~= "string" or #data < CATEGORY_OFFSET + 1 then
         return
@@ -512,13 +615,22 @@ local function new(deps)
       if kind == nil then
         return
       end
-      local action = #data > PARAM_OFFSET and u16(data, PARAM_OFFSET) or 0
+      action = #data > PARAM_OFFSET and u16(data, PARAM_OFFSET) or 0
       if action ~= 0 then
         name = " " .. tostring(deps.name_of(kind, action) or action)
       end
     end
     note("out " .. kind .. name .. since_finish())
-    sent_until, sent_left = now() + ANSWER_BACKSTOP, true
+    --[[ A spell is answered by its start, which lag can lose while its finish
+         still comes, so it may go unanswered for as long as it casts. A spell
+         the server drops unanswered holds the bar as long, not 2s. ]]
+    local wait = ANSWER_BACKSTOP
+    local seconds = kind == "spell" and cast_seconds(deps, "spell", action) or nil
+    if seconds ~= nil then
+      wait = math.max(wait, seconds + SPELL_SLACK)
+    end
+    sent_until, sent_left = now() + wait, true
+    sent_spell = kind == "spell" and action ~= 0 and action or nil
   end
 
   local function expire()
@@ -527,10 +639,19 @@ local function new(deps)
       answered()
       note(sent_left and "no answer to the last send" or "nothing went out for the last press")
     end
+    if open_until ~= nil and clock >= open_until then
+      local waiting = acting_until ~= nil
+      open_until, acting_until, acting_kind, acting_id = nil, nil, nil, nil
+      if waiting then
+        note("no finish for the last start")
+        self.drop("no finish for the last start")
+      end
+    end
     if acting_until ~= nil and clock >= acting_until then
-      acting_until = nil
-      note("no finish for the last start")
-      self.drop("no finish for the last start")
+      local lock = self.lock(acting_kind)
+      note(("no finish yet for the last start, lock %.2fs"):format(lock))
+      finished_at, acting_until = acting_until, nil
+      lock_until = finished_at + lock
     end
     if lock_until ~= nil and clock >= lock_until then
       lock_until = nil
@@ -567,8 +688,16 @@ local function new(deps)
     if self.busy() then
       return nil
     end
-    if deps.recast_left(held.record) > 0 then
-      self.drop("on recast")
+    local recast = deps.recast_left(held.record)
+    if recast > RECAST_GRACE then
+      self.drop(("on recast %.2fs"):format(recast))
+      return nil
+    end
+    if recast > 0 then
+      if not held.waiting then
+        held.waiting = true
+        note(("%s waits %.2fs on its recast"):format(held.name, recast))
+      end
       return nil
     end
     if no_tp(held.record) then

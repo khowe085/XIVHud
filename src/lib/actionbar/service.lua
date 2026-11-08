@@ -134,6 +134,7 @@ local CHARGED_ABILITY_RECASTS = { [102] = true, [195] = true, [231] = true, [255
 
 -- The resource each kind of action the queue sees going out is named from.
 local KIND_BOOKS = { spell = "spells", weaponskill = "weapon_skills", ability = "job_abilities" }
+local CAST_BOOKS = { spell = "spells", item = "items" }
 
 local function new(deps)
   local self = { ipc_warp_message = IPC_WARP_MESSAGE }
@@ -653,6 +654,11 @@ local function new(deps)
       local book = resources ~= nil and resources[KIND_BOOKS[kind]] or nil
       local entry = book ~= nil and book[id] or nil
       return entry ~= nil and entry.en or nil
+    end,
+    cast_seconds = function(kind, id)
+      local book = resources ~= nil and resources[CAST_BOOKS[kind]] or nil
+      local entry = book ~= nil and book[id] or nil
+      return type(entry) == "table" and entry.cast_time or nil
     end,
     -- `<st>` answers only while a cursor is up: the subtarget bar reads the same
     -- and disappears without one (Kevin, 2026-10-31).
