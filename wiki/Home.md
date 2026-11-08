@@ -313,11 +313,14 @@ off, every press goes at once and the game decides.
 - **Pressing again.** While the game has yet to answer a press, pressing the
   same action at the same target again does nothing, so mashing a slot cannot
   spend a weaponskill or an item twice.
-- **Recasts.** A held press is never waiting on a recast: a spell, job ability
-  or pet command still on its own recast when you could act is dropped. A press
-  made during that moment is held if its recast ends first, and otherwise goes
-  out at once. One made during a cast goes out at once if it has any recast
-  left. Stratagems, Quick Draw and Ready have charges, so their recast
+- **Recasts.** A held press waits on its own recast for two seconds at most: a
+  spell, job ability or pet command whose recast ends within two seconds of when
+  you could act is held until it ends, and one further off is dropped. A press
+  made while you are locked out after an action is held if its recast ends no
+  more than two seconds after the lockout; one made during a cast, only if its
+  recast has two seconds or less to run. Otherwise it goes out at once, as does one
+  made while nothing is going on, recast or not. While a held press waits on its
+  recast, a newer press replaces it, as during a cast. Stratagems, Quick Draw and Ready have charges, so their recast
   does not count.
 - **Weaponskills.** A weaponskill you have under 1000 TP for does nothing at
   all, not even the game's usual message, and one held is dropped if the TP is
@@ -331,7 +334,8 @@ off, every press goes at once and the game decides.
   is decided when you press OK rather than when you press the slot, so you can
   pick your target during a cast and press OK whenever you like. OK is then
   judged as a press is: a weaponskill under 1000 TP sends nothing, an action
-  whose recast outlasts the wait goes at once, and otherwise it is held or goes
+  whose recast outlasts the lockout by more than two seconds goes at once, and
+  otherwise it is held or goes
   at once as the queue stands. Pressing another cursor slot while the arrow is
   up sends nothing and only changes what OK will cast; an arrow a macro raised
   is left alone. GearSwap's `pretarget` does not run for such a slot.
@@ -342,9 +346,18 @@ off, every press goes at once and the game decides.
   cutscene that hides the HUD; opening `//hud layout`, `//hud config` or edit
   mode; anything that reloads a bar - a reset, a slot switch, a copy, a login;
   switching the queue off or unloading the addon; and 30 seconds passing, held
-  or waiting for a cast to end. A press made while `//hud config` is open goes
-  at once; in layout or edit mode, or while the HUD is hidden, the bars fire
-  nothing anyway.
+  or waiting for a ranged attack or an unknown action to end. A press made
+  while `//hud config` is open goes at once; in layout or edit mode, or while
+  the HUD is hidden, the bars fire nothing anyway.
+- **Lag.** The game tells the queue when a cast starts and when it finishes,
+  and lag can lose either message. If the finish never comes, a spell counts
+  as finished at its cast time plus 0.4 seconds, a weaponskill after 3 seconds
+  and an item at its cast time plus 1 second; the wait for that kind then runs
+  and a held press goes. If the start is lost, a spell you sent waits for an
+  answer as long as its cast time plus 0.4 seconds, so its finish still starts
+  the wait. A spell the server drops with no answer at all holds the bar that
+  long. A cast slowed past these times by a debuff can let a held press go
+  early, and the game then refuses it.
 
 If you use Selindrile's GearSwap files, leave their MiniQueue off.
 
