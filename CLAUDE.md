@@ -289,15 +289,25 @@ Action queue. `//hud queue on|debug|off` (Kevin, 2026-10-31, plan in
 `.claude/Planning/queue.md`), `core.lua`'s `queue`, shipping on (Kevin, 2026-11-01;
 nothing migrates, so a file already holding `off` stays off): FFXIV's
 queue, in `lib/actionbar/queue`. A crossbar or hotbar press made during a cast
-or the lock after it is held and goes as invoked when the lock clears. There is
+or the lock after it is held and goes as invoked when the lock clears (or its
+recast, a second at most later, below). There is
 one held press, the newest; a press while nothing is busy goes at once, as it
 always did; a release is sent once and never again, refused or not. **It never
-waits on a recast**, which is what made Selindrile's MiniQueue unusable: a press
-on its own recast goes out and the game refuses it, and a held press whose
-recast is running when the lock clears is dropped. A press whose recast ends inside
+waits long on a recast**, which is what made Selindrile's MiniQueue unusable: a
+press whose own recast runs more than a second past the lock goes out and the game
+refuses it, and a held press whose recast is that far off when the lock clears is
+dropped. A press whose recast ends inside
 the lock running is held all the same (Kevin, 2026-11-01): the wait is then the
-lock's, and sent it could only be refused, as all 16 of Cure IV's were. It takes a
-lock, since nothing says when a cast will end. Three rules beside that one
+lock's, and sent it could only be refused, as all 16 of Cure IV's were. So is one
+whose recast ends within a second AFTER the lock (Kevin, 2026-11-07: Shell V cast on
+target after target ends its recast just past its lock, and one sent at +2.45 was
+refused), and its release then waits for the recast. While it waits, a press or
+an OK treats the queue as engaged though `busy()` stays false (Kevin, 2026-11-08:
+read as idle, a mash of the slot went out beside it): a newer one replaces it, unless
+its own recast runs more than a second on, which goes out as against a lock of
+nothing. A cast still running counts as a lock of nothing too, its own still to
+come. A press on its recast with nothing busy and nothing held on its recast goes
+out as before. **The grace is unverified in a live client** (row 34 of the plan). Three rules beside that one
 (Kevin, 2026-10-31): the four ABILITY recasts a charged family shares read as no
 recast at all (231 stratagems, 195 Quick Draw, 102 and 255 Ready, the ids
 Selindrile's `check_recast` skips), since the timer running there says a charge was spent,
@@ -354,7 +364,8 @@ handler, and blocking the packet afterwards would leave it `midaction` for good.
 So the press opens the same cursor over `/ta <token>`, free or busy, which GearSwap
 ignores, and `queue.on_text` takes the second number: the line is blocked, so
 your target never moves, and the real `/ma "..." <id>` is held, or sent at once
-if the lock has cleared or the recast outlasts it. GearSwap sees nothing until
+if the lock has cleared (and no held press waits on its recast) or the recast
+outlasts it by more than a second. GearSwap sees nothing until
 then, and its numeric path runs precast as it does after any OK. No load order
 is needed. Free counts too because a lock can begin after the press: GearSwap
 sends weaponskills of its own, and a Sleep II opened free and OK'd in one went

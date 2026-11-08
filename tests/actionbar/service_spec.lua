@@ -1236,10 +1236,10 @@ describe("the action service", function()
       assert.are.equal(CURE_COMMAND, service.queue.held().command)
     end)
 
-    it("leaves a spell whose recast outlasts the lock to the game", function()
+    it("leaves a spell whose recast outlasts the lock by more than a second to the game", function()
       local service, env = queued()
       finish_cast(service)
-      env.spell_recasts[1] = 180
+      env.spell_recasts[1] = 240
       service.fire(CURE, {})
       assert.are.same({ CURE_COMMAND }, env.commands)
     end)
@@ -1253,10 +1253,10 @@ describe("the action service", function()
       assert.is_not_nil(service.queue.held())
     end)
 
-    it("leaves an ability whose recast outlasts the lock to the game", function()
+    it("leaves an ability whose recast outlasts the lock by more than a second to the game", function()
       local service, env = queued()
       finish_cast(service)
-      env.ability_recasts[5] = 3
+      env.ability_recasts[5] = 4
       service.fire({ type = "ja", action = "Provoke", target = "t" }, {})
       assert.are.same({ 'input /ja "Provoke" <t>' }, env.commands)
     end)

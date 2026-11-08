@@ -37,12 +37,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      refused - a macro's as much as a bar's. A cast time bounds only how long a
      spell or a start may go unanswered when lag loses its packet.
 
-     It holds ONE press, the newest, and sends it once. It never waits on a
-     recast, which is the defect that made Selindrile's MiniQueue unusable: a
-     press on recast goes out as it always did and the game refuses it, and a
-     held press whose recast is running when the lock clears is dropped. A
-     press whose recast ends inside the lock is held, since it waits on the lock
-     alone and sent it could only be refused. A weaponskill under its TP goes
+     It holds ONE press, the newest, and sends it once. It never waits long on
+     a recast, which is the defect that made Selindrile's MiniQueue unusable: a
+     press whose recast runs more than RECAST_GRACE past the lock goes out as it
+     always did and the game refuses it, and a held press whose recast is that
+     far off when the lock clears is dropped. A press whose recast ends inside
+     the lock, or within RECAST_GRACE after it, is held, since sent it could only
+     be refused, and its release waits for the recast. A weaponskill under its TP goes
      nowhere, for want of anything to wait on. A
      cursor slot is judged the same way at OK, when its command is really sent,
      rather than at the press. ]]
@@ -109,6 +110,12 @@ local FINISH_BACKSTOP = 30
 local SPELL_SLACK = 0.4
 local WEAPONSKILL_BACKSTOP = 3
 local ITEM_SLACK = 1
+--[[ How long past the lock a press waits for its own recast. Shell V cast on
+     target after target ends its recast just after its lock, and sent on it the
+     press was refused (Kevin, 2026-11-07). A press whose recast runs longer is
+     sent to be refused, and a held one whose recast is still that far off when
+     the lock clears is dropped. ]]
+local RECAST_GRACE = 1
 
 local MODES = { "off", "on", "debug" }
 local KNOWN_MODES = { off = true, on = true, debug = true }
@@ -335,12 +342,29 @@ local function new(deps)
     return type(tp) == "number" and tp < WEAPONSKILL_TP
   end
 
-  --[[ Only a lock counts: nothing says when a cast will end. All 16 presses of
-       Cure IV in its own lock went out on a recast that was over by +2.72, and
-       the lock refused them. ]]
-  local function outlasts_lock(record)
+  --[[ Whether the recast runs more than RECAST_GRACE past the lock. Only a lock
+       counts: nothing says when a cast will end, though its lock is still to
+       come. All 16 presses of Cure IV in its own lock went out on a recast that
+       was over by +2.72, and the lock refused them. ]]
+  local function outlasts_lock(recast)
     local lock_left = running(lock_until) and lock_until - now() or 0
-    return deps.recast_left(record) > lock_left
+    return recast > lock_left + RECAST_GRACE
+  end
+
+  --[[ Busy, or holding a press whose recast runs past the lock. Read as idle
+       there, a mash of the slot went out and could be accepted, and the held
+       press then went into its cast. Asked of the recast itself, since a press
+       can land between the lock's end and the next step. ]]
+  local function engaged()
+    return self.busy() or (held ~= nil and deps.recast_left(held.record) > 0)
+  end
+
+  --[[ Whether a press goes to the game on its recast: one running more than
+       RECAST_GRACE past the lock, or any with nothing engaged, which counts for
+       nothing as a GearSwap filter may well cancel it. ]]
+  local function on_recast(record)
+    local recast = deps.recast_left(record)
+    return outlasts_lock(recast) or (recast > 0 and not engaged())
   end
 
   local function forget()
@@ -408,7 +432,7 @@ local function new(deps)
 
   --[[ A bar's press, with the command it resolved to. Answers whether it was
        taken: false sends it as it always was, which is every press made while
-       nothing is busy, and a second answer is what to send in its place. A
+       nothing is busy or held waiting on its recast, and a second answer is what to send in its place. A
        press that is not held leaves one that is alone. ]]
   function self.press(record, command)
     if not self.enabled() or not HELD_TYPES[record.type] then
@@ -424,11 +448,11 @@ local function new(deps)
     end
     -- Asked first because it counts for nothing either way: a GearSwap filter
     -- may well cancel it, and nothing that follows should wait on that.
-    if outlasts_lock(record) then
+    if on_recast(record) then
       note("not held: " .. name .. " on recast")
       return false
     end
-    if not self.busy() then
+    if not engaged() then
       -- The lock can run out between two frames, with the release still owed.
       self.drop("replaced by " .. name)
       leaving(record)
@@ -489,11 +513,11 @@ local function new(deps)
       return true
     end
     local aimed = open.command:gsub("<[^<>]*>$", id)
-    if outlasts_lock(open.record) then
+    if on_recast(open.record) then
       note("not held: " .. open.name .. " on recast")
       return true, aimed
     end
-    if not self.busy() then
+    if not engaged() then
       self.drop("replaced by " .. open.name)
       leaving(open.record)
       return true, aimed
@@ -651,8 +675,16 @@ local function new(deps)
     if self.busy() then
       return nil
     end
-    if deps.recast_left(held.record) > 0 then
+    local recast = deps.recast_left(held.record)
+    if recast > RECAST_GRACE then
       self.drop("on recast")
+      return nil
+    end
+    if recast > 0 then
+      if not held.waiting then
+        held.waiting = true
+        note(("%s waits %.2fs on its recast"):format(held.name, recast))
+      end
       return nil
     end
     if no_tp(held.record) then
