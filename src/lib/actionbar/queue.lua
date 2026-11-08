@@ -346,9 +346,16 @@ local function new(deps)
        counts: nothing says when a cast will end, though its lock is still to
        come. All 16 presses of Cure IV in its own lock went out on a recast that
        was over by +2.72, and the lock refused them. ]]
+  local function lock_left()
+    return running(lock_until) and lock_until - now() or 0
+  end
+
   local function outlasts_lock(recast)
-    local lock_left = running(lock_until) and lock_until - now() or 0
-    return recast > lock_left + RECAST_GRACE
+    return recast > lock_left() + RECAST_GRACE
+  end
+
+  local function not_held_on_recast(name, record)
+    note(("not held: %s on recast %.2fs, lock %.2fs"):format(name, deps.recast_left(record), lock_left()))
   end
 
   --[[ Busy, or holding a press whose recast runs past the lock. Read as idle
@@ -449,7 +456,7 @@ local function new(deps)
     -- Asked first because it counts for nothing either way: a GearSwap filter
     -- may well cancel it, and nothing that follows should wait on that.
     if on_recast(record) then
-      note("not held: " .. name .. " on recast")
+      not_held_on_recast(name, record)
       return false
     end
     if not engaged() then
@@ -514,7 +521,7 @@ local function new(deps)
     end
     local aimed = open.command:gsub("<[^<>]*>$", id)
     if on_recast(open.record) then
-      note("not held: " .. open.name .. " on recast")
+      not_held_on_recast(open.name, open.record)
       return true, aimed
     end
     if not engaged() then
@@ -677,7 +684,7 @@ local function new(deps)
     end
     local recast = deps.recast_left(held.record)
     if recast > RECAST_GRACE then
-      self.drop("on recast")
+      self.drop(("on recast %.2fs"):format(recast))
       return nil
     end
     if recast > 0 then

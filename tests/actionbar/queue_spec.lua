@@ -2121,6 +2121,35 @@ describe("the action queue", function()
       assert.is_not_nil(logged(env):find("dropped Cure: on recast", 1, true))
     end)
 
+    it("says how much recast a dropped release had left", function()
+      local queue, env = world({ mode = "debug" })
+      start_cast(queue)
+      queue.press(spell("Cure"), command("Cure"))
+      finish_cast(queue)
+      env.recast.Cure = 1.12
+      env.now = env.now + 3.01
+      queue.step()
+      assert.is_not_nil(logged(env):find("dropped Cure: on recast 1.12s", 1, true))
+    end)
+
+    it("says how much recast and lock a press not held had", function()
+      local queue, env = world({ mode = "debug" })
+      finish_cast(queue)
+      env.recast.Cure = 4
+      queue.press(spell("Cure"), command("Cure"))
+      assert.is_not_nil(logged(env):find("not held: Cure on recast 4.00s, lock 2.70s", 1, true))
+    end)
+
+    it("says how much recast and lock an OK not held had", function()
+      local queue, env = world({ mode = "debug" })
+      finish_cast(queue)
+      env.recast["Shell V"] = 4
+      queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+      queue.on_text("/ta 777")
+      queue.on_text("/ta 12345")
+      assert.is_not_nil(logged(env):find("not held: Shell V on recast 4.00s, lock 2.70s", 1, true))
+    end)
+
     it("says a backstop fired, which is the case worth seeing", function()
       local queue, env = world({ mode = "debug" })
       queue.press(spell(), command())
