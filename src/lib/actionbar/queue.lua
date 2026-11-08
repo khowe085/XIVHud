@@ -97,7 +97,8 @@ local FINISH_BACKSTOP = 30
      Fast Cast shortens a spell's resource cast time, so SPELL_SLACK covers the
      server's 0.4s beat. The wait's end is taken for the lost finish and starts
      that kind's lock, since the server locked from the real one. A finish later
-     than this still locks: a start stays open for one until FINISH_BACKSTOP.
+     than this still locks: a start stays open for one until FINISH_BACKSTOP,
+     though a spell finish then has to name the spell the start named.
      UNVERIFIED: what lengthens a cast (Addle, an Arts penalty). A cast that
      overruns its wait, or a finish lag delays past the wait and the lock,
      releases a held press inside the cast, where it is refused and GearSwap
@@ -221,10 +222,12 @@ local function new(deps)
   local sent_until, acting_until, lock_until = nil, nil, nil
   -- Until when a finish still answers the last start, which outlasts `acting_until`.
   local open_until, acting_kind = nil, nil
+  -- The id the last start named, which a finish must name once its wait has locked.
+  local acting_id = nil
   -- Whether what `sent_until` waits on has been seen leaving the client.
   local sent_left = false
-  -- Whether what `sent_until` waits on is a spell, whose finish can come without its start.
-  local sent_spell = false
+  -- The id of the spell `sent_until` waits on, whose finish can come without its start.
+  local sent_spell = nil
   local finished_at = nil
 
   local function now()
@@ -298,7 +301,7 @@ local function new(deps)
   --- chunk` fires after one, and a second press inside that gap must not go
   --- straight out too.
   local function leaving(record)
-    sent_until, sent_left, sent_spell, going = now() + LEAVE_BACKSTOP, false, false, record
+    sent_until, sent_left, sent_spell, going = now() + LEAVE_BACKSTOP, false, nil, record
   end
 
   local function answered()
@@ -343,7 +346,7 @@ local function new(deps)
   local function forget()
     held, going, cursor = nil, nil, nil
     sent_until, acting_until, lock_until, finished_at = nil, nil, nil, nil
-    open_until, acting_kind = nil, nil
+    open_until, acting_kind, acting_id = nil, nil, nil
   end
 
   local function hold(name, record, command)
@@ -514,10 +517,13 @@ local function new(deps)
     end
     --[[ A spell finish with neither a cast running nor a spell gone out is not
          one. These came a melee round apart while Kevin was paralyzed, and sends
-         straight after them were accepted, so nothing locks. One while a spell
-         that went out is unanswered is that spell's: lag lost its start. ]]
-    local awaited = sent_spell and running(sent_until)
-    if act.category == SPELL_FINISH and not running(open_until) and not awaited then
+         straight after them were accepted, so nothing locks. One naming a spell
+         that went out and is unanswered is that spell's: lag lost its start. ]]
+    local awaited = sent_spell ~= nil and act.param == sent_spell and running(sent_until)
+    --[[ Once a start's wait has locked, the bar is idle, and only a finish
+         naming what it started is that start's. ]]
+    local open = running(open_until) and (running(acting_until) or acting_id == nil or act.param == acting_id)
+    if act.category == SPELL_FINISH and not open and not awaited then
       local message = first_message(act)
       note("ignored a finish with no cast running" .. (message ~= nil and ", message " .. message or ""))
       return
@@ -529,12 +535,13 @@ local function new(deps)
       acting_until = at + finish_backstop(deps, started, act)
       open_until = at + FINISH_BACKSTOP
       acting_kind = started
+      acting_id = first_action(act).param
       lock_until = nil
       return
     end
     local lock = self.lock(finished or "interrupted")
     note(("%s, lock %.2fs"):format(finished ~= nil and "finish " .. finished or "interrupted " .. started, lock))
-    acting_until, open_until, acting_kind = nil, nil, nil
+    acting_until, open_until, acting_kind, acting_id = nil, nil, nil, nil
     finished_at = now()
     lock_until = finished_at + lock
   end
@@ -585,7 +592,8 @@ local function new(deps)
     if seconds ~= nil then
       wait = math.max(wait, seconds + SPELL_SLACK)
     end
-    sent_until, sent_left, sent_spell = now() + wait, true, kind == "spell"
+    sent_until, sent_left = now() + wait, true
+    sent_spell = kind == "spell" and action ~= 0 and action or nil
   end
 
   local function expire()
@@ -596,7 +604,7 @@ local function new(deps)
     end
     if open_until ~= nil and clock >= open_until then
       local waiting = acting_until ~= nil
-      open_until, acting_until, acting_kind = nil, nil, nil
+      open_until, acting_until, acting_kind, acting_id = nil, nil, nil, nil
       if waiting then
         note("no finish for the last start")
         self.drop("no finish for the last start")

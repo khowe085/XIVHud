@@ -1024,7 +1024,7 @@ describe("the action queue", function()
         local queue, env = world()
         haste_out(queue, env)
         env.now = env.now + 2.36
-        queue.on_action(action(4, 1))
+        queue.on_action(action(4, HASTE_II))
         env.now = env.now + 2.69
         assert.is_true(queue.busy())
         env.now = env.now + 0.02
@@ -1037,7 +1037,7 @@ describe("the action queue", function()
         env.now = env.now + 2
         assert.is_true(queue.press(spell("Refresh III"), command("Refresh III")))
         env.now = env.now + 0.36
-        queue.on_action(action(4, 1))
+        queue.on_action(action(4, HASTE_II))
         assert.is_nil(queue.step())
         env.now = env.now + 2.69
         assert.is_nil(queue.step())
@@ -1058,6 +1058,27 @@ describe("the action queue", function()
         assert.is_false(queue.busy())
       end)
 
+      --[[ Kevin's log (2026-11-07): a Cure IV went out while he was paralyzed,
+           and a finish came 0.49s later, ahead of its start, and locked. A
+           finish answers what went out only when it names that spell. ]]
+      it("ignores a finish naming another spell, and the wait ends on time", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        env.now = env.now + 2.36
+        queue.on_action(action(4, 1))
+        env.now = env.now + 1.05
+        assert.is_false(queue.busy())
+      end)
+
+      it("ignores a paralyzed round inside the cast time", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        env.now = env.now + 2.36
+        queue.on_action(paralyzed_round())
+        env.now = env.now + 1.05
+        assert.is_false(queue.busy())
+      end)
+
       it("is ended at once by a refusal", function()
         local queue, env = world()
         haste_out(queue, env)
@@ -1069,7 +1090,7 @@ describe("the action queue", function()
         local queue, env = world()
         haste_out(queue, env)
         env.now = env.now + 3.41
-        queue.on_action(paralyzed_round())
+        queue.on_action(action(4, HASTE_II))
         assert.is_false(queue.busy())
       end)
 
@@ -1077,15 +1098,24 @@ describe("the action queue", function()
         local queue, env = world()
         haste_out(queue, env)
         queue.on_message(battle_message(ME, 17))
-        queue.on_action(paralyzed_round())
+        queue.on_action(action(4, HASTE_II))
         assert.is_false(queue.busy())
       end)
 
       it("ignores a spell finish while what went out was not a spell", function()
         local queue, env = world()
-        queue.on_outgoing(0x01A, outgoing_action(ABILITY))
-        queue.on_action(paralyzed_round())
+        queue.on_outgoing(0x01A, outgoing_action(ABILITY, HASTE_II))
+        queue.on_action(action(4, HASTE_II))
         env.now = env.now + 2.01
+        assert.is_false(queue.busy())
+      end)
+
+      it("takes no finish as the answer to a spell sent without its id", function()
+        local queue, env = world()
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+        env.now = env.now + 1.5
+        queue.on_action(paralyzed_round())
+        env.now = env.now + 0.51
         assert.is_false(queue.busy())
       end)
 
@@ -1094,7 +1124,7 @@ describe("the action queue", function()
         haste_out(queue, env)
         queue.on_message(battle_message(ME, 17))
         queue.press({ type = "ja", action = "Composure", target = "me" }, "input /ja Composure <me>")
-        queue.on_action(paralyzed_round())
+        queue.on_action(action(4, HASTE_II))
         env.now = env.now + 0.61
         assert.is_false(queue.busy())
       end)
@@ -1292,7 +1322,7 @@ describe("the action queue", function()
       queue.on_action(start_of(8, 511))
       env.now = env.now + 4
       queue.step()
-      queue.on_action(action(4, 1))
+      queue.on_action(action(4, 511))
       env.now = env.now + 2.2
       queue.step()
       assert.is_true(queue.busy())
@@ -1325,9 +1355,62 @@ describe("the action queue", function()
       env.now = env.now + 3.41
       queue.step()
       env.now = env.now + 1
-      queue.on_action(action(4, 1))
+      queue.on_action(action(4, 511))
       env.now = env.now + 2.69
       queue.step()
+      assert.is_true(queue.busy())
+    end)
+
+    --[[ Once that wait has locked and the lock has cleared, the bar is idle,
+         and a stray finish must not lock it again (Kevin, 2026-11-07). ]]
+    local function past_the_wait(queue, env)
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 3.41
+      queue.step()
+      env.now = env.now + 2.71
+      queue.step()
+    end
+
+    it("ignores a finish naming another spell once that wait has locked", function()
+      local queue, env = world()
+      past_the_wait(queue, env)
+      queue.on_action(action(4, 1))
+      assert.is_false(queue.busy())
+    end)
+
+    it("ignores a paralyzed round once that wait has locked", function()
+      local queue, env = world()
+      past_the_wait(queue, env)
+      queue.on_action(paralyzed_round())
+      assert.is_false(queue.busy())
+    end)
+
+    it("takes a finish naming the started spell once that wait has locked", function()
+      local queue, env = world()
+      past_the_wait(queue, env)
+      queue.on_action(action(4, 511))
+      assert.is_true(queue.busy())
+    end)
+
+    it("takes any finish while the cast is still running", function()
+      local queue, env = world()
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 1
+      queue.on_action(action(4, 1))
+      env.now = env.now + 2.69
+      assert.is_true(queue.busy())
+    end)
+
+    it("takes any finish after a wait whose start named nothing", function()
+      local queue, env = world()
+      queue.on_action(action(7, STARTING))
+      env.now = env.now + 3.01
+      queue.step()
+      env.now = env.now + 2.41
+      queue.step()
+      queue.on_action(action(4, 1))
       assert.is_true(queue.busy())
     end)
 

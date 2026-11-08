@@ -143,7 +143,7 @@ that action on the selected sub-target", which is what the resent token drew.
 | --- | --- | --- | --- |
 | `sent`: something went out, nothing back yet | a bar press or release, outgoing `0x01A` (3 magic, 7 ws, 9 ja, 16 ranged, 25 monster skill), outgoing `0x037` (item) | any `0x028` start or finish of ours, a refusal | 0.6s until the packet is seen, 2s after, or a spell's `cast_time` + 0.4s where longer (2026-11-06) |
 | `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787) | a spell's `cast_time` + 0.4s, a weaponskill 3s, an item's `cast_time` + 1s, else 30s; a finish is still read as one for 30s (2026-11-06) |
-| `lock_until`: the lock's end | a finish (2, 3, 5, 6, 11, 14, 15 of ours, and 4 while a cast is running or a spell that went out is unanswered), an interrupt, the end of a start's wait | time | none needed |
+| `lock_until`: the lock's end | a finish (2, 3, 5, 6, 11, 14, 15 of ours, and 4 while a cast is running, within 30s of a start of ours when it names that start's spell or the start named none, or naming a spell that went out and is unanswered (2026-11-07)), an interrupt, the end of a start's wait | time | none needed |
 
 Busy is any of the three. A held press goes on the first tick nothing is busy.
 
@@ -724,7 +724,8 @@ beat (Fast Cast only shortens the cast), 3s for a weaponskill, an item's `cast_t
 1s, and the old 30s for a ranged attack or anything the resources cannot name. That
 end is taken for the lost finish: it starts the kind's lock, since the server locked
 from the real finish, and a press held through both is then sent, not dropped. A
-finish arriving later is still read as one, so it still locks, for the full 30s.
+finish arriving later is still read as one, so it still locks, for the full 30s -
+a spell finish only if it names the spell the start named (2026-11-07).
 The weaponskill and item figures are
 unverified, and so is the items resource's `cast_time` and that a category 9 start
 names its item in `targets[1].actions[1].param`.
@@ -743,6 +744,13 @@ and a finish after a non-spell send (row 13) is still ignored. Losing both the s
 and the finish leaves the bar free once the wait runs out, and the next send can be
 refused: one re-press, which Kevin accepted. The cost: a spell the server drops
 without an answer (4 of 321 sends in the BLU run) holds the bar for its cast time
-plus 0.4s rather than 2s. Not done: a finish names its spell in `param`, and matching
-it against the one that went out would also keep a paralysis round that lands inside
-the wait from being taken for the finish.
+plus 0.4s rather than 2s.
+
+Done 2026-11-07 (Kevin): a finish answers the wait only when its `param` names the
+spell that went out. His log at 20:07:58 had a Cure IV go out while paralyzed and a
+finish arrive 0.49s later, ahead of its start, which locked; the real finish came 0.8s
+after and replaced it. A send with no spell id (param 0) waits as before but takes no
+finish as its own. The same day, the same rule for a start whose wait has locked: the
+bar is idle by then, so a spell finish inside the rest of the 30s counts only if it
+names the spell the start named. While the cast runs, or when the start named no id,
+any spell finish still counts.

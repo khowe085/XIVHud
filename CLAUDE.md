@@ -325,7 +325,8 @@ start then counts as finished at its spell's `cast_time` plus 0.4s, 3s for a
 weaponskill or an item's `cast_time` plus 1s, and that lock is the one anchor
 that is not a packet, so a cast lengthened past it can release early. A held
 press then goes once that lock ends; a finish arriving late still replaces the
-lock. A start nothing can time (ranged, an unknown id) keeps the 30s backstop,
+lock, but a spell finish then has to name the spell the start named (Kevin,
+2026-11-07), so a paralysis round cannot lock an idle bar. A start nothing can time (ranged, an unknown id) keeps the 30s backstop,
 and what it held is dropped. Everything else is a packet, whoever caused it: outgoing
 `0x01A`/`0x037` (the only sight of a macro or of what GearSwap injects),
 `0x028` starts, finishes and interrupts, `0x029` refusals (GearSwap's
@@ -383,7 +384,8 @@ them were accepted, so nothing locks. The exception is a spell that went out, fr
 anything, and is still unanswered (Kevin, 2026-11-06: lag lost seven starts whose
 finishes came, and the next send went into the lock): it waits for an answer for
 its `cast_time` plus 0.4s where that is longer than 2s, and a finish inside that
-is its own and locks. A refusal still ends the wait at once; a spell the server
+naming it (its `param`) is its own and locks - one naming any other spell, or a
+paralysis round, is ignored (Kevin, 2026-11-07). A refusal still ends the wait at once; a spell the server
 drops without one holds the bar that long.
 
 `debug` is `on` plus a line per edge in `<addon>/debug.log`, appended with raw `io`,
