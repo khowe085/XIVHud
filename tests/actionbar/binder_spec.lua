@@ -2089,6 +2089,32 @@ describe("crossbar binder", function()
       end
     end)
 
+    it("gives the base cast and recast times a line each, with no cooldown", function()
+      local binder, env = build()
+      env.describe = function(record)
+        return { name = record.action, type = record.type, cast_time = 2.25, recast = 30 }
+      end
+      binder.open()
+      binder.mouse(MOVE, slot_point(env, "left", 3))
+      local lines = binder.details().lines
+      local text = table.concat(lines, "\n")
+      assert.is_not_nil(text:find("\ncast: 2.25s\n", 1, true), text)
+      assert.is_not_nil(text:find("\nrecast: 30s", 1, true), text)
+      assert.is_nil(text:find("left", 1, true), "what is left of a cooldown is not shown: " .. text)
+      assert.is_nil(text:find("ready", 1, true), text)
+    end)
+
+    it("leaves out a time the resources do not carry", function()
+      local binder, env = build()
+      env.describe = function(record)
+        return { name = record.action, type = record.type }
+      end
+      binder.open()
+      binder.mouse(MOVE, slot_point(env, "left", 3))
+      local text = table.concat(binder.details().lines, "\n")
+      assert.is_nil(text:find("cast:", 1, true), text)
+    end)
+
     it("names the layers a slot's winner covers", function()
       local files = {
         WAR = {
@@ -2171,24 +2197,6 @@ describe("crossbar binder", function()
       assert.are.equal(binder.window().details.y, drawn.y, "at the top of the details column")
     end)
 
-    it("reads a recast as time left, and zero as ready", function()
-      local binder, env = build()
-      env.describe = function(record)
-        return { name = record.action, type = record.type, recast = 12 }
-      end
-      binder.open()
-      binder.mouse(MOVE, slot_point(env, "left", 3))
-      assert.is_not_nil(table.concat(binder.details().lines, "\n"):find("12s left", 1, true))
-      env.describe = function(record)
-        return { name = record.action, type = record.type, recast = 0 }
-      end
-      binder.mouse(MOVE, 4, 4, 0)
-      binder.mouse(MOVE, slot_point(env, "left", 3))
-      local text = table.concat(binder.details().lines, "\n")
-      assert.is_not_nil(text:find("ready", 1, true), text)
-      assert.is_nil(text:find("0s", 1, true), "zero is not 'no cooldown': " .. text)
-    end)
-
     it("re-reads between two catalog entries carrying the same label", function()
       -- The same gate as the slots, on the other surface: a text comparison
       -- would leave the column describing the row already left.
@@ -2232,18 +2240,18 @@ describe("crossbar binder", function()
       assert.is_true(env.describe_calls > asked, "and a real change resolves again")
     end)
 
-    it("rebuilds a resting tooltip on demand, so a countdown does not freeze", function()
+    it("rebuilds a resting tooltip on demand, so what it describes does not freeze", function()
       local binder, env = build()
-      local remaining = 30
+      local name = "Provoke"
       env.describe = function(record)
-        return { name = record.action, type = record.type, recast = remaining }
+        return { name = name, type = record.type }
       end
       binder.open()
       binder.mouse(MOVE, slot_point(env, "left", 3))
-      assert.is_not_nil(table.concat(binder.details().lines, "\n"):find("30s left", 1, true))
-      remaining = 12
+      assert.are.equal("Provoke", binder.details().lines[1])
+      name = "Defender"
       binder.refresh_details()
-      assert.is_not_nil(table.concat(binder.details().lines, "\n"):find("12s left", 1, true), "the cursor never moved")
+      assert.are.equal("Defender", binder.details().lines[1], "the cursor never moved")
       assert.has_no.errors(function()
         binder.mouse(MOVE, 4, 4, 0)
         binder.refresh_details()

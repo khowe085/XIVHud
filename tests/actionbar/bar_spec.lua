@@ -7,6 +7,11 @@ local function resources()
   return {
     spells = {
       [1] = { id = 1, en = "Cure", type = "WhiteMagic", recast_id = 1, mp_cost = 8 },
+      [273] = { id = 273, en = "Sleepga", type = "BlackMagic", recast_id = 273, cast_time = 3, recast = 30 },
+      [363] = { id = 363, en = "Sleepga", type = "BlackMagic", recast_id = 363, unlearnable = true },
+      [274] = { id = 274, en = "Sleepga II", type = "BlackMagic", recast_id = 274 },
+      [64] = { id = 64, en = "Sleepga II", type = "BlackMagic", recast_id = 64, unlearnable = true },
+      [366] = { id = 366, en = "Graviga", type = "BlackMagic", recast_id = 366, unlearnable = true },
     },
     job_abilities = { [605] = { id = 605, en = "Provoke", recast_id = 5, tp_cost = 0 } },
     weapon_skills = { [42] = { id = 42, en = "Savage Blade", skill = 4 } },
@@ -326,6 +331,23 @@ describe("one bar's state", function()
       assert.are.equal("Sword", bar.meta_for({ type = "ws", action = "Savage Blade" }).weapon)
       assert.are.equal(4112, bar.meta_for({ type = "item", action = "Potion" }).item_id)
       assert.is_nil(bar.meta_for(nil))
+    end)
+
+    it("takes the learnable entry when an unlearnable twin shares its name", function()
+      local bar = world()
+      assert.are.equal(273, bar.meta_for({ type = "ma", action = "Sleepga" }).recast_id)
+      assert.are.equal(274, bar.meta_for({ type = "ma", action = "Sleepga II" }).recast_id)
+    end)
+
+    it("carries a spell's base cast and recast times off the resource", function()
+      local meta = world().meta_for({ type = "ma", action = "Sleepga" })
+      assert.are.equal(3, meta.cast_time)
+      assert.are.equal(30, meta.recast)
+    end)
+
+    it("resolves nothing for a name only an unlearnable entry carries", function()
+      local bar = world()
+      assert.is_nil(bar.meta_for({ type = "ma", action = "Graviga" }))
     end)
   end)
 
