@@ -83,9 +83,11 @@ hand-to-hand, which swings twice a round). A round is dual wield when it holds
 an off-hand swing, so nothing reads your gear.
 
 It counts the **whole fight**, not the accuracy row's thirty seconds, which is
-too few rounds to say much. The count starts over when you next engage, and
-the last fight's figure stays on screen until then; `//hud parambar accuracy
-reset` clears it too. Buffs that add attacks - a COR Trust's Double Attack, an
+too few rounds to say much. The count starts over each time you go from not
+engaged to engaged, and the last fight's figure stays on screen until then -
+so if you stay engaged from one mob to the next, it keeps counting. `//hud parambar
+multiattack reset` starts it over by hand - `accuracy reset` leaves it alone -
+and logging out clears it. Buffs that add attacks - a COR Trust's Double Attack, an
 Aftermath - show up in it, which is the point, but remember them when you read
 it.
 
@@ -141,8 +143,8 @@ it. A `bar` or `compact_bar` block left in an older `config.lua` is ignored.
 
 Every setting below can also be changed with the mouse: `//hud config parambar`
 opens the [settings window](../Home.md#settings-window) on this component,
-where the window length steps five seconds a click. (`accuracy reset` is an
-action rather than a setting, so it is not there.)
+where the window length steps five seconds a click. (`accuracy reset` and
+`multiattack reset` are actions rather than settings, so they are not there.)
 
 | Command | What it does |
 | --- | --- |
@@ -154,3 +156,4 @@ action rather than a setting, so it is not there.)
 | `//hud parambar accuracy window <seconds>` | set how much history the row counts (1 to 600) |
 | `//hud parambar multiattack` | print the multi-attack row's state and current reading |
 | `//hud parambar multiattack on\|off` | show or hide the multi-attack row |
+| `//hud parambar multiattack reset` | start the multi-attack count over |

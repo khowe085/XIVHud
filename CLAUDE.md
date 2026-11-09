@@ -621,6 +621,7 @@ Parameter bar:
 //hud parambar accuracy reset            -- empty the rolling window
 //hud parambar accuracy window <seconds> -- 1 to 600
 //hud parambar multiattack [on|off]      -- the Multi. Attk row above it (ships on)
+//hud parambar multiattack reset         -- start its count over
 ```
 
 `Multi. Attk: 30% (3/10)` (Kevin, 2026-11-08) is the share of the ROUNDS of
@@ -649,8 +650,9 @@ two counters, nothing held per round - and starts over when the player's
 status next turns ENGAGED (1); the last fight's figure stays up while idle. The
 last status survives a re-attach, so a slot switch mid-fight is engaged to
 engaged and keeps the count; the first status after a `//lua reload` is no
-transition, and a nil status is ignored. `accuracy reset` clears
-it too. It has its own switch (`multi_attack`, strictly `true`, shipped on by
+transition, and a nil status is ignored. `//hud parambar multiattack reset`
+starts it over by hand and a logout clears it; `accuracy reset` does NOT
+(Kevin, 2026-11-08) - the two are separate counts. It has its own switch (`multi_attack`, strictly `true`, shipped on by
 Kevin's call, so an existing bar drops about 13px on upgrade, 17px where the
 accuracy row was off - nothing migrates) and shares the accuracy row's font,
 offset and ratios, with `accuracy.line_gap` (2) between the two rows; it
@@ -659,15 +661,18 @@ live client**: the `animation` numbering (LandSandBoat's) and whether the two
 rows touch, which is what `line_gap` is for. A hand-broken `accuracy` block
 leaves it drawn at font size 0, the block's metrics being unreadable.
 
-`reset` is the ONLY way to empty the window. The row carried an `[R]` button
+`accuracy reset` is the ONLY way to empty the accuracy window. The accuracy
+row carried an `[R]` button
 for a few hours on 2026-09-27 and does not any more (Kevin) - it is text and
 nothing else now, and parambar declares no `on_mouse` at all, so core
 registers no mouse handler on its account. `reset` stores nothing, so it
-answers `changed = false` and nothing is written. It is the one place `reset` is a component's own word where the
+answers `changed = false` and nothing is written, and so does `multiattack
+reset`. These two are the places `reset` is a component's own word where the
 exp bar chose `clear` instead: that section's hazard is a verb that
 transposes into the framework's own (`//hud expbar reset` against `//hud
 reset expbar`), and nesting this one a level deeper defuses it - `//hud
-parambar accuracy reset` has no transposition to be confused with.
+parambar accuracy reset` and `multiattack reset` have no transposition to be
+confused with.
 
 Equip viewer:
 

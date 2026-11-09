@@ -442,12 +442,15 @@ describe("parambar accuracy", function()
       assert.are.equal(1, accuracy.sample(0).multi_rounds)
     end)
 
-    it("is emptied with the window", function()
+    -- Its own reset (Kevin, 2026-11-08): emptying the accuracy window
+    -- leaves the fight's share alone.
+    it("is not emptied with the window", function()
       swung({ { 1, MAIN }, { 1, MAIN } })
       accuracy.reset()
       local sample = accuracy.sample(0)
-      assert.are.equal(0, sample.rounds)
-      assert.is_nil(sample.multi_percent)
+      assert.are.equal(1, sample.rounds)
+      assert.are.equal(100, sample.multi_percent)
+      assert.are.equal(0, sample.swings)
     end)
   end)
 end)

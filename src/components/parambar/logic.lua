@@ -192,6 +192,11 @@ local function new(config)
     accuracy.reset()
   end
 
+  -- Starts the multi-attack count over, for the `multiattack reset` verb.
+  function self.reset_multi_attack()
+    accuracy.new_fight()
+  end
+
   --[[ The player's status, every frame. Engaging starts the multi-attack
        share over; leaving it keeps the fight's figure on screen until the
        next one. The last status survives a re-attach, so a slot switch
@@ -622,7 +627,8 @@ local function new(config)
     return string.format("//hud parambar accuracy takes on, off, reset or window <seconds>, not '%s'", word), false
   end
 
-  -- The row has one setting, its switch; it counts the whole fight.
+  -- The row has one setting, its switch, and one action, `reset`; it counts
+  -- the whole fight.
   local function set_multi_attack(word)
     if word == nil then
       return string.format(
@@ -633,8 +639,13 @@ local function new(config)
         false
     end
     local wanted = word:lower()
+    if wanted == "reset" then
+      -- Nothing is stored, as with the accuracy row's reset.
+      self.reset_multi_attack()
+      return "parambar multi-attack count reset", false
+    end
     if wanted ~= "on" and wanted ~= "off" then
-      return string.format("//hud parambar multiattack takes on or off, not '%s'", word), false
+      return string.format("//hud parambar multiattack takes on, off or reset, not '%s'", word), false
     end
     config.multi_attack = wanted == "on"
     mark_all_dirty()

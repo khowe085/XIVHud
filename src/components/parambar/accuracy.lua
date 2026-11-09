@@ -61,7 +61,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      carried an extra hand swing. A round is judged when it has a hit or a
      miss in it, or when it is a melee packet whose swings were all parried
      or absorbed. It is NOT pruned against the window: it counts the whole
-     fight, started over by `new_fight` (Kevin, 2026-11-08), since thirty
+     fight, started over by `new_fight` alone (Kevin, 2026-11-08) - the
+     window's `reset` leaves it be - since thirty
      seconds is eight or ten rounds and a share of that few swung by ten
      points a round. Two counters, so a long fight costs nothing to hold.
 
@@ -182,10 +183,9 @@ local function new(config)
     multi_rounds, judged_rounds = 0, 0
   end
 
-  -- Empties everything, for the `accuracy reset` verb.
+  -- Empties the window; the multi-attack share is left alone.
   function self.reset()
     reset_window()
-    self.new_fight()
   end
 
   local function record(hit, at)

@@ -281,6 +281,7 @@ local function new(ctx)
     -- The window is this character's. speedcheck's rule: a detach forgets,
     -- so a logout cannot carry one character's numbers into the next.
     logic.reset_accuracy()
+    logic.reset_multi_attack()
     self.hide()
   end
 

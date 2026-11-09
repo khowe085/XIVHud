@@ -930,11 +930,36 @@ describe("parambar logic", function()
       assert.is_not_nil(message:find("on", 1, true))
     end)
 
-    it("refuses anything but on or off for the multi-attack row", function()
+    it("refuses anything but on, off or reset for the multi-attack row", function()
       local message, changed = logic.command({ "multiattack", "maybe" })
       assert.is_false(changed)
       assert.is_not_nil(message:find("maybe", 1, true))
+      assert.is_not_nil(message:find("reset", 1, true))
       assert.is_true(config.multi_attack)
+    end)
+
+    local function round(pairs_)
+      local actions = {}
+      for index, entry in ipairs(pairs_) do
+        actions[index] = { message = entry[1], animation = entry[2] }
+      end
+      logic.on_action({ actor_id = 7, targets = { { id = 99, actions = actions } } }, 7, 0)
+    end
+
+    it("starts the multi-attack count over on its own reset, and nothing else", function()
+      round({ { 1, 0 }, { 1, 0 } })
+      local message, changed = logic.command({ "multiattack", "reset" })
+      assert.is_false(changed)
+      assert.is_not_nil(message:lower():find("reset", 1, true))
+      local plan = logic.tick(0)
+      assert.are.equal("Multi. Attk: --% (0/0)", plan.multi_attack.text)
+      assert.is_not_nil(plan.accuracy.text:find("(2/2)", 1, true))
+    end)
+
+    it("leaves the multi-attack count alone on the accuracy reset", function()
+      round({ { 1, 0 }, { 1, 0 } })
+      logic.command({ "accuracy", "reset" })
+      assert.are.equal("Multi. Attk: 100% (1/1)", logic.tick(0).multi_attack.text)
     end)
 
     it("reports the multi-attack row in the status line", function()

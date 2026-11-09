@@ -411,6 +411,16 @@ describe("parambar widget", function()
       assert.are.equal("Multi. Attk: 100% (1/1)", multi().last.text)
     end)
 
+    -- A logout must not carry one character's count into the next.
+    it("forgets the count when it is detached", function()
+      place()
+      round({ { 1, 0 }, { 1, 0 } })
+      widget.update()
+      widget.detach()
+      place()
+      assert.are.equal("Multi. Attk: --% (0/0)", multi().last.text)
+    end)
+
     it("starts the count over when the player engages", function()
       place()
       player.status = 0
