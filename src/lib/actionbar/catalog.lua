@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local jobchange = require("lib/actionbar/jobchange")
 local openers = require("lib/actionbar/openers")
 local enchanted = require("lib/actionbar/enchanted")
+local learnable = require("lib/actionbar/learnable")
 local support_abilities = require("lib/actionbar/job_abilities")
 
 local LEVEL_CAP = 99
@@ -289,7 +290,12 @@ local function new(deps)
     local resource = table_or_empty(table_or_empty(deps.resources).spells)
     for id, is_known in pairs(known) do
       local spell = is_known and resource[id] or nil
-      if type(spell) == "table" and type(spell.en) == "string" and available(spell, jobs) then
+      if
+        type(spell) == "table"
+        and type(spell.en) == "string"
+        and learnable.usable(spell)
+        and available(spell, jobs)
+      then
         -- Trusts included: `/trust` is not a command word, so upstream maps
         -- the category to `ma` and so do we - only the grouping differs.
         add(groups, display_category(spell.type) or "Magic", {

@@ -111,7 +111,7 @@ Components can also be switched from the console: `//hud hide giltracker`,
 | --- | --- | --- | --- |
 | [Crossbar](components/crossbar.md) | `cb` | yes | FFXIV's cross hotbar: sixteen slots per set, driven by held keys or a [gamepad](gamepad.md) |
 | [Hotbar](components/hotbar.md) | `hb` | yes (row 1) | FFXIV's hotbar: ten slots in a row on the number keys, up to eight rows, with the same kinds of binding and the same commands as the crossbar |
-| [Parameter bar](components/parambar.md) | `pb` | yes | HP, MP and TP bars with numbers |
+| [Parameter bar](components/parambar.md) | `pb` | yes | HP, MP and TP bars with numbers, plus melee accuracy and multi-attack rows |
 | [Party list](components/partylist.md) | `pl` | yes (main party) | your party (HP/MP/TP, jobs, buffs, distance) and both alliance parties (HP and MP) |
 | [Target bar](components/targetbar.md) | `tb` | yes | your target's HP, name, distance and cast bar, plus smaller copies for the subtarget cursor and a focus target |
 | [Status bar](components/statusbar.md) | `sb` | yes (bar 1) | your buffs and debuffs as icons with timers |
@@ -497,8 +497,8 @@ is not where it should be. Re-copy every file and folder from the release zip
 Windower's own `resources` or `packets` library failed, and more than the party
 list goes with it: the gil tracker, equipment viewer, experience bar and
 inventory tracker are not loaded, the status bar draws no timers, the target
-bar has no cast bar or Treasure Hunter level, the parameter bar's accuracy row
-never counts, the skillchain indicator never draws, the bars' slots show no
+bar has no cast bar or Treasure Hunter level, the parameter bar's accuracy and
+multi-attack rows never count, the skillchain indicator never draws, the bars' slots show no
 recast arcs, costs, icons or counts, their weapon layers never come up (so
 `bind ... ws` needs `context=wpn:`), their binder offers only General and
 Open, mount roulette and mount slots do nothing, `warp` finds no items, and

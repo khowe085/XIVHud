@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      the framework. It creates its prims once at construction so `destroy` can
      always dispose them — XIVBar had no unload path and left its bars on screen.
 
-     All seven prims are created non-draggable: a widget is a group, and the
+     All nine prims are created non-draggable: a widget is a group, and the
      framework drags the group from `//hud layout`. ]]
 
 local new_logic = require("components/parambar/logic")
@@ -71,6 +71,8 @@ local function new(ctx)
   -- the end of the prim list rather than in front of the bars it reports on.
   -- It is text and nothing else - no button, and so no mouse handler.
   local readout
+  -- The multi-attack row, built after the accuracy row for the same reason.
+  local multi_attack
 
   -- The frame clock. Absent only in a harness; a window that cannot age is
   -- better than a widget that throws sixty times a second.
@@ -115,6 +117,11 @@ local function new(ctx)
   readout.bg_visible(false)
   readout.bg_alpha(0)
   readout.hide()
+  multi_attack = ctx.new_text()
+  multi_attack.draggable(false)
+  multi_attack.bg_visible(false)
+  multi_attack.bg_alpha(0)
+  multi_attack.hide()
 
   local function apply_visibility()
     if not visible then
@@ -124,6 +131,7 @@ local function new(ctx)
         numbers[index].hide()
       end
       readout.hide()
+      multi_attack.hide()
       return
     end
 
@@ -142,6 +150,11 @@ local function new(ctx)
     else
       readout.hide()
     end
+    if logic.multi_attack_enabled() then
+      multi_attack.show()
+    else
+      multi_attack.hide()
+    end
   end
 
   local function apply_text_style()
@@ -149,7 +162,7 @@ local function new(ctx)
     local stroke = config.text_stroke or {}
     -- The row takes the numbers' colour and stroke; only its size differs,
     -- and that comes from the geometry with everything else scaled.
-    local texts = { numbers[1], numbers[2], numbers[3], readout }
+    local texts = { numbers[1], numbers[2], numbers[3], readout, multi_attack }
     for _, text in ipairs(texts) do
       text.font(config.font)
       text.color(color.r, color.g, color.b)
@@ -189,6 +202,10 @@ local function new(ctx)
       readout.pos(geometry.accuracy.x, geometry.accuracy.y)
       readout.size(geometry.accuracy.font_size)
     end
+    if geometry.multi_attack then
+      multi_attack.pos(geometry.multi_attack.x, geometry.multi_attack.y)
+      multi_attack.size(geometry.multi_attack.font_size)
+    end
   end
 
   -- One frame of the render plan. Only bars the plan marks dirty are touched,
@@ -224,6 +241,9 @@ local function new(ctx)
     if plan.accuracy.dirty then
       readout.text(plan.accuracy.text)
     end
+    if plan.multi_attack.dirty then
+      multi_attack.text(plan.multi_attack.text)
+    end
   end
 
   --[[ Read every frame. `ctx.get_player` is lib/player's, so this costs a real
@@ -236,6 +256,9 @@ local function new(ctx)
        they are: pushing nothing would zero every one of them. ]]
   local function read_player()
     local player = ctx.get_player()
+    if player then
+      logic.set_status(player.status)
+    end
     if player and player.vitals then
       logic.set_vitals(player.vitals)
     end
@@ -258,6 +281,7 @@ local function new(ctx)
     -- The window is this character's. speedcheck's rule: a detach forgets,
     -- so a logout cannot carry one character's numbers into the next.
     logic.reset_accuracy()
+    logic.reset_multi_attack()
     self.hide()
   end
 
@@ -325,8 +349,8 @@ local function new(ctx)
     if changed then
       apply_text_style()
       apply_layout()
-      -- The accuracy verbs can raise or drop the row, which is a visibility
-      -- change as well as a layout one.
+      -- The accuracy and multiattack verbs can raise or drop a row, which is
+      -- a visibility change as well as a layout one.
       apply_visibility()
       if save then
         save()
@@ -346,6 +370,7 @@ local function new(ctx)
       numbers[index].destroy()
     end
     readout.destroy()
+    multi_attack.destroy()
   end
 
   return self

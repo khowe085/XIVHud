@@ -59,7 +59,7 @@ and where settings are stored.
 | --- | --- | --- | --- |
 | Crossbar | `cb` | FFXIV's cross hotbar: sixteen slots per set, eight sets, driven by held keys or a [gamepad](wiki/gamepad.md), with a mouse binder | [crossbar](wiki/components/crossbar.md) |
 | Hotbar | `hb` | FFXIV's hotbar: ten slots in a row on the number keys, up to eight rows, with the same kinds of binding and the same commands as the crossbar | [hotbar](wiki/components/hotbar.md) |
-| Parameter bar | `pb` | HP, MP and TP bars with numbers | [parambar](wiki/components/parambar.md) |
+| Parameter bar | `pb` | HP, MP and TP bars with numbers, plus melee accuracy and multi-attack rows | [parambar](wiki/components/parambar.md) |
 | Party list | `pl` | your party (HP/MP/TP, jobs, buffs, distance) and both alliance parties (HP and MP) | [partylist](wiki/components/partylist.md) |
 | Target bar | `tb` | your target's HP, name, distance, claim colour and cast bar, with smaller bars for the subtarget cursor and a focus target | [targetbar](wiki/components/targetbar.md) |
 | Status bar | `sb` | your buffs and debuffs as icons with timers, on up to three bars | [statusbar](wiki/components/statusbar.md) |

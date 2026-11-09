@@ -46,14 +46,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      its own message ids (352 / 353 / 354), and pooling the two would answer
      a question nobody asked.
 
-     THE PACKET'S CATEGORY IS DELIBERATELY NOT READ, which is a deviation
-     from this repo's other two `0x028` readers (`lib/skillchain` and the
-     target bar's cast tracker both switch on it). The four ids above are
-     melee-specific on their own, so the category could only ever narrow a
-     set that is already narrow - and it would do so against a constant
-     nobody here has verified in a client, where being wrong means the row
-     silently never moves. An unread fact must not disable a feature; the
-     worst a missing gate can do is count a swing that was already a swing.
+     THE PACKET'S CATEGORY NEVER GATES THE ACCURACY OR THE DELAY, which is
+     a deviation from this repo's other two `0x028` readers (`lib/skillchain`
+     and the target bar's cast tracker both switch on it). The four ids
+     above are melee-specific on their own, so the category could only ever
+     narrow a set that is already narrow - and it would do so against a
+     constant nobody here has verified in a client, where being wrong means
+     the row silently never moves. An unread fact must not disable a
+     feature; the worst a missing gate can do is count a swing that was
+     already a swing. It only ever WIDENS the multi-attack share, below, so
+     a wrong constant cannot kill that row either.
+
+     THE MULTI-ATTACK SHARE rides the same packets: the share of rounds that
+     carried an extra hand swing. A round is judged when it has a hit or a
+     miss in it, or when it is a melee packet whose swings were all parried
+     or absorbed. It is NOT pruned against the window: it counts the whole
+     fight, started over by `new_fight` alone (Kevin, 2026-11-08) - the
+     window's `reset` leaves it be - since thirty
+     seconds is eight or ten rounds and a share of that few swung by ten
+     points a round. Two counters, so a long fight costs nothing to hold.
 
      THE SAMPLE IS SMALL and that is inherent: the shipped thirty seconds is
      eight or ten swings single-wield, and fifteen was four or five. The hit
@@ -83,6 +94,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 -- scoreboard's melee message ids. A hit and a crit; both misses.
 local HIT = { [1] = true, [67] = true }
 local MISS = { [15] = true, [63] = true }
+--[[ A melee swing's `animation`, as LandSandBoat numbers it: 0 the main
+     hand, 1 the off hand, 2 and 3 a kick, 4 Daken. A round holding an
+     off-hand swing is dual-wield, whose two ordinary attacks are not extra
+     ones. Kicks and Daken are not multi-attacks (Kevin, 2026-11-08), so they
+     are left out of the count - excluded by number rather than the hands
+     admitted, so a packet with no animation still counts its swings.
+     Unverified in a live client. ]]
+local OFF_HAND = 1
+local NOT_A_HAND = { [2] = true, [3] = true, [4] = true }
+--[[ The melee category of `0x028`, as the target bar's TH tracker reads it.
+     A melee round is judged for multi-attack even when no swing in it hit
+     or missed: a lone swing is parried or eaten by a shadow more often than
+     every swing of a multi-attack is, so a share of only the rounds with a
+     hit or a miss in them reads high. Outside this category a hit or a miss
+     is still the proof, so if the constant is wrong the row falls back to
+     that rather than going dead - and a spell's messages never count. ]]
+local MELEE = 1
 
 local DEFAULT_WINDOW = 30
 -- Every swing inside the window is held, so the window is bounded: ten
@@ -106,6 +134,11 @@ local function new(config)
   local rounds = {}
   local rounds_head = 1
   local rounds_tail = 0
+  -- The rounds judged for multi-attack this fight, and how many carried an
+  -- extra attack. A round with no hand swing (all kicks, under Footwork)
+  -- says nothing either way and is not judged at all.
+  local multi_rounds = 0
+  local judged_rounds = 0
   -- The last median, and the state it was computed from. `sample` is called
   -- every frame and a 600-second window on a dual-wielding job holds a few
   -- hundred gaps: sorting those sixty times a second for a number that
@@ -136,13 +169,23 @@ local function new(config)
     return MAX_WINDOW
   end
 
-  function self.reset()
+  local function reset_window()
     swings = {}
     head, tail = 1, 0
     hits, total = 0, 0
     rounds = {}
     rounds_head, rounds_tail = 1, 0
     delay_cached, delay_state = nil, nil
+  end
+
+  -- Starts the multi-attack share over; the window is left alone.
+  function self.new_fight()
+    multi_rounds, judged_rounds = 0, 0
+  end
+
+  -- Empties the window; the multi-attack share is left alone.
+  function self.reset()
+    reset_window()
   end
 
   local function record(hit, at)
@@ -171,10 +214,16 @@ local function new(config)
       return
     end
     local counted = 0
+    local attacks = 0
+    local off_hand = false
     for _, target in ipairs(action.targets) do
       if type(target) == "table" and type(target.actions) == "table" then
         for _, swing in ipairs(target.actions) do
           local message = type(swing) == "table" and swing.message or nil
+          if message ~= nil and not NOT_A_HAND[swing.animation] then
+            attacks = attacks + 1
+            off_hand = off_hand or swing.animation == OFF_HAND
+          end
           if HIT[message] then
             record(true, now)
             counted = counted + 1
@@ -188,6 +237,12 @@ local function new(config)
     if counted > 0 then
       rounds_tail = rounds_tail + 1
       rounds[rounds_tail] = now
+    end
+    if attacks > 0 and (counted > 0 or action.category == MELEE) then
+      judged_rounds = judged_rounds + 1
+      if attacks > (off_hand and 2 or 1) then
+        multi_rounds = multi_rounds + 1
+      end
     end
   end
 
@@ -210,7 +265,7 @@ local function new(config)
     if head > tail and rounds_head > rounds_tail then
       -- Emptied: start the arithmetic over rather than let the indices climb
       -- for the length of a session.
-      self.reset()
+      reset_window()
     end
   end
 
@@ -261,7 +316,19 @@ local function new(config)
     if total > 0 then
       percent = math.floor((hits / total) * 100 + 0.5)
     end
-    return { hits = hits, swings = total, percent = percent, delay = measured_delay() }
+    local multi_percent = nil
+    if judged_rounds > 0 then
+      multi_percent = math.floor((multi_rounds / judged_rounds) * 100 + 0.5)
+    end
+    return {
+      hits = hits,
+      swings = total,
+      percent = percent,
+      delay = measured_delay(),
+      rounds = judged_rounds,
+      multi_rounds = multi_rounds,
+      multi_percent = multi_percent,
+    }
   end
 
   return self

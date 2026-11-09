@@ -644,8 +644,8 @@ In edit mode:
   dark on the bar until you leave the layer or edit mode.
 - **Hovering** describes what is under the cursor in the window's own details
   column: a slot or an entry in the action list gives you its name, type and
-  target, its MP or TP cost, how much of its recast is left, and the
-  skillchain property it carries. A slot adds the layer its content is coming
+  target, its MP or TP cost, a spell's base cast and recast times (before
+  Fast Cast or haste), and the skillchain property it carries. A slot adds the layer its content is coming
   from and which layers that is covering. It is only what the addon already
   knows - there is no game description text.
 
@@ -750,7 +750,8 @@ everything the job can ever learn rather than only what you can use yet, in
 which case binding one you have not learned gives a slot the game refuses.
 
 A **details column** on the right shows whatever the cursor is over: name,
-cost, recast, skillchain property, and for a slot the layer its binding comes
+cost, a spell's base cast and recast times, skillchain property, and for a
+slot the layer its binding comes
 from. A menu row is not an action and has nothing to describe, so the column
 is blank over one. It still carries an icon: Stratagems shows the grimoire,
 and every other menu shows its job's glyph.
