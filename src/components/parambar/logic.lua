@@ -77,7 +77,7 @@ local VITALS = { hp = "hp", hpp = "hp", mp = "mp", mpp = "mp", tp = "tp" }
 local BANDS = { { 25, "red" }, { 50, "orange" }, { 75, "yellow" } }
 
 local SAMPLE_VITALS = { hp = 1500, hpp = 75, mp = 800, mpp = 50, tp = 1500 }
-local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78, delay = 2.4 }
+local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78, delay = 2.4, multi_percent = 30 }
 
 --[[ The accuracy row is TEXT AND NOTHING ELSE (Kevin, 2026-09-27): it
      carried an `[R]` reset button for a few hours and does not any more, so
@@ -92,6 +92,7 @@ local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78, delay = 2.4 }
      itself, since the gap between two rounds can be the whole of it. ]]
 local WIDEST_ACCURACY = "Acc: 000% (0000/0000) - 000.0s"
 local UNKNOWN_DELAY = "--s"
+local WIDEST_MULTI_ATTACK = "Multi. Attk: 100%"
 
 local function zeroed()
   return { hp = 0, hpp = 0, mp = 0, mpp = 0, tp = 0 }
@@ -126,6 +127,7 @@ local function new(config)
   local widths = { hp = 0, mp = 0, tp = 0 }
   local dirty = { hp = true, mp = true, tp = true }
   local accuracy_shown = nil
+  local multi_attack_shown = nil
   -- The clock the last tick sampled at, so a command answered between frames
   -- reports the window as the row currently draws it.
   local accuracy_sampled_at = 0
@@ -145,6 +147,10 @@ local function new(config)
   -- turn something on.
   local function accuracy_enabled()
     return accuracy_config().enabled == true
+  end
+
+  local function multi_attack_enabled()
+    return config.multi_attack == true
   end
 
   local accuracy = new_accuracy(accuracy_config())
@@ -186,6 +192,10 @@ local function new(config)
   -- a show, a hide - where there is no plan to read it off.
   function self.accuracy_enabled()
     return accuracy_enabled()
+  end
+
+  function self.multi_attack_enabled()
+    return multi_attack_enabled()
   end
 
   --[[ The current vitals, as `lib/player` hands them over: the client's own
@@ -248,26 +258,34 @@ local function new(config)
        ratios stand in for it (expbar's approach and its config names) and
        `offset` is the knob for correcting the row in a live client.
 
-       `row_height` is what the whole widget grows by. The row is drawn at
-       the widget's origin and the bar art below it, rather than the other
-       way round: anything drawn ABOVE the origin would fall outside
-       `get_bounds` and defeat core's clamp. ]]
+       `row_height` is what the whole widget grows by: one line per row
+       drawn, `line_gap` between two of them, then `bar_gap` under them. The rows are drawn from the widget's
+       origin and the bar art below them, rather than the other way round:
+       anything drawn ABOVE the origin would fall outside `get_bounds` and
+       defeat core's clamp. The multi-attack row shares every measurement
+       here, so its line is the same height and starts at the same x. ]]
   local function accuracy_metrics(scale)
+    local lines = (accuracy_enabled() and 1 or 0) + (multi_attack_enabled() and 1 or 0)
     local set = accuracy_config()
     local font = tonumber(set.font_size) or 0
     local height_ratio = tonumber(set.text_height_ratio) or 0
     local width_ratio = tonumber(set.text_width_ratio) or 0
     local bar_gap = tonumber(set.bar_gap) or 0
+    -- Floored, so a hand edit cannot stack the rows onto each other.
+    local line_gap = math.max(0, tonumber(set.line_gap) or 0)
     local scaled_font = font * scale
     return {
       font_size = math.floor(scaled_font + 0.5),
       offset = tonumber(set.offset) or 0,
-      -- The line's own band plus the clearance under it: `bar_gap` is what
-      -- lifts the row off the bar art.
-      row_height = math.floor((font * height_ratio + bar_gap) * scale + 0.5),
+      -- The lines' own bands plus the clearances: `bar_gap` lifts the rows
+      -- off the bar art and `line_gap` the two rows off each other.
+      row_height = math.floor((lines * font * height_ratio + (lines - 1) * line_gap + bar_gap) * scale + 0.5),
+      -- From the top of one row to the top of the next.
+      line_pitch = math.floor((font * height_ratio + line_gap) * scale + 0.5),
       -- Floored at nothing, so a hand-edited negative font cannot reach
       -- back past the origin, where `bounds` does not cover it.
       readout_width = math.max(0, math.ceil(#WIDEST_ACCURACY * scaled_font * width_ratio)),
+      multi_attack_width = math.max(0, math.ceil(#WIDEST_MULTI_ATTACK * scaled_font * width_ratio)),
     }
   end
 
@@ -280,18 +298,29 @@ local function new(config)
     return math.max(0, (BAR_X[#BARS] + (#BARS - 1) * step + row.offset) * scale)
   end
 
-  -- How far right the row reaches from the widget's own x: the widest line
-  -- it can ever draw.
+  -- How far right the rows reach from the widget's own x: the widest line
+  -- either can ever draw.
   local function accuracy_reach(metrics, row, scale)
-    return accuracy_row_x(metrics, row, scale) + row.readout_width
+    local width = 0
+    if accuracy_enabled() then
+      width = row.readout_width
+    end
+    if multi_attack_enabled() then
+      width = math.max(width, row.multi_attack_width)
+    end
+    return accuracy_row_x(metrics, row, scale) + width
+  end
+
+  local function any_row()
+    return accuracy_enabled() or multi_attack_enabled()
   end
 
   -- Where every prim goes for a widget anchored at (x, y) and drawn at `scale`.
   function self.geometry(x, y, scale)
     local metrics = self.metrics()
     local step = metrics.bar_width + metrics.spacing
-    local row = accuracy_enabled() and accuracy_metrics(scale) or nil
-    -- The frame's top, which is the origin only while the row is off.
+    local row = any_row() and accuracy_metrics(scale) or nil
+    -- The frame's top, which is the origin only while both rows are off.
     local top = y + (row and row.row_height or 0)
     local geometry = {
       background = {
@@ -324,13 +353,21 @@ local function new(config)
     end
 
     if row then
-      geometry.accuracy = { x = x + accuracy_row_x(metrics, row, scale), y = y, font_size = row.font_size }
+      local row_x = x + accuracy_row_x(metrics, row, scale)
+      local line_y = y
+      if multi_attack_enabled() then
+        geometry.multi_attack = { x = row_x, y = line_y, font_size = row.font_size }
+        line_y = line_y + row.line_pitch
+      end
+      if accuracy_enabled() then
+        geometry.accuracy = { x = row_x, y = line_y, font_size = row.font_size }
+      end
     end
 
     return geometry
   end
 
-  --[[ The origin is the row's, not the frame's, whenever the row is on - the
+  --[[ The origin is the rows', not the frame's, whenever a row is on - the
        contract is that `get_bounds` hands back the point `set_pos` was
        given, and core clamps against it. The width grows with the readout
        too: at the shipped font the line is wider than the bar art, and a
@@ -339,7 +376,7 @@ local function new(config)
     local metrics = self.metrics()
     local width = metrics.total_width * scale
     local height = BACKGROUND_HEIGHT * scale
-    if accuracy_enabled() then
+    if any_row() then
       local row = accuracy_metrics(scale)
       width = math.max(width, accuracy_reach(metrics, row, scale))
       height = height + row.row_height
@@ -425,6 +462,14 @@ local function new(config)
     return string.format("Acc: %d%% (%d/%d) - %s", sample.percent, sample.hits, sample.swings, delay)
   end
 
+  -- `Multi. Attk: 30%`, or `--%` until a round has landed.
+  local function multi_attack_line(sample)
+    if not sample.multi_percent then
+      return "Multi. Attk: --%"
+    end
+    return string.format("Multi. Attk: %d%%", sample.multi_percent)
+  end
+
   --[[ The render plan for this frame. `dirty` says whether the bar needs
        pushing to its prims; it clears on the frame the animation converges.
        `now` is the frame clock, and only the accuracy row reads it: the
@@ -466,6 +511,9 @@ local function new(config)
     local line = accuracy_line(sample)
     plan.accuracy = { text = line, dirty = line ~= accuracy_shown }
     accuracy_shown = line
+    local multi_line = multi_attack_line(sample)
+    plan.multi_attack = { text = multi_line, dirty = multi_line ~= multi_attack_shown }
+    multi_attack_shown = multi_line
 
     return plan
   end
@@ -552,12 +600,32 @@ local function new(config)
     return string.format("//hud parambar accuracy takes on, off, reset or window <seconds>, not '%s'", word), false
   end
 
+  -- The row has one setting, its switch, and shares the accuracy window.
+  local function set_multi_attack(word)
+    if word == nil then
+      return string.format(
+        "parambar multiattack: %s - %s",
+        multi_attack_enabled() and "on" or "off",
+        multi_attack_line(preview and SAMPLE_ACCURACY or accuracy.sample(accuracy_sampled_at))
+      ),
+        false
+    end
+    local wanted = word:lower()
+    if wanted ~= "on" and wanted ~= "off" then
+      return string.format("//hud parambar multiattack takes on or off, not '%s'", word), false
+    end
+    config.multi_attack = wanted == "on"
+    mark_all_dirty()
+    return "parambar multi-attack row " .. wanted, true
+  end
+
   local function status()
     return string.format(
-      "parambar: compact %s, accuracy %s (%gs)",
+      "parambar: compact %s, accuracy %s (%gs), multiattack %s",
       compact_mode() and "on" or "off",
       accuracy_enabled() and "on" or "off",
-      accuracy.window()
+      accuracy.window(),
+      multi_attack_enabled() and "on" or "off"
     )
   end
 
@@ -575,7 +643,10 @@ local function new(config)
     if verb == "accuracy" then
       return set_accuracy(args[2], args[3])
     end
-    return string.format("parambar has no '%s' setting (compact, accuracy)", args[1]), false
+    if verb == "multiattack" then
+      return set_multi_attack(args[2])
+    end
+    return string.format("parambar has no '%s' setting (compact, accuracy, multiattack)", args[1]), false
   end
 
   --[[ The same settings as rows of the `//hud config` window, each naming
@@ -597,6 +668,7 @@ local function new(config)
           step = 5,
           command = { "accuracy", "window" },
         },
+        { label = "Multi-attack row", kind = "toggle", value = multi_attack_enabled(), command = { "multiattack" } },
       },
     }
   end

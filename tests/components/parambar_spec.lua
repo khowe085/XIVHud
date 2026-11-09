@@ -28,6 +28,11 @@ describe("parambar widget", function()
     return prims.texts[4]
   end
 
+  -- The multi-attack row: one text, after the accuracy row.
+  local function multi()
+    return prims.texts[5]
+  end
+
   -- Attached, placed and shown: the state every accuracy assertion needs.
   local function place()
     attach()
@@ -104,9 +109,9 @@ describe("parambar widget", function()
       assert.are.equal(1020, slot.pos.y)
     end)
 
-    it("builds one background, three fills, three numbers and the accuracy row", function()
+    it("builds one background, three fills, three numbers and the two rows", function()
       assert.are.equal(4, #prims.images)
-      assert.are.equal(4, #prims.texts)
+      assert.are.equal(5, #prims.texts)
     end)
 
     it("makes every prim non-draggable, because the framework owns dragging", function()
@@ -240,9 +245,9 @@ describe("parambar widget", function()
        already decodes, so nothing new is registered; the widget supplies the
        player id and the clock, and everything else is logic's. ]]
   describe("the accuracy row", function()
-    it("draws the row above the bars, at the origin set_pos was given", function()
+    it("draws the row above the bars, under the multi-attack row", function()
       place()
-      assert.are.equal(200, readout().y)
+      assert.are.equal(212, readout().y)
       assert.is_true(number(3).y > readout().y)
     end)
 
@@ -360,7 +365,79 @@ describe("parambar widget", function()
       place()
       widget.handle_command({ "accuracy", "on" })
       assert.is_true(readout().visible)
+      assert.are.equal(212, readout().y)
+    end)
+  end)
+
+  describe("the multi-attack row", function()
+    -- One round of { message, animation } pairs.
+    local function round(pairs_)
+      local actions = {}
+      for index, entry in ipairs(pairs_) do
+        actions[index] = { message = entry[1], animation = entry[2] }
+      end
+      widget.update("chunk", 0x028, "raw bytes", {
+        actor_id = player.id,
+        targets = { { id = 99, actions = actions } },
+      })
+    end
+
+    it("draws the row at the origin, above the accuracy row, at its font", function()
+      place()
+      assert.are.same({ 435, 200 }, { multi().x, multi().y })
+      assert.are.equal(8, multi().font_size)
+      assert.is_true(multi().visible)
+    end)
+
+    it("says so plainly before a round has landed", function()
+      place()
+      assert.are.equal("Multi. Attk: --%", multi().last.text)
+    end)
+
+    it("reads the share of rounds with an extra attack off the action packet", function()
+      place()
+      round({ { 1, 0 }, { 1, 0 } })
+      round({ { 1, 0 } })
+      widget.update()
+      assert.are.equal("Multi. Attk: 50%", multi().last.text)
+    end)
+
+    it("hides with the rest of the widget", function()
+      place()
+      widget.hide()
+      assert.is_false(multi().visible)
+    end)
+
+    it("keeps the row down while the setting is off", function()
+      widget.defaults.multi_attack = false
+      place()
+      assert.is_false(multi().visible)
       assert.are.equal(200, readout().y)
+    end)
+
+    it("raises and drops the row on its command, and saves", function()
+      place()
+      local before = saves
+      widget.handle_command({ "multiattack", "off" })
+      assert.is_false(multi().visible)
+      assert.are.equal(200, readout().y)
+      widget.handle_command({ "multiattack", "on" })
+      assert.is_true(multi().visible)
+      assert.are.equal(212, readout().y)
+      assert.are.equal(before + 2, saves)
+    end)
+
+    it("takes the accuracy row's place when that row is off", function()
+      widget.defaults.accuracy.enabled = false
+      place()
+      assert.are.equal(200, multi().y)
+      assert.is_true(multi().visible)
+    end)
+
+    it("is disposed with the rest", function()
+      attach()
+      widget.destroy()
+      assert.are.equal(1, multi().destroyed)
     end)
   end)
 
@@ -369,26 +446,26 @@ describe("parambar widget", function()
 
     it("moves every prim as a group", function()
       widget.set_pos(100, 200)
-      assert.are.same({ 100, 217 }, { background().x, background().y })
-      assert.are.same({ 115, 219 }, { fill(1).x, fill(1).y })
-      assert.are.same({ 275, 219 }, { fill(2).x, fill(2).y })
-      assert.are.same({ 165, 219 }, { number(1).x, number(1).y })
-      assert.are.same({ 435, 200 }, { readout().x, readout().y })
+      assert.are.same({ 100, 230 }, { background().x, background().y })
+      assert.are.same({ 115, 232 }, { fill(1).x, fill(1).y })
+      assert.are.same({ 275, 232 }, { fill(2).x, fill(2).y })
+      assert.are.same({ 165, 232 }, { number(1).x, number(1).y })
+      assert.are.same({ 435, 212 }, { readout().x, readout().y })
     end)
 
     it("scales positions, sizes and the font together", function()
       widget.set_pos(100, 200)
       widget.set_scale(2)
       assert.are.same({ 944, 48 }, { background().width, background().height })
-      assert.are.same({ 130, 239 }, { fill(1).x, fill(1).y })
+      assert.are.same({ 130, 264 }, { fill(1).x, fill(1).y })
       assert.are.equal(28, number(1).font_size)
     end)
 
-    it("reports bounds covering the frame and the accuracy row above it", function()
+    it("reports bounds covering the frame and the two rows above it", function()
       widget.set_pos(100, 200)
-      assert.are.same({ 100, 200, 499, 41 }, { widget.get_bounds() })
+      assert.are.same({ 100, 200, 499, 54 }, { widget.get_bounds() })
       widget.set_scale(0.5)
-      assert.are.same({ 100, 200, 249.5, 21 }, { widget.get_bounds() })
+      assert.are.same({ 100, 200, 249.5, 27 }, { widget.get_bounds() })
     end)
 
     it("reports no bounds before it has a position", function()
@@ -651,21 +728,22 @@ describe("parambar widget", function()
       assert.equal(42, rows()[3].value)
     end)
 
-    it("offers its three settings in order, each naming the command that sets it", function()
+    it("offers its four settings in order, each naming the command that sets it", function()
       attach()
-      assert.same({ "Compact", "Accuracy row", "Accuracy window (s)" }, column("label"))
-      assert.same({ "toggle", "toggle", "stepper" }, column("kind"))
-      assert.same({ { "compact" }, { "accuracy" }, { "accuracy", "window" } }, column("command"))
+      assert.same({ "Compact", "Accuracy row", "Accuracy window (s)", "Multi-attack row" }, column("label"))
+      assert.same({ "toggle", "toggle", "stepper", "toggle" }, column("kind"))
+      assert.same({ { "compact" }, { "accuracy" }, { "accuracy", "window" }, { "multiattack" } }, column("command"))
       assert.same({ [3] = 5 }, column("step"))
     end)
 
     it("shows every setting as it stands", function()
       attach()
-      assert.same({ false, true, 30 }, column("value"))
+      assert.same({ false, true, 30, true }, column("value"))
       widget.handle_command({ "compact", "on" })
       widget.handle_command({ "accuracy", "off" })
       widget.handle_command({ "accuracy", "window", "45" })
-      assert.same({ true, false, 45 }, column("value"))
+      widget.handle_command({ "multiattack", "off" })
+      assert.same({ true, false, 45, false }, column("value"))
     end)
 
     it("bounds the accuracy window at what its own command takes", function()
@@ -691,21 +769,22 @@ describe("parambar widget", function()
     it("shows a switch as off unless it is exactly true, as the widget reads it", function()
       widget.defaults.compact = "yes"
       widget.defaults.accuracy.enabled = 1
+      widget.defaults.multi_attack = 1
       attach()
-      assert.same({ false, false, 30 }, column("value"))
+      assert.same({ false, false, 30, false }, column("value"))
     end)
 
     it("still draws over an accuracy block a hand edit has broken", function()
       widget.defaults.accuracy = "broken"
       attach()
-      assert.same({ false, false, 30 }, column("value"))
+      assert.same({ false, false, 30, true }, column("value"))
       assert.same({}, panels.failures(panels.exercise(widget)))
     end)
 
     it("changes each setting through its own command, and saves it", function()
       attach()
       assert.same({}, panels.failures(panels.exercise(widget)))
-      assert.equal(6, saves, "each of the three was moved and moved back")
+      assert.equal(8, saves, "each of the four was moved and moved back")
     end)
   end)
 

@@ -78,10 +78,17 @@ return function(screen_width, screen_height)
       font_size = 8,
       -- Lifts the row off the bar art: the knob for a line drawing on it.
       bar_gap = 7,
+      -- Between the multi-attack row and this one: the knob for the two
+      -- touching.
+      line_gap = 2,
       offset = 0,
       text_width_ratio = 0.68,
       text_height_ratio = 1.3,
     },
+    -- `Multi. Attk: 30%`, a second row above the accuracy row: the share of
+    -- the rounds in the accuracy window that carried an extra attack. It
+    -- takes that row's window, font, offset and ratios.
+    multi_attack = true,
     low_hp_colors = low_vitals_colors(),
     low_mp_colors = low_vitals_colors(),
     layout = {

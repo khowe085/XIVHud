@@ -486,8 +486,8 @@ is not where it should be. Re-copy every file and folder from the release zip
 Windower's own `resources` or `packets` library failed, and more than the party
 list goes with it: the gil tracker, equipment viewer, experience bar and
 inventory tracker are not loaded, the status bar draws no timers, the target
-bar has no cast bar or Treasure Hunter level, the parameter bar's accuracy row
-never counts, the skillchain indicator never draws, the bars' slots show no
+bar has no cast bar or Treasure Hunter level, the parameter bar's accuracy and
+multi-attack rows never count, the skillchain indicator never draws, the bars' slots show no
 recast arcs, costs, icons or counts, their weapon layers never come up (so
 `bind ... ws` needs `context=wpn:`), their binder offers only General and
 Open, mount roulette and mount slots do nothing, `warp` finds no items, and
