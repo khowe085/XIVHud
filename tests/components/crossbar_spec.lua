@@ -5435,21 +5435,23 @@ describe("crossbar live widget", function()
       assert.are.equal("Berserk", text_of("xhb_left", 5, "name").last.text, "dark arts really is up now")
     end)
 
-    it("keeps a resting details column's recast moving from the tick", function()
-      -- The column is filled on a mouse move, but a recast counts down
-      -- whether or not the cursor does anything.
+    it("details a hovered spell's base cast and recast, and re-reads them from the tick", function()
       build_world()
-      env.ability_recasts[5] = 30
+      local cure = ctx.resources.spells[1]
+      cure.cast_time, cure.recast = 2, 5
       widget.handle_command({ "edit" })
       -- The column lives in the window, so a slot has to be open for there
       -- to be anywhere to draw it.
       click(slot_point("left", 1))
-      widget.on_mouse(MOUSE_MOVE, slot_point("left", 4))
-      assert.is_not_nil(binder_line("recast: 30s left"), "the column filled in on the hover")
-      env.ability_recasts[5] = 9
+      widget.on_mouse(MOUSE_MOVE, slot_point("left", 5))
+      assert.is_not_nil(binder_line("^cast: 2s$"), "the column filled in on the hover")
+      assert.is_not_nil(binder_line("^recast: 5s$"))
+      -- The tick rebuilds a resting column, so a change to what the slot
+      -- resolves to shows without the cursor moving.
+      cure.cast_time = 2.5
       env.now = env.now + 1
       push(widget)
-      assert.is_not_nil(binder_line("recast: 9s left"), "and counts down though the cursor never moved")
+      assert.is_not_nil(binder_line("^cast: 2.5s$"), "and the tick re-read it though the cursor never moved")
     end)
 
     it("still cycles and jumps sets while the binder is up", function()

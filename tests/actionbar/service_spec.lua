@@ -16,6 +16,22 @@ local function resources()
       [261] = { id = 261, en = "Warp", type = "BlackMagic", recast_id = 261, mp_cost = 100 },
       -- Spells and abilities number their recasts apart: this is not a stratagem.
       [231] = { id = 231, en = "Bio II", type = "BlackMagic", recast_id = 231, mp_cost = 36 },
+      -- Windower's table carries an unlearnable twin of Sleepga (363) on a
+      -- recast the client never reports. The Sleepga II twin at 64 is made
+      -- up, below the real id, so learnability decides rather than the id.
+      [273] = { id = 273, en = "Sleepga", type = "BlackMagic", recast_id = 273 },
+      [363] = { id = 363, en = "Sleepga", type = "BlackMagic", recast_id = 363, unlearnable = true },
+      [274] = { id = 274, en = "Sleepga II", type = "BlackMagic", recast_id = 274 },
+      [64] = { id = 64, en = "Sleepga II", type = "BlackMagic", recast_id = 64, unlearnable = true },
+      [366] = { id = 366, en = "Graviga", type = "BlackMagic", recast_id = 366, unlearnable = true },
+      -- Unlearnable in Windower's table, and cast off the Daybreak club.
+      [360] = { id = 360, en = "Dispelga", type = "BlackMagic", recast_id = 360, unlearnable = true },
+      -- Learnable twins, made up, so the lower id has to decide: one pair
+      -- each way round in id, so pairs order cannot settle both.
+      [500] = { id = 500, en = "Twin A", type = "BlackMagic", recast_id = 500 },
+      [900] = { id = 900, en = "Twin A", type = "BlackMagic", recast_id = 900 },
+      [901] = { id = 901, en = "Twin B", type = "BlackMagic", recast_id = 901 },
+      [501] = { id = 501, en = "Twin B", type = "BlackMagic", recast_id = 501 },
       [136] = { id = 136, en = "Invisible", prefix = "/magic", targets = 5, levels = { [4] = 25 }, recast_id = 136 },
       [137] = { id = 137, en = "Sneak", prefix = "/magic", targets = 5, levels = { [4] = 20 }, recast_id = 137 },
     },
@@ -977,6 +993,31 @@ describe("the action service", function()
       assert.are.equal(lines, #env.chat)
     end)
 
+    it("finds no resource for a name only an unlearnable entry carries", function()
+      local service = world()
+      assert.is_nil(service.find_resource("spells", "Graviga"))
+      assert.are.equal(273, service.find_resource("spells", "Sleepga").id)
+    end)
+
+    it("still finds Dispelga, which Windower marks unlearnable", function()
+      assert.are.equal(360, world().find_resource("spells", "Dispelga").id)
+    end)
+
+    it("takes the lower id where two learnable entries share a name", function()
+      -- The proof needs pairs to reach a higher id last for at least one
+      -- name, or last-write-wins would pass it by luck.
+      local last = {}
+      for id, entry in pairs(resources().spells) do
+        if entry.en == "Twin A" or entry.en == "Twin B" then
+          last[entry.en] = id
+        end
+      end
+      assert.is_true(last["Twin A"] == 900 or last["Twin B"] == 901, "the fixture can tell the rule from luck")
+      local service = world()
+      assert.are.equal(500, service.find_resource("spells", "Twin A").id)
+      assert.are.equal(501, service.find_resource("spells", "Twin B").id)
+    end)
+
     it("names the tuning core seeds from the modules that own it", function()
       local service = world()
       local defaults = service.config_defaults()
@@ -1338,6 +1379,19 @@ describe("the action service", function()
       service.tick()
       assert.are.same({}, env.commands)
     end)
+
+    for _, name in ipairs({ "Sleepga", "Sleepga II" }) do
+      it("reads " .. name .. "'s recast off the learnable entry, not its unlearnable twin", function()
+        local service, env = queued()
+        local recast_id = name == "Sleepga" and 273 or 274
+        start_cast(service)
+        service.fire({ type = "ma", action = name, target = "me" }, {})
+        finish_cast(service)
+        env.spell_recasts[recast_id] = 180
+        past_the_lock(service, env)
+        assert.are.same({}, env.commands)
+      end)
+    end
 
     it("reads no recast for a weaponskill, which has none", function()
       local service, env = queued()
