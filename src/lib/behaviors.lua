@@ -58,6 +58,8 @@ local SHIPPED = {
   main_menu = { key = "numpad-" },
   lockon = { key = "numpad*" },
   autorun = { key = "r" },
+  target_self = { key = "f1" },
+  target_npc = { key = "f8" },
   open_map = { type = "open", action = "map" },
 }
 
@@ -66,6 +68,11 @@ for name in pairs(SHIPPED) do
   SHIPPED_NAMES[#SHIPPED_NAMES + 1] = name
 end
 table.sort(SHIPPED_NAMES)
+
+-- A component's own behaviour is `<component>.<name>`: its name alone says so.
+local function names_component(value)
+  return type(value) == "string" and value:find(".", 1, true) ~= nil
+end
 
 local function new(deps)
   local self = {}
@@ -133,7 +140,7 @@ local function new(deps)
     if type(value) ~= "string" then
       return definition(value)
     end
-    if value:find(".", 1, true) then
+    if names_component(value) then
       if declared(value) then
         return { kind = "component" }
       end
@@ -147,35 +154,39 @@ local function new(deps)
 
   --- One edge of a behaviour - a name, or a gesture's own entry - from
   --- whatever holds it. One that cannot work does nothing; `check` says why.
+  --- A press answers whether the key behind it is taken from the game, which
+  --- the keyboard map asks: a component's own says, a game key or an action
+  --- always is. A second holder hears what the first press answered.
   function self.edge(value, down, cancelled)
     local holding = held[value]
     if down then
       if holding ~= nil then
         holding.count = holding.count + 1
-        return
+        return holding.taken
       end
       local effect = resolve(value)
       if effect == nil then
-        return
+        return false
       end
       -- Counted before it goes out, so a throw downstream leaves the hold
       -- standing for its let-go to end.
-      held[value] = { count = 1, effect = effect }
+      holding = { count = 1, effect = effect, taken = effect.kind ~= "component" }
+      held[value] = holding
       if effect.kind == "key" then
         press_key(effect.key)
       elseif effect.kind == "action" then
         deps.fire_action(effect.record)
       else
-        deps.deliver(value, true, false)
+        holding.taken = deps.deliver(value, true, false) == true
       end
-      return
+      return holding.taken
     end
     if holding == nil then
-      return
+      return false
     end
     if holding.count > 1 then
       holding.count = holding.count - 1
-      return
+      return false
     end
     held[value] = nil
     if holding.effect.kind == "key" then
@@ -183,6 +194,7 @@ local function new(deps)
     elseif holding.effect.kind == "component" then
       deps.deliver(value, false, cancelled == true)
     end
+    return false
   end
 
   --- Whether a behaviour can work: true, or nil and why not.
@@ -199,10 +211,16 @@ local function new(deps)
     if type(name) ~= "string" then
       return false
     end
-    if name:find(".", 1, true) then
+    if names_component(name) then
       return declared(name)
     end
     return SHIPPED[name] ~= nil
+  end
+
+  --- Whether a behaviour is a component's own, which its component is
+  --- handed whole - by its name, declared or not.
+  function self.is_component(value)
+    return names_component(value)
   end
 
   --- Every behaviour's name: the shipped ones, then the components'.

@@ -154,6 +154,7 @@ per character`.
 | `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default, and a change applies at once. Without a word it prints the current setting |
 | `//hud gamepad [on\|off]` | the [gamepad bridge](gamepad.md): which pad it reads, or switch it on or off; off by default |
 | `//hud gamepad list`, `bind`, `unbind`, `learn` | what each button and chord of the pad does, changed in game (see [Gamepad](gamepad.md#commands)) |
+| `//hud keyboard [on\|off]`, `list` | the [keyboard map](keyboard.md): the crossbar's keys handed to it the way the pad's buttons are; off by default |
 | `//hud config [<component>\|global]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
 
@@ -246,8 +247,8 @@ before release does nothing either.
 
 `global` holds the travel delay, the action queue and its waits (see
 [Action commands](#action-commands)), whether the HUD hides during cutscenes,
-and the [gamepad bridge](gamepad.md)'s switch, unless `//hud gamepad` says the
-bridge is unavailable. The components with a page of their own are the parameter bar,
+the [gamepad bridge](gamepad.md)'s switch, unless `//hud gamepad` says the
+bridge is unavailable, and the [keyboard map](keyboard.md)'s switch. The components with a page of their own are the parameter bar,
 target bar, party list, status bar, equipment viewer, inventory tracker,
 crossbar and hotbar; each one's page says what is on it. A number that needs a
 value the steps do not land on, the buff order and filter lists, and anything
@@ -423,6 +424,7 @@ Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/layout.lua  its posi
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/<JOB>.lua     the crossbar's bindings for that job (the hotbar's sit beside it in hotbar/)
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/SHARED.lua    the bindings of the sets marked shared across jobs
 Windower4/addons/XIVHud/data/gamepad.lua                                the gamepad map, one for every character
+Windower4/addons/XIVHud/data/keyboard.lua                               the keyboard map, one for every character
 Windower4/addons/XIVHud/cache/items/                                    item icons read from the game (a cache: delete it only with the addon unloaded)
 Windower4/addons/XIVHud/cache/packets/<Character>/                      the last character-stats packet per job, for the experience bar and the binder's subjob level cap (a cache)
 Windower4/addons/XIVHud/icons/custom/                                   your own crossbar and hotbar art

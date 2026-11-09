@@ -124,6 +124,8 @@ cycle_window = { key = "numpad+" },
 main_menu    = { key = "numpad-" },
 lockon       = { key = "numpad*" },
 autorun      = { key = "r" },
+target_self  = { key = "f1" },
+target_npc   = { key = "f8" },
 open_map     = { type = "open", action = "map" },
 ```
 
@@ -151,6 +153,12 @@ open_map     = { type = "open", action = "map" },
 | `crossbar.switch` | hold | the set switch, as backtick: a tap cycles the set; held, a slot press jumps to that set |
 | `crossbar.slot1` .. `crossbar.slot8` | press | slot N of whatever bar is raised (Kevin) - or, with the switch held, a jump to set N |
 | `crossbar.binder` | press | open or close the binder (edit mode), as Select chorded with a side |
+| `crossbar.draw` | press | draw or sheathe, as `//hud draw` (Kevin, 2026-11-09), with no bar raised |
+
+- `draw` does nothing while a side or WXHB half is up at its press: a bumper
+  under a raised half would otherwise draw, which while drawn is `/attack off`
+  (review, 2026-11-09). Over the held switch it chords it, as a slot press
+  does, so the switch takes no tap from that hold.
 
 - One state machine serves keys and behaviours: `input.lua` gains
   `on_behavior` beside `on_key`, sharing the hold state, so a side held on
@@ -169,30 +177,35 @@ open_map     = { type = "open", action = "map" },
 ## The gamepad map
 
 `data/gamepad.lua`: `enabled` (ships `false`; only an explicit `true` turns it
-on), `trigger_threshold`, `extra` (below) and `map`, a gesture to a behaviour
-name, a `{ key = }` or an action's record. Shipped (Kevin, 2026-11-05):
+on), `trigger_threshold`, `tap_seconds` (0.25, 2026-11-09), `extra` (below)
+and `map`, a gesture to a behaviour
+name, a `{ key = }` or an action's record. Shipped (Kevin, 2026-11-05; Y,
+Start, L3, R3 and LB+RB 2026-11-09):
 
 | Gesture | Behaviour |
 | --- | --- |
-| A / B / X / Y | `accept` / `cancel` / `cycle_window` / `main_menu` |
+| A / B / X / Y | `accept` / `cancel` / `cycle_window` / `lockon` |
+| Start | `main_menu` |
 | LB | `autorun` |
 | RB | `crossbar.switch` |
+| LB+RB, RB+LB | `crossbar.draw` |
 | LT / RT | `crossbar.left` / `crossbar.right` |
 | LT+LB / RT+RB | `crossbar.wxhb_left` / `crossbar.wxhb_right` |
 | LT+Start, RT+Start | `crossbar.binder` |
 | Back | `open_map` |
-| L3 | `lockon` |
+| L3 / R3 | `target_self` / `target_npc` |
 | LT, RT or RB, + Y B A X up right down left | `crossbar.slot1` .. `crossbar.slot8` |
-| Start, R3, the D-pad alone | nothing |
+| The D-pad alone | nothing |
 
 ```lua
 map = {
-  a = "accept", b = "cancel", x = "cycle_window", y = "main_menu",
-  lb = "autorun", rb = "crossbar.switch",
+  a = "accept", b = "cancel", x = "cycle_window", y = "lockon",
+  start = "main_menu", lb = "autorun", rb = "crossbar.switch",
+  ["lb+rb"] = "crossbar.draw", ["rb+lb"] = "crossbar.draw",
   lt = "crossbar.left", rt = "crossbar.right",
   ["lt+lb"] = "crossbar.wxhb_left", ["rt+rb"] = "crossbar.wxhb_right",
   ["lt+start"] = "crossbar.binder", ["rt+start"] = "crossbar.binder",
-  back = "open_map", l3 = "lockon",
+  back = "open_map", l3 = "target_self", r3 = "target_npc",
   ["lt+y"] = "crossbar.slot1", ["lt+b"] = "crossbar.slot2", -- ... lt+left = slot8
   ["rt+y"] = "crossbar.slot1", -- ... the same eight under RT
   ["rb+y"] = "crossbar.slot1", -- ... and under RB, the set jump
@@ -215,10 +228,20 @@ map = {
   held) and Expanded (LT+RT), and `rb+y` is the set jump through the same
   behaviour. A gesture that raises the crossbar on its own (L4 alone, say)
   needs its own eight slot gestures (`l4+y` ...).
-- **A modifier's own behaviour stays held**: LT holds `crossbar.left` while
-  `lt+y` fires slot 1. So a button used as a modifier wants a hold behaviour
-  or none - a press behaviour on one (LB = `autorun` with `lb+y` bound) fires
-  the moment it goes down.
+- **A modifier's own component behaviour stays held**: LT holds
+  `crossbar.left` while `lt+y` fires slot 1, its component hearing the hold.
+- **A modifier's own game key or action is a tap** (Kevin, 2026-11-09): any
+  button a chord holds as a modifier keeps it back for its release, where it
+  goes down that poll and up the next - only inside `tap_seconds` (0.25,
+  Kevin's 250ms, a file edit) and with no chord built on it meanwhile. Only
+  the button's own one-button gesture waits: a chord ending in that button
+  goes at the press (review, round 1). So LB (`autorun`, with
+  `lb+rb` bound) taps, and LB held for RB never autoruns. Automatic, chosen
+  over a flag per gesture: binding a chord moves its modifier's own key or
+  action to the release. The bridge tells a component's behaviour from the
+  rest through an `is_component` dep (core's `behavior_is_component`, which
+  lib/behaviors answers off the `<component>.<name>` spelling); without it
+  nothing waits.
 - **Reference counted per behaviour**: LT+Start and RT+Start both hold
   `crossbar.binder`, and a game key comes up only when every gesture holding
   it has let go.
@@ -277,7 +300,7 @@ Nothing else in the addon needs a hand edit, so neither does the pad:
   (Kevin):
   - a shipped behaviour's name or a component's, alone: `bind a accept`,
     `bind lt crossbar.left`;
-  - `key <name>`, a game key held for as long as the gesture is: `bind l3 key
+  - `key <name>`, a game key held for as long as the gesture is: `bind lt+l3 key
     numpad*`;
   - anything a slot can hold, read by `bind`'s own record parser and validated
     as a slot's is: `bind lt+l4 ma "Cure IV" <t>`, `bind back open map`.
@@ -316,7 +339,8 @@ Nothing else in the addon needs a hand edit, so neither does the pad:
   learned names.
 - Every verb that edits re-reads `data/gamepad.lua` first and refuses one it
   could not read, as switching does.
-- `trigger_threshold` stays a file edit, and there is no `reset` (Kevin).
+- `trigger_threshold` stays a file edit, and there is no `reset` (Kevin);
+  `tap_seconds` (2026-11-09) is a file edit too.
 - An action's name is not second-guessed against the resources as a slot's
   is (`ws Savage Blade Zeid`): the bar's lookup is its own, and the parse
   stays where `parse_action` had it. A follow-up.
@@ -435,8 +459,9 @@ The commands (2026-11-06):
 Everything: that `_LuaXInput.dll` loads from the addon's `bin/` (XIPivot's
 route), that one of the three XInput DLLs is found, that Steam's virtual pad
 answers XInputGetState inside the game process, the probe and per-frame cost,
-the `setkey` spellings `enter`, `escape`, `numpad+`, `numpad-`, `numpad*` and
-`r` (a wrong spelling silently does nothing), whether a key held down through
+the `setkey` spellings `enter`, `escape`, `numpad+`, `numpad-`, `numpad*`,
+`r`, `f1` and `f8` (a wrong spelling silently does nothing), whether the game sees a tapped
+key, down for one frame only (LB's autorun rests on it), whether a key held down through
 `setkey` repeats, that keys Steam types reach Windower's keyboard event and can
 be swallowed like typed ones, and that `/map` opens the map (the opener's own
 open row). `//hud gamepad` and load.log say which step failed.
@@ -445,8 +470,21 @@ open row). `//hud gamepad` and load.log say which step failed.
 
 - The chat line open stops crossbar behaviours, as it stops the crossbar's
   keys. The pad does not type, so lifting that for behaviours is Kevin's call.
-- Draw/sheathe has no pad gesture now that LB is `autorun`; `//hud draw` and
-  the sword click remain, and a `crossbar.draw` behaviour is small if wanted.
+- `crossbar.draw` is on LB+RB, both orders (Kevin, 2026-11-09). LB pressed
+  first no longer autoruns: LB's `autorun` is a tap (above). Two things are
+  still open, Kevin's call: a roll from one WXHB half to the other whose new
+  bumper lands after the old trigger lets go and before the new one is in, the
+  old bumper still down, is LB+RB with nothing up and draws (`/attack off`
+  while drawn, a dismount while mounted) - firing on the release, cancelled by
+  any raise, as the switch's own draw does, would narrow it; and a bumper
+  pressed with its own trigger and the other bumper held is the draw chord,
+  not its WXHB half, when the other bumper went down after that trigger (under
+  one trigger or both). Three-button WXHB chords that won that tie were tried
+  and dropped (review, 2026-11-09): a chord breaks when any of its buttons
+  lets go, so the half fell when the other bumper did mid-roll. Nothing
+  migrates: a `data/gamepad.lua` saved before keeps Y on
+  `main_menu` and L3 on `lockon` until they are bound again (`tap_seconds`,
+  a key that file never had, is added by the merge).
 - If the `gamepad` guard switches the pump off after five failures, a game key
   held through `setkey ... down` stays down until the next focus loss or
   unload. An error path only.

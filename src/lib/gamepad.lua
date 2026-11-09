@@ -43,6 +43,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      2026-11-06), so letting go of LT lowers WXHB left with LB still down.
      The trigger of a broken chord holds nothing until it is pressed again.
 
+     A button some chord holds as a modifier keeps its own game key or action
+     for its release, where it goes as a TAP - down at that poll, up at the
+     next - and only when it came up within `tap_seconds` of going down with
+     no chord built on it meanwhile (Kevin, 2026-11-09): so LB+RB draws
+     without LB autorunning first, and a bare hold waits for the chord. A
+     component's own behaviour still goes down at the press, its component
+     hearing the hold; `is_component` says which is which, and without it
+     nothing waits.
+
      The buttons XInput has no name for (the back buttons) reach the game as
      keys Steam Input types, named in `extra`. Core offers every key to
      `on_key`, which takes a named one while the bridge is on; the next poll
@@ -51,15 +60,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      The map and the named keys are edited here too (`bind`, `unbind`,
      `set_key`), in the config table itself, for `//hud gamepad` to save.
 
-     Pure: the read, the clock and the config arrive as deps, and so does
+     Pure: the read, the clock and the config arrive as deps, and so do
      `check(behavior)`, asked only to say which of the map's behaviours
-     cannot work. ]]
+     cannot work, and `is_component(behavior)`. ]]
 
 -- XInput's own XINPUT_GAMEPAD_TRIGGER_THRESHOLD.
 local DEFAULT_THRESHOLD = 30
 -- How far under the threshold a held trigger must fall to let go, so one
 -- resting on it cannot raise and drop a cross every frame.
 local RELEASE_BAND = 10
+local DEFAULT_TAP_SECONDS = 0.25
 -- XInputGetState on a slot with nothing in it is slow enough to stall a
 -- frame, so a search that found nothing waits this long before the next.
 local PROBE_SECONDS = 1
@@ -109,9 +119,13 @@ local function defaults()
     a = "accept",
     b = "cancel",
     x = "cycle_window",
-    y = "main_menu",
+    y = "lockon",
+    start = "main_menu",
     lb = "autorun",
     rb = "crossbar.switch",
+    -- Either order: a chord's trigger is its last button.
+    ["lb+rb"] = "crossbar.draw",
+    ["rb+lb"] = "crossbar.draw",
     lt = "crossbar.left",
     rt = "crossbar.right",
     ["lt+lb"] = "crossbar.wxhb_left",
@@ -119,7 +133,8 @@ local function defaults()
     ["lt+start"] = "crossbar.binder",
     ["rt+start"] = "crossbar.binder",
     back = "open_map",
-    l3 = "lockon",
+    l3 = "target_self",
+    r3 = "target_npc",
   }
   -- A slot under either side, and under the set switch, where it is a jump.
   for _, modifier in ipairs({ "lt", "rt", "rb" }) do
@@ -132,6 +147,7 @@ local function defaults()
     -- would otherwise get a second Enter from every A.
     enabled = false,
     trigger_threshold = DEFAULT_THRESHOLD,
+    tap_seconds = DEFAULT_TAP_SECONDS,
     -- The key Steam Input types for each button XInput cannot see; false is
     -- none.
     extra = { l4 = false, l5 = false, r4 = false, r5 = false },
@@ -286,6 +302,19 @@ local function read_map(map, extra_names, check)
   return by_trigger, problems
 end
 
+-- Every button some gesture holds as a modifier.
+local function modifiers_of(by_trigger)
+  local found = {}
+  for _, list in pairs(by_trigger) do
+    for _, gesture in ipairs(list) do
+      for _, modifier in ipairs(gesture.modifiers) do
+        found[modifier] = true
+      end
+    end
+  end
+  return found
+end
+
 local function map_of(settings)
   return type(settings.map) == "table" and settings.map or DEFAULTS.map
 end
@@ -328,6 +357,7 @@ end
 local function new(deps)
   local self = {}
   local read = type(deps.read) == "function" and deps.read or nil
+  local is_component = type(deps.is_component) == "function" and deps.is_component or nil
 
   -- The slot being read, or nil while searching; the slot a search reads next;
   -- how many slots in a row the search has found empty.
@@ -336,13 +366,21 @@ local function new(deps)
   local next_probe = nil
   local empty_probes = 0
   -- Button name -> `{ behavior = <name>|false, modifiers = { ... }, order =
-  -- n, poll = n }`: what its press resolved to and the buttons that gesture
-  -- leans on, and when it went down - in presses and in polls. In here
-  -- exactly while it is held; `behavior` goes false once its chord breaks.
+  -- n, poll = n, tap = <behavior>, at = <seconds> }`: what its press
+  -- resolved to and the buttons that gesture leans on, and when it went
+  -- down - in presses and in polls. In here exactly while it is held;
+  -- `behavior` goes false once its chord breaks. `tap` is what a chord's
+  -- modifier keeps for its release, until a chord is built on it.
   local held = {}
   local presses = 0
   local polls = 0
   local last_poll = nil
+  -- Every button a gesture of the map holds as a modifier; the taps that
+  -- went down at the last poll, for this one to let go; and how long a
+  -- modifier may be held and still tap.
+  local modifier_buttons = {}
+  local owed = {}
+  local tap_window = DEFAULT_TAP_SECONDS
   -- The named keys' edges since the last poll, `{ name, down }`, in order;
   -- and dik -> name for each key whose down was taken, so its up is too.
   local key_edges = {}
@@ -368,6 +406,7 @@ local function new(deps)
       map_source, extra_source = map, extra
       named = read_extra(extra)
       gestures = read_map(map, named.names)
+      modifier_buttons = modifiers_of(gestures)
     end
   end
 
@@ -377,6 +416,14 @@ local function new(deps)
       return value
     end
     return DEFAULT_THRESHOLD
+  end
+
+  local function tap_seconds(settings)
+    local value = settings.tap_seconds
+    if type(value) == "number" and value > 0 then
+      return value
+    end
+    return DEFAULT_TAP_SECONDS
   end
 
   local function pressed_in(state, settings)
@@ -413,16 +460,34 @@ local function new(deps)
     return best
   end
 
+  -- Only a button's own gesture: a chord ending in it goes at the press.
+  local function keeps_for_tap(button, gesture)
+    return #gesture.modifiers == 0
+      and modifier_buttons[button] == true
+      and is_component ~= nil
+      and not is_component(gesture.behavior)
+  end
+
   local function press(button, out)
     presses = presses + 1
     local gesture = resolve(button)
-    held[button] = {
-      behavior = gesture and gesture.behavior or false,
+    local holding = {
+      behavior = false,
       modifiers = gesture and gesture.modifiers or NO_MODIFIERS,
       order = presses,
       poll = polls,
     }
-    if gesture then
+    held[button] = holding
+    if gesture == nil then
+      return
+    end
+    for _, modifier in ipairs(gesture.modifiers) do
+      held[modifier].tap = nil
+    end
+    if keeps_for_tap(button, gesture) then
+      holding.tap, holding.at = gesture.behavior, last_poll
+    else
+      holding.behavior = gesture.behavior
       out[#out + 1] = { behavior = gesture.behavior, down = true }
     end
   end
@@ -448,6 +513,10 @@ local function new(deps)
   local function lift(button, out, cancelled)
     local holding = held[button]
     held[button] = nil
+    if holding.tap ~= nil and not cancelled and last_poll - holding.at < tap_window then
+      out[#out + 1] = { behavior = holding.tap, down = true }
+      owed[#owed + 1] = holding.tap
+    end
     let_go(holding, out, cancelled)
     local broken = {}
     for _, other in pairs(held) do
@@ -492,11 +561,23 @@ local function new(deps)
     return state
   end
 
-  --- The ups, cancelled, for everything held. Afterwards nothing is held and
-  --- no key is owed: a button still down is pressed again by the next poll
-  --- that reads it, and a named key's up goes to the game.
+  local function settle_taps(out, cancelled)
+    if #owed == 0 then
+      return
+    end
+    for _, behavior in ipairs(owed) do
+      out[#out + 1] = { behavior = behavior, down = false, cancelled = cancelled or nil }
+    end
+    owed = {}
+  end
+
+  --- The ups, cancelled, for everything held, a tap's first. Afterwards
+  --- nothing is held and no key is owed: a button still down is pressed
+  --- again by the next poll that reads it, and a named key's up goes to the
+  --- game.
   function self.release()
     local out = {}
+    settle_taps(out, true)
     for _, button in ipairs(TRIGGERS) do
       if held[button.name] ~= nil then
         lift(button.name, out, true)
@@ -558,9 +639,10 @@ local function new(deps)
   end
 
   --- This frame's behaviour edges, `{ behavior, down, cancelled }` in order:
-  --- the pad's releases, its triggers' presses, the named keys' edges as they
-  --- came, then its other presses. A pad that stops answering, or a bridge
-  --- switched off, lets go of everything it held, cancelled.
+  --- the ups of the last poll's taps, the pad's releases, its triggers'
+  --- presses, the named keys' edges as they came, then its other presses. A
+  --- pad that stops answering, or a bridge switched off, lets go of
+  --- everything it held, cancelled.
   function self.poll()
     local settings = config()
     if not is_enabled(settings) then
@@ -571,7 +653,7 @@ local function new(deps)
       slot, next_probe, empty_probes = nil, nil, 0
       -- Every frame, off being the shipped state: nothing allocated for a
       -- bridge that holds nothing.
-      if next(held) == nil and next(latched) == nil and #key_edges == 0 then
+      if next(held) == nil and next(latched) == nil and #key_edges == 0 and #owed == 0 then
         return NO_EDGES
       end
       return self.release()
@@ -582,9 +664,11 @@ local function new(deps)
     refresh(settings)
     polls = polls + 1
     last_poll = deps.now()
+    tap_window = tap_seconds(settings)
     local state = current_state()
     local down = state ~= nil and pressed_in(state, settings) or {}
     local out = {}
+    settle_taps(out, false)
     for _, list in ipairs(PAD_LISTS) do
       for _, button in ipairs(list) do
         if held[button.name] ~= nil and not down[button.name] then

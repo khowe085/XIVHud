@@ -714,6 +714,17 @@ describe("core", function()
       assert.are.same({ nil, "the gamepad bridge did not load" }, { core.behavior_check("accept") })
     end)
 
+    it("says which behaviours are a component's own", function()
+      pad_core()
+      assert.is_true(core.behavior_is_component("crossbar.slot1"))
+      assert.is_false(core.behavior_is_component("autorun"))
+      assert.is_false(core.behavior_is_component({ key = "f1" }))
+    end)
+
+    it("says no behaviour is a component's without a bridge", function()
+      assert.is_false(core.behavior_is_component("crossbar.slot1"))
+    end)
+
     it("leaves the pad to its own pump, out of the frame tick", function()
       pad_core()
       login()
@@ -1101,6 +1112,165 @@ describe("core", function()
     it("is listed in help", function()
       core.on_command({ "help" })
       assert.is_not_nil(env.said():find("//hud gamepad", 1, true))
+    end)
+  end)
+
+  --[[ The keyboard map: a key is a behaviour too, and kept from the game
+       when its behaviour takes the press. ]]
+  describe("the keyboard map", function()
+    local SEMICOLON, APOSTROPHE, ONE, F9 = 39, 40, 2, 67
+    local ON = { ["data/keyboard.lua"] = "return { enabled = true }" }
+    local keys, chat
+
+    -- `files` are on disk before core is built.
+    local function keyboard_core(files)
+      keys, chat = {}, false
+      deps, env = fakes.core_deps({
+        keyboard_map = true,
+        chat_open = function()
+          return chat
+        end,
+        send_key = function(key, down)
+          keys[#keys + 1] = { key, down }
+        end,
+      })
+      for path, contents in pairs(files or {}) do
+        env.fs.files[path] = contents
+      end
+      core = new_core(deps)
+    end
+
+    -- A crossbar answering `takes` for every press, keeping each edge it hears
+    -- and each raw key it is handed.
+    local function behaving_widget(takes)
+      local widget = bar("crossbar")
+      widget.heard, widget.keys = {}, {}
+      widget.behaviors = function()
+        return { "left", "right", "slot1" }
+      end
+      widget.on_behavior = function(name, down, cancelled)
+        widget.heard[#widget.heard + 1] = { name, down, cancelled }
+        return takes
+      end
+      widget.on_keyboard = function(key, down, _, blocked)
+        widget.keys[#widget.keys + 1] = { key, down, blocked }
+        return false
+      end
+      return widget
+    end
+
+    local function keyboard_widget()
+      local widget = bar("hotbar")
+      widget.keys = {}
+      widget.on_keyboard = function(key, down, _, blocked)
+        widget.keys[#widget.keys + 1] = { key, down, blocked }
+        return false
+      end
+      return widget
+    end
+
+    it("hands a mapped key to its behaviour, and keeps it from the game when the behaviour takes it", function()
+      keyboard_core(ON)
+      local widget = core.register(behaving_widget(true))
+      login()
+      assert.is_true(core.on_keyboard(SEMICOLON, true, 0, false))
+      assert.is_true(core.on_keyboard(SEMICOLON, false, 0, false))
+      assert.are.same({ { "left", true, false }, { "left", false, false } }, widget.heard)
+    end)
+
+    it("leaves a key its behaviour leaves to the game", function()
+      keyboard_core(ON)
+      core.register(behaving_widget(false))
+      login()
+      assert.is_false(core.on_keyboard(ONE, true, 0, false))
+    end)
+
+    it("hands the other components a key the map took as already taken", function()
+      keyboard_core(ON)
+      core.register(behaving_widget(true))
+      local hotbar = core.register(keyboard_widget())
+      login()
+      core.on_keyboard(ONE, true, 0, false)
+      assert.are.same({ { ONE, true, true } }, hotbar.keys)
+    end)
+
+    it("keeps the raw keys from a component that speaks behaviours while it is on, and only then", function()
+      keyboard_core(ON)
+      local widget = core.register(behaving_widget(true))
+      login()
+      core.on_keyboard(SEMICOLON, true, 0, false)
+      assert.are.same({}, widget.keys)
+      core.on_command({ "keyboard", "off" })
+      core.on_keyboard(APOSTROPHE, true, 0, false)
+      assert.are.same({ { APOSTROPHE, true, false } }, widget.keys)
+    end)
+
+    it("still hands such a component the raw release of a key it held before the map came on", function()
+      keyboard_core()
+      local widget = core.register(behaving_widget(true))
+      login()
+      core.on_keyboard(SEMICOLON, true, 0, false)
+      core.on_command({ "keyboard", "on" })
+      core.on_keyboard(SEMICOLON, false, 0, false)
+      assert.are.same({ { SEMICOLON, true, false }, { SEMICOLON, false, false } }, widget.keys)
+    end)
+
+    it("hands nothing to a behaviour while it is off", function()
+      keyboard_core()
+      local widget = core.register(behaving_widget(true))
+      login()
+      core.on_keyboard(SEMICOLON, true, 0, false)
+      assert.are.same({}, widget.heard)
+    end)
+
+    it("lets go of every key it holds, cancelled, as it is switched off, as focus goes and on unload", function()
+      keyboard_core(ON)
+      local widget = core.register(behaving_widget(true))
+      login()
+      core.on_keyboard(SEMICOLON, true, 0, false)
+      core.on_command({ "keyboard", "off" })
+      assert.are.same({ "left", false, true }, widget.heard[2])
+      core.on_command({ "keyboard", "on" })
+      core.on_keyboard(SEMICOLON, true, 0, false)
+      core.on_focus(false)
+      assert.are.same({ "left", false, true }, widget.heard[4])
+      core.on_focus(true)
+      core.on_keyboard(SEMICOLON, true, 0, false)
+      core.on_unload()
+      assert.are.same({ "left", false, true }, widget.heard[6])
+    end)
+
+    it("leaves a key bound to a game key to type while the chat line is open", function()
+      keyboard_core({ ["data/keyboard.lua"] = 'return { enabled = true, map = { f9 = "accept" } }' })
+      chat = true
+      assert.is_false(core.on_keyboard(F9, true, 0, false))
+      core.on_keyboard(F9, false, 0, false)
+      assert.are.same({}, keys)
+      chat = false
+      assert.is_true(core.on_keyboard(F9, true, 0, false))
+      assert.are.same({ { "enter", true } }, keys)
+    end)
+
+    it("switches with its own verb and saves the file, with no character needed", function()
+      keyboard_core()
+      core.on_command({ "keyboard", "on" })
+      assert.is_not_nil(env.said():find("keyboard: on", 1, true))
+      assert.is_not_nil(env.fs.files["data/keyboard.lua"]:find("enabled = true", 1, true))
+    end)
+
+    it("says it did not load where there is none", function()
+      core.on_command({ "keyboard" })
+      assert.is_not_nil(env.said():find("the keyboard map did not load", 1, true))
+    end)
+
+    it("wants the keyboard for itself, with no component wanting it", function()
+      keyboard_core()
+      assert.is_true(core.wants_keyboard())
+    end)
+
+    it("is listed in help", function()
+      core.on_command({ "help" })
+      assert.is_not_nil(env.said():find("//hud keyboard", 1, true))
     end)
   end)
 
@@ -3281,6 +3451,22 @@ describe("core", function()
         login()
         core.on_command({ "config" })
         assert.is_nil(live_text("Gamepad"))
+      end)
+
+      it("carries the keyboard map's switch where there is one, through its own verb", function()
+        deps, env = fakes.core_deps({ keyboard_map = true })
+        core = new_core(deps)
+        login()
+        core.on_command({ "config" })
+        assert.is_true(click_control("Keyboard map", "[ off ]"))
+        assert.is_not_nil(live_text("keyboard: on"), "the answer is on the status line")
+        assert.is_not_nil(live_text("[ on ]", live_text("Keyboard map").y))
+      end)
+
+      it("carries no keyboard map switch where there is none", function()
+        login()
+        core.on_command({ "config" })
+        assert.is_nil(live_text("Keyboard map"))
       end)
 
       it("carries the service's tuning beside it", function()

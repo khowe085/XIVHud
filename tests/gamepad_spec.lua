@@ -55,6 +55,11 @@ describe("gamepad", function()
     return out
   end
 
+  -- lib/behaviors' answer: a component's own behaviour is `<component>.<name>`.
+  local function component_named(value)
+    return type(value) == "string" and value:find(".", 1, true) ~= nil
+  end
+
   -- Polls, a second apart, until the probe reaches the pad in `index`.
   local function connect(index, s)
     pads[index] = s or state()
@@ -117,6 +122,7 @@ describe("gamepad", function()
 
   describe("the shipped map", function()
     before_each(function()
+      pad = build({ is_component = component_named })
       connect(0)
     end)
 
@@ -137,15 +143,16 @@ describe("gamepad", function()
       assert.are.same({ { "accept", false } }, edges(pad.poll()))
     end)
 
-    it("gives the face buttons, the bumpers, Back and L3 their behaviours", function()
+    it("gives the face buttons, the bumpers, Back, Start and the sticks their behaviours", function()
       assert.are.same({ { "accept", true } }, press(A))
       assert.are.same({ { "cancel", true } }, press(B))
       assert.are.same({ { "cycle_window", true } }, press(X))
-      assert.are.same({ { "main_menu", true } }, press(Y))
-      assert.are.same({ { "autorun", true } }, press(LB))
+      assert.are.same({ { "lockon", true } }, press(Y))
       assert.are.same({ { "crossbar.switch", true } }, press(RB))
       assert.are.same({ { "open_map", true } }, press(BACK))
-      assert.are.same({ { "lockon", true } }, press(L3))
+      assert.are.same({ { "main_menu", true } }, press(START))
+      assert.are.same({ { "target_self", true } }, press(L3))
+      assert.are.same({ { "target_npc", true } }, press(R3))
     end)
 
     it("holds the crossbar's sides on the triggers", function()
@@ -153,8 +160,8 @@ describe("gamepad", function()
       assert.are.same({ { "crossbar.right", true } }, press(0, 0, 255))
     end)
 
-    it("leaves Start, R3 and the D-pad alone unmapped", function()
-      assert.are.same({}, press(START + R3 + UP + RIGHT + DOWN + LEFT))
+    it("leaves the D-pad alone unmapped", function()
+      assert.are.same({}, press(UP + RIGHT + DOWN + LEFT))
     end)
 
     it("fires slots 1-8 with a face or D-pad button under LT", function()
@@ -178,6 +185,42 @@ describe("gamepad", function()
       assert.are.same({ { "crossbar.right", true }, { "crossbar.wxhb_right", true } }, press(RB, 0, 255))
     end)
 
+    it("keeps WXHB right up when LB, held over from WXHB left, lets go", function()
+      pads[0] = state(LB, 255, 0)
+      pad.poll()
+      pads[0] = state(LB)
+      pad.poll()
+      pads[0] = state(LB, 0, 255)
+      pad.poll()
+      pads[0] = state(LB + RB, 0, 255)
+      assert.are.same({ { "crossbar.wxhb_right", true } }, edges(pad.poll()))
+      pads[0] = state(RB, 0, 255)
+      assert.are.same({}, edges(pad.poll()))
+    end)
+
+    it("reads LB+RB as the draw chord once the trigger that raised WXHB has let go", function()
+      pads[0] = state(LB, 255, 0)
+      pad.poll()
+      pads[0] = state(LB)
+      pad.poll()
+      pads[0] = state(LB + RB)
+      assert.are.same({ { "crossbar.draw", true } }, edges(pad.poll()))
+    end)
+
+    it("reads RB under both triggers as the draw chord, LB having gone down after RT", function()
+      pads[0] = state(LB, 255, 255)
+      pad.poll()
+      pads[0] = state(LB + RB, 255, 255)
+      assert.are.same({ { "crossbar.draw", true } }, edges(pad.poll()))
+    end)
+
+    it("reads the other bumper under a raised WXHB half as the draw chord", function()
+      pads[0] = state(LB, 255, 0)
+      pad.poll()
+      pads[0] = state(LB + RB, 255, 0)
+      assert.are.same({ { "crossbar.draw", true } }, edges(pad.poll()))
+    end)
+
     it("lowers WXHB with its trigger, the bumper still held", function()
       pads[0] = state(LB, 255, 0)
       pad.poll()
@@ -188,6 +231,85 @@ describe("gamepad", function()
     it("opens the binder with Start under either trigger", function()
       assert.are.same({ { "crossbar.left", true }, { "crossbar.binder", true } }, press(START, 255, 0))
       assert.are.same({ { "crossbar.right", true }, { "crossbar.binder", true } }, press(START, 0, 255))
+    end)
+
+    it("draws with LB pressed over the held set switch", function()
+      pads[0] = state(RB)
+      assert.are.same({ { "crossbar.switch", true } }, edges(pad.poll()))
+      pads[0] = state(RB + LB)
+      assert.are.same({ { "crossbar.draw", true } }, edges(pad.poll()))
+    end)
+
+    it("draws with RB pressed over a held LB, which then autoruns at no release", function()
+      pads[0] = state(LB)
+      assert.are.same({}, edges(pad.poll()))
+      pads[0] = state(LB + RB)
+      assert.are.same({ { "crossbar.draw", true } }, edges(pad.poll()))
+      clock = clock + 0.05
+      pads[0] = state()
+      assert.are.same({ { "crossbar.draw", false } }, edges(pad.poll()))
+      assert.are.same({}, edges(pad.poll()))
+    end)
+
+    it("reads both bumpers pressed in one frame as LB first, and so as the draw alone", function()
+      assert.are.same({ { "crossbar.draw", true } }, press(LB + RB))
+      assert.are.same({}, edges(pad.poll()))
+    end)
+
+    it("autoruns on a tap of LB, at its release, and lets R go at the next poll", function()
+      pads[0] = state(LB)
+      assert.are.same({}, edges(pad.poll()), "nothing at the press")
+      clock = clock + 0.1
+      pads[0] = state()
+      assert.are.same({ { "autorun", true } }, edges(pad.poll()))
+      assert.are.same({ { "autorun", false } }, edges(pad.poll()))
+      assert.are.same({}, edges(pad.poll()))
+    end)
+
+    it("autoruns on nothing for LB held a quarter of a second", function()
+      pads[0] = state(LB)
+      pad.poll()
+      clock = clock + 0.25
+      pads[0] = state()
+      assert.are.same({}, edges(pad.poll()))
+      assert.are.same({}, edges(pad.poll()))
+    end)
+
+    it("autoruns on a tap across a press that built no chord on LB", function()
+      pads[0] = state(LB)
+      pad.poll()
+      pads[0] = state(LB + A)
+      assert.are.same({ { "accept", true } }, edges(pad.poll()))
+      clock = clock + 0.1
+      pads[0] = state(A)
+      assert.are.same({ { "autorun", true } }, edges(pad.poll()))
+    end)
+
+    it("reads the tap window from the config", function()
+      config = on({ tap_seconds = 0.5 })
+      pads[0] = state(LB)
+      pad.poll()
+      clock = clock + 0.4
+      pads[0] = state()
+      assert.are.same({ { "autorun", true } }, edges(pad.poll()))
+    end)
+
+    it("takes a quarter of a second for a tap window that is no positive number", function()
+      for _, broken in ipairs({ 0, -1 }) do
+        config = on({ tap_seconds = broken })
+        pads[0] = state(LB)
+        pad.poll()
+        clock = clock + 0.2
+        pads[0] = state()
+        assert.are.same({ { "autorun", true } }, edges(pad.poll()), tostring(broken))
+        pad.poll()
+      end
+      config = on({ tap_seconds = "0.5" })
+      pads[0] = state(LB)
+      pad.poll()
+      clock = clock + 0.3
+      pads[0] = state()
+      assert.are.same({}, edges(pad.poll()), "a string is not read as a number")
     end)
 
     it("presses both triggers in one frame left first", function()
@@ -355,6 +477,99 @@ describe("gamepad", function()
       map({ a = 5 })
       pads[0] = state(A)
       assert.are.same({}, pad.poll())
+    end)
+  end)
+
+  --[[ A button a chord holds as a modifier keeps its own game key or action
+       for its release, as a tap, so the chord never sends that too. ]]
+  describe("a chord's modifier", function()
+    before_each(function()
+      pad = build({ is_component = component_named })
+      connect(0)
+    end)
+
+    local function tap(buttons)
+      pads[0] = state(buttons)
+      local pressed = edges(pad.poll())
+      clock = clock + 0.1
+      pads[0] = state()
+      return pressed, edges(pad.poll())
+    end
+
+    it("keeps a game key or an action for its release on any button a chord leans on", function()
+      local own = { type = "open", action = "map" }
+      config = on({ map = { b = "cancel", ["b+a"] = "both", x = own, ["x+y"] = "xy" } })
+      assert.are.same({ {}, { { "cancel", true } } }, { tap(B) })
+      pad.poll()
+      pads[0] = state(X)
+      assert.are.same({}, pad.poll())
+      clock = clock + 0.1
+      pads[0] = state()
+      assert.are.equal(own, pad.poll()[1].behavior)
+    end)
+
+    it("sends a chord's own key or action at the press, though a chord leans on its last button", function()
+      config = on({ map = { lb = "autorun", ["lb+rb"] = "c.draw", ["rt+lb"] = "accept" } })
+      pads[0] = state(0, 0, 255)
+      pad.poll()
+      pads[0] = state(LB, 0, 255)
+      assert.are.same({ { "accept", true } }, edges(pad.poll()))
+    end)
+
+    it("sends a component's behaviour at the press, its component hearing the hold", function()
+      config = on({ map = { lb = "c.hold", ["lb+a"] = "c.chord" } })
+      pads[0] = state(LB)
+      assert.are.same({ { "c.hold", true } }, edges(pad.poll()))
+    end)
+
+    it("sends at the press a button no chord holds as a modifier, its trigger or not", function()
+      config = on({ map = { b = "cancel", ["a+b"] = "chord" } })
+      pads[0] = state(B)
+      assert.are.same({ { "cancel", true } }, edges(pad.poll()))
+    end)
+
+    it("keeps nothing back without a way to tell a component's behaviour", function()
+      pad = build()
+      connect(0)
+      pads[0] = state(LB)
+      assert.are.same({ { "autorun", true } }, edges(pad.poll()))
+    end)
+
+    it("drops a tap a release cancels, and one the lost pad ends", function()
+      pads[0] = state(LB)
+      pad.poll()
+      assert.are.same({}, pad.release())
+      pads[0] = state()
+      assert.are.same({}, pad.poll())
+      pads[0] = state(LB)
+      pad.poll()
+      pads[0] = nil
+      assert.are.same({}, pad.poll())
+    end)
+
+    it("lets a tap's game key go, cancelled, when released before the next poll", function()
+      tap(LB)
+      local got = pad.release()
+      assert.are.same({ { "autorun", false } }, edges(got))
+      assert.is_true(got[1].cancelled)
+      assert.are.same({}, pad.poll())
+    end)
+
+    it("lets a tap's game key go when switched off before the next poll", function()
+      tap(LB)
+      config = { enabled = false }
+      assert.are.same({ { "autorun", false } }, edges(pad.poll()))
+      assert.are.same({}, pad.poll())
+    end)
+
+    it("taps a named key a chord leans on, held for a poll when it came between two", function()
+      config = on({ extra = { l4 = 100 }, map = { l4 = "accept", ["l4+y"] = "named" } })
+      pad.poll()
+      pad.on_key(100, true)
+      pad.on_key(100, false)
+      assert.are.same({}, edges(pad.poll()))
+      assert.are.same({ { "accept", true } }, edges(pad.poll()))
+      assert.are.same({ { "accept", false } }, edges(pad.poll()))
     end)
   end)
 
@@ -555,13 +770,17 @@ describe("gamepad", function()
       assert.are.same({ l4 = false, l5 = false, r4 = false, r5 = false }, defaults.extra)
     end)
 
+    it("ships a quarter-second tap window", function()
+      assert.are.equal(0.25, pad.config_defaults().tap_seconds)
+    end)
+
     it("ships a gesture for every slot under LT, RT and RB", function()
       local map = pad.config_defaults().map
       local count = 0
       for _ in pairs(map) do
         count = count + 1
       end
-      assert.are.equal(38, count)
+      assert.are.equal(42, count)
       assert.are.equal("crossbar.slot1", map["lt+y"])
       assert.are.equal("crossbar.slot7", map["rt+down"])
       assert.are.equal("crossbar.slot8", map["rb+left"])

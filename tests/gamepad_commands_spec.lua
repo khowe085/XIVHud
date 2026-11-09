@@ -36,7 +36,7 @@ describe("gamepad commands", function()
 
   -- Every behaviour the shipped map names a component for.
   local CROSSBAR = {}
-  for _, name in ipairs({ "left", "right", "wxhb_left", "wxhb_right", "switch", "binder" }) do
+  for _, name in ipairs({ "left", "right", "wxhb_left", "wxhb_right", "switch", "binder", "draw" }) do
     CROSSBAR[#CROSSBAR + 1] = "crossbar." .. name
   end
   for slot = 1, 8 do
@@ -184,7 +184,7 @@ describe("gamepad commands", function()
         { "gamepad: enter;quit is not a key name" },
         commands.handle({ "bind", "l3", "key", "enter;quit" })
       )
-      assert.are.equal("lockon", config.map.l3)
+      assert.are.equal("target_self", config.map.l3)
       assert.are.equal(0, saved)
     end)
 

@@ -1077,7 +1077,7 @@ local function new(ctx)
     return block
   end
 
-  local BEHAVIORS = { "left", "right", "wxhb_left", "wxhb_right", "switch", "binder" }
+  local BEHAVIORS = { "left", "right", "wxhb_left", "wxhb_right", "layer", "switch", "binder", "select", "draw" }
   for slot = 1, 8 do
     BEHAVIORS[#BEHAVIORS + 1] = "slot" .. slot
   end
@@ -1092,11 +1092,15 @@ local function new(ctx)
     return names
   end
 
-  --- A behaviour's edge, through the machine the keys go through.
+  --- A behaviour's edge, through the machine the keys go through; a press
+  --- answers whether the key behind it is the bar's.
   function self.on_behavior(name, down, cancelled)
-    if machine ~= nil then
-      apply(machine.on_behavior(name, down, cancelled))
+    if machine == nil then
+      return false
     end
+    local intents, block = machine.on_behavior(name, down, cancelled)
+    apply(intents)
+    return block == true
   end
 
   function self.update(event, a, ...)

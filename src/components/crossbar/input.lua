@@ -257,7 +257,8 @@ local function new(deps)
     local switch_released = role == "switch" and not pressed and was_down and not role_held("switch") and not cancelled
     -- Edge, not level: a slot key already down before the switch went down was
     -- not chorded during this hold, and its OS auto-repeats must not say it was.
-    if slot and press_edge and role_held("switch") then
+    -- A draw over the held switch chords it as well, so that hold is no tap.
+    if (slot or role == "draw") and press_edge and role_held("switch") then
       switch_chorded = true
     end
 
@@ -320,6 +321,11 @@ local function new(deps)
         else
           intents[#intents + 1] = { type = "cycle" }
         end
+      elseif role == "draw" and press_edge then
+        -- Only with no bar raised at the press.
+        if not raised() then
+          intents[#intents + 1] = { type = "draw" }
+        end
       elseif shortcut and press_edge then
         -- "Chorded" means a SIDE is held - the pad chord is trigger+Select;
         -- the layer and switch deliberately do not count, a WXHB half does.
@@ -342,6 +348,55 @@ local function new(deps)
       }
   end
 
+  --[[ Whether a press is the bar's to keep from the game: one of its own
+       keys', or a behaviour's the keyboard map sent - the same rules either
+       way, so the two cannot drift. `dedicated` is a side, the layer, the
+       switch or a shortcut; anything else is a slot. ]]
+  local function keeps(dedicated, seen, blocked_in)
+    if seen.disabled then
+      -- Off means off: every key goes back to the game.
+      return false
+    end
+    if blocked_in then
+      -- Another addon already consumed the key; not ours to also swallow.
+      return false
+    end
+    if seen.chat_open then
+      -- The chat box has the keyboard: our keys must stay typeable.
+      return false
+    end
+    if dedicated then
+      -- The five dedicated keys are ours outright; slot keys only while we
+      -- are using them (the set-jump chord must not leak bare numbers).
+      return true
+    end
+    --[[ Slot keys are the game's the moment we are not using them, and
+         what counts as "using" differs by mode.
+
+         Edit mode fires nothing FROM a hold state - no slot acts - so
+         a side being down leaves the numbers to the game. But the
+         set-jump chord IS live there (Kevin, 2026-08-22), so a slot key
+         over the held switch is one we are using, and letting it
+         through as well fires FFXI's macro palette underneath the jump.
+
+         The switch alone, therefore - never the hold state. Gating this
+         on the hold state instead was wrong in the commonest case
+         there is: edit mode is ENTERED by holding a side and pressing
+         Select, and the machine goes on tracking that side, so the
+         mode's own entry state was the one that leaked. ]]
+    --[[ An if, not `a and b or c`: with the switch up that idiom's
+         first half is false and it falls straight through to the
+         other mode's expression, which is how the side-held case kept
+         the OLD answer. ]]
+    local using
+    if seen.edit_mode then
+      using = role_held("switch")
+    else
+      using = seen.after ~= "none" or role_held("switch")
+    end
+    return not (seen.suppressed or seen.layout_mode) and using
+  end
+
   -- The full keyboard-event signature; `flags` (a modifier bitmask) is
   -- accepted but unused - v4 holds no modifiers.
   function self.on_key(dik, pressed, _flags, blocked)
@@ -357,86 +412,56 @@ local function new(deps)
     down[dik] = pressed and true or nil
     local blocked_in = blocked and true or false
     local intents, seen = step(dik, role, slot, shortcut, pressed, was_down, blocked_in, false)
-    local press_edge, after = seen.press_edge, seen.after
-    local chat_open, suppressed, disabled = seen.chat_open, seen.suppressed, seen.disabled
-    local edit_mode, layout_mode = seen.edit_mode, seen.layout_mode
 
     local block
     if not pressed then
       block = latched[dik] or false
       latched[dik] = nil
-    elseif not press_edge then
+    elseif not seen.press_edge then
       block = latched[dik] or false
     else
-      if disabled then
-        -- Off means off: every key goes back to the game.
-        block = false
-      elseif blocked_in then
-        -- Another addon already consumed the key; not ours to also swallow.
-        block = false
-      elseif chat_open then
-        -- The chat box has the keyboard: our keys must stay typeable.
-        block = false
-      elseif role or shortcut then
-        -- The five dedicated keys are ours outright; slot keys only while we
-        -- are using them (the set-jump chord must not leak bare numbers).
-        block = true
-      else
-        --[[ Slot keys are the game's the moment we are not using them, and
-             what counts as "using" differs by mode.
-
-             Edit mode fires nothing FROM a hold state - no slot acts - so
-             a side being down leaves the numbers to the game. But the
-             set-jump chord IS live there (Kevin, 2026-08-22), so a slot key
-             over the held switch is one we are using, and letting it
-             through as well fires FFXI's macro palette underneath the jump.
-
-             The switch alone, therefore - never the hold state. Gating this
-             on the hold state instead was wrong in the commonest case
-             there is: edit mode is ENTERED by holding a side and pressing
-             Select, and the machine goes on tracking that side, so the
-             mode's own entry state was the one that leaked. ]]
-        --[[ An if, not `a and b or c`: with the switch up that idiom's
-             first half is false and it falls straight through to the
-             other mode's expression, which is how the side-held case kept
-             the OLD answer. ]]
-        local using
-        if edit_mode then
-          using = role_held("switch")
-        else
-          using = after ~= "none" or role_held("switch")
-        end
-        block = not (suppressed or layout_mode) and using
-      end
+      block = keeps(role ~= nil or shortcut ~= nil, seen, blocked_in)
       latched[dik] = block or nil
     end
 
     return intents, block
   end
 
-  local BEHAVIOR_ROLES =
-    { left = "left", right = "right", wxhb_left = "wxhb_left", wxhb_right = "wxhb_right", switch = "switch" }
+  local BEHAVIOR_ROLES = {
+    left = "left",
+    right = "right",
+    wxhb_left = "wxhb_left",
+    wxhb_right = "wxhb_right",
+    layer = "layer",
+    switch = "switch",
+    draw = "draw",
+  }
   local BEHAVIOR_SLOTS = {}
   for slot = 1, 8 do
     BEHAVIOR_SLOTS["slot" .. slot] = slot
   end
-  -- The binder toggles whatever is held, where Select only does chorded.
-  local BINDER = { tap = "edit", chorded = "edit" }
+  -- The binder toggles whatever is held; `select` is the Select key's own
+  -- shortcut, as the shipped `config.input` has it.
+  local BEHAVIOR_SHORTCUTS = {
+    binder = { tap = "edit", chorded = "edit" },
+    select = { chorded = "edit" },
+  }
 
   --- One edge of a behaviour - `left`, `right`, `wxhb_left`, `wxhb_right`,
-  --- `switch`, `binder` or `slot1`..`slot8` - through the machine the keys go
-  --- through. Answers the intents: a behaviour is no key event, so there is
-  --- nothing to block.
+  --- `layer`, `switch`, `binder`, `select`, `draw` or `slot1`..`slot8` -
+  --- through the machine the keys go through. Answers the intents and, for a
+  --- press, whether the key behind it is the bar's to keep from the game -
+  --- the keyboard map's question, by the rules the bar's own keys keep.
   function self.on_behavior(name, pressed, cancelled)
-    local role, slot = BEHAVIOR_ROLES[name], BEHAVIOR_SLOTS[name]
-    local shortcut = name == "binder" and BINDER or nil
+    local role, slot, shortcut = BEHAVIOR_ROLES[name], BEHAVIOR_SLOTS[name], BEHAVIOR_SHORTCUTS[name]
     if not role and not slot and not shortcut then
-      return {}
+      return {}, false
     end
     pressed = not not pressed
     local was_down = down[name] and true or false
     down[name] = pressed and true or nil
-    return (step(BEHAVIOR, role, slot, shortcut, pressed, was_down, false, cancelled == true))
+    local intents, seen = step(BEHAVIOR, role, slot, shortcut, pressed, was_down, false, cancelled == true)
+    return intents, seen.press_edge and keeps(role ~= nil or shortcut ~= nil, seen, false)
   end
 
   return self

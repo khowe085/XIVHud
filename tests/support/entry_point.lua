@@ -275,7 +275,7 @@ local function build_windower(boot)
       end,
       get_info = function()
         boot.client_calls.info = boot.client_calls.info + 1
-        return { logged_in = boot.logged_in, chat_open = false }
+        return { logged_in = boot.logged_in, chat_open = boot.chat_open == true }
       end,
       -- Every call is recorded with its arguments: get_items(bag) answers one
       -- bag and get_items() the lot, and which of the two a component is wired
@@ -340,6 +340,11 @@ local function build_core(boot)
       return true
     end
     return nil, "no behavior " .. tostring(value)
+  end
+
+  -- lib/behaviors' own reading: a component's behaviour is `<component>.<name>`.
+  function core.behavior_is_component(value)
+    return type(value) == "string" and value:find(".", 1, true) ~= nil
   end
 
   -- The bridge's machine-wide settings: a spec sets `boot.gamepad_config`.

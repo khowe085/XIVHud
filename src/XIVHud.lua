@@ -934,8 +934,8 @@ end)
      which. Not in safe mode, which has no render loop to poll it. Its reads
      of core close over the `core` local, which the next step fills in. ]]
 local gamepad = nil
--- A gesture's action: bind's own parser and labeller, and the action
--- service's types and validate, the service's three absent without it.
+-- A gesture's or a key's action: bind's own parser and labeller, and the
+-- action service's types and validate, the service's three absent without it.
 local behavior_actions = nil
 if not safe_mode then
   local ok, err = pcall(function()
@@ -967,10 +967,22 @@ if not safe_mode then
         end
         return core.behavior_check(behavior)
       end,
+      -- Until core is built every behaviour reads as a component's, so
+      -- nothing waits for a tap.
+      is_component = function(behavior)
+        return core == nil or core.behavior_is_component(behavior)
+      end,
       config = function()
         return core and core.gamepad_config() or nil
       end,
     })
+  end)
+  if not ok then
+    trace("gamepad bridge unavailable: " .. tostring(err))
+  end
+  -- Apart from the bridge's: the keyboard map's actions are these too, and a
+  -- bridge that would not load must not take them with it.
+  local built, why = pcall(function()
     local service_actions = action_service ~= nil and action_service.actions or nil
     local parser = require("lib/actionbar/commands")({ validate = service_actions and service_actions.validate })
     behavior_actions = { describe = parser.describe_action }
@@ -980,8 +992,8 @@ if not safe_mode then
       behavior_actions.validate = service_actions.validate
     end
   end)
-  if not ok then
-    trace("gamepad bridge unavailable: " .. tostring(err))
+  if not built then
+    trace("behaviour actions unavailable: " .. tostring(why))
   end
 end
 
@@ -1021,6 +1033,9 @@ step("building the framework", function()
     -- `//hud warp` and its kin, and the tuning core.lua carries for them.
     actions = action_service,
     gamepad = gamepad,
+    -- The keyboard map, and the raw chat line it leaves typed keys to.
+    keyboard_map = not safe_mode,
+    chat_open = chat_open,
     -- A behaviour's game key: down while it is held, up when it lets go.
     send_key = function(name, down)
       send_command("setkey " .. name .. (down and " down" or " up"))

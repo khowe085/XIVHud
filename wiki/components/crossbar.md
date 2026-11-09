@@ -487,6 +487,12 @@ macro palette on those chords is untouched.
 **Sheathe / unsheathe** is a gesture: hold `\` and tap `` ` `` with no side
 held. Mounted, the same gesture dismounts.
 
+**The [keyboard map](../keyboard.md)**, switched on with `//hud keyboard on`,
+hands these same keys to the crossbar as behaviours, the way the gamepad's
+buttons are, and everything above stays as it is. With it on, the keys are
+the map's (`data/keyboard.lua`), and the crossbar's own `input` settings are
+not read.
+
 ## Gamepad
 
 With the [gamepad bridge](../gamepad.md) on, XIVHud reads an XInput pad
@@ -500,6 +506,9 @@ behaviours, and the bridge's map puts them on the pad:
 | `crossbar.switch` | RB | the set switch, as `` ` ``: a tap moves to the next set in the rotation; held, a slot button jumps to that set |
 | `crossbar.slot1` - `crossbar.slot8` | Y, B, A, X, then D-pad ↑ → ↓ ←, each with LT, RT or RB held | fire that slot on whichever bar is raised - an XHB side, a WXHB half or Expanded Hold - or, with the switch held, jump to that set |
 | `crossbar.binder` | LT+Start, RT+Start | open or close edit mode, whatever else is held |
+| `crossbar.layer` | nothing on the pad; `\` in the [keyboard map](../keyboard.md) | held with a side, raise that side's WXHB half, as `\` does |
+| `crossbar.select` | nothing on the pad; `=` in the keyboard map | under a raised side, open or close edit mode; alone, nothing but leaving edit mode, as `=` does |
+| `crossbar.draw` | LB+RB, either order | draw or sheathe, as `//hud draw` does, but only while no side or WXHB half is up when it is pressed; pressed over the held switch, it keeps the switch from changing sets when RB comes up |
 
 - **A slot button fires whatever is raised**: Y under a trigger is slot 1 of
   that side, of a WXHB half while its bumper is held too, and of Expanded Hold
@@ -509,9 +518,10 @@ behaviours, and the bridge's map puts them on the pad:
   layout mode, and in edit mode only the binder and the set switch work.
 - **Keys and the pad mix.** A side held on the keyboard and the same side held
   on the pad are one side, which drops when both have let go.
-- **Draw and sheathe** have no gesture in the shipped map. Bind one to the
-  `draw` action - `//hud gamepad bind r3 draw` - or use `//hud draw` or the
-  sword.
+- **LB only autoruns on a tap.** LB's own `autorun` waits for LB's release
+  and goes only on a quick tap, so LB+RB draws without autorunning, in either
+  order. A WXHB move can still read as LB+RB; see
+  [the gamepad page](../gamepad.md#things-to-know).
 - **Any of them can move** with `//hud gamepad bind`: `bind l4
   crossbar.wxhb_left` puts the WXHB's left half on a back button. A button
   that raises a bar on its own needs slot chords of its own (`l4+y` bound to

@@ -19,10 +19,10 @@ The bridge has not yet been run in a live client; see
 
 - **The crossbar on the pad.** The triggers raise its sides, LT+LB and RT+RB
   its WXHB halves, and both triggers Expanded Hold. The face buttons and D-pad
-  fire the slots under a trigger, RB cycles sets or jumps to one, and a
-  trigger with Start opens the binder.
-- **The game's menu keys** on the face buttons - A is Enter, B is Escape - with
-  autorun, lock-on and the map beside them.
+  fire the slots under a trigger, RB cycles sets or jumps to one, LB+RB draws
+  or sheathes, and a trigger with Start opens the binder.
+- **The game's menu keys** on the face buttons and Start - A is Enter, B is
+  Escape - with autorun, lock-on, targeting and the map beside them.
 - **Any button or chord can carry an action**: a spell, an ability, an item, a
   chat line - anything a slot can hold, in the same words as a slot's `bind`.
 - **Buttons XInput cannot see**, such as a Steam Controller's back buttons,
@@ -63,19 +63,24 @@ every character.
 | A | Enter | `accept` |
 | B | Escape | `cancel` |
 | X | numpad `+` | `cycle_window` |
-| Y | numpad `-` | `main_menu` |
-| LB | `R` | `autorun` |
-| L3 | numpad `*` | `lockon` |
+| Y | numpad `*` | `lockon` |
+| Start | numpad `-` | `main_menu` |
+| LB, tapped | `R`, as you let go | `autorun` |
+| L3 | `F1`, target yourself | `target_self` |
+| R3 | `F8`, target an NPC | `target_npc` |
 | Back | opens the map | `open_map` |
 | LT / RT, held | raise the crossbar's left / right side; both at once is Expanded Hold | `crossbar.left` / `crossbar.right` |
 | LT+LB / RT+RB, held | raise the WXHB's left / right half | `crossbar.wxhb_left` / `crossbar.wxhb_right` |
 | RB | the set switch: tap it for the next set, or hold it and press a slot button to jump to that set | `crossbar.switch` |
 | Y, B, A, X, D-pad ↑ → ↓ ←, with LT, RT or RB held | slots 1 to 8 of whichever bar is raised - or, under RB alone, sets 1 to 8 | `crossbar.slot1` - `crossbar.slot8` |
 | LT+Start or RT+Start | open or close the binder (edit mode) | `crossbar.binder` |
-| Start, R3, the D-pad alone | nothing | |
+| LB+RB, either order | draw or sheathe, as `//hud draw` does, while no crossbar side or WXHB half is up (see [Things to know](#things-to-know)) | `crossbar.draw` |
+| The D-pad alone | nothing | |
 
 A key is held down for as long as you hold the button, and comes up when you
-let go. The crossbar's behaviours are described on
+let go - except on a button you also chord with, LB here, whose key is tapped
+as you let go (see [Gestures](#gestures)). The crossbar's behaviours are
+described on
 [its page](components/crossbar.md#gamepad).
 
 ## Commands
@@ -88,8 +93,8 @@ None of these needs a character logged in: one map serves every character.
 | `//hud gamepad on` / `off` | switch the bridge on or off |
 | `//hud gamepad list` | every gesture and what it does, written the way `bind` takes it, then the keys you have taught it |
 | `//hud gamepad bind <gesture> <behaviour>` | give a gesture a named behaviour: `bind a accept`, `bind lt crossbar.left` |
-| `//hud gamepad bind <gesture> key <key>` | have it hold a key for as long as it is held: `bind l3 key numpad*` |
-| `//hud gamepad bind <gesture> <type> [<action>] [<target>]` | give it an action, in a slot's words: `bind r3 ma "Cure IV" t` |
+| `//hud gamepad bind <gesture> key <key>` | have it hold a key for as long as it is held: `bind lt+l3 key numpad*` |
+| `//hud gamepad bind <gesture> <type> [<action>] [<target>]` | give it an action, in a slot's words: `bind lt+r3 ma "Cure IV" t` |
 | `//hud gamepad unbind <gesture>` | take a gesture off the map, a shipped one included |
 | `//hud gamepad learn <name>` | the next key you press becomes the button `<name>` (see [Buttons XInput cannot see](#buttons-xinput-cannot-see)) |
 | `//hud gamepad learn <name> off` | give that button's key back to the game |
@@ -108,8 +113,8 @@ The buttons are `a` `b` `x` `y` `lb` `rb` `lt` `rt` `back` `start` `l3` `r3`
 `up` `down` `left` `right`, and any name you have taught a key with `learn`.
 
 - **The last button is the one that counts.** `lt+lb` is LB pressed with LT
-  already held. Press LB first and you get LB's own gesture, `autorun`; LT
-  after it is LT alone.
+  already held. Press LB first and you get LB's own gesture, `autorun`, tapped
+  when you let go; LT after it is LT alone.
 - **The longest chord wins.** When a button goes down, of the gestures it ends
   whose other buttons are all held, the one naming the most buttons is used:
   with LT held, Y is `lt+y`, not `y`. On a tie, the gesture whose held button
@@ -117,11 +122,14 @@ The buttons are `a` `b` `x` `y` `lb` `rb` `lt` `rt` `back` `start` `l3` `r3`
 - **A chord lasts while all of its buttons are held.** Let go of any one and it
   ends: release LT and the WXHB's left half drops even with LB still down, and
   LB does nothing until you press it again.
-- **A button you chord with still does its own thing.** LT holds the
-  crossbar's left side while `lt+y` fires slot 1. So a button you chord with
-  should hold something (a side, the set switch) or nothing: give it an action
-  and the action fires the moment the button goes down, before you press
-  anything with it.
+- **A button you chord with taps its own key or action.** When a chord holds a
+  button before its last, that button's own key or action waits for its
+  release, and goes only if you let go within a quarter of a second without
+  pressing a chord with it. So a quick LB autoruns, and LB held for RB only
+  draws. Only the button's own gesture waits: a chord ending in it, such as
+  `rt+lb`, still goes at once. A crossbar behaviour on such a button still goes the moment the
+  button goes down - LT holds the left side while `lt+y` fires slot 1 - since
+  the crossbar settles its own taps, as the set switch does.
 
 ### What a gesture can do
 
@@ -138,10 +146,14 @@ are on [its page](components/crossbar.md#gamepad).
 | `main_menu` | holds numpad `-` |
 | `lockon` | holds numpad `*` |
 | `autorun` | holds `R` |
+| `target_self` | holds `F1` |
+| `target_npc` | holds `F8` |
 | `open_map` | opens the map, as an `open map` slot does |
 
 **A key.** `bind <gesture> key <key>` holds that key down for as long as the
-gesture is held. Keys are named the way Windower's `setkey` names them:
+gesture is held - or, on a button you also chord with, taps it as you let go
+(see [Gestures](#gestures)); the shipped keys above work the same way. Keys
+are named the way Windower's `setkey` names them:
 `enter`, `escape`, `f9`, `numpad*`. A name Windower does not know does nothing,
 without a word.
 
@@ -201,9 +213,16 @@ bridge, from any keyboard: neither the game nor the HUD sees it.
 - **Triggers** count as pressed past 30 (of 255) and let go only at 20 or
   below, so a finger resting on one cannot flicker a crossbar side. The 30 is
   `trigger_threshold`, below.
-- **Draw and sheathe** have no gesture in the shipped map, LB being autorun.
-  `draw` is an action like any other, so `//hud gamepad bind r3 draw` gives
-  it one; `//hud draw` and a click on the crossbar's sword still work.
+- **LB autoruns on a tap**, as you let go: within a quarter of a second, with
+  no RB in between. Held longer, LB alone does nothing, so LB+RB only draws,
+  in either order. The quarter second is `tap_seconds`, below.
+- **LB+RB can turn up in the middle of a WXHB move.** Going from one WXHB half
+  to the other, if the old trigger lets go and the new bumper goes down before
+  the new trigger, with the old bumper still held, that is LB+RB with nothing
+  up: it draws - or, with your weapon out, disengages, and on a mount
+  dismounts. And a bumper pressed with its own trigger held is LB+RB rather
+  than its WXHB half when the other bumper is held too and went down after
+  that trigger.
 - **The keyboard still works** alongside the pad. A crossbar side held on the
   keyboard and the same side held on the pad are one side: it drops when both
   have let go.
@@ -225,12 +244,19 @@ It belongs to no character, so it works at the character screen, and
 | `map` | the shipped map | each gesture and what it does (`bind`, `unbind`); a shipped gesture you unbind is kept as `false`, or the next load would put it back |
 | `extra` | `l4`, `l5`, `r4`, `r5`, all `false` | the key each learned button arrives as, a DirectInput scan code (`learn`) |
 | `trigger_threshold` | `30` | how far, 0 to 255, a trigger must be pulled to count as pressed; it lets go 10 below that. File only |
+| `tap_seconds` | `0.25` | how long a button you also chord with can be held and still tap its own key or action as you let go. File only |
 
 Every `//hud gamepad` command reads the file again first, so after a hand edit
 type `//hud gamepad` and the edit applies. A command that changes the file
 refuses one it cannot read, rather than write the shipped map over yours.
 Deleting the file with the game closed puts the shipped map back, with no
 learned keys and the bridge off.
+
+An update that changes the shipped map does not change yours. The first
+command that saved the file wrote every gesture into it, and the file wins: a
+gesture the update moved keeps what it did before, and only gestures new to
+the map are added, as is a setting new to the file, such as `tap_seconds`. `bind` a moved gesture to its new behaviour from
+[the shipped map](#the-shipped-map), or delete the file with the game closed.
 
 ## Troubleshooting
 
@@ -265,8 +291,9 @@ learned keys, and `//hud gamepad learn <name> off` gives one back.
 So far the bridge has only run against the tests. In particular: that
 `_LuaXInput.dll` loads from `bin/`; that Steam Input's virtual pad answers
 inside the game; the key names behind the shipped behaviours (`enter`,
-`escape`, `numpad+`, `numpad-`, `numpad*`, `r`), where a wrong one silently
-does nothing; whether a key held by a gesture repeats; that `open_map` opens
+`escape`, `numpad+`, `numpad-`, `numpad*`, `r`, `f1`, `f8`), where a wrong one silently
+does nothing; whether a key held by a gesture repeats; whether the game sees a
+tapped key, which is down for one frame only (LB's autorun depends on it); that `open_map` opens
 the map; that keys Steam Input types reach XIVHud and can be kept from the
 game; and whether a learned key arrives as the same number on every keyboard
 layout. `//hud gamepad` and `load.log` say whether the module loaded and

@@ -62,6 +62,7 @@ local RESERVED = {
   hidecutscene = true,
   queue = true,
   gamepad = true,
+  keyboard = true,
 }
 
 -- The settings window's panel for what is not a component's.
@@ -70,9 +71,10 @@ local GLOBAL_PANEL = "global"
 -- Framework-level presses: run by the action service, never by a bar.
 local ACTION_VERBS = { mr = true, sneak = true, invisible = true, reraise = true, draw = true }
 -- The framework's own options - the service's tuning and core's in core.lua,
--- the gamepad bridge's in data/gamepad.lua: the words after the verb go
--- through untouched, and core answers them over the file that holds them.
-local TUNING_VERBS = { delay = true, hidecutscene = true, queue = true, gamepad = true }
+-- the gamepad bridge's in data/gamepad.lua, the keyboard map's in
+-- data/keyboard.lua: the words after the verb go through untouched, and core
+-- answers them over the file that holds them.
+local TUNING_VERBS = { delay = true, hidecutscene = true, queue = true, gamepad = true, keyboard = true }
 
 local SLOT_OPS = { list = true, create = true, delete = true }
 

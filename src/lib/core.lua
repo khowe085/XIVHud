@@ -48,6 +48,8 @@ local new_buffs = require("lib/buffs")
 local new_commands = require("lib/commands")
 local new_config_window = require("lib/config_window")
 local new_gamepad_commands = require("lib/gamepad_commands")
+local new_keyboard = require("lib/keyboard")
+local new_keyboard_commands = require("lib/keyboard_commands")
 local new_layout = require("lib/layout")
 local new_layout_mode = require("lib/layout_mode")
 local new_overlay = require("lib/overlay")
@@ -122,6 +124,9 @@ local HELP = {
   "                            behavior or key <name>; a gesture is like lt+y",
   "  //hud gamepad learn <name> [off]",
   "                            the next key pressed is a button XInput cannot see",
+  "  //hud keyboard [on|off]    whether the keyboard map hands keys to their",
+  "                            behaviors - the crossbar's keys, as it ships",
+  "  //hud keyboard list        every key the map binds and what it does",
   "  //hud config [<name>]      the settings window: the options above and the",
   "                            components' own, changed with a click; name a",
   "                            component, or global, to open on its panel",
@@ -152,6 +157,8 @@ local function new(deps)
   local deliver_pad
   -- `//hud gamepad` (lib/gamepad_commands), built with the behaviours below.
   local gamepad_commands = nil
+  -- The keyboard map (lib/keyboard), its file and `//hud keyboard`, likewise.
+  local keyboard, keyboard_handle, keyboard_commands = nil, nil, nil
 
   -- Lets go of everything the pad holds, game keys and components' behaviours
   -- alike, on the paths that must finish whatever a component or the
@@ -163,6 +170,13 @@ local function new(deps)
       pcall(function()
         deliver_pad(deps.gamepad.release())
       end)
+    end
+  end
+
+  -- The keys the keyboard map holds, on the same paths and a switch-off.
+  local function release_keys()
+    if keyboard ~= nil then
+      pcall(keyboard.release)
     end
   end
 
@@ -220,23 +234,24 @@ local function new(deps)
     return names
   end
 
+  -- Answers whether the component took the key behind a press.
   local function deliver_behavior(qualified, down, cancelled)
     local name, behavior = qualified:match("^([^.]+)%.(.+)$")
     local component = name ~= nil and registry.get(name) or nil
     if component ~= nil and type(component.on_behavior) == "function" then
-      component.on_behavior(behavior, down, cancelled)
+      return component.on_behavior(behavior, down, cancelled) == true
     end
+    return false
   end
 
-  --[[ The bridge's behaviours (lib/behaviors) and its verbs
-       (lib/gamepad_commands), only where there is a bridge to drive them.
-       An action needs a character: logged out, it does nothing.
-       `behavior_actions` is the action service's typed half - bind's parser
-       and labeller, its types and its validate - absent where the service
-       did not load. ]]
+  --[[ The behaviours (lib/behaviors), only where a bridge or the keyboard map
+       drives them, and each one's verbs. An action needs a character: logged
+       out, it does nothing. `behavior_actions` is the action service's typed
+       half - bind's parser and labeller, its types and its validate - absent
+       where the service did not load. ]]
   local behavior_actions = deps.behavior_actions or {}
   local behaviors = nil
-  if deps.gamepad ~= nil then
+  if deps.gamepad ~= nil or deps.keyboard_map == true then
     behaviors = new_behaviors({
       send_key = deps.send_key,
       validate = behavior_actions.validate,
@@ -256,6 +271,8 @@ local function new(deps)
       components = component_behaviors,
       deliver = deliver_behavior,
     })
+  end
+  if deps.gamepad ~= nil then
     gamepad_commands = new_gamepad_commands({
       gamepad = deps.gamepad,
       behaviors = behaviors,
@@ -274,6 +291,34 @@ local function new(deps)
       end,
     })
   end
+  --[[ The keyboard map (2026-11-09): keys as behaviours, the crossbar's own
+       as it ships, in one machine-wide file as the pad's map is. Not in safe
+       mode, where the entry point leaves `keyboard_map` out. ]]
+  if deps.keyboard_map == true then
+    keyboard = new_keyboard({
+      config = function()
+        return keyboard_handle and keyboard_handle.get() or nil
+      end,
+      deliver = function(behavior, down, cancelled)
+        return behaviors.edge(behavior, down, cancelled)
+      end,
+      is_component = behaviors.is_component,
+      check = behaviors.check,
+      chat_open = deps.chat_open,
+    })
+    keyboard_handle = settings.register_global("keyboard", keyboard.config_defaults())
+    keyboard_commands = new_keyboard_commands({
+      keyboard = keyboard,
+      reload = function()
+        return keyboard_handle.load()
+      end,
+      save = function()
+        keyboard_handle.save()
+      end,
+      release = release_keys,
+      describe_action = behavior_actions.describe,
+    })
+  end
 
   --- Whether a gesture's behaviour can work: true, or nil and why. The
   --- bridge asks, to name the map's dead entries.
@@ -282,6 +327,12 @@ local function new(deps)
       return nil, "the gamepad bridge did not load"
     end
     return behaviors.check(value)
+  end
+
+  --- Whether a gesture's behaviour is a component's own. The bridge asks,
+  --- to keep only the rest back for a tap.
+  function self.behavior_is_component(value)
+    return behaviors ~= nil and behaviors.is_component(value)
   end
 
   --[[ The action service's tuning lives in core.lua beside snap and
@@ -782,6 +833,7 @@ local function new(deps)
     config_window.close()
     -- A game key held through `setkey` would stay down after the addon goes.
     release_pad()
+    release_keys()
     overlay.destroy_all()
     registry.destroy_all()
     handles = {}
@@ -899,6 +951,13 @@ local function new(deps)
        inbound-blocked guard. ]]
   local function deliver_key(key, down, flags, blocked)
     layout_mode.key(key, down)
+    --[[ While the keyboard map is on, a component that speaks behaviours has
+         its keys from the map. Handed the presses raw as well it would hold
+         every side twice, and the switch's raw release, arriving taken, would
+         never cycle the set. A release still reaches it: nothing to one whose
+         key it never saw go down, the end of one it held raw as the map came
+         on. ]]
+    local mapped = down and keyboard ~= nil and keyboard.enabled()
     --[[ The block ACCUMULATES through the walk (2026-09-06): a later
          component sees a key an earlier one took as already blocked, exactly
          as it sees one a prior addon took. Two bars own overlapping keys -
@@ -909,7 +968,7 @@ local function new(deps)
          carries more. ]]
     local block = false
     for _, component in ipairs(registry.all()) do
-      if component.on_keyboard then
+      if component.on_keyboard and not (mapped and component.behaviors) then
         local took = component.on_keyboard(key, down, flags, blocked or block) == true
         block = block or took
       end
@@ -920,12 +979,16 @@ local function new(deps)
   -- The keyboard's events. The bridge is offered each key first - `learn`
   -- waiting for one, then the keys Steam Input types for the buttons XInput
   -- cannot see - kept from the components and the game alike, but not while
-  -- the game is out of focus, where nothing polls what it would take.
+  -- the game is out of focus, where nothing polls what it would take. The
+  -- keyboard map is offered it next, and a key it takes reaches the
+  -- components as taken.
   function self.on_keyboard(key, down, flags, blocked)
     if deps.gamepad ~= nil and focused and (gamepad_commands.on_key(key, down) or deps.gamepad.on_key(key, down)) then
       return true
     end
-    return deliver_key(key, down, flags, blocked)
+    local taken = keyboard ~= nil and keyboard.on_key(key, down, blocked == true) or false
+    local block = deliver_key(key, down, flags, blocked or taken)
+    return taken or block
   end
 
   --[[ Every edge is delivered even when a component throws on one - a lost
@@ -961,20 +1024,23 @@ local function new(deps)
     deliver_pad(deps.gamepad.poll())
   end
 
-  --- A lost focus strands everything held: the pad lets go of its own, and
-  --- the keyboard's ups never come - the components forget those themselves.
+  --- A lost focus strands everything held: the pad and the keyboard map let
+  --- go of their own, and the keyboard's ups never come - the components
+  --- forget those themselves.
   function self.on_focus(gained)
     focused = gained
     if not gained then
       release_pad()
+      release_keys()
     end
   end
 
   -- Whether the keyboard handler is worth registering at all: the entry point
   -- keeps it always-on when some component consumes keys, or the bridge does
-  -- (`learn`, and the keys Steam types), and layout-mode-only otherwise.
+  -- (`learn`, and the keys Steam types), or the keyboard map does, and
+  -- layout-mode-only otherwise.
   function self.wants_keyboard()
-    if deps.gamepad ~= nil then
+    if deps.gamepad ~= nil or keyboard ~= nil then
       return true
     end
     for _, component in ipairs(registry.all()) do
@@ -1577,6 +1643,19 @@ local function new(deps)
     return false
   end
 
+  -- lib/keyboard_commands' own: the switch and the map.
+  local function tune_keyboard(words)
+    return keyboard_commands.handle(words)
+  end
+
+  local function require_keyboard()
+    if keyboard ~= nil then
+      return true
+    end
+    say("the keyboard map did not load")
+    return false
+  end
+
   --[[ Written only when set, so a lock nobody has touched follows the shipped
        length, and in tenths, which is what the settings window steps in. ]]
   local function tune_queue_lock(words)
@@ -1649,15 +1728,23 @@ local function new(deps)
     hidecutscene = tune_hidecutscene,
     queue = tune_queue,
     gamepad = tune_gamepad,
+    keyboard = tune_keyboard,
   }
   -- The ones that are the action service's own tuning, and need it loaded.
   local SERVICE_TUNERS = { delay = true, queue = true }
 
   local function run_tune(action)
-    -- The bridge's file is no character's, so it needs none scoped.
+    -- The bridge's file and the keyboard map's are no character's, so they
+    -- need none scoped.
     if action.verb == "gamepad" then
       if require_gamepad() then
         say_lines(tune_gamepad(action.words))
+      end
+      return
+    end
+    if action.verb == "keyboard" then
+      if require_keyboard() then
+        say_lines(tune_keyboard(action.words))
       end
       return
     end
@@ -1740,6 +1827,14 @@ local function new(deps)
         command = { "gamepad" },
       }
     end
+    if keyboard ~= nil then
+      rows[#rows + 1] = {
+        label = "Keyboard map",
+        kind = "toggle",
+        value = keyboard.enabled(),
+        command = { "keyboard" },
+      }
+    end
     return { rows = rows }
   end
 
@@ -1761,6 +1856,7 @@ local function new(deps)
         tuner == nil
         or (SERVICE_TUNERS[words[1]] and deps.actions == nil)
         or (words[1] == "gamepad" and deps.gamepad == nil)
+        or (words[1] == "keyboard" and keyboard == nil)
       then
         return nil
       end

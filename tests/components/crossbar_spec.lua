@@ -6190,14 +6190,17 @@ describe("crossbar behaviours", function()
     return nil
   end
 
-  it("declares the sides, the WXHB halves, the switch, the binder and eight slots", function()
+  it("declares the sides, the WXHB halves, the layer, the switch, the binder, select, draw and eight slots", function()
     assert.are.same({
       "left",
       "right",
       "wxhb_left",
       "wxhb_right",
+      "layer",
       "switch",
       "binder",
+      "select",
+      "draw",
       "slot1",
       "slot2",
       "slot3",
@@ -6209,10 +6212,45 @@ describe("crossbar behaviours", function()
     }, widget.behaviors())
   end)
 
-  it("hears nothing before it is attached", function()
+  it("declares every crossbar behaviour the shipped gamepad map names", function()
+    local declared = {}
+    for _, name in ipairs(widget.behaviors()) do
+      declared["crossbar." .. name] = true
+    end
+    for gesture, behavior in pairs(require("lib/gamepad")({}).config_defaults().map) do
+      if type(behavior) == "string" and behavior:match("^crossbar%.") then
+        assert.is_true(declared[behavior] == true, gesture .. " names " .. behavior)
+      end
+    end
+  end)
+
+  it("declares every crossbar behaviour the shipped keyboard map names", function()
+    local declared = {}
+    for _, name in ipairs(widget.behaviors()) do
+      declared["crossbar." .. name] = true
+    end
+    for key, behavior in pairs(require("lib/keyboard")({}).config_defaults().map) do
+      if type(behavior) == "string" and behavior:match("^crossbar%.") then
+        assert.is_true(declared[behavior] == true, key .. " names " .. behavior)
+      end
+    end
+  end)
+
+  it("hears nothing before it is attached, and takes no key", function()
     assert.has_no.errors(function()
       widget.on_behavior("left", true)
     end)
+    assert.is_false(widget.on_behavior("right", true))
+  end)
+
+  it("says whether the key a behaviour came from is the bar's, as its own keys would", function()
+    widget.attach(widget.defaults)
+    place_all(widget, 100, 900)
+    widget.show()
+    assert.is_false(widget.on_behavior("slot1", true), "the number row is the game's with nothing raised")
+    widget.on_behavior("slot1", false)
+    assert.is_true(widget.on_behavior("left", true))
+    assert.is_true(widget.on_behavior("slot1", true))
   end)
 
   it("panels the side its behaviour holds, and clears it on the let-go", function()
@@ -6224,5 +6262,17 @@ describe("crossbar behaviours", function()
     assert.is_true(panel().visible)
     widget.on_behavior("left", false)
     assert.is_false(panel().visible)
+  end)
+
+  it("toggles the weapon state on its draw behaviour's press", function()
+    widget.attach(widget.defaults)
+    place_all(widget, 100, 900)
+    widget.show()
+    widget.on_behavior("draw", true)
+    assert.are.equal("drawn", service_under_test.weapon_state())
+    widget.on_behavior("draw", false)
+    assert.are.equal("drawn", service_under_test.weapon_state(), "not on the let-go")
+    widget.on_behavior("draw", true)
+    assert.are.equal("sheathed", service_under_test.weapon_state())
   end)
 end)

@@ -1199,15 +1199,15 @@ describe("crossbar input", function()
 end)
 
 --[[ Behaviours reach the machine the keys do - the hold state, the set switch
-     and the slots - and answer no block: a behaviour is not a Windower key
-     event. ]]
+     and the slots. A press also answers whether the key it came from, where
+     the keyboard map sent it, is the bar's to keep from the game. ]]
 describe("crossbar input behaviours", function()
   local function hold(input, name)
-    return input.on_behavior(name, true)
+    return (input.on_behavior(name, true))
   end
 
   local function let_go(input, name, cancelled)
-    return input.on_behavior(name, false, cancelled)
+    return (input.on_behavior(name, false, cancelled))
   end
 
   local function state_of(intents)
@@ -1326,6 +1326,37 @@ describe("crossbar input behaviours", function()
     assert.same({ type = "shortcut", verb = "edit" }, intent_of(hold(input, "binder"), "shortcut"))
   end)
 
+  it("draws on the press alone, with no bar raised", function()
+    local input = build()
+    assert.same({ { type = "draw" } }, hold(input, "draw"))
+    assert.same({}, let_go(input, "draw"))
+  end)
+
+  it("draws nothing under a raised side or WXHB half", function()
+    for _, raised in ipairs({ "left", "right", "wxhb_left", "wxhb_right" }) do
+      local input = build()
+      hold(input, raised)
+      assert.same({}, hold(input, "draw"), raised)
+    end
+  end)
+
+  it("keeps the switch it draws over from cycling, and cycles on the next tap", function()
+    local input = build()
+    hold(input, "switch")
+    assert.same({ { type = "draw" } }, hold(input, "draw"))
+    let_go(input, "draw")
+    assert.is_nil(intent_of(let_go(input, "switch"), "cycle"))
+    hold(input, "switch")
+    assert.same({ type = "cycle" }, intent_of(let_go(input, "switch"), "cycle"))
+  end)
+
+  it("draws nothing in edit mode or under a guard", function()
+    for _, guard in ipairs({ "edit_mode", "chat_open", "suppressed", "layout_mode", "disabled" }) do
+      local input = build({ [guard] = true })
+      assert.same({}, hold(input, "draw"), guard)
+    end
+  end)
+
   it("keeps the chat guard: the bar rises and nothing fires", function()
     local input = build({ chat_open = true })
     assert.equal("xhb_left", state_of(hold(input, "left")))
@@ -1373,5 +1404,88 @@ describe("crossbar input behaviours", function()
     hold(input, "left")
     input.focus_lost()
     assert.same({}, let_go(input, "left"))
+  end)
+
+  it("raises a side's WXHB half with the layer held over it, as backslash does", function()
+    local input = build()
+    hold(input, "left")
+    assert.equal("wxhb_left", state_of(hold(input, "layer")))
+    assert.equal("xhb_left", state_of(let_go(input, "layer")))
+  end)
+
+  it("draws on a tap of the switch over the held layer", function()
+    local input = build()
+    hold(input, "layer")
+    hold(input, "switch")
+    assert.same({ type = "draw" }, intent_of(let_go(input, "switch"), "draw"))
+  end)
+
+  it("opens the binder on select under a raised bar, and does nothing on select alone", function()
+    local input = build()
+    assert.same({}, hold(input, "select"))
+    let_go(input, "select")
+    hold(input, "left")
+    assert.same({ type = "shortcut", verb = "edit" }, intent_of(hold(input, "select"), "shortcut"))
+  end)
+
+  it("leaves edit mode on select alone, as the Select key does", function()
+    local input = build({ edit_mode = true })
+    assert.same({ type = "shortcut", verb = "edit" }, intent_of(hold(input, "select"), "shortcut"))
+  end)
+
+  --[[ The keyboard map's question: whether the key a press came from is the
+       bar's to keep from the game, by the rules the bar's own keys keep. ]]
+  describe("the key a press came from", function()
+    local function kept(input, name)
+      local _, block = input.on_behavior(name, true)
+      return block
+    end
+
+    it("is the bar's for a side, the layer, the switch and select, whatever is raised", function()
+      for _, name in ipairs({ "left", "right", "layer", "switch", "select" }) do
+        assert.is_true(kept(build(), name), name)
+      end
+    end)
+
+    it("is the bar's for a slot only while a bar is raised or the switch held", function()
+      local input = build()
+      assert.is_false(kept(input, "slot1"))
+      let_go(input, "slot1")
+      hold(input, "left")
+      assert.is_true(kept(input, "slot1"))
+      input = build()
+      hold(input, "switch")
+      assert.is_true(kept(input, "slot2"))
+    end)
+
+    it("is the game's while disabled or with the chat line open", function()
+      for _, guard in ipairs({ "disabled", "chat_open" }) do
+        assert.is_false(kept(build({ [guard] = true }), "left"), guard)
+      end
+    end)
+
+    it("is the bar's for its dedicated keys but never a slot while suppressed or laying out", function()
+      for _, guard in ipairs({ "suppressed", "layout_mode" }) do
+        local input = build({ [guard] = true })
+        assert.is_true(kept(input, "left"), guard)
+        assert.is_false(kept(input, "slot1"), guard)
+      end
+    end)
+
+    it("is the bar's for a slot in edit mode only over the held switch", function()
+      local input = build({ edit_mode = true })
+      hold(input, "left")
+      assert.is_false(kept(input, "slot1"))
+      let_go(input, "slot1")
+      hold(input, "switch")
+      assert.is_true(kept(input, "slot2"))
+    end)
+
+    it("is nothing on a let-go", function()
+      local input = build()
+      hold(input, "left")
+      local _, block = input.on_behavior("left", false)
+      assert.is_false(block)
+    end)
   end)
 end)

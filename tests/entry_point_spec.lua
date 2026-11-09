@@ -157,6 +157,14 @@ describe("entry point", function()
       assert.are.same({}, boot.core_deps.gamepad.problems())
     end)
 
+    it("asks core which behaviours are a component's own, so LB's autorun waits for its release", function()
+      boot = harness.boot({ xinput = fake_module(0x0100) })
+      boot.gamepad_config = { enabled = true }
+      assert.are.same({}, boot.core_deps.gamepad.poll())
+      pad_buttons = 0
+      assert.are.same({ { behavior = "autorun", down = true } }, boot.core_deps.gamepad.poll())
+    end)
+
     it("pumps the pad every frame through a handler of its own", function()
       boot.handlers["prerender"]()
       assert.are.equal(1, boot.pumps)
@@ -207,6 +215,29 @@ describe("entry point", function()
     it("is not built in safe mode, where nothing would poll it", function()
       local safe = harness.boot({ xinput = fake_module(0), files = { ["addons/XIVHud/safe_mode"] = "" } })
       assert.is_nil(safe.core_deps.gamepad)
+    end)
+  end)
+
+  describe("the keyboard map", function()
+    it("is built in core, handed the raw chat line to judge keys by", function()
+      assert.is_true(boot.core_deps.keyboard_map)
+      boot.chat_open = true
+      assert.is_true(boot.core_deps.chat_open())
+      boot.chat_open = false
+      assert.is_false(boot.core_deps.chat_open())
+    end)
+
+    it("is not built in safe mode", function()
+      local safe = harness.boot({ files = { ["addons/XIVHud/safe_mode"] = "" } })
+      assert.is_not_true(safe.core_deps.keyboard_map)
+    end)
+
+    it("keeps its actions though the gamepad bridge fails to load", function()
+      local failed = harness.boot({ require_fails = { ["lib/gamepad"] = "boom" } })
+      assert.is_nil(failed.core_deps.gamepad)
+      local actions = failed.core_deps.behavior_actions
+      assert.are.same({ type = "open", action = "map" }, actions.parse({ "open", "map" }))
+      assert.is_true(actions.validate({ type = "ma", action = "Cure" }))
     end)
   end)
 

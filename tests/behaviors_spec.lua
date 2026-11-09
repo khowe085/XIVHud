@@ -224,6 +224,64 @@ describe("behaviors", function()
     end)
   end)
 
+  --[[ What a press answers is whether the key it came from is taken from the
+       game: the keyboard map's question, which the pad never asks. ]]
+  describe("what a press takes", function()
+    local answer
+
+    before_each(function()
+      answer = true
+      behaviors = build({
+        deliver = function(name, down, cancelled)
+          delivered[#delivered + 1] = { name, down, cancelled }
+          return answer
+        end,
+      })
+    end)
+
+    it("answers a component's own answer to the press", function()
+      assert.is_true(behaviors.edge("crossbar.left", true))
+      answer = nil
+      assert.is_false(behaviors.edge("crossbar.slot1", true))
+    end)
+
+    it("takes the press of a game key or an action", function()
+      assert.is_true(behaviors.edge("accept", true))
+      assert.is_true(behaviors.edge({ type = "open", action = "map" }, true))
+    end)
+
+    it("takes nothing for a behaviour that cannot work", function()
+      assert.is_false(behaviors.edge("nope", true))
+      assert.is_false(behaviors.edge("crossbar.right", true), "declared by no component")
+    end)
+
+    it("answers a second holder what the first press answered", function()
+      behaviors.edge("crossbar.left", true)
+      answer = false
+      assert.is_true(behaviors.edge("crossbar.left", true))
+      assert.are.equal(1, #delivered)
+    end)
+
+    it("answers a let-go nothing", function()
+      behaviors.edge("crossbar.left", true)
+      assert.is_false(behaviors.edge("crossbar.left", false))
+    end)
+  end)
+
+  describe("is_component", function()
+    it("says a component's own behaviour is one by its name, declared or not", function()
+      assert.is_true(behaviors.is_component("crossbar.left"))
+      assert.is_true(behaviors.is_component("nobody.left"))
+    end)
+
+    it("says a shipped behaviour and a gesture's own entry are not", function()
+      assert.is_false(behaviors.is_component("autorun"))
+      assert.is_false(behaviors.is_component({ key = "f1" }))
+      assert.is_false(behaviors.is_component({ type = "open", action = "map" }))
+      assert.is_false(behaviors.is_component(nil))
+    end)
+  end)
+
   describe("known", function()
     it("knows the shipped behaviours and the components'", function()
       assert.is_true(behaviors.known("accept"))
@@ -247,6 +305,8 @@ describe("behaviors", function()
       "lockon",
       "main_menu",
       "open_map",
+      "target_npc",
+      "target_self",
       "crossbar.left",
       "crossbar.slot1",
     }, behaviors.names())
@@ -269,6 +329,8 @@ describe("behaviors", function()
       main_menu = "numpad-",
       lockon = "numpad*",
       autorun = "r",
+      target_self = "f1",
+      target_npc = "f8",
     }) do
       behaviors.edge(name, true)
       assert.are.same({ key, true }, sent[#sent], name)
