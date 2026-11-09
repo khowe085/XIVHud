@@ -6,14 +6,15 @@ one - read from a Windower 4 addon, which has no ffi to call XInput with. A
 
 ## Loading it
 
-Put `_LuaXInput.dll` in the addon's `libs/` and put that folder at the front
-of `package.cpath`, so another addon's copy earlier on the path cannot stand
-in for yours. XIPivot writes the path with forward slashes, saying
-`package.cpath` does not take backslashes - untested here, but the safe way:
+Put `_LuaXInput.dll` in a folder of your addon's (`bin/` below) and put that
+folder at the front of `package.cpath`, so another addon's copy earlier on
+the path cannot stand in for yours. XIPivot writes the path with forward
+slashes, saying `package.cpath` does not take backslashes - untested here,
+but the safe way:
 
 ```lua
 local path = windower.addon_path:gsub("\\", "/")
-package.cpath = path .. "libs/?.dll;" .. package.cpath
+package.cpath = path .. "bin/?.dll;" .. package.cpath
 local xinput = require("_LuaXInput")
 ```
 

@@ -3,7 +3,7 @@ name: _LuaXInput
 # Builds native/xinput's _LuaXInput.dll for Windower 4 and smoke-tests it,
 # under a stock Lua 5.1.5, on a runner with no pad. Runs on every pull request
 # that touches it, and is called by package.yml, which ships the Windower
-# build in the zip's libs/.
+# build in the zip's bin/.
 
 on:
   pull_request:

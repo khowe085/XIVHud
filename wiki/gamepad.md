@@ -35,7 +35,7 @@ The bridge has not yet been run in a live client; see
   works as it is. A PlayStation or Switch pad, or a Steam Controller, is not
   one on its own: run it through Steam Input set up as an Xbox pad (or another
   tool that presents it as one), with no chords - the bridge does those.
-- **`libs/_LuaXInput.dll`**, which comes in the release zip, and the XInput
+- **`bin/_LuaXInput.dll`**, which comes in the release zip, and the XInput
   Windows itself provides (`xinput1_4.dll`, `xinput1_3.dll` or
   `xinput9_1_0.dll`). `//hud gamepad` says if either is missing.
 - **The game's own pad buttons cleared.** FFXI reads the pad itself, and
@@ -243,7 +243,7 @@ learned keys and the bridge off.
 | `gamepad: on - looking for a pad` | it is still asking the four XInput slots, one a second |
 | `gamepad: on - no pad connected` | every slot was asked and none answered: the pad is unplugged, is not an XInput pad, or Steam Input is not presenting it as one |
 | `... - paused - the game is not in focus` | another window has focus; nothing is read until the game has it back |
-| `gamepad: unavailable - _LuaXInput not loaded` | `libs/_LuaXInput.dll` is missing or would not load: copy the release zip in again. `load.log` holds the error |
+| `gamepad: unavailable - _LuaXInput not loaded` | `bin/_LuaXInput.dll` is missing or would not load: copy the release zip in again. `load.log` holds the error |
 | `gamepad: unavailable - no XInput library found` | Windows has none of the three XInput DLLs |
 | `the gamepad bridge did not load` | the bridge itself failed to load, or `safe_mode` is on; `load.log` holds the error |
 
@@ -263,7 +263,7 @@ learned keys, and `//hud gamepad learn <name> off` gives one back.
 ## Not yet checked in a live client
 
 So far the bridge has only run against the tests. In particular: that
-`_LuaXInput.dll` loads from `libs/`; that Steam Input's virtual pad answers
+`_LuaXInput.dll` loads from `bin/`; that Steam Input's virtual pad answers
 inside the game; the key names behind the shipped behaviours (`enter`,
 `escape`, `numpad+`, `numpad-`, `numpad*`, `r`), where a wrong one silently
 does nothing; whether a key held by a gesture repeats; that `open_map` opens

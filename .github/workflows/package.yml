@@ -8,7 +8,7 @@ name: Package addon
 # src/ must be named <repo-name>.lua. The "Check source" step warns if it isn't.
 #
 # The gamepad bridge's _LuaXInput.dll is built from native/xinput by
-# xinput.yml, called first, and lands in the zip's libs/: no binary is
+# xinput.yml, called first, and lands in the zip's bin/: no binary is
 # committed.
 #
 #   push to main / rc/**  -> build + upload a workflow artifact
@@ -70,7 +70,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: LuaXInput
-          path: src/libs
+          path: src/bin
 
       - name: Stage and zip
         if: steps.check.outputs.skip != 'true'

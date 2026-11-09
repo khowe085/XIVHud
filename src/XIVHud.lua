@@ -940,10 +940,10 @@ local behavior_actions = nil
 if not safe_mode then
   local ok, err = pcall(function()
     -- XIPivot's route to a native module, Windower 4 having no ffi: the
-    -- addon's own libs/ on the cpath, in forward slashes as XIPivot writes
+    -- addon's own bin/ on the cpath, in forward slashes as XIPivot writes
     -- it, and FIRST, so another addon's copy earlier on the path cannot
     -- stand in for this one.
-    package.cpath = windower.addon_path:gsub("\\", "/") .. "libs/?.dll;" .. package.cpath
+    package.cpath = windower.addon_path:gsub("\\", "/") .. "bin/?.dll;" .. package.cpath
     -- Before the require: a native load that crashes the client is not
     -- something pcall can catch, and this is the line load.log ends on.
     trace("loading _LuaXInput")

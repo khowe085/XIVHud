@@ -100,7 +100,8 @@ xinput.get_keystroke(index)                             -- index 0..3 or xinput.
 - CI (Kevin, 2026-11-04: CI builds it, no binary in the repo):
   `.github/workflows/xinput.yml` builds and smoke-tests on every pull request
   touching `native/xinput/`, and is called by `package.yml`, which drops the
-  LuaCore build into the zip's `libs/`.
+  LuaCore build into the zip's `bin/` (not XIPivot's `libs/`, which would
+  sit beside the addon's Lua `lib/` - Kevin, 2026-11-08).
 
 ## Behaviours (Kevin, 2026-11-05)
 
@@ -431,7 +432,7 @@ The commands (2026-11-06):
 
 ## Unverified in a live client
 
-Everything: that `_LuaXInput.dll` loads from the addon's `libs/` (XIPivot's
+Everything: that `_LuaXInput.dll` loads from the addon's `bin/` (XIPivot's
 route), that one of the three XInput DLLs is found, that Steam's virtual pad
 answers XInputGetState inside the game process, the probe and per-frame cost,
 the `setkey` spellings `enter`, `escape`, `numpad+`, `numpad-`, `numpad*` and

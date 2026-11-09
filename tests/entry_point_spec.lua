@@ -112,13 +112,13 @@ describe("entry point", function()
       assert.are.same({}, boot.core_deps.gamepad.poll())
     end)
 
-    it("looks for the module in the addon's own libs/ before anywhere else", function()
-      assert.are.equal("addons/XIVHud/libs/?.dll;?.dll", boot.package.cpath)
+    it("looks for the module in the addon's own bin/ before anywhere else", function()
+      assert.are.equal("addons/XIVHud/bin/?.dll;?.dll", boot.package.cpath)
     end)
 
     it("puts the addon's path on the cpath in forward slashes, as XIPivot does", function()
       boot = harness.boot({ addon_path = "C:\\Windower4\\addons\\XIVHud\\" })
-      assert.are.equal("C:/Windower4/addons/XIVHud/libs/?.dll;?.dll", boot.package.cpath)
+      assert.are.equal("C:/Windower4/addons/XIVHud/bin/?.dll;?.dll", boot.package.cpath)
     end)
 
     it("reads the pad through the module where it loads", function()

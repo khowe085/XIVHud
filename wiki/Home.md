@@ -48,7 +48,7 @@ edit by hand to get started.
    to `Windower4/scripts/init.txt`.
 
 To update, close the game and unzip the new release over the old folder:
-Windows will not replace `libs/_LuaXInput.dll` while the game has it loaded.
+Windows will not replace `bin/_LuaXInput.dll` while the game has it loaded.
 Your settings (`data/`),
 your own art (`icons/custom/`) and the icon cache (`cache/`) are not in the zip
 and survive the update.

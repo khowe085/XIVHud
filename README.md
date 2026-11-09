@@ -110,7 +110,7 @@ stylua --check .            formatting
 ```
 
 The gamepad bridge's one native piece, `native/xinput`, is a 32-bit Windows
-DLL; a GitHub Action builds it and ships it in the zip's `libs/`.
+DLL; a GitHub Action builds it and ships it in the zip's `bin/`.
 
 Nothing here can run the addon itself. That needs Windower and a live FFXI
 client on Windows. [CLAUDE.md](CLAUDE.md) describes the architecture and the
