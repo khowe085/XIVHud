@@ -20,6 +20,9 @@ the number beside each, sitting at the bottom centre of the screen.
 - A **melee accuracy** row above the TP bar - how many of your swings landed
   over the last thirty seconds, with your measured attack delay on the end;
   `//hud parambar accuracy reset` starts a fresh count.
+- A **multi-attack** row above that - how often your rounds carried an extra
+  attack, over the whole fight; it starts over when you engage, and
+  `//hud parambar multiattack reset` starts it over by hand.
 
 ## The accuracy row
 
@@ -71,11 +74,73 @@ down or up by the height of the row; drag the parameter bar back where you
 want it in `//hud layout` afterwards. The count keeps running while the row is
 off, so switching it back on shows the full window rather than a fresh one.
 
+## The multi-attack row
+
+`Multi. Attk: 30% (3/10)` above the accuracy row: the share of your melee
+rounds that carried an extra attack, and the rounds it was measured over -
+three of ten rounds, not attacks. An extra attack is more than one hand swing
+with one weapon, or more than two when dual wielding (or fighting
+hand-to-hand, which swings twice a round). A round is dual wield when it holds
+an off-hand swing, so nothing reads your gear.
+
+It counts the **whole fight**, not the accuracy row's thirty seconds, which is
+too few rounds to say much. The count starts over each time you go from not
+engaged to engaged, and the last fight's figure stays on screen until then -
+so if you stay engaged from one mob to the next, it keeps counting.
+`//hud parambar multiattack reset` starts it over by hand - `accuracy reset`
+leaves it alone - and logging out clears it. The count keeps running while the
+row is off. Buffs that add attacks - a COR Trust's Double Attack, an Aftermath
+- show up in it, which is the point, but remember them when you read it.
+
+Every hand swing counts, parried or not. A Kick Attack or a Daken is not a
+multi-attack and is left out (a Zanshin repeat is one, and counts), and a
+round of kicks alone (Footwork) is left out of the share altogether. A round
+whose every swing was parried or hit a shadow still counts - leaving those out
+would make the figure read high, since one swing is stopped more often than
+two. A round that kills the target on its first swing ends there, so on fast
+kills the figure reads a little low.
+
+**Reading it.** The figure is the share of rounds with *any* extra attack, not
+how many extra attacks you got. Triple Attack is checked before Double Attack,
+so with Triple Attack `t` and Double Attack `d` the share works out to
+`t + (1 - t) x d`. A Triple Attack round is one multi-attack round, the same as
+a Double Attack round, so adding Triple Attack raises the share by less than
+its own rate. Checked in game on a single-wield RDM with Double Attack +32% and
+Triple Attack +2% from gear, about 110 rounds each:
+
+| Buffs | Predicted | Measured |
+| --- | --- | --- |
+| none | 33% | 31% |
+| Temper II at 645 Enhancing (Triple Attack +34%) | 57% | 59% |
+| Temper II at 656 Enhancing (Triple Attack +35%) | 57% | 57% |
+
+**Dual wielding**, each hand rolls its own extra attacks, so a round counts
+when either hand procs: with `p` the one-hand rate above, the share is
+`1 - (1 - p) x (1 - p)`. The same RDM, now RDM/NIN with a second sword and
+otherwise the same gear:
+
+| Buffs | Predicted | Measured |
+| --- | --- | --- |
+| none | 56% | 50% |
+| Temper II at 635 Enhancing (Triple Attack +33%) | 81% | 84% |
+| Temper II at 656 Enhancing (Triple Attack +35%) | 82% | 79% |
+
+At about 110 rounds the figure is good to roughly five points either way;
+fewer rounds, and it wanders more.
+
+It reads `--% (0/0)` until a round has landed, and shares the accuracy row's
+font and placement; with the accuracy row off it takes that row's place.
+
+Turning it on or off moves the bars, as the accuracy row does - and because it
+ships on, an existing parameter bar drops about thirteen pixels the first time
+it loads with it (seventeen if the accuracy row was off). Drag it back in
+`//hud layout`.
+
 ## Configuration options
 
 `config.lua` in the component's folder. Everything here can be left alone;
-`compact`, `accuracy.enabled` and `accuracy.window_seconds` are also set by
-command.
+`compact`, `accuracy.enabled`, `accuracy.window_seconds` and `multi_attack`
+are also set by command.
 
 The bars' width, spacing and position are not settings: the troughs and the
 HP/MP/TP labels are part of the background image, so the fills are fixed to
@@ -85,34 +150,39 @@ it. A `bar` or `compact_bar` block left in an older `config.lua` is ignored.
 | --- | --- | --- |
 | `compact` | `false` | use the compact bar art, with narrower bars and tighter spacing |
 | `dim_tp_bar` | `true` | draw the TP bar dimmed until TP reaches 1000 |
-| `font` | `"sans-serif"` | font for the numbers and the accuracy row |
+| `font` | `"sans-serif"` | font for the numbers and both rows |
 | `font_size` | `14` | font size |
 | `text_offset` | `0` | shifts the numbers sideways, in pixels |
-| `text_color` | white | colour of the numbers and the accuracy row |
-| `text_stroke` | dark, width 2 | outline around the numbers and the accuracy row |
+| `text_color` | white | colour of the numbers and both rows |
+| `text_stroke` | dark, width 2 | outline around the numbers and both rows |
 | `full_tp_color` | blue | TP number colour at 1000 or more |
 | `low_hp_colors` | yellow / orange / red | HP number colour under 75% / 50% / 25% |
 | `low_mp_colors` | yellow / orange / red | the same for MP |
 | `accuracy.enabled` | `true` | draw the accuracy row above the TP bar |
-| `accuracy.window_seconds` | `30` | how many seconds of swings the row counts (1 to 600) |
-| `accuracy.font_size` | `8` | font size for the row - smaller than the numbers |
+| `accuracy.window_seconds` | `30` | how many seconds of swings the accuracy row counts (1 to 600); the multi-attack row counts the whole fight instead |
+| `accuracy.font_size` | `8` | font size for both rows - smaller than the numbers |
 | `accuracy.bar_gap` | `7` | clearance between the row and the bars - raise it if the line sits on the bar art |
-| `accuracy.offset` | `0` | shifts the whole row sideways, in pixels |
+| `accuracy.line_gap` | `2` | clearance between the multi-attack row and the accuracy row - raise it if the two touch |
+| `accuracy.offset` | `0` | shifts both rows sideways, in pixels |
 | `accuracy.text_width_ratio` | `0.68` | how wide a character is assumed to draw - sets how much room the row reserves for its longest line |
 | `accuracy.text_height_ratio` | `1.3` | how tall a line is assumed to draw - sets the row's height |
+| `multi_attack` | `true` | draw the multi-attack row above the accuracy row |
 
 ## Commands
 
 Every setting below can also be changed with the mouse: `//hud config parambar`
 opens the [settings window](../Home.md#settings-window) on this component,
-where the window length steps five seconds a click. (`accuracy reset` is an
-action rather than a setting, so it is not there.)
+where the window length steps five seconds a click. (`accuracy reset` and
+`multiattack reset` are actions rather than settings, so they are not there.)
 
 | Command | What it does |
 | --- | --- |
-| `//hud parambar` | print the compact and accuracy state, with the window length |
+| `//hud parambar` | print the compact, accuracy and multi-attack state, with the window length |
 | `//hud parambar compact on\|off` | switch compact mode |
 | `//hud parambar accuracy` | print the row's state, window and current reading |
 | `//hud parambar accuracy on\|off` | show or hide the accuracy row |
 | `//hud parambar accuracy reset` | empty the window and start a fresh count |
 | `//hud parambar accuracy window <seconds>` | set how much history the row counts (1 to 600) |
+| `//hud parambar multiattack` | print the multi-attack row's state and current reading |
+| `//hud parambar multiattack on\|off` | show or hide the multi-attack row |
+| `//hud parambar multiattack reset` | start the multi-attack count over |

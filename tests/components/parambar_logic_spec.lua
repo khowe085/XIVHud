@@ -307,14 +307,14 @@ describe("parambar logic", function()
   describe("geometry", function()
     it("lays the bars and numbers out against the background frame", function()
       local geometry = logic.geometry(100, 200, 1)
-      assert.are.same({ x = 100, y = 217, width = 472, height = 24 }, geometry.background)
+      assert.are.same({ x = 100, y = 230, width = 472, height = 24 }, geometry.background)
       assert.are.equal(115, geometry.bars[1].x)
-      assert.are.equal(219, geometry.bars[1].y)
+      assert.are.equal(232, geometry.bars[1].y)
       assert.are.equal(8, geometry.bars[1].height)
       assert.are.equal(275, geometry.bars[2].x)
       assert.are.equal(435, geometry.bars[3].x)
       assert.are.equal(165, geometry.texts[1].x)
-      assert.are.equal(219, geometry.texts[1].y)
+      assert.are.equal(232, geometry.texts[1].y)
       assert.are.equal(330, geometry.texts[2].x)
       assert.are.equal(490, geometry.texts[3].x)
       assert.are.equal(14, geometry.font_size)
@@ -329,9 +329,9 @@ describe("parambar logic", function()
 
     it("multiplies every offset, size and font by the scale", function()
       local geometry = logic.geometry(100, 200, 2)
-      assert.are.same({ x = 100, y = 235, width = 944, height = 48 }, geometry.background)
+      assert.are.same({ x = 100, y = 260, width = 944, height = 48 }, geometry.background)
       assert.are.equal(130, geometry.bars[1].x)
-      assert.are.equal(239, geometry.bars[1].y)
+      assert.are.equal(264, geometry.bars[1].y)
       assert.are.equal(16, geometry.bars[1].height)
       assert.are.equal(230, geometry.texts[1].x)
       assert.are.equal(28, geometry.font_size)
@@ -341,11 +341,11 @@ describe("parambar logic", function()
       assert.are.equal(18, logic.geometry(0, 0, 1.25).font_size)
     end)
 
-    -- With the accuracy row on, the box covers the row as well as the frame;
-    -- the plain frame bounds are pinned under "accuracy geometry" below.
-    it("reports bounds covering the frame and the row above it", function()
-      assert.are.same({ 100, 200, 499, 41 }, { logic.bounds(100, 200, 1) })
-      assert.are.same({ 100, 200, 747.5, 62 }, { logic.bounds(100, 200, 1.5) })
+    -- With both rows on, the box covers the rows as well as the frame; the
+    -- plain frame bounds are pinned under "accuracy geometry" below.
+    it("reports bounds covering the frame and the rows above it", function()
+      assert.are.same({ 100, 200, 499, 54 }, { logic.bounds(100, 200, 1) })
+      assert.are.same({ 100, 200, 747.5, 81 }, { logic.bounds(100, 200, 1.5) })
     end)
 
     it("scales the eased fill width too", function()
@@ -470,12 +470,12 @@ describe("parambar logic", function()
   describe("accuracy geometry", function()
     it("stands the row above the bars and pushes the frame down by it", function()
       local geometry = logic.geometry(100, 200, 1)
-      assert.are.equal(200, geometry.accuracy.y)
+      assert.are.equal(212, geometry.accuracy.y)
       assert.are.equal(8, geometry.accuracy.font_size)
       -- The frame, the fills and the numbers all sit below the row.
-      assert.are.equal(217, geometry.background.y)
-      assert.are.equal(219, geometry.bars[1].y)
-      assert.are.equal(219, geometry.texts[1].y)
+      assert.are.equal(230, geometry.background.y)
+      assert.are.equal(232, geometry.bars[1].y)
+      assert.are.equal(232, geometry.texts[1].y)
     end)
 
     -- The row starts where the TP bar starts, since that is the bar it is
@@ -563,11 +563,12 @@ describe("parambar logic", function()
     it("scales the row with everything else", function()
       local geometry = logic.geometry(100, 200, 2)
       assert.are.equal(16, geometry.accuracy.font_size)
-      assert.are.equal(235, geometry.background.y)
+      assert.are.equal(260, geometry.background.y)
     end)
 
     it("takes the row out of the geometry entirely when it is off", function()
       config.accuracy.enabled = false
+      config.multi_attack = false
       local geometry = logic.geometry(100, 200, 1)
       assert.is_nil(geometry.accuracy)
       assert.is_nil(geometry.reset_button)
@@ -578,7 +579,7 @@ describe("parambar logic", function()
     it("reports bounds that cover the row as well as the frame", function()
       local x, y, width, height = logic.bounds(100, 200, 1)
       assert.are.same({ 100, 200 }, { x, y })
-      assert.are.equal(41, height)
+      assert.are.equal(54, height)
       -- The line outreaches the bar art once the delay is on the end of it.
       assert.are.equal(499, width)
     end)
@@ -605,7 +606,172 @@ describe("parambar logic", function()
 
     it("reports the plain frame bounds when the row is off", function()
       config.accuracy.enabled = false
+      config.multi_attack = false
       assert.are.same({ 100, 200, 472, 24 }, { logic.bounds(100, 200, 1) })
+    end)
+  end)
+
+  --[[ `Multi. Attk: 30% (3/10)` above the accuracy row: the share of this
+       fight's rounds that carried an extra attack. Its own switch, the
+       accuracy row's font and measurements, the whole fight's rounds. ]]
+  describe("multi-attack row", function()
+    -- One round of { message, animation } pairs.
+    local function round(pairs_, at)
+      local actions = {}
+      for index, entry in ipairs(pairs_) do
+        actions[index] = { message = entry[1], animation = entry[2] }
+      end
+      logic.on_action({ actor_id = 7, targets = { { id = 99, actions = actions } } }, 7, at or 0)
+    end
+
+    it("reads the share of rounds with an extra attack", function()
+      round({ { 1, 0 }, { 1, 0 } }, 0)
+      round({ { 1, 0 } }, 3)
+      round({ { 1, 0 }, { 1, 1 } }, 6)
+      assert.are.equal("Multi. Attk: 33% (1/3)", logic.tick(6).multi_attack.text)
+    end)
+
+    it("says so plainly before a round has landed", function()
+      assert.are.equal("Multi. Attk: --% (0/0)", logic.tick(0).multi_attack.text)
+    end)
+
+    -- The count runs for the whole engagement and starts over on the next
+    -- one (Kevin, 2026-11-08), so the last fight's figure stays up while idle.
+    it("starts over when the player engages, and keeps the figure while idle", function()
+      logic.set_status(1)
+      round({ { 1, 0 }, { 1, 0 } }, 0)
+      logic.set_status(0)
+      assert.are.equal("Multi. Attk: 100% (1/1)", logic.tick(500).multi_attack.text)
+      logic.set_status(1)
+      assert.are.equal("Multi. Attk: --% (0/0)", logic.tick(500).multi_attack.text)
+    end)
+
+    it("keeps counting while the player stays engaged", function()
+      logic.set_status(1)
+      round({ { 1, 0 }, { 1, 0 } }, 0)
+      logic.set_status(1)
+      assert.are.equal("Multi. Attk: 100% (1/1)", logic.tick(0).multi_attack.text)
+    end)
+
+    it("hears no status from a player the client has not filled in", function()
+      logic.set_status(0)
+      round({ { 1, 0 }, { 1, 0 } }, 0)
+      logic.set_status(nil)
+      logic.set_status(1)
+      assert.are.equal("Multi. Attk: --% (0/0)", logic.tick(0).multi_attack.text)
+    end)
+
+    -- The first status after a `//lua reload` says nothing about a fight
+    -- having started.
+    it("does not start over on the first status it hears", function()
+      round({ { 1, 0 }, { 1, 0 } }, 0)
+      logic.set_status(1)
+      assert.are.equal("Multi. Attk: 100% (1/1)", logic.tick(0).multi_attack.text)
+    end)
+
+    it("pushes the line only on the frames its text changes", function()
+      round({ { 1, 0 } })
+      assert.is_true(logic.tick(0).multi_attack.dirty)
+      assert.is_false(logic.tick(0).multi_attack.dirty)
+      round({ { 1, 0 }, { 1, 0 } })
+      assert.is_true(logic.tick(0).multi_attack.dirty)
+    end)
+
+    it("shows a sample while previewing", function()
+      logic.set_preview(true)
+      assert.are.equal("Multi. Attk: 30% (3/10)", logic.tick(0).multi_attack.text)
+    end)
+
+    it("ships on, and answers whether it is drawn", function()
+      assert.is_true(logic.multi_attack_enabled())
+      config.multi_attack = false
+      assert.is_false(logic.multi_attack_enabled())
+    end)
+
+    -- The framework's rule for a switch: a broken file must not turn it on.
+    it("is off for anything but true", function()
+      config.multi_attack = "yes"
+      assert.is_false(logic.multi_attack_enabled())
+    end)
+
+    it("stands above the accuracy row, lined up with it", function()
+      local geometry = logic.geometry(100, 200, 1)
+      assert.are.equal(200, geometry.multi_attack.y)
+      assert.are.equal(geometry.accuracy.x, geometry.multi_attack.x)
+      assert.are.equal(8, geometry.multi_attack.font_size)
+      local line_height = config.accuracy.font_size * config.accuracy.text_height_ratio
+      assert.is_true(geometry.accuracy.y >= geometry.multi_attack.y + line_height)
+    end)
+
+    --[[ `line_gap` is the clearance between the two rows, the knob for them
+         touching in a live client, as `bar_gap` is for the bar art. ]]
+    it("spaces the two rows apart by line_gap", function()
+      local before = logic.geometry(100, 200, 1)
+      config.accuracy.line_gap = 7
+      local after = logic.geometry(100, 200, 1)
+      assert.are.equal(before.accuracy.y + 5, after.accuracy.y)
+      assert.are.equal(before.background.y + 5, after.background.y)
+      assert.are.equal(before.multi_attack.y, after.multi_attack.y)
+    end)
+
+    -- A hand-edited negative gap must not lift the accuracy row onto the
+    -- multi-attack row, or past the origin `bounds` reports.
+    it("floors a negative line_gap at nothing", function()
+      local before = logic.geometry(100, 200, 1)
+      config.accuracy.line_gap = 0
+      local zero = logic.geometry(100, 200, 1)
+      config.accuracy.line_gap = -50
+      local negative = logic.geometry(100, 200, 1)
+      assert.are.equal(zero.accuracy.y, negative.accuracy.y)
+      assert.is_true(negative.accuracy.y > before.multi_attack.y)
+    end)
+
+    it("takes no line_gap with only one row drawn", function()
+      config.multi_attack = false
+      local before = logic.geometry(100, 200, 1).background.y
+      config.accuracy.line_gap = 7
+      assert.are.equal(before, logic.geometry(100, 200, 1).background.y)
+    end)
+
+    it("takes the accuracy row's place when that row is off", function()
+      config.accuracy.enabled = false
+      local geometry = logic.geometry(100, 200, 1)
+      assert.is_nil(geometry.accuracy)
+      assert.are.equal(200, geometry.multi_attack.y)
+      assert.are.equal(217, geometry.background.y)
+      -- The counts' reservation runs past the 472 of the bar art.
+      assert.are.same({ 100, 200, 493, 41 }, { logic.bounds(100, 200, 1) })
+    end)
+
+    it("leaves the accuracy row where it was when switched off", function()
+      config.multi_attack = false
+      local geometry = logic.geometry(100, 200, 1)
+      assert.is_nil(geometry.multi_attack)
+      assert.are.equal(200, geometry.accuracy.y)
+      assert.are.equal(217, geometry.background.y)
+      assert.are.same({ 100, 200, 499, 41 }, { logic.bounds(100, 200, 1) })
+    end)
+
+    it("scales with everything else", function()
+      local geometry = logic.geometry(100, 200, 2)
+      assert.are.equal(16, geometry.multi_attack.font_size)
+      assert.are.equal(225, geometry.accuracy.y)
+    end)
+
+    -- Drives the real formatter to its widest line, so the reservation and
+    -- the format string cannot drift apart.
+    it("reserves room for the longest line the formatter can produce", function()
+      for _ = 1, 9999 do
+        round({ { 1, 0 }, { 1, 0 } })
+      end
+      local line = logic.tick(0).multi_attack.text
+      assert.are.equal("Multi. Attk: 100% (9999/9999)", line)
+      config.accuracy.enabled = false
+      config.accuracy.offset = 200
+      local geometry = logic.geometry(100, 200, 1)
+      local drawn = #line * config.accuracy.font_size * config.accuracy.text_width_ratio
+      local right = select(3, logic.bounds(100, 200, 1)) + 100
+      assert.is_true(geometry.multi_attack.x + drawn <= right)
     end)
   end)
 
@@ -746,6 +912,62 @@ describe("parambar logic", function()
 
     it("names accuracy among the settings it does know", function()
       assert.is_not_nil(logic.command({ "wobble" }):find("accuracy", 1, true))
+    end)
+
+    it("switches the multi-attack row on and off", function()
+      local message, changed = logic.command({ "multiattack", "off" })
+      assert.is_true(changed)
+      assert.is_false(config.multi_attack)
+      assert.is_not_nil(message:lower():find("off"))
+      assert.is_true(select(2, logic.command({ "MultiAttack", "ON" })))
+      assert.is_true(config.multi_attack)
+    end)
+
+    it("reports the multi-attack row when given no argument", function()
+      local message, changed = logic.command({ "multiattack" })
+      assert.is_false(changed)
+      assert.is_not_nil(message:find("Multi. Attk: --% (0/0)", 1, true))
+      assert.is_not_nil(message:find("on", 1, true))
+    end)
+
+    it("refuses anything but on, off or reset for the multi-attack row", function()
+      local message, changed = logic.command({ "multiattack", "maybe" })
+      assert.is_false(changed)
+      assert.is_not_nil(message:find("maybe", 1, true))
+      assert.is_not_nil(message:find("reset", 1, true))
+      assert.is_true(config.multi_attack)
+    end)
+
+    local function round(pairs_)
+      local actions = {}
+      for index, entry in ipairs(pairs_) do
+        actions[index] = { message = entry[1], animation = entry[2] }
+      end
+      logic.on_action({ actor_id = 7, targets = { { id = 99, actions = actions } } }, 7, 0)
+    end
+
+    it("starts the multi-attack count over on its own reset, and nothing else", function()
+      round({ { 1, 0 }, { 1, 0 } })
+      local message, changed = logic.command({ "multiattack", "reset" })
+      assert.is_false(changed)
+      assert.is_not_nil(message:lower():find("reset", 1, true))
+      local plan = logic.tick(0)
+      assert.are.equal("Multi. Attk: --% (0/0)", plan.multi_attack.text)
+      assert.is_not_nil(plan.accuracy.text:find("(2/2)", 1, true))
+    end)
+
+    it("leaves the multi-attack count alone on the accuracy reset", function()
+      round({ { 1, 0 }, { 1, 0 } })
+      logic.command({ "accuracy", "reset" })
+      assert.are.equal("Multi. Attk: 100% (1/1)", logic.tick(0).multi_attack.text)
+    end)
+
+    it("reports the multi-attack row in the status line", function()
+      assert.is_not_nil(logic.command({}):find("multiattack on", 1, true))
+    end)
+
+    it("names multiattack among the settings it does know", function()
+      assert.is_not_nil(logic.command({ "wobble" }):find("multiattack", 1, true))
     end)
 
     it("hints instead of staying silent on an unknown verb", function()

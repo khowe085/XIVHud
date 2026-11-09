@@ -280,4 +280,177 @@ describe("parambar accuracy", function()
       assert.are.equal(0, accuracy.sample(0).swings)
     end)
   end)
+
+  --[[ The share of rounds that carried more attacks than the weapons alone
+       swing: more than one single-wield, more than two dual-wield. Whether a
+       round was dual-wield is read off the packet itself - an off-hand swing
+       (`animation` 1) in it - so nothing reads the equipment. ]]
+  describe("multi-attack rounds", function()
+    -- One round of { message, animation } pairs.
+    local function swung(pairs_, at, category)
+      local actions = {}
+      for index, entry in ipairs(pairs_) do
+        actions[index] = { message = entry[1], animation = entry[2] }
+      end
+      accuracy.on_action(
+        { actor_id = 1, category = category, targets = { { id = 99, actions = actions } } },
+        1,
+        at or 0
+      )
+    end
+
+    local MELEE = 1
+
+    local MAIN, OFF = 0, 1
+
+    it("has no percentage before a round has landed", function()
+      local sample = accuracy.sample(0)
+      assert.are.equal(0, sample.rounds)
+      assert.is_nil(sample.multi_percent)
+    end)
+
+    it("counts a single-wield round of two attacks as a multi-attack", function()
+      swung({ { 1, MAIN }, { 1, MAIN } })
+      local sample = accuracy.sample(0)
+      assert.are.equal(1, sample.rounds)
+      assert.are.equal(1, sample.multi_rounds)
+      assert.are.equal(100, sample.multi_percent)
+    end)
+
+    it("does not count a single-wield round of one attack", function()
+      swung({ { 1, MAIN } })
+      assert.are.equal(0, accuracy.sample(0).multi_percent)
+    end)
+
+    it("does not count a dual-wield round of its two ordinary attacks", function()
+      swung({ { 1, MAIN }, { 15, OFF } })
+      assert.are.equal(0, accuracy.sample(0).multi_rounds)
+    end)
+
+    it("counts a dual-wield round of three attacks", function()
+      swung({ { 1, MAIN }, { 1, MAIN }, { 1, OFF } })
+      assert.are.equal(1, accuracy.sample(0).multi_rounds)
+    end)
+
+    -- Every swing is an attack, whatever became of it: a parried extra
+    -- attack was still an extra attack.
+    it("counts a swing that was neither a hit nor a miss as an attack", function()
+      swung({ { 1, MAIN }, { 70, MAIN } })
+      assert.are.equal(1, accuracy.sample(0).multi_rounds)
+    end)
+
+    -- Outside a melee packet, a hit or a miss is the only proof the packet
+    -- was a round at all: a spell's messages and animations are not swings.
+    it("ignores a packet with no hit or miss in it that is not a melee round", function()
+      swung({ { 70, MAIN }, { 32, MAIN } })
+      swung({ { 230, 12 } }, 0, 4)
+      assert.are.equal(0, accuracy.sample(0).rounds)
+    end)
+
+    -- A single swing is parried or absorbed more often than every swing of
+    -- a multi-attack is, so leaving such rounds out would inflate the share.
+    it("judges a melee round whose every swing was parried", function()
+      swung({ { 70, MAIN } }, 0, MELEE)
+      swung({ { 70, MAIN }, { 31, MAIN } }, 3, MELEE)
+      local sample = accuracy.sample(3)
+      assert.are.equal(2, sample.rounds)
+      assert.are.equal(1, sample.multi_rounds)
+      assert.are.equal(50, sample.multi_percent)
+    end)
+
+    it("leaves a parried melee round out of the accuracy and the delay", function()
+      swung({ { 1, MAIN } }, 0, MELEE)
+      swung({ { 70, MAIN } }, 1, MELEE)
+      swung({ { 1, MAIN } }, 3, MELEE)
+      local sample = accuracy.sample(3)
+      assert.are.equal(2, sample.swings)
+      assert.are.equal(3, sample.delay)
+    end)
+
+    -- The share covers the whole fight rather than the accuracy window
+    -- (Kevin, 2026-11-08): thirty seconds is too few rounds to say much.
+    it("keeps every round past the accuracy window", function()
+      swung({ { 1, MAIN }, { 1, MAIN } }, 0)
+      swung({ { 70, MAIN } }, 20, MELEE)
+      swung({ { 1, MAIN } }, 40)
+      local sample = accuracy.sample(500)
+      assert.are.equal(3, sample.rounds)
+      assert.are.equal(1, sample.multi_rounds)
+      assert.are.equal(0, sample.swings)
+    end)
+
+    it("starts the share over on a new fight, and nothing else", function()
+      swung({ { 1, MAIN }, { 1, MAIN } }, 0)
+      accuracy.new_fight()
+      swung({ { 1, MAIN } }, 3)
+      local sample = accuracy.sample(3)
+      assert.are.equal(1, sample.rounds)
+      assert.are.equal(0, sample.multi_rounds)
+      assert.are.equal(3, sample.swings)
+      assert.are.equal(3, sample.delay)
+    end)
+
+    it("takes the share of rounds, rounded to a whole percent", function()
+      swung({ { 1, MAIN }, { 1, MAIN } }, 0)
+      swung({ { 1, MAIN } }, 3)
+      swung({ { 1, MAIN } }, 6)
+      assert.are.equal(33, accuracy.sample(6).multi_percent)
+    end)
+
+    it("rounds the share half up", function()
+      swung({ { 1, MAIN }, { 1, MAIN } }, 0)
+      swung({ { 1, MAIN }, { 1, MAIN } }, 3)
+      swung({ { 1, MAIN } }, 6)
+      assert.are.equal(67, accuracy.sample(6).multi_percent)
+    end)
+
+    --[[ Out by decision (Kevin, 2026-11-08): a Kick Attack and a Daken are
+         extra swings in the round but not multi-attacks, so only the hand
+         swings are counted. ]]
+    it("does not count a kick or a Daken as an extra attack", function()
+      local RIGHT_KICK, LEFT_KICK, DAKEN = 2, 3, 4
+      swung({ { 1, MAIN }, { 1, OFF }, { 1, RIGHT_KICK } }, 0)
+      swung({ { 1, MAIN }, { 1, LEFT_KICK } }, 3)
+      swung({ { 1, MAIN }, { 1, OFF }, { 1, DAKEN } }, 6)
+      local sample = accuracy.sample(6)
+      assert.are.equal(3, sample.rounds)
+      assert.are.equal(0, sample.multi_rounds)
+    end)
+
+    -- Footwork turns the hand swings into kicks: such a round says nothing
+    -- about multi-attack either way, so it is left out of the share.
+    it("leaves a round of kicks alone out of the share", function()
+      swung({ { 1, 2 }, { 1, 3 } }, 0)
+      swung({ { 1, MAIN }, { 1, MAIN } }, 3)
+      local sample = accuracy.sample(3)
+      assert.are.equal(1, sample.rounds)
+      assert.are.equal(100, sample.multi_percent)
+    end)
+
+    -- A swing the packet gives no animation for is a hand swing: an absent
+    -- field must not silently empty the row.
+    it("counts a swing with no animation as a hand swing", function()
+      swung({ { 1 }, { 1 } })
+      assert.are.equal(1, accuracy.sample(0).multi_rounds)
+    end)
+
+    -- Zanshin repeats a swing in the same round on the main hand, so it
+    -- reads as an extra attack - the repo's own definition counts it as one
+    -- (docs/ffxi-mechanics.md).
+    it("counts a Zanshin repeat as an extra attack", function()
+      swung({ { 15, MAIN }, { 1, MAIN } })
+      assert.are.equal(1, accuracy.sample(0).multi_rounds)
+    end)
+
+    -- Its own reset (Kevin, 2026-11-08): emptying the accuracy window
+    -- leaves the fight's share alone.
+    it("is not emptied with the window", function()
+      swung({ { 1, MAIN }, { 1, MAIN } })
+      accuracy.reset()
+      local sample = accuracy.sample(0)
+      assert.are.equal(1, sample.rounds)
+      assert.are.equal(100, sample.multi_percent)
+      assert.are.equal(0, sample.swings)
+    end)
+  end)
 end)
