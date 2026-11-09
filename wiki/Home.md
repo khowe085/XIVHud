@@ -104,7 +104,7 @@ Components can also be switched from the console: `//hud hide giltracker`,
 | --- | --- | --- | --- |
 | [Crossbar](components/crossbar.md) | `cb` | yes | FFXIV's cross hotbar: sixteen slots per set, driven by held keys, or a controller through Steam Input |
 | [Hotbar](components/hotbar.md) | `hb` | yes (row 1) | FFXIV's hotbar: ten slots in a row on the number keys, up to eight rows, with the same kinds of binding and the same commands as the crossbar |
-| [Parameter bar](components/parambar.md) | `pb` | yes | HP, MP and TP bars with numbers |
+| [Parameter bar](components/parambar.md) | `pb` | yes | HP, MP and TP bars with numbers, plus melee accuracy and multi-attack rows |
 | [Party list](components/partylist.md) | `pl` | yes (main party) | your party (HP/MP/TP, jobs, buffs, distance) and both alliance parties (HP and MP) |
 | [Target bar](components/targetbar.md) | `tb` | yes | your target's HP, name, distance and cast bar, plus smaller copies for the subtarget cursor and a focus target |
 | [Status bar](components/statusbar.md) | `sb` | yes (bar 1) | your buffs and debuffs as icons with timers |

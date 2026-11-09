@@ -656,9 +656,16 @@ starts it over by hand and a logout clears it; `accuracy reset` does NOT
 Kevin's call, so an existing bar drops about 13px on upgrade, 17px where the
 accuracy row was off - nothing migrates) and shares the accuracy row's font,
 offset and ratios, with `accuracy.line_gap` (2) between the two rows; it
-stands above that row, or in its place when that row is off. **Unverified in a
-live client**: the `animation` numbering (LandSandBoat's) and whether the two
-rows touch, which is what `line_gap` is for. A hand-broken `accuracy` block
+stands above that row, or in its place when that row is off. **Single wield is
+confirmed in a live client** (Kevin, 2026-11-08, RDM with Double Attack +32 and
+Triple Attack +2 from gear, about 110 rounds each): 31% against 33% predicted
+without Temper II, 59% and 57% against 57% with it at 645 and 656 Enhancing -
+which also shows a main-hand swing is never `animation` 1, or every Double
+Attack round would have read as a dual-wield baseline. **Unverified**: that an
+off-hand swing IS `animation` 1 (no dual-wield run yet; if it is not, every
+dual-wield round of two reads as a multi-attack and the row sits near 100%),
+kicks and Daken as 2/3/4, and whether the two rows touch, which is what
+`line_gap` is for. A hand-broken `accuracy` block
 leaves it drawn at font size 0, the block's metrics being unreadable.
 
 `accuracy reset` is the ONLY way to empty the accuracy window. The accuracy

@@ -21,7 +21,8 @@ the number beside each, sitting at the bottom centre of the screen.
   over the last thirty seconds, with your measured attack delay on the end;
   `//hud parambar accuracy reset` starts a fresh count.
 - A **multi-attack** row above that - how often your rounds carried an extra
-  attack, over the whole fight.
+  attack, over the whole fight; it starts over when you engage, and
+  `//hud parambar multiattack reset` starts it over by hand.
 
 ## The accuracy row
 
@@ -85,11 +86,11 @@ an off-hand swing, so nothing reads your gear.
 It counts the **whole fight**, not the accuracy row's thirty seconds, which is
 too few rounds to say much. The count starts over each time you go from not
 engaged to engaged, and the last fight's figure stays on screen until then -
-so if you stay engaged from one mob to the next, it keeps counting. `//hud parambar
-multiattack reset` starts it over by hand - `accuracy reset` leaves it alone -
-and logging out clears it. Buffs that add attacks - a COR Trust's Double Attack, an
-Aftermath - show up in it, which is the point, but remember them when you read
-it.
+so if you stay engaged from one mob to the next, it keeps counting.
+`//hud parambar multiattack reset` starts it over by hand - `accuracy reset`
+leaves it alone - and logging out clears it. The count keeps running while the
+row is off. Buffs that add attacks - a COR Trust's Double Attack, an Aftermath
+- show up in it, which is the point, but remember them when you read it.
 
 Every hand swing counts, parried or not. A Kick Attack or a Daken is not a
 multi-attack and is left out (a Zanshin repeat is one, and counts), and a
@@ -98,6 +99,27 @@ whose every swing was parried or hit a shadow still counts - leaving those out
 would make the figure read high, since one swing is stopped more often than
 two. A round that kills the target on its first swing ends there, so on fast
 kills the figure reads a little low.
+
+**Reading it.** The figure is the share of rounds with *any* extra attack, not
+how many extra attacks you got. Triple Attack is checked before Double Attack,
+so with Triple Attack `t` and Double Attack `d` the share works out to
+`t + (1 - t) x d`. A Triple Attack round is one multi-attack round, the same as
+a Double Attack round, so adding Triple Attack raises the share by less than
+its own rate. Checked in game on a single-wield RDM with Double Attack +32% and
+Triple Attack +2% from gear, about 110 rounds each:
+
+| Buffs | Predicted | Measured |
+| --- | --- | --- |
+| none | 33% | 31% |
+| Temper II at 645 Enhancing (Triple Attack +34%) | 57% | 59% |
+| Temper II at 656 Enhancing (Triple Attack +35%) | 57% | 57% |
+
+At about 110 rounds the figure is good to roughly five points either way;
+fewer rounds, and it wanders more.
+
+**Dual wield has not been checked in game yet.** If the off-hand swing is not
+reported the way the row expects, a dual-wield round of two would read as a
+multi-attack and the figure would sit near 100%.
 
 It reads `--% (0/0)` until a round has landed, and shares the accuracy row's
 font and placement; with the accuracy row off it takes that row's place.
@@ -130,7 +152,7 @@ it. A `bar` or `compact_bar` block left in an older `config.lua` is ignored.
 | `low_hp_colors` | yellow / orange / red | HP number colour under 75% / 50% / 25% |
 | `low_mp_colors` | yellow / orange / red | the same for MP |
 | `accuracy.enabled` | `true` | draw the accuracy row above the TP bar |
-| `accuracy.window_seconds` | `30` | how many seconds of swings the row counts (1 to 600) |
+| `accuracy.window_seconds` | `30` | how many seconds of swings the accuracy row counts (1 to 600); the multi-attack row counts the whole fight instead |
 | `accuracy.font_size` | `8` | font size for both rows - smaller than the numbers |
 | `accuracy.bar_gap` | `7` | clearance between the row and the bars - raise it if the line sits on the bar art |
 | `accuracy.line_gap` | `2` | clearance between the multi-attack row and the accuracy row - raise it if the two touch |
