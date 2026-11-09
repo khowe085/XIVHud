@@ -162,6 +162,21 @@ describe("crossbar catalog", function()
       assert.is_true(has(built, "Black Magic", "Stone"), "the sub's own spell")
     end)
 
+    it("leaves out a spell the resources mark unlearnable, known or not", function()
+      local res = resources()
+      res.spells[363] = { id = 363, en = "Sleepga", type = "BlackMagic", levels = { [4] = 31 }, unlearnable = true }
+      local spells = { [1] = true, [363] = true }
+      local catalog = build({ resources = res, spells = spells })
+      assert.is_false(has(catalog.build(), "Black Magic", "Sleepga"))
+    end)
+
+    it("keeps Dispelga, unlearnable in the resources but cast off the Daybreak club", function()
+      local res = resources()
+      res.spells[360] = { id = 360, en = "Dispelga", type = "BlackMagic", levels = { [20] = 99 }, unlearnable = true }
+      local catalog = build({ resources = res, spells = { [360] = true } })
+      assert.is_true(has(catalog.build(), "Black Magic", "Dispelga"))
+    end)
+
     it("includes a spell inside the main job's level but past the sub's", function()
       local catalog = build()
       assert.is_true(has(catalog.build(), "Black Magic", "Stone III"))

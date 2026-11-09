@@ -864,15 +864,11 @@ local function new(deps)
     if facts.tp_cost ~= nil and facts.tp_cost ~= 0 then
       lines[#lines + 1] = "TP " .. tostring(facts.tp_cost)
     end
+    if facts.cast_time ~= nil then
+      lines[#lines + 1] = "cast: " .. tostring(facts.cast_time) .. "s"
+    end
     if facts.recast ~= nil then
-      -- What is LEFT, not what the action costs: a bare "0s" would read as
-      -- "no cooldown" on an ability that has a long one and is simply up.
-      local recast = tonumber(facts.recast)
-      if recast ~= nil and recast <= 0 then
-        lines[#lines + 1] = "recast: ready"
-      else
-        lines[#lines + 1] = "recast: " .. tostring(facts.recast) .. "s left"
-      end
+      lines[#lines + 1] = "recast: " .. tostring(facts.recast) .. "s"
     end
     if facts.property ~= nil then
       local property = facts.property
@@ -1814,8 +1810,9 @@ local function new(deps)
   end
 
   --- Rebuild the resting details column from the target it was already on:
-  --- a recast counts down whether or not the cursor moves. Called on the
-  --- widget's own read cadence, never per frame.
+  --- a job or buff change can rewrite what a slot resolves to whether or not
+  --- the cursor moves. Called on the widget's own read cadence, never per
+  --- frame.
   function self.refresh_details()
     -- Never mid-gesture: a drag owns the cursor, and the details it stood
     -- down stay down until the drop resolves.

@@ -51,6 +51,7 @@ local new_travel = require("lib/actionbar/travel")
 local new_enchanteditem = require("lib/actionbar/enchanteditem")
 local enchanted = require("lib/actionbar/enchanted")
 local counters = require("lib/actionbar/counters")
+local learnable = require("lib/actionbar/learnable")
 local new_warp = require("lib/warp")
 local new_roulette = require("lib/roulette")
 local new_skillchain = require("lib/skillchain")
@@ -178,7 +179,17 @@ local function new(deps)
 
   --[[ Resource name lookups, indexed lazily by lowercased English name; the
        items table alone is tens of thousands of entries, so nothing walks it
-       until something actually needs it. ]]
+       until something actually needs it. An entry no player can use is never
+       indexed (lib/actionbar/learnable). Where a name still belongs to more
+       than one entry the lower id wins, so pairs order decides nothing. The
+       bars resolve names through this, so a slot's recast and art and the
+       queue's hold read one entry. ]]
+  local function outranks(entry, held)
+    if not learnable.usable(entry) then
+      return false
+    end
+    return held == nil or (tonumber(entry.id) or math.huge) < (tonumber(held.id) or math.huge)
+  end
   local name_indexes = {}
   function self.find_resource(table_name, name)
     if resources == nil or type(name) ~= "string" then
@@ -189,7 +200,10 @@ local function new(deps)
       index = {}
       for _, entry in pairs(resources[table_name] or {}) do
         if type(entry) == "table" and type(entry.en) == "string" then
-          index[entry.en:lower()] = entry
+          local key = entry.en:lower()
+          if outranks(entry, index[key]) then
+            index[key] = entry
+          end
         end
       end
       name_indexes[table_name] = index

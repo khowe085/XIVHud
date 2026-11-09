@@ -174,26 +174,9 @@ local function new(deps)
     })
   end
 
-  --[[ Resource name lookups, indexed lazily by lowercased English name; the
-       items table alone is tens of thousands of entries, so nothing walks it
-       until something actually needs it. ]]
-  local name_indexes = {}
-  local function resource_by_name(table_name, key)
-    if resources == nil or type(key) ~= "string" then
-      return nil
-    end
-    local index = name_indexes[table_name]
-    if index == nil then
-      index = {}
-      for _, entry in pairs(resources[table_name] or {}) do
-        if type(entry) == "table" and type(entry.en) == "string" then
-          index[entry.en:lower()] = entry
-        end
-      end
-      name_indexes[table_name] = index
-    end
-    return index[key:lower()]
-  end
+  -- One name index for every bar and the queue, so a slot's recast and art
+  -- cannot read a different entry from the one the queue holds on.
+  local resource_by_name = service.find_resource
 
   -- The weapon type a weaponskill resource belongs to, by its own `skill`.
   local function weapon_type_of(ws)
@@ -225,6 +208,8 @@ local function new(deps)
           kind = "spell",
           spell_id = spell.id,
           recast_id = spell.recast_id,
+          cast_time = spell.cast_time,
+          recast = spell.recast,
           mp_cost = spell.mp_cost,
           category = display_category(spell.type),
         }
@@ -675,9 +660,10 @@ local function new(deps)
       spell_recasts = ctx.get_spell_recasts ~= nil and ctx.get_spell_recasts() or {},
       ability_recasts = ctx.get_ability_recasts ~= nil and ctx.get_ability_recasts() or {},
     }
-    -- The binder's details column reads its recast from these, so it is
-    -- rebuilt on the same cadence rather than per frame - and only in edit
-    -- mode, the only place anything describes an action.
+    -- A job or buff change can rewrite what a resting cursor's slot resolves
+    -- to, so the binder's details column is rebuilt on the same cadence
+    -- rather than per frame - and only in edit mode, the only place anything
+    -- describes an action.
     if editing() then
       binder.refresh_details()
     end
@@ -845,8 +831,8 @@ local function new(deps)
       return candidate ~= nil and ctx.asset(candidate.path) or nil
     end,
     --[[ Tooltips carry only what the bar already knows - no game
-         description text. The recast reads ride the tick's cache when it
-         has one, falling back to a live read rather than an empty table. ]]
+         description text. The cast and recast times are the resource's base
+         figures, before Fast Cast or haste, and only a spell carries them. ]]
     describe = function(record)
       local meta = meta_for(record)
       local facts = {
@@ -857,14 +843,8 @@ local function new(deps)
       if meta ~= nil then
         facts.mp_cost = meta.mp_cost
         facts.tp_cost = meta.tp_cost
-        local spell_recasts = reads ~= nil and reads.spell_recasts
-          or (ctx.get_spell_recasts ~= nil and ctx.get_spell_recasts())
-          or {}
-        local ability_recasts = reads ~= nil and reads.ability_recasts
-          or (ctx.get_ability_recasts ~= nil and ctx.get_ability_recasts())
-          or {}
-        local remaining = deps.render().remaining_for(meta, spell_recasts, ability_recasts)
-        facts.recast = math.floor(remaining + 0.5)
+        facts.cast_time = meta.cast_time
+        facts.recast = meta.recast
         if meta.ws_id ~= nil then
           facts.property = skillchain.properties(meta.ws_id, "weapon_skills")
         elseif meta.ability_id ~= nil then
