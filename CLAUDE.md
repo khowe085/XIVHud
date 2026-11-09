@@ -623,8 +623,9 @@ Parameter bar:
 //hud parambar multiattack [on|off]      -- the Multi. Attk row above it (ships on)
 ```
 
-`Multi. Attk: 30%` (Kevin, 2026-11-08) is the share of the ROUNDS in the
-accuracy window that carried an extra attack: more than one swing, or more than
+`Multi. Attk: 30% (3/10)` (Kevin, 2026-11-08) is the share of the ROUNDS of
+the current fight that carried an extra attack, with the rounds counted beside
+it (rounds, never swings): more than one swing, or more than
 two when the round holds an off-hand swing (`animation` 1, so dual wield is read
 off the packet and nothing reads the equipment; hand-to-hand reads as dual wield,
 which fits its two hits a round). Every HAND swing in the round counts - a
@@ -640,10 +641,19 @@ still the proof, so a wrong category constant falls back to that rather than
 killing the row, and a spell never counts. Such a round is not one to the
 delay or the accuracy, which keep their own rule. A round that kills on its
 first swing carries no more, so the share reads somewhat LOW on fast kills;
-nothing in the packet can say how many swings it would have had. It has its own switch
-(`multi_attack`, strictly `true`, shipped on by Kevin's call, so an existing bar drops about
-13px on upgrade, 17px where the accuracy row was off - nothing migrates) and shares the accuracy row's window, reset,
-font, offset and ratios, with `accuracy.line_gap` (2) between the two rows; it
+nothing in the packet can say how many swings it would have had. **It is not on
+the accuracy window** (Kevin, 2026-11-08): thirty seconds is eight or ten
+rounds, a step of ten points a round, and a first live test swung 15% to 70%
+on a COR Trust's Double Attack buff. It counts the whole engagement instead -
+two counters, nothing held per round - and starts over when the player's
+status next turns ENGAGED (1); the last fight's figure stays up while idle. The
+last status survives a re-attach, so a slot switch mid-fight is engaged to
+engaged and keeps the count; the first status after a `//lua reload` is no
+transition, and a nil status is ignored. `accuracy reset` clears
+it too. It has its own switch (`multi_attack`, strictly `true`, shipped on by
+Kevin's call, so an existing bar drops about 13px on upgrade, 17px where the
+accuracy row was off - nothing migrates) and shares the accuracy row's font,
+offset and ratios, with `accuracy.line_gap` (2) between the two rows; it
 stands above that row, or in its place when that row is off. **Unverified in a
 live client**: the `animation` numbering (LandSandBoat's) and whether the two
 rows touch, which is what `line_gap` is for. A hand-broken `accuracy` block

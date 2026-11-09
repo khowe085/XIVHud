@@ -391,7 +391,7 @@ describe("parambar widget", function()
 
     it("says so plainly before a round has landed", function()
       place()
-      assert.are.equal("Multi. Attk: --%", multi().last.text)
+      assert.are.equal("Multi. Attk: --% (0/0)", multi().last.text)
     end)
 
     it("reads the share of rounds with an extra attack off the action packet", function()
@@ -399,7 +399,26 @@ describe("parambar widget", function()
       round({ { 1, 0 }, { 1, 0 } })
       round({ { 1, 0 } })
       widget.update()
-      assert.are.equal("Multi. Attk: 50%", multi().last.text)
+      assert.are.equal("Multi. Attk: 50% (1/2)", multi().last.text)
+    end)
+
+    it("keeps the count through a re-attach mid-fight", function()
+      player.status = 1
+      place()
+      round({ { 1, 0 }, { 1, 0 } })
+      attach()
+      widget.update()
+      assert.are.equal("Multi. Attk: 100% (1/1)", multi().last.text)
+    end)
+
+    it("starts the count over when the player engages", function()
+      place()
+      player.status = 0
+      widget.update()
+      round({ { 1, 0 }, { 1, 0 } })
+      player.status = 1
+      widget.update()
+      assert.are.equal("Multi. Attk: --% (0/0)", multi().last.text)
     end)
 
     it("hides with the rest of the widget", function()

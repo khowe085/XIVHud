@@ -57,10 +57,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      already a swing. It only ever WIDENS the multi-attack share, below, so
      a wrong constant cannot kill that row either.
 
-     THE MULTI-ATTACK SHARE rides the same packets: the share of rounds in
-     the window that carried an extra hand swing. A round is judged when it
-     has a hit or a miss in it, or when it is a melee packet whose swings
-     were all parried or absorbed.
+     THE MULTI-ATTACK SHARE rides the same packets: the share of rounds that
+     carried an extra hand swing. A round is judged when it has a hit or a
+     miss in it, or when it is a melee packet whose swings were all parried
+     or absorbed. It is NOT pruned against the window: it counts the whole
+     fight, started over by `new_fight` (Kevin, 2026-11-08), since thirty
+     seconds is eight or ten rounds and a share of that few swung by ten
+     points a round. Two counters, so a long fight costs nothing to hold.
 
      THE SAMPLE IS SMALL and that is inherent: the shipped thirty seconds is
      eight or ten swings single-wield, and fifteen was four or five. The hit
@@ -130,14 +133,9 @@ local function new(config)
   local rounds = {}
   local rounds_head = 1
   local rounds_tail = 0
-  -- The rounds judged for multi-attack, oldest first, with whether each
-  -- carried an extra attack, and the tallies over the window. Their own
-  -- deque, since a melee round with no hit or miss in it is judged here but
-  -- is no round to the delay; a round with no hand swing (all kicks, under
-  -- Footwork) says nothing either way and is not judged at all.
-  local judged = {}
-  local judged_head = 1
-  local judged_tail = 0
+  -- The rounds judged for multi-attack this fight, and how many carried an
+  -- extra attack. A round with no hand swing (all kicks, under Footwork)
+  -- says nothing either way and is not judged at all.
   local multi_rounds = 0
   local judged_rounds = 0
   -- The last median, and the state it was computed from. `sample` is called
@@ -170,15 +168,24 @@ local function new(config)
     return MAX_WINDOW
   end
 
-  function self.reset()
+  local function reset_window()
     swings = {}
     head, tail = 1, 0
     hits, total = 0, 0
     rounds = {}
     rounds_head, rounds_tail = 1, 0
-    judged, judged_head, judged_tail = {}, 1, 0
-    multi_rounds, judged_rounds = 0, 0
     delay_cached, delay_state = nil, nil
+  end
+
+  -- Starts the multi-attack share over; the window is left alone.
+  function self.new_fight()
+    multi_rounds, judged_rounds = 0, 0
+  end
+
+  -- Empties everything, for the `accuracy reset` verb.
+  function self.reset()
+    reset_window()
+    self.new_fight()
   end
 
   local function record(hit, at)
@@ -232,11 +239,8 @@ local function new(config)
       rounds[rounds_tail] = now
     end
     if attacks > 0 and (counted > 0 or action.category == MELEE) then
-      local multi = attacks > (off_hand and 2 or 1)
-      judged_tail = judged_tail + 1
-      judged[judged_tail] = { at = now, multi = multi }
       judged_rounds = judged_rounds + 1
-      if multi then
+      if attacks > (off_hand and 2 or 1) then
         multi_rounds = multi_rounds + 1
       end
     end
@@ -258,18 +262,10 @@ local function new(config)
       rounds[rounds_head] = nil
       rounds_head = rounds_head + 1
     end
-    while judged_head <= judged_tail and now - judged[judged_head].at > window do
-      judged_rounds = judged_rounds - 1
-      if judged[judged_head].multi then
-        multi_rounds = multi_rounds - 1
-      end
-      judged[judged_head] = nil
-      judged_head = judged_head + 1
-    end
-    if head > tail and rounds_head > rounds_tail and judged_head > judged_tail then
+    if head > tail and rounds_head > rounds_tail then
       -- Emptied: start the arithmetic over rather than let the indices climb
       -- for the length of a session.
-      self.reset()
+      reset_window()
     end
   end
 

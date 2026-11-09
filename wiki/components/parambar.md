@@ -21,7 +21,7 @@ the number beside each, sitting at the bottom centre of the screen.
   over the last thirty seconds, with your measured attack delay on the end;
   `//hud parambar accuracy reset` starts a fresh count.
 - A **multi-attack** row above that - how often your rounds carried an extra
-  attack, over the same window.
+  attack, over the whole fight.
 
 ## The accuracy row
 
@@ -75,25 +75,35 @@ off, so switching it back on shows the full window rather than a fresh one.
 
 ## The multi-attack row
 
-`Multi. Attk: 30%` above the accuracy row: the share of your melee rounds in
-the accuracy window that carried an extra attack - more than one hand swing
-with one weapon, more than two when dual wielding (or fighting hand-to-hand,
-which swings twice a round). A round is dual wield when it holds an off-hand
-swing, so nothing reads your gear. Every hand swing counts, parried or not; a
-Kick Attack or a Daken is not a multi-attack and is left out (a Zanshin
-repeat is one, and counts), and a round of
-kicks alone (Footwork) is left out of the share altogether. A round whose every
-swing was parried or hit a shadow still counts - leaving those out would
-make the figure read high, since one swing is stopped more often than two. A round that kills the
-target on its first swing ends there, so on fast kills the figure reads a
-little low. It
-reads `--%`
-until a round has landed, and shares the accuracy row's window, reset, font
-and placement; with the accuracy row off it takes that row's place.
+`Multi. Attk: 30% (3/10)` above the accuracy row: the share of your melee
+rounds that carried an extra attack, and the rounds it was measured over -
+three of ten rounds, not attacks. An extra attack is more than one hand swing
+with one weapon, or more than two when dual wielding (or fighting
+hand-to-hand, which swings twice a round). A round is dual wield when it holds
+an off-hand swing, so nothing reads your gear.
+
+It counts the **whole fight**, not the accuracy row's thirty seconds, which is
+too few rounds to say much. The count starts over when you next engage, and
+the last fight's figure stays on screen until then; `//hud parambar accuracy
+reset` clears it too. Buffs that add attacks - a COR Trust's Double Attack, an
+Aftermath - show up in it, which is the point, but remember them when you read
+it.
+
+Every hand swing counts, parried or not. A Kick Attack or a Daken is not a
+multi-attack and is left out (a Zanshin repeat is one, and counts), and a
+round of kicks alone (Footwork) is left out of the share altogether. A round
+whose every swing was parried or hit a shadow still counts - leaving those out
+would make the figure read high, since one swing is stopped more often than
+two. A round that kills the target on its first swing ends there, so on fast
+kills the figure reads a little low.
+
+It reads `--% (0/0)` until a round has landed, and shares the accuracy row's
+font and placement; with the accuracy row off it takes that row's place.
 
 Turning it on or off moves the bars, as the accuracy row does - and because it
 ships on, an existing parameter bar drops about thirteen pixels the first time
-it loads with it (seventeen if the accuracy row was off). Drag it back in `//hud layout`.
+it loads with it (seventeen if the accuracy row was off). Drag it back in
+`//hud layout`.
 
 ## Configuration options
 

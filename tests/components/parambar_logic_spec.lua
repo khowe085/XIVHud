@@ -611,9 +611,9 @@ describe("parambar logic", function()
     end)
   end)
 
-  --[[ `Multi. Attk: 30%` above the accuracy row: the share of the rounds in
-       the accuracy window that carried an extra attack. Its own switch, the
-       accuracy row's window, font and measurements. ]]
+  --[[ `Multi. Attk: 30% (3/10)` above the accuracy row: the share of this
+       fight's rounds that carried an extra attack. Its own switch, the
+       accuracy row's font and measurements, the whole fight's rounds. ]]
   describe("multi-attack row", function()
     -- One round of { message, animation } pairs.
     local function round(pairs_, at)
@@ -628,11 +628,45 @@ describe("parambar logic", function()
       round({ { 1, 0 }, { 1, 0 } }, 0)
       round({ { 1, 0 } }, 3)
       round({ { 1, 0 }, { 1, 1 } }, 6)
-      assert.are.equal("Multi. Attk: 33%", logic.tick(6).multi_attack.text)
+      assert.are.equal("Multi. Attk: 33% (1/3)", logic.tick(6).multi_attack.text)
     end)
 
     it("says so plainly before a round has landed", function()
-      assert.are.equal("Multi. Attk: --%", logic.tick(0).multi_attack.text)
+      assert.are.equal("Multi. Attk: --% (0/0)", logic.tick(0).multi_attack.text)
+    end)
+
+    -- The count runs for the whole engagement and starts over on the next
+    -- one (Kevin, 2026-11-08), so the last fight's figure stays up while idle.
+    it("starts over when the player engages, and keeps the figure while idle", function()
+      logic.set_status(1)
+      round({ { 1, 0 }, { 1, 0 } }, 0)
+      logic.set_status(0)
+      assert.are.equal("Multi. Attk: 100% (1/1)", logic.tick(500).multi_attack.text)
+      logic.set_status(1)
+      assert.are.equal("Multi. Attk: --% (0/0)", logic.tick(500).multi_attack.text)
+    end)
+
+    it("keeps counting while the player stays engaged", function()
+      logic.set_status(1)
+      round({ { 1, 0 }, { 1, 0 } }, 0)
+      logic.set_status(1)
+      assert.are.equal("Multi. Attk: 100% (1/1)", logic.tick(0).multi_attack.text)
+    end)
+
+    it("hears no status from a player the client has not filled in", function()
+      logic.set_status(0)
+      round({ { 1, 0 }, { 1, 0 } }, 0)
+      logic.set_status(nil)
+      logic.set_status(1)
+      assert.are.equal("Multi. Attk: --% (0/0)", logic.tick(0).multi_attack.text)
+    end)
+
+    -- The first status after a `//lua reload` says nothing about a fight
+    -- having started.
+    it("does not start over on the first status it hears", function()
+      round({ { 1, 0 }, { 1, 0 } }, 0)
+      logic.set_status(1)
+      assert.are.equal("Multi. Attk: 100% (1/1)", logic.tick(0).multi_attack.text)
     end)
 
     it("pushes the line only on the frames its text changes", function()
@@ -645,7 +679,7 @@ describe("parambar logic", function()
 
     it("shows a sample while previewing", function()
       logic.set_preview(true)
-      assert.are.equal("Multi. Attk: 30%", logic.tick(0).multi_attack.text)
+      assert.are.equal("Multi. Attk: 30% (3/10)", logic.tick(0).multi_attack.text)
     end)
 
     it("ships on, and answers whether it is drawn", function()
@@ -705,7 +739,8 @@ describe("parambar logic", function()
       assert.is_nil(geometry.accuracy)
       assert.are.equal(200, geometry.multi_attack.y)
       assert.are.equal(217, geometry.background.y)
-      assert.are.same({ 100, 200, 472, 41 }, { logic.bounds(100, 200, 1) })
+      -- The counts' reservation runs past the 472 of the bar art.
+      assert.are.same({ 100, 200, 493, 41 }, { logic.bounds(100, 200, 1) })
     end)
 
     it("leaves the accuracy row where it was when switched off", function()
@@ -726,9 +761,11 @@ describe("parambar logic", function()
     -- Drives the real formatter to its widest line, so the reservation and
     -- the format string cannot drift apart.
     it("reserves room for the longest line the formatter can produce", function()
-      round({ { 1, 0 }, { 1, 0 } })
+      for _ = 1, 9999 do
+        round({ { 1, 0 }, { 1, 0 } })
+      end
       local line = logic.tick(0).multi_attack.text
-      assert.are.equal("Multi. Attk: 100%", line)
+      assert.are.equal("Multi. Attk: 100% (9999/9999)", line)
       config.accuracy.enabled = false
       config.accuracy.offset = 200
       local geometry = logic.geometry(100, 200, 1)
@@ -889,7 +926,7 @@ describe("parambar logic", function()
     it("reports the multi-attack row when given no argument", function()
       local message, changed = logic.command({ "multiattack" })
       assert.is_false(changed)
-      assert.is_not_nil(message:find("Multi. Attk: --%", 1, true))
+      assert.is_not_nil(message:find("Multi. Attk: --% (0/0)", 1, true))
       assert.is_not_nil(message:find("on", 1, true))
     end)
 

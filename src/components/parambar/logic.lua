@@ -51,6 +51,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 local new_accuracy = require("components/parambar/accuracy")
 
 local EASE = 0.1
+-- The player status for engaged, which starts the multi-attack share over.
+local ENGAGED = 1
 local FULL_TP = 1000
 local TP_PER_PERCENT = 10
 local FULL_WIDTH = 472
@@ -77,7 +79,8 @@ local VITALS = { hp = "hp", hpp = "hp", mp = "mp", mpp = "mp", tp = "tp" }
 local BANDS = { { 25, "red" }, { 50, "orange" }, { 75, "yellow" } }
 
 local SAMPLE_VITALS = { hp = 1500, hpp = 75, mp = 800, mpp = 50, tp = 1500 }
-local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78, delay = 2.4, multi_percent = 30 }
+local SAMPLE_ACCURACY =
+  { hits = 7, swings = 9, percent = 78, delay = 2.4, multi_percent = 30, multi_rounds = 3, rounds = 10 }
 
 --[[ The accuracy row is TEXT AND NOTHING ELSE (Kevin, 2026-09-27): it
      carried an `[R]` reset button for a few hours and does not any more, so
@@ -92,7 +95,8 @@ local SAMPLE_ACCURACY = { hits = 7, swings = 9, percent = 78, delay = 2.4, multi
      itself, since the gap between two rounds can be the whole of it. ]]
 local WIDEST_ACCURACY = "Acc: 000% (0000/0000) - 000.0s"
 local UNKNOWN_DELAY = "--s"
-local WIDEST_MULTI_ATTACK = "Multi. Attk: 100%"
+-- Four digits each side: ten thousand rounds is past eight hours of one fight.
+local WIDEST_MULTI_ATTACK = "Multi. Attk: 100% (9999/9999)"
 
 local function zeroed()
   return { hp = 0, hpp = 0, mp = 0, mpp = 0, tp = 0 }
@@ -188,6 +192,23 @@ local function new(config)
     accuracy.reset()
   end
 
+  --[[ The player's status, every frame. Engaging starts the multi-attack
+       share over; leaving it keeps the fight's figure on screen until the
+       next one. The last status survives a re-attach, so a slot switch
+       mid-fight is engaged to engaged and keeps the count; the first one
+       heard after a `//lua reload` is no transition. A player the client has
+       not filled a status in for yet says nothing. ]]
+  local last_status = nil
+  function self.set_status(status)
+    if status == nil then
+      return
+    end
+    if status == ENGAGED and last_status ~= nil and last_status ~= ENGAGED then
+      accuracy.new_fight()
+    end
+    last_status = status
+  end
+
   -- Whether the row is drawn. The widget asks outside a tick - on an attach,
   -- a show, a hide - where there is no plan to read it off.
   function self.accuracy_enabled()
@@ -259,8 +280,8 @@ local function new(config)
        `offset` is the knob for correcting the row in a live client.
 
        `row_height` is what the whole widget grows by: one line per row
-       drawn, `line_gap` between two of them, then `bar_gap` under them. The rows are drawn from the widget's
-       origin and the bar art below them, rather than the other way round:
+       drawn, `line_gap` between two of them, then `bar_gap` under them.
+       The rows are drawn from the widget's origin and the bar art below them, rather than the other way round:
        anything drawn ABOVE the origin would fall outside `get_bounds` and
        defeat core's clamp. The multi-attack row shares every measurement
        here, so its line is the same height and starts at the same x. ]]
@@ -462,12 +483,13 @@ local function new(config)
     return string.format("Acc: %d%% (%d/%d) - %s", sample.percent, sample.hits, sample.swings, delay)
   end
 
-  -- `Multi. Attk: 30%`, or `--%` until a round has landed.
+  -- `Multi. Attk: 30% (3/10)` - rounds, not swings - or `--% (0/0)` until
+  -- a round has landed.
   local function multi_attack_line(sample)
     if not sample.multi_percent then
-      return "Multi. Attk: --%"
+      return "Multi. Attk: --% (0/0)"
     end
-    return string.format("Multi. Attk: %d%%", sample.multi_percent)
+    return string.format("Multi. Attk: %d%% (%d/%d)", sample.multi_percent, sample.multi_rounds, sample.rounds)
   end
 
   --[[ The render plan for this frame. `dirty` says whether the bar needs
@@ -600,7 +622,7 @@ local function new(config)
     return string.format("//hud parambar accuracy takes on, off, reset or window <seconds>, not '%s'", word), false
   end
 
-  -- The row has one setting, its switch, and shares the accuracy window.
+  -- The row has one setting, its switch; it counts the whole fight.
   local function set_multi_attack(word)
     if word == nil then
       return string.format(

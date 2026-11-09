@@ -256,6 +256,9 @@ local function new(ctx)
        they are: pushing nothing would zero every one of them. ]]
   local function read_player()
     local player = ctx.get_player()
+    if player then
+      logic.set_status(player.status)
+    end
     if player and player.vitals then
       logic.set_vitals(player.vitals)
     end

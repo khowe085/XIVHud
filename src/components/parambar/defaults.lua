@@ -85,9 +85,9 @@ return function(screen_width, screen_height)
       text_width_ratio = 0.68,
       text_height_ratio = 1.3,
     },
-    -- `Multi. Attk: 30%`, a second row above the accuracy row: the share of
-    -- the rounds in the accuracy window that carried an extra attack. It
-    -- takes that row's window, font, offset and ratios.
+    -- `Multi. Attk: 30% (3/10)`, a second row above the accuracy row: the
+    -- share of this fight's rounds that carried an extra attack. It takes
+    -- that row's font, offset and ratios, but not its window.
     multi_attack = true,
     low_hp_colors = low_vitals_colors(),
     low_mp_colors = low_vitals_colors(),
