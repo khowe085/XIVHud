@@ -661,11 +661,15 @@ confirmed in a live client** (Kevin, 2026-11-08, RDM with Double Attack +32 and
 Triple Attack +2 from gear, about 110 rounds each): 31% against 33% predicted
 without Temper II, 59% and 57% against 57% with it at 645 and 656 Enhancing -
 which also shows a main-hand swing is never `animation` 1, or every Double
-Attack round would have read as a dual-wield baseline. **Unverified**: that an
-off-hand swing IS `animation` 1 (no dual-wield run yet; if it is not, every
-dual-wield round of two reads as a multi-attack and the row sits near 100%),
-kicks and Daken as 2/3/4, and whether the two rows touch, which is what
-`line_gap` is for. A hand-broken `accuracy` block
+Attack round would have read as a dual-wield baseline. **Dual wield is
+confirmed too** (Kevin, 2026-11-08, RDM/NIN, same gear with a second sword):
+each hand rolls its own multi-attack, so the share is `1 - (1 - p)^2` with `p`
+the one-hand rate - 50% against 55.6% predicted without Temper II, 84% and 79%
+against 80.5% and 81.6% with it at 635 and 656 - and the round count rose once
+per round, both hands' swings arriving in one packet. Off-hand swings are
+therefore `animation` 1; had they not been, the row would have sat near 100%.
+**Unverified**: kicks and Daken as 2/3/4, hand-to-hand, and whether the two
+rows touch, which is what `line_gap` is for. A hand-broken `accuracy` block
 leaves it drawn at font size 0, the block's metrics being unreadable.
 
 `accuracy reset` is the ONLY way to empty the accuracy window. The accuracy

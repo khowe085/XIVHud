@@ -114,12 +114,19 @@ Triple Attack +2% from gear, about 110 rounds each:
 | Temper II at 645 Enhancing (Triple Attack +34%) | 57% | 59% |
 | Temper II at 656 Enhancing (Triple Attack +35%) | 57% | 57% |
 
+**Dual wielding**, each hand rolls its own extra attacks, so a round counts
+when either hand procs: with `p` the one-hand rate above, the share is
+`1 - (1 - p) x (1 - p)`. The same RDM, now RDM/NIN with a second sword and
+otherwise the same gear:
+
+| Buffs | Predicted | Measured |
+| --- | --- | --- |
+| none | 56% | 50% |
+| Temper II at 635 Enhancing (Triple Attack +33%) | 81% | 84% |
+| Temper II at 656 Enhancing (Triple Attack +35%) | 82% | 79% |
+
 At about 110 rounds the figure is good to roughly five points either way;
 fewer rounds, and it wanders more.
-
-**Dual wield has not been checked in game yet.** If the off-hand swing is not
-reported the way the row expects, a dual-wield round of two would read as a
-multi-attack and the figure would sit near 100%.
 
 It reads `--% (0/0)` until a round has landed, and shares the accuracy row's
 font and placement; with the accuracy row off it takes that row's place.
