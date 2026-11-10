@@ -26,34 +26,15 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ `//hud gamepad`: the bridge's state and its switch, and its map and named
-     keys changed without a hand edit (Kevin, 2026-11-06) - a slot's `bind`
-     with a gesture where the address goes, `unbind`, `list`, and `learn`,
-     which takes the next key pressed as the key of a button XInput cannot
-     see.
+--[[ `//hud gamepad`: the bridge's state and its switch, and its map changed
+     without a hand edit (Kevin, 2026-11-06) - a slot's `bind` with a gesture
+     where the address goes, `unbind` and `list`.
 
      Every verb re-reads data/gamepad.lua first, and one that writes refuses a
      file that could not be read rather than write the defaults over it.
 
      Pure: the bridge, the behaviours, bind's action parser and labeller, the
-     file's reload and save, chat and the focus arrive as deps. ]]
-
-local ESCAPE = 1
--- Never taken for the key being learned: Enter sends the chat line `learn`
--- was typed on, and a modifier is the start of a chord - Alt-Tab, Steam's
--- Shift-Tab - which, learned, the bridge would keep from the game's macros.
-local PASSED = {
-  [28] = true, -- Enter
-  [156] = true, -- numpad Enter
-  [29] = true, -- left Ctrl
-  [157] = true, -- right Ctrl
-  [42] = true, -- left Shift
-  [54] = true, -- right Shift
-  [56] = true, -- left Alt
-  [184] = true, -- right Alt
-  [219] = true, -- left Windows
-  [220] = true, -- right Windows
-}
+     file's reload and save and the focus arrive as deps. ]]
 
 local READ_FAILED = "gamepad: data/gamepad.lua could not be read - fix it first"
 local SPACED = "gamepad: a gesture is one word with no spaces, like lt+y"
@@ -62,13 +43,11 @@ local BIND_FORM = "gamepad bind <gesture> <type> [<action>] [<target>] - or a be
 local UNBIND_FORM = "gamepad unbind <gesture>"
 -- Asked every frame the bridge is on, so nothing is built to say nothing.
 local NO_LINES = {}
-local LEARN_FORM = "gamepad learn <name> [off] - the next key pressed is <name>'s"
 local FORM = {
   "gamepad [on|off] - the bridge's state, or switch it",
   "gamepad list - every gesture and what it does",
   BIND_FORM,
   UNBIND_FORM,
-  LEARN_FORM,
 }
 
 -- A gesture typed with spaces in it arrives as several words, one of them
@@ -84,10 +63,6 @@ local function new(deps)
   local parse_action = type(deps.parse_action) == "function" and deps.parse_action or nil
   local is_action_type = type(deps.is_action_type) == "function" and deps.is_action_type or nil
   local describe_action = type(deps.describe_action) == "function" and deps.describe_action or nil
-  -- The name the next key pressed is for, and the keys taken whose ups are
-  -- still to come.
-  local learning = nil
-  local swallowing = {}
   local problems_said = false
 
   local function problems()
@@ -119,14 +94,7 @@ local function new(deps)
   local function refusal(gesture, why, missing)
     local line = "gamepad: " .. gesture .. " - " .. why
     if missing ~= nil then
-      local buttons = pad.buttons()
-      for _, named in ipairs(pad.named_keys()) do
-        buttons[#buttons + 1] = named.name
-      end
-      line = line
-        .. "; buttons are "
-        .. table.concat(buttons, " ")
-        .. ", or a name given a key with //hud gamepad learn <name>"
+      line = line .. "; buttons are " .. table.concat(pad.buttons(), " ")
     end
     return { line }
   end
@@ -225,42 +193,7 @@ local function new(deps)
     for _, binding in ipairs(bindings) do
       lines[#lines + 1] = "  " .. binding.gesture .. " " .. describe(binding.behavior)
     end
-    local learned = {}
-    for _, named in ipairs(pad.named_keys()) do
-      learned[#learned + 1] = named.name .. " (key " .. named.key .. ")"
-    end
-    if #learned > 0 then
-      lines[#lines + 1] = "gamepad: learned " .. table.concat(learned, ", ")
-    end
     return lines
-  end
-
-  local function learn(words)
-    local off = words[3] ~= nil and words[3]:lower() == "off"
-    if #words < 2 or #words > 3 or (#words == 3 and not off) then
-      return { LEARN_FORM }
-    end
-    local name = words[2]:lower()
-    local ok, why = pad.learnable(name)
-    if not ok then
-      return { "gamepad: " .. why }
-    end
-    if not deps.reload() then
-      return { READ_FAILED }
-    end
-    if not off then
-      learning = name
-      return { "gamepad: press the key for " .. name .. " - Escape cancels" }
-    end
-    if learning == name then
-      learning = nil
-    end
-    if pad.key_of(name) == nil then
-      return { "gamepad: " .. name .. " had no key" }
-    end
-    pad.set_key(name, false)
-    deps.save()
-    return { "gamepad: " .. name .. " has no key now" }
   end
 
   --- A `//hud gamepad` line's words after the verb: the lines to say.
@@ -277,45 +210,8 @@ local function new(deps)
       return unbind(words)
     elseif verb == "list" then
       return #words == 1 and list() or FORM
-    elseif verb == "learn" then
-      return learn(words)
     end
     return FORM
-  end
-
-  --- Whether a key is `learn`'s: the next one pressed while it waits, and
-  --- every edge of that key until it comes up.
-  function self.on_key(dik, down)
-    if swallowing[dik] then
-      if not down then
-        swallowing[dik] = nil
-      end
-      return true
-    end
-    if learning == nil or not down or PASSED[dik] then
-      return false
-    end
-    local name = learning
-    learning = nil
-    swallowing[dik] = true
-    if dik == ESCAPE then
-      deps.say("gamepad: learn cancelled - " .. name .. " is unchanged")
-      return true
-    end
-    -- Read again, the file having waited on a keypress since `learn`.
-    if not deps.reload() then
-      deps.say(READ_FAILED)
-      return true
-    end
-    local lost = pad.set_key(name, dik)
-    deps.save()
-    deps.say("gamepad: " .. name .. " is key " .. dik .. (lost and (" - " .. lost .. " has no key now") or ""))
-    return true
-  end
-
-  --- Every key it took is let go: their ups will not come (focus lost).
-  function self.release()
-    swallowing = {}
   end
 
   --- What is wrong with the map, the first time it is asked and not since

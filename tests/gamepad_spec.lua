@@ -109,10 +109,20 @@ describe("gamepad", function()
       assert.are.same({ 1 }, reads)
     end)
 
-    it("does nothing at all without a reader", function()
+    it("does nothing at all without a reader, allocating nothing", function()
       pad = build({ read = false })
-      assert.are.same({}, pad.poll())
+      local first = pad.poll()
+      assert.are.same({}, first)
+      assert.are.equal(first, pad.poll())
       assert.is_false(pad.available())
+    end)
+
+    it("allocates nothing while no pad answers and nothing is held", function()
+      local first = pad.poll()
+      clock = 0.5
+      assert.are.equal(first, pad.poll())
+      clock = 1
+      assert.are.equal(first, pad.poll(), "nor on a probe that finds nothing")
     end)
 
     it("is available with a reader, pad or no pad", function()
@@ -146,8 +156,8 @@ describe("gamepad", function()
     it("gives the face buttons, the bumpers, Back, Start and the sticks their behaviours", function()
       assert.are.same({ { "accept", true } }, press(A))
       assert.are.same({ { "cancel", true } }, press(B))
-      assert.are.same({ { "cycle_window", true } }, press(X))
-      assert.are.same({ { "lockon", true } }, press(Y))
+      assert.are.same({ { "lockon", true } }, press(X))
+      assert.are.same({ { "cycle_window", true } }, press(Y))
       assert.are.same({ { "crossbar.switch", true } }, press(RB))
       assert.are.same({ { "open_map", true } }, press(BACK))
       assert.are.same({ { "main_menu", true } }, press(START))
@@ -392,17 +402,6 @@ describe("gamepad", function()
       assert.is_true(got[2].cancelled)
     end)
 
-    it("lets a chord a named key holds go with the key", function()
-      config = on({ extra = { l4 = 100 }, map = { ["l4+y"] = "named" } })
-      connect(0)
-      pad.on_key(100, true)
-      pad.poll()
-      pads[0] = state(Y)
-      assert.are.same({ { "named", true } }, edges(pad.poll()))
-      pad.on_key(100, false)
-      assert.are.same({ { "named", false } }, edges(pad.poll()))
-    end)
-
     it("keeps a press bare that went down before its modifier", function()
       map({ lt = "side", ["lt+y"] = "slot", y = "bare" })
       pads[0] = state(Y)
@@ -561,133 +560,22 @@ describe("gamepad", function()
       assert.are.same({ { "autorun", false } }, edges(pad.poll()))
       assert.are.same({}, pad.poll())
     end)
-
-    it("taps a named key a chord leans on, held for a poll when it came between two", function()
-      config = on({ extra = { l4 = 100 }, map = { l4 = "accept", ["l4+y"] = "named" } })
-      pad.poll()
-      pad.on_key(100, true)
-      pad.on_key(100, false)
-      assert.are.same({}, edges(pad.poll()))
-      assert.are.same({ { "accept", true } }, edges(pad.poll()))
-      assert.are.same({ { "accept", false } }, edges(pad.poll()))
-    end)
   end)
 
-  --[[ The back buttons have no XInput name, so Steam types a key for each and
-       `extra` names them. ]]
-  describe("buttons XInput cannot see", function()
-    before_each(function()
-      config = on({
-        extra = { l4 = 100 },
-        map = {
-          lt = "side",
-          l4 = "wxhb",
-          ["lt+l4"] = "side_wxhb",
-          ["l4+y"] = "wxhb_y",
-          y = "bare",
-        },
-      })
-      connect(0)
+  --[[ XInput's own buttons are the only ones: no key ever reaches the
+       bridge (Kevin, 2026-11-09). ]]
+  describe("buttons XInput has no name for", function()
+    it("takes no key", function()
+      assert.is_nil(pad.on_key)
     end)
 
-    it("takes a named key's edges while on, and answers them at the next poll", function()
-      assert.is_true(pad.on_key(100, true))
-      assert.are.same({ { "wxhb", true } }, edges(pad.poll()))
-      assert.is_true(pad.on_key(100, false))
-      assert.are.same({ { "wxhb", false } }, edges(pad.poll()))
+    it("ships no named keys", function()
+      assert.is_nil(pad.config_defaults().extra)
     end)
 
-    it("leaves every other key alone", function()
-      assert.is_false(pad.on_key(101, true))
-      assert.are.same({}, pad.poll())
-    end)
-
-    it("leaves a named key alone while off", function()
-      config.enabled = false
-      assert.is_false(pad.on_key(100, true))
-    end)
-
-    it("takes the up of a down it took, switched off in between", function()
-      pad.on_key(100, true)
-      config.enabled = false
-      assert.is_true(pad.on_key(100, false))
-    end)
-
-    it("leaves the up of a down it did not take", function()
-      config.enabled = false
-      pad.on_key(100, true)
-      config.enabled = true
-      assert.is_false(pad.on_key(100, false))
-    end)
-
-    it("leaves a named key alone without a reader", function()
-      pad = build({ read = false })
-      assert.is_false(pad.on_key(100, true))
-    end)
-
-    it("chords a named key like any button", function()
-      pads[0] = state(0, 255, 0)
-      pad.poll()
-      pad.on_key(100, true)
-      assert.are.same({ { "side_wxhb", true } }, edges(pad.poll()))
-      pads[0] = state()
-      pad.on_key(100, false)
-      pad.poll()
-      pad.on_key(100, true)
-      pad.poll()
-      pads[0] = state(Y)
-      assert.are.same({ { "wxhb_y", true } }, edges(pad.poll()))
-    end)
-
-    it("reads LT and a named key pressed in one frame as LT first", function()
-      pads[0] = state(0, 255, 0)
-      pad.on_key(100, true)
-      assert.are.same({ { "side", true }, { "side_wxhb", true } }, edges(pad.poll()))
-    end)
-
-    it("presses a named key before the face buttons in one frame", function()
-      pads[0] = state(Y)
-      pad.on_key(100, true)
-      assert.are.same({ { "wxhb", true }, { "wxhb_y", true } }, edges(pad.poll()))
-    end)
-
-    it("does not miss a tap between two polls, and holds it for one", function()
-      pad.on_key(100, true)
-      pad.on_key(100, false)
-      assert.are.same({ { "wxhb", true } }, edges(pad.poll()))
-      assert.are.same({ { "wxhb", false } }, edges(pad.poll()))
-    end)
-
-    it("leaves a named key alone once polls have stopped", function()
-      clock = clock + 2
-      assert.is_false(pad.on_key(100, true))
-    end)
-
-    it("takes a held key's repeats and answers them once", function()
-      pad.on_key(100, true)
-      assert.is_true(pad.on_key(100, true))
-      assert.are.same({ { "wxhb", true } }, edges(pad.poll()))
-    end)
-
-    it("lets go of a named key on release, and leaves the up that follows to the game", function()
-      pad.on_key(100, true)
-      pad.poll()
-      assert.are.same({ { "wxhb", false } }, edges(pad.release()))
-      assert.is_false(pad.on_key(100, false))
-      assert.are.same({}, pad.poll())
-    end)
-
-    it("ignores a name that is an XInput button's, or a value that is no key", function()
-      config = on({ extra = { lb = 100, l4 = "100", r4 = 0 }, map = { lb = "bumper", l4 = "x", r4 = "y" } })
-      for _, dik in ipairs({ 100, 0 }) do
-        assert.is_false(pad.on_key(dik, true), tostring(dik))
-      end
-    end)
-
-    it("gives a key two names to the first in order", function()
-      config = on({ extra = { r4 = 100, l4 = 100 }, map = { l4 = "first", r4 = "second" } })
-      pad.on_key(100, true)
-      assert.are.same({ { "first", true } }, edges(pad.poll()))
+    it("reads a gesture on one as naming no button, whatever the config holds", function()
+      config = on({ extra = { l4 = 100 }, map = { l4 = "accept" } })
+      assert.are.same({ "gamepad: l4 - no button l4" }, pad.problems())
     end)
   end)
 
@@ -761,13 +649,12 @@ describe("gamepad", function()
       assert.are.same({}, pad.poll())
     end)
 
-    it("answers fresh defaults every time, switched off, with no named keys", function()
+    it("answers fresh defaults every time, switched on", function()
       local first = pad.config_defaults()
       first.map.a = "changed"
       local defaults = pad.config_defaults()
       assert.are.equal("accept", defaults.map.a)
-      assert.is_false(defaults.enabled)
-      assert.are.same({ l4 = false, l5 = false, r4 = false, r5 = false }, defaults.extra)
+      assert.is_true(defaults.enabled)
     end)
 
     it("ships a quarter-second tap window", function()
@@ -932,16 +819,6 @@ describe("gamepad", function()
       assert.are.same({ "gamepad: LT+Y and lt+y - the same gesture" }, pad.problems())
     end)
 
-    it("names each broken extra key", function()
-      config = on({ extra = { lb = 100, l4 = "100", r4 = 101, r5 = 101, L5 = 102 }, map = {} })
-      assert.are.same({
-        "gamepad: extra.L5 - a name is a plain lowercase word",
-        "gamepad: extra.l4 - not a key number",
-        "gamepad: extra.lb - an XInput button's name",
-        "gamepad: extra.r4 and extra.r5 - both key 101",
-      }, pad.problems())
-    end)
-
     it("does not ask after behaviours it has no way to ask about", function()
       config = on({ map = { a = "nope" } })
       assert.are.same({}, pad.problems())
@@ -971,13 +848,13 @@ describe("gamepad", function()
     end
 
     before_each(function()
-      config = on({ map = pad.config_defaults().map, extra = { l4 = 100, l5 = false, r4 = false, r5 = false } })
+      config = on({ map = pad.config_defaults().map })
     end)
 
     describe("bind", function()
       it("binds a gesture under its spelling, lowercased, and answers it", function()
-        assert.are.equal("lt+l4", pad.bind("LT+L4", "accept"))
-        assert.are.equal("accept", config.map["lt+l4"])
+        assert.are.equal("lt+r3", pad.bind("LT+R3", "accept"))
+        assert.are.equal("accept", config.map["lt+r3"])
       end)
 
       it("replaces what the gesture held", function()
@@ -1038,9 +915,9 @@ describe("gamepad", function()
 
     describe("unbind", function()
       it("removes a gesture of the user's own", function()
-        pad.bind("lt+l4", "accept")
-        assert.are.equal("lt+l4", pad.unbind("lt+l4"))
-        assert.is_nil(config.map["lt+l4"])
+        pad.bind("lt+r3", "accept")
+        assert.are.equal("lt+r3", pad.unbind("lt+r3"))
+        assert.is_nil(config.map["lt+r3"])
       end)
 
       it("writes false over a shipped gesture, which the merge would put back", function()
@@ -1064,7 +941,7 @@ describe("gamepad", function()
         end
       end)
 
-      it("removes a gesture whose button has lost its key", function()
+      it("removes a gesture naming a button the pad does not have", function()
         config.map["lt+l5"] = "accept"
         assert.are.equal("lt+l5", pad.unbind("lt+l5"))
         assert.is_nil(config.map["lt+l5"])
@@ -1107,79 +984,6 @@ describe("gamepad", function()
         { gesture = "back", behavior = "open_map" },
         { gesture = "lt+y", behavior = { key = "f" } },
       }, pad.bindings())
-    end)
-  end)
-
-  describe("naming keys", function()
-    before_each(function()
-      config =
-        on({ map = { l4 = "accept", r4 = "cancel" }, extra = { l4 = false, l5 = false, r4 = false, r5 = false } })
-    end)
-
-    it("takes any plain name that is no pad button", function()
-      assert.is_true(pad.learnable("l4"))
-      assert.is_true(pad.learnable("lpad"))
-    end)
-
-    it("refuses a pad button and a name that is not a plain word", function()
-      for _, case in ipairs({
-        { "a", "a is a pad button" },
-        { "lt", "lt is a pad button" },
-        { "L4", "a name is a plain lowercase word" },
-        { "l4+y", "a name is a plain lowercase word" },
-      }) do
-        local ok, why = pad.learnable(case[1])
-        assert.is_nil(ok, case[1])
-        assert.are.equal(case[2], why, case[1])
-      end
-    end)
-
-    it("gives a name its key, which then reads as a button", function()
-      connect(0)
-      assert.is_nil(pad.set_key("l4", 100))
-      assert.are.equal(100, config.extra.l4)
-      assert.are.equal(100, pad.key_of("l4"))
-      assert.is_true(pad.on_key(100, true))
-      assert.are.same({ { "accept", true } }, edges(pad.poll()))
-    end)
-
-    it("moves a key another name has, and says which name lost it", function()
-      config.extra.l4 = 100
-      assert.are.equal("l4", pad.set_key("r4", 100))
-      assert.is_false(config.extra.l4)
-      assert.are.equal(100, config.extra.r4)
-    end)
-
-    it("drops a name of the user's own that loses its key", function()
-      config.extra.lpad = 100
-      assert.are.equal("lpad", pad.set_key("l4", 100))
-      assert.is_nil(config.extra.lpad)
-    end)
-
-    it("clears a key with false", function()
-      config.extra.l4, config.extra.lpad = 100, 101
-      pad.set_key("l4", false)
-      pad.set_key("lpad", false)
-      assert.is_false(config.extra.l4)
-      assert.is_nil(config.extra.lpad)
-      assert.is_nil(pad.key_of("l4"))
-    end)
-
-    it("gives a broken extra a table of its own", function()
-      config.extra = "broken"
-      pad.set_key("l4", 100)
-      assert.are.same({ l4 = 100, l5 = false, r4 = false, r5 = false }, config.extra)
-    end)
-
-    it("names the names with a key, in order, leaving out any that holds no key", function()
-      config.extra = { r4 = 101, l4 = 100, l5 = false, lpad = "x", rpad = 101 }
-      assert.are.same({ { name = "l4", key = 100 }, { name = "r4", key = 101 } }, pad.named_keys())
-    end)
-
-    it("knows no key for a name holding something else", function()
-      config.extra.l4 = "100"
-      assert.is_nil(pad.key_of("l4"))
-      assert.is_nil(pad.key_of("nothing"))
     end)
   end)
 end)

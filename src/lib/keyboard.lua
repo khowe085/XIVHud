@@ -39,10 +39,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      A press is delivered once. Its repeats change nothing and answer what it
      answered; so does its release, delivered whatever has changed since -
      whatever the game saw go down it must see come up, and nothing else. A
-     press another addon took is not delivered at all, nor, with the chat line
-     open, one whose behaviour is no component's: that key types.
+     key already down delivers nothing more until it comes up, whether or not
+     its press was delivered, so a modifier arriving under a held key cannot
+     turn its repeats into a chord. A press another addon took is not
+     delivered at all, nor, with the chat line open, one whose behaviour is no
+     component's: that key types.
 
-     One key per entry: a chord is reported and left out.
+     An entry is one key, or a CHORD of Ctrl, Alt and Shift over one key
+     (`ctrl+shift+1`) - the hotbar's rows. The modifiers are tracked from
+     their own edges, either side, and matched exactly; a key pressed under
+     modifiers no chord of it names falls back to its bare entry, the crossbar
+     having always ignored them. Any other chord is reported and left out.
 
      Pure: the config, the delivery, `is_component`, `chat_open` and `check`
      arrive as deps. ]]
@@ -159,7 +166,33 @@ for dik, name in pairs(KEY_NAMES) do
   DIK_OF[name] = dik
 end
 
--- The crossbar's own keys, as its `config.input` ships them.
+-- The modifiers a chord names, each side by scan code, and the one order a
+-- chord is spelled in.
+local MODIFIER_OF = {
+  [0x1D] = "ctrl",
+  [0x9D] = "ctrl",
+  [0x38] = "alt",
+  [0xB8] = "alt",
+  [0x2A] = "shift",
+  [0x36] = "shift",
+}
+local MODIFIERS = { "ctrl", "alt", "shift" }
+local IS_MODIFIER = { ctrl = true, alt = true, shift = true }
+
+-- The hotbar's rows as its own key machine had them: Ctrl, Alt, Shift,
+-- Ctrl+Shift, Alt+Shift and all three over the number row, `0` being
+-- slot 10.
+local HOTBAR_ROWS = {
+  { "ctrl+", "bar1" },
+  { "alt+", "bar2" },
+  { "shift+", "bar3" },
+  { "ctrl+shift+", "bar4" },
+  { "alt+shift+", "bar5" },
+  { "ctrl+alt+shift+", "bar6" },
+}
+
+-- The crossbar's own keys, as its `config.input` shipped them, and the
+-- hotbar's rows and set cycle.
 local function defaults()
   local map = {
     semicolon = "crossbar.left",
@@ -167,11 +200,18 @@ local function defaults()
     backslash = "crossbar.layer",
     grave = "crossbar.switch",
     equals = "crossbar.select",
+    ["ctrl+up"] = "hotbar.cycle",
+    ["ctrl+down"] = "hotbar.cycle_back",
   }
   for slot = 1, 8 do
     map[tostring(slot)] = "crossbar.slot" .. slot
   end
-  return { enabled = false, map = map }
+  for _, row in ipairs(HOTBAR_ROWS) do
+    for slot = 1, 10 do
+      map[row[1] .. tostring(slot % 10)] = "hotbar." .. row[2] .. "_slot" .. slot
+    end
+  end
+  return { enabled = true, map = map }
 end
 local DEFAULTS = defaults()
 
@@ -192,16 +232,12 @@ local function spelling_of(text)
   return (text:lower():gsub("%s", ""))
 end
 
-local function shipped_spelling(text)
-  return type(text) == "string" and text == spelling_of(text)
-end
-
--- The map's keys, every other spelling ahead of the shipped kind, so the one
--- a user wrote comes before the one the settings merge put back.
+-- The map's keys, the user's own spellings ahead of the shipped map's, so the
+-- one a user wrote comes before the one the settings merge put back.
 local function map_order(map)
   local keys = sorted_keys(map)
   table.sort(keys, function(a, b)
-    local shipped_a, shipped_b = shipped_spelling(a), shipped_spelling(b)
+    local shipped_a, shipped_b = DEFAULTS.map[a] ~= nil, DEFAULTS.map[b] ~= nil
     if shipped_a ~= shipped_b then
       return shipped_b
     end
@@ -210,41 +246,70 @@ local function map_order(map)
   return keys
 end
 
--- A key's scan code, or nil and why.
-local function read_key(text)
-  if type(text) ~= "string" then
-    return nil, "not a key"
+-- A chord's modifiers as they are spelled, in the one order.
+local function prefix_of(named)
+  local prefix = ""
+  for _, modifier in ipairs(MODIFIERS) do
+    if named[modifier] then
+      prefix = prefix .. modifier .. "+"
+    end
   end
-  local spelling = spelling_of(text)
-  local dik = DIK_OF[spelling]
-  if dik ~= nil then
-    return dik
-  end
-  -- Only once the name is no key's: `numpad+` is one key.
-  if spelling:find("+", 1, true) then
-    return nil, "one key per entry: the keyboard reads no chords"
-  end
-  return nil, "no key " .. spelling
+  return prefix
 end
 
---[[ The map as scan code -> behaviour, and why each entry left out was. One
-     key spelled twice is reported and the first in `map_order` kept, which is
-     the one a user wrote. `check`, when given, is asked of each behaviour;
-     one that cannot work stays in the map, inert, and is reported. ]]
+-- An entry's key and its modifiers' prefix, or nil, nil and why. What is left
+-- is looked up whole before a `+` in it reads as a chord, so `numpad+` is one
+-- key.
+local function read_key(text)
+  if type(text) ~= "string" then
+    return nil, nil, "not a key"
+  end
+  local rest, named = spelling_of(text), {}
+  while DIK_OF[rest] == nil do
+    local word, after = rest:match("^([^+]+)%+(.+)$")
+    if word == nil then
+      break
+    end
+    if not IS_MODIFIER[word] then
+      return nil, nil, word .. " is no modifier: a chord is ctrl, alt or shift over one key"
+    end
+    if named[word] then
+      return nil, nil, "names " .. word .. " twice"
+    end
+    named[word] = true
+    rest = after
+  end
+  local dik = DIK_OF[rest]
+  if dik == nil then
+    return nil, nil, "no key " .. rest
+  end
+  return dik, prefix_of(named)
+end
+
+local function gesture_of(prefix, dik)
+  return prefix .. "#" .. dik
+end
+
+--[[ The map as gesture -> `{ behavior, dik, prefix }`, and why each entry
+     left out was. One key or chord spelled twice is reported and the first in
+     `map_order` kept, which is the one a user wrote. `check`, when given, is
+     asked of each behaviour; one that cannot work stays in the map, inert,
+     and is reported. ]]
 local function read_map(map, check)
-  local by_dik, problems, seen = {}, {}, {}
+  local by_gesture, problems, seen = {}, {}, {}
   for _, text in ipairs(map_order(map)) do
     local behavior = map[text]
     local label = tostring(text)
-    local dik, why = read_key(text)
+    local dik, prefix, why = read_key(text)
+    local gesture = dik ~= nil and gesture_of(prefix, dik) or nil
     if dik == nil then
       if behavior ~= false then
         problems[#problems + 1] = label .. " - " .. why
       end
-    elseif seen[dik] ~= nil then
-      problems[#problems + 1] = seen[dik] .. " and " .. label .. " - the same key"
+    elseif seen[gesture] ~= nil then
+      problems[#problems + 1] = seen[gesture] .. " and " .. label .. " - the same key"
     else
-      seen[dik] = label
+      seen[gesture] = label
       if behavior ~= false and type(behavior) ~= "string" and type(behavior) ~= "table" then
         problems[#problems + 1] = label .. " - not a behavior"
       elseif behavior ~= false then
@@ -254,11 +319,11 @@ local function read_map(map, check)
             problems[#problems + 1] = label .. " - " .. tostring(broken)
           end
         end
-        by_dik[dik] = behavior
+        by_gesture[gesture] = { behavior = behavior, dik = dik, prefix = prefix }
       end
     end
   end
-  return by_dik, problems
+  return by_gesture, problems
 end
 
 local function map_of(settings)
@@ -275,16 +340,18 @@ local function new(deps)
   -- delivered, until its release is.
   local held = {}
   local presses = 0
+  -- Every key down, delivered or not, and the modifier keys among them.
+  local down_keys, modifiers_down = {}, {}
   -- The map as last read, and the table it came from.
-  local by_dik, map_source = {}, nil
+  local by_gesture, map_source = {}, nil
 
   local function config()
     local value = deps.config and deps.config() or nil
     return type(value) == "table" and value or {}
   end
 
-  -- Only an explicit true: a hand-broken file must not hand the bar's keys
-  -- to a map nobody switched on.
+  -- Only an explicit true, as every switch in the addon is read: a
+  -- hand-broken value is off, though the map ships on.
   local function is_enabled(settings)
     return settings.enabled == true
   end
@@ -293,8 +360,25 @@ local function new(deps)
     local map = map_of(settings)
     if map ~= map_source then
       map_source = map
-      by_dik = read_map(map)
+      by_gesture = read_map(map)
     end
+  end
+
+  local function held_prefix()
+    local named = {}
+    for dik in pairs(modifiers_down) do
+      named[MODIFIER_OF[dik]] = true
+    end
+    return prefix_of(named)
+  end
+
+  -- The chord the held modifiers make over this key, else its bare entry.
+  local function resolve(dik, prefix)
+    local entry = by_gesture[gesture_of(prefix, dik)]
+    if entry == nil and prefix ~= "" then
+      entry = by_gesture[gesture_of("", dik)]
+    end
+    return entry and entry.behavior or nil
   end
 
   -- With the chat line open a key types, unless its behaviour is a
@@ -308,15 +392,28 @@ local function new(deps)
 
   --- Whether the game is kept from this key edge.
   function self.on_key(dik, down, blocked)
+    -- The modifiers held before this edge: a modifier is no chord of itself.
+    local prefix = held_prefix()
+    if MODIFIER_OF[dik] ~= nil then
+      modifiers_down[dik] = down or nil
+    end
     local holding = held[dik]
-    if holding ~= nil then
-      if not down then
-        held[dik] = nil
-        deps.deliver(holding.behavior, false, false)
+    if not down then
+      down_keys[dik] = nil
+      if holding == nil then
+        return false
       end
+      held[dik] = nil
+      -- A release another addon took ends the hold without being one, so the
+      -- set switch does not take it for a tap.
+      deps.deliver(holding.behavior, false, blocked == true)
       return holding.taken
     end
-    if not down or blocked then
+    if down_keys[dik] then
+      return holding ~= nil and holding.taken
+    end
+    down_keys[dik] = true
+    if blocked then
       return false
     end
     local settings = config()
@@ -324,7 +421,7 @@ local function new(deps)
       return false
     end
     refresh(settings)
-    local behavior = by_dik[dik]
+    local behavior = resolve(dik, prefix)
     if behavior == nil or types(behavior) then
       return false
     end
@@ -348,7 +445,7 @@ local function new(deps)
     table.sort(holdings, function(a, b)
       return a.order < b.order
     end)
-    held = {}
+    held, down_keys, modifiers_down = {}, {}, {}
     local failure = nil
     for _, holding in ipairs(holdings) do
       local ok, err = pcall(deps.deliver, holding.behavior, false, true)
@@ -372,14 +469,23 @@ local function new(deps)
   --- Each key the map binds and what it does, in keyboard order.
   function self.bindings()
     refresh(config())
-    local codes = {}
-    for dik in pairs(by_dik) do
-      codes[#codes + 1] = dik
+    local entries = {}
+    for _, entry in pairs(by_gesture) do
+      entries[#entries + 1] = entry
     end
-    table.sort(codes)
+    -- By key, a bare key ahead of its chords, the shorter chord first.
+    table.sort(entries, function(a, b)
+      if a.dik ~= b.dik then
+        return a.dik < b.dik
+      end
+      if #a.prefix ~= #b.prefix then
+        return #a.prefix < #b.prefix
+      end
+      return a.prefix < b.prefix
+    end)
     local out = {}
-    for _, dik in ipairs(codes) do
-      out[#out + 1] = { key = KEY_NAMES[dik], behavior = by_dik[dik] }
+    for _, entry in ipairs(entries) do
+      out[#out + 1] = { key = entry.prefix .. KEY_NAMES[entry.dik], behavior = entry.behavior }
     end
     return out
   end

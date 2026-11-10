@@ -52,13 +52,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      hearing the hold; `is_component` says which is which, and without it
      nothing waits.
 
-     The buttons XInput has no name for (the back buttons) reach the game as
-     keys Steam Input types, named in `extra`. Core offers every key to
-     `on_key`, which takes a named one while the bridge is on; the next poll
-     answers it as a button.
-
-     The map and the named keys are edited here too (`bind`, `unbind`,
-     `set_key`), in the config table itself, for `//hud gamepad` to save.
+     The map is edited here too (`bind`, `unbind`), in the config table
+     itself, for `//hud gamepad` to save.
 
      Pure: the read, the clock and the config arrive as deps, and so do
      `check(behavior)`, asked only to say which of the map's behaviours
@@ -73,15 +68,10 @@ local DEFAULT_TAP_SECONDS = 0.25
 -- XInputGetState on a slot with nothing in it is slow enough to stall a
 -- frame, so a search that found nothing waits this long before the next.
 local PROBE_SECONDS = 1
--- A named key is taken only while polls are running, or what it took would
--- wait for one that never comes - the pump's guard switched it off.
-local STALL_SECONDS = 1
 local SLOTS = 4
-local NAME = "^[%l%d_]+$"
 
 -- The order presses are answered in: the triggers first, so both pressed on
--- one frame reach the crossbar left first, the `extra` keys next, in the
--- order they came, and then these.
+-- one frame reach the crossbar left first, and then these.
 local TRIGGERS = {
   { name = "lt", trigger = "left_trigger" },
   { name = "rt", trigger = "right_trigger" },
@@ -118,8 +108,8 @@ local function defaults()
   local map = {
     a = "accept",
     b = "cancel",
-    x = "cycle_window",
-    y = "lockon",
+    x = "lockon",
+    y = "cycle_window",
     start = "main_menu",
     lb = "autorun",
     rb = "crossbar.switch",
@@ -143,28 +133,20 @@ local function defaults()
     end
   end
   return {
-    -- Off until switched on (Kevin): a player whose game still binds the pad
-    -- would otherwise get a second Enter from every A.
-    enabled = false,
+    enabled = true,
     trigger_threshold = DEFAULT_THRESHOLD,
     tap_seconds = DEFAULT_TAP_SECONDS,
-    -- The key Steam Input types for each button XInput cannot see; false is
-    -- none.
-    extra = { l4 = false, l5 = false, r4 = false, r5 = false },
     map = map,
   }
 end
 local DEFAULTS = defaults()
--- What every poll of a bridge switched off and holding nothing answers, never
--- written to here - and kept apart from the empty list `resolve` walks, so a
--- caller that wrote to it could not reach that.
+-- What every poll with nothing to say answers - switched off, or with no
+-- reader or no pad, and holding nothing - never written to here, and kept
+-- apart from the empty list `resolve` walks, so a caller that wrote to it
+-- could not reach that.
 local NO_EDGES = {}
 local NO_GESTURES = {}
 local NO_MODIFIERS = {}
-
-local function is_dik(value)
-  return type(value) == "number" and value >= 1 and value <= 255 and value == math.floor(value)
-end
 
 local function number_or_zero(value)
   return type(value) == "number" and value or 0
@@ -205,34 +187,9 @@ local function map_order(map)
   return keys
 end
 
--- The named keys: `{ names = { <name> = true }, by_dik = { <dik> = <name> } }`,
--- and why each entry left out was. A key two names claim is the first's.
-local function read_extra(extra)
-  local reading, problems = { names = {}, by_dik = {} }, {}
-  for _, name in ipairs(sorted_keys(extra)) do
-    local dik = extra[name]
-    local label = "extra." .. tostring(name)
-    if dik ~= false then
-      if type(name) ~= "string" or not name:match(NAME) then
-        problems[#problems + 1] = label .. " - a name is a plain lowercase word"
-      elseif PAD[name] then
-        problems[#problems + 1] = label .. " - an XInput button's name"
-      elseif not is_dik(dik) then
-        problems[#problems + 1] = label .. " - not a key number"
-      elseif reading.by_dik[dik] ~= nil then
-        problems[#problems + 1] = "extra." .. reading.by_dik[dik] .. " and " .. label .. " - both key " .. dik
-      else
-        reading.names[name] = true
-        reading.by_dik[dik] = name
-      end
-    end
-  end
-  return reading, problems
-end
-
 -- A gesture's buttons, trigger last, or nil, why and the button it does not
 -- know, where that is why.
-local function read_gesture(text, extra_names)
+local function read_gesture(text)
   if type(text) ~= "string" then
     return nil, "not a gesture"
   end
@@ -241,7 +198,7 @@ local function read_gesture(text, extra_names)
     if part == "" then
       return nil, "an empty button"
     end
-    if not PAD[part] and not extra_names[part] then
+    if not PAD[part] then
       return nil, "no button " .. part, part
     end
     if seen[part] then
@@ -266,12 +223,12 @@ end
      them - are reported and the first in `map_order` kept, which is the one
      a user wrote. `check`, when given, is asked of each behaviour; one that
      cannot work stays in the map, inert, and is reported. ]]
-local function read_map(map, extra_names, check)
+local function read_map(map, check)
   local by_trigger, problems, seen = {}, {}, {}
   for _, text in ipairs(map_order(map)) do
     local behavior = map[text]
     local label = tostring(text)
-    local buttons, why = read_gesture(text, extra_names)
+    local buttons, why = read_gesture(text)
     if buttons == nil then
       if behavior ~= false then
         problems[#problems + 1] = label .. " - " .. why
@@ -319,39 +276,25 @@ local function map_of(settings)
   return type(settings.map) == "table" and settings.map or DEFAULTS.map
 end
 
-local function extra_of(settings)
-  return type(settings.extra) == "table" and settings.extra or DEFAULTS.extra
-end
-
--- The config's own map or extra, to be written to: a broken one becomes the
--- shipped one it was being read as, never the shared default itself.
-local function writable(settings, field)
-  if type(settings[field]) ~= "table" then
-    settings[field] = defaults()[field]
+-- The config's own map, to be written to: a broken one becomes the shipped
+-- one it was being read as, never the shared default itself.
+local function writable_map(settings)
+  if type(settings.map) ~= "table" then
+    settings.map = defaults().map
   end
-  return settings[field]
+  return settings.map
 end
 
 -- Every spelling in `map` of the gesture whose key is `key`.
-local function spellings_of(map, key, extra_names)
+local function spellings_of(map, key)
   local found = {}
   for _, text in ipairs(sorted_keys(map)) do
-    local buttons = read_gesture(text, extra_names)
+    local buttons = read_gesture(text)
     if buttons ~= nil and gesture_key(buttons) == key then
       found[#found + 1] = text
     end
   end
   return found
-end
-
--- A name losing its key: a shipped one stays as the defaults spell it,
--- holding none, and one of the user's own goes.
-local function forget_key(extra, name)
-  if DEFAULTS.extra[name] ~= nil then
-    extra[name] = false
-  else
-    extra[name] = nil
-  end
 end
 
 local function new(deps)
@@ -366,14 +309,13 @@ local function new(deps)
   local next_probe = nil
   local empty_probes = 0
   -- Button name -> `{ behavior = <name>|false, modifiers = { ... }, order =
-  -- n, poll = n, tap = <behavior>, at = <seconds> }`: what its press
-  -- resolved to and the buttons that gesture leans on, and when it went
-  -- down - in presses and in polls. In here exactly while it is held;
-  -- `behavior` goes false once its chord breaks. `tap` is what a chord's
-  -- modifier keeps for its release, until a chord is built on it.
+  -- n, tap = <behavior>, at = <seconds> }`: what its press resolved to and
+  -- the buttons that gesture leans on, and when it went down - in presses,
+  -- and on the clock where it keeps a tap. In here exactly while it is
+  -- held; `behavior` goes false once its chord breaks. `tap` is what a
+  -- chord's modifier keeps for its release, until a chord is built on it.
   local held = {}
   local presses = 0
-  local polls = 0
   local last_poll = nil
   -- Every button a gesture of the map holds as a modifier; the taps that
   -- went down at the last poll, for this one to let go; and how long a
@@ -381,31 +323,26 @@ local function new(deps)
   local modifier_buttons = {}
   local owed = {}
   local tap_window = DEFAULT_TAP_SECONDS
-  -- The named keys' edges since the last poll, `{ name, down }`, in order;
-  -- and dik -> name for each key whose down was taken, so its up is too.
-  local key_edges = {}
-  local latched = {}
-  -- The map and the named keys as last read, and the tables they came from.
-  local gestures, named = {}, { names = {}, by_dik = {} }
-  local map_source, extra_source = nil, nil
+  -- The map as last read, and the table it came from.
+  local gestures = {}
+  local map_source = nil
 
   local function config()
     local value = deps.config and deps.config() or nil
     return type(value) == "table" and value or {}
   end
 
-  -- Only an explicit true: a hand-broken file must not switch on a bridge
-  -- nobody asked for.
+  -- Only an explicit true, as every switch in the addon is read: a
+  -- hand-broken value is off, though the bridge ships on.
   local function is_enabled(settings)
     return settings.enabled == true
   end
 
   local function refresh(settings)
-    local map, extra = map_of(settings), extra_of(settings)
-    if map ~= map_source or extra ~= extra_source then
-      map_source, extra_source = map, extra
-      named = read_extra(extra)
-      gestures = read_map(map, named.names)
+    local map = map_of(settings)
+    if map ~= map_source then
+      map_source = map
+      gestures = read_map(map)
       modifier_buttons = modifiers_of(gestures)
     end
   end
@@ -475,7 +412,6 @@ local function new(deps)
       behavior = false,
       modifiers = gesture and gesture.modifiers or NO_MODIFIERS,
       order = presses,
-      poll = polls,
     }
     held[button] = holding
     if gesture == nil then
@@ -573,27 +509,17 @@ local function new(deps)
 
   --- The ups, cancelled, for everything held, a tap's first. Afterwards
   --- nothing is held and no key is owed: a button still down is pressed
-  --- again by the next poll that reads it, and a named key's up goes to the
-  --- game.
+  --- again by the next poll that reads it.
   function self.release()
     local out = {}
     settle_taps(out, true)
-    for _, button in ipairs(TRIGGERS) do
-      if held[button.name] ~= nil then
-        lift(button.name, out, true)
+    for _, list in ipairs(PAD_LISTS) do
+      for _, button in ipairs(list) do
+        if held[button.name] ~= nil then
+          lift(button.name, out, true)
+        end
       end
     end
-    for _, name in ipairs(sorted_keys(held)) do
-      if not PAD[name] then
-        lift(name, out, true)
-      end
-    end
-    for _, button in ipairs(BUTTONS) do
-      if held[button.name] ~= nil then
-        lift(button.name, out, true)
-      end
-    end
-    key_edges, latched = {}, {}
     return out
   end
 
@@ -606,43 +532,10 @@ local function new(deps)
     return is_enabled(config())
   end
 
-  --- Whether the bridge takes this key: a named one's down while it is on,
-  --- and the up of every down it took. Its edge is answered at the next poll.
-  function self.on_key(dik, down)
-    if not down then
-      local name = latched[dik]
-      if name == nil then
-        return false
-      end
-      latched[dik] = nil
-      key_edges[#key_edges + 1] = { name = name, down = false }
-      return true
-    end
-    local settings = config()
-    if read == nil or not is_enabled(settings) then
-      return false
-    end
-    if last_poll == nil or deps.now() - last_poll > STALL_SECONDS then
-      return false
-    end
-    refresh(settings)
-    local name = named.by_dik[dik]
-    if name == nil then
-      return false
-    end
-    -- A held key's repeats are the bridge's too, and change nothing.
-    if latched[dik] == nil then
-      latched[dik] = name
-      key_edges[#key_edges + 1] = { name = name, down = true }
-    end
-    return true
-  end
-
   --- This frame's behaviour edges, `{ behavior, down, cancelled }` in order:
   --- the ups of the last poll's taps, the pad's releases, its triggers'
-  --- presses, the named keys' edges as they came, then its other presses. A
-  --- pad that stops answering, or a bridge switched off, lets go of
-  --- everything it held, cancelled.
+  --- presses, then its other presses. A pad that stops answering, or a
+  --- bridge switched off, lets go of everything it held, cancelled.
   function self.poll()
     local settings = config()
     if not is_enabled(settings) then
@@ -651,21 +544,21 @@ local function new(deps)
       -- one's does.
       probe = slot or probe
       slot, next_probe, empty_probes = nil, nil, 0
-      -- Every frame, off being the shipped state: nothing allocated for a
-      -- bridge that holds nothing.
-      if next(held) == nil and next(latched) == nil and #key_edges == 0 and #owed == 0 then
+      if next(held) == nil and #owed == 0 then
         return NO_EDGES
       end
       return self.release()
     end
     if read == nil then
-      return {}
+      return NO_EDGES
     end
     refresh(settings)
-    polls = polls + 1
     last_poll = deps.now()
     tap_window = tap_seconds(settings)
     local state = current_state()
+    if state == nil and next(held) == nil and #owed == 0 then
+      return NO_EDGES
+    end
     local down = state ~= nil and pressed_in(state, settings) or {}
     local out = {}
     settle_taps(out, false)
@@ -679,27 +572,6 @@ local function new(deps)
     for _, button in ipairs(TRIGGERS) do
       if down[button.name] and held[button.name] == nil then
         press(button.name, out)
-      end
-    end
-    if #key_edges > 0 then
-      local edges = key_edges
-      key_edges = {}
-      for index, edge in ipairs(edges) do
-        local holding = held[edge.name]
-        if not edge.down and holding ~= nil and holding.poll == polls then
-          -- A tap between two polls is held for this one and let go at the
-          -- next, or a game key's down and up would leave in one frame, which
-          -- the client never samples.
-          for rest = index, #edges do
-            key_edges[#key_edges + 1] = edges[rest]
-          end
-          break
-        end
-        if edge.down and holding == nil then
-          press(edge.name, out)
-        elseif not edge.down and holding ~= nil then
-          lift(edge.name, out, false)
-        end
       end
     end
     for _, button in ipairs(BUTTONS) do
@@ -728,38 +600,32 @@ local function new(deps)
     return "gamepad: on - looking for a pad"
   end
 
-  --- Why each gesture and named key left out of the map was, in order.
+  --- Why each gesture left out of the map was, in order.
   function self.problems()
-    local settings = config()
-    local extra, extra_problems = read_extra(extra_of(settings))
     local check = type(deps.check) == "function" and deps.check or nil
-    local _, map_problems = read_map(map_of(settings), extra.names, check)
+    local _, map_problems = read_map(map_of(config()), check)
     local out = {}
-    for _, list in ipairs({ map_problems, extra_problems }) do
-      for _, problem in ipairs(list) do
-        out[#out + 1] = "gamepad: " .. problem
-      end
+    for _, problem in ipairs(map_problems) do
+      out[#out + 1] = "gamepad: " .. problem
     end
     return out
   end
 
-  -- The map and the named keys are read afresh at the next look.
+  -- The map is read afresh at the next look.
   local function changed()
-    map_source, extra_source = nil, nil
+    map_source = nil
   end
 
   --- Binds a gesture to a behaviour in place of whatever it held, under any
   --- spelling. Answers the spelling it is kept under, or nil, why and the
   --- button it does not know where that is why.
   function self.bind(text, behavior)
-    local settings = config()
-    local names = read_extra(extra_of(settings)).names
-    local buttons, why, missing = read_gesture(text, names)
+    local buttons, why, missing = read_gesture(text)
     if buttons == nil then
       return nil, why, missing
     end
-    local map = writable(settings, "map")
-    for _, spelling in ipairs(spellings_of(map, gesture_key(buttons), names)) do
+    local map = writable_map(config())
+    for _, spelling in ipairs(spellings_of(map, gesture_key(buttons))) do
       map[spelling] = nil
     end
     local spelling = spelling_of(text)
@@ -770,19 +636,17 @@ local function new(deps)
 
   --- Unbinds a gesture under every spelling; a shipped one is kept as
   --- false, which the settings merge would otherwise put back. One naming a
-  --- button that has lost its key is found by its spelling alone. Answers
+  --- button the pad does not have is found by its spelling alone. Answers
   --- the spelling, or nil, why and the button it does not know.
   function self.unbind(text)
-    local settings = config()
-    local map = writable(settings, "map")
-    local names = read_extra(extra_of(settings)).names
-    local buttons, why, missing = read_gesture(text, names)
+    local map = writable_map(config())
+    local buttons, why, missing = read_gesture(text)
     local spelling = type(text) == "string" and spelling_of(text) or nil
     local found
     local shipped = {}
     if buttons ~= nil then
-      found = spellings_of(map, gesture_key(buttons), names)
-      shipped = spellings_of(DEFAULTS.map, gesture_key(buttons), names)
+      found = spellings_of(map, gesture_key(buttons))
+      shipped = spellings_of(DEFAULTS.map, gesture_key(buttons))
     elseif spelling ~= nil and map[spelling] ~= nil then
       found = { spelling }
     else
@@ -831,53 +695,6 @@ local function new(deps)
       end
     end
     return out
-  end
-
-  --- Whether a name can be given a key: true, or nil and why not.
-  function self.learnable(name)
-    if type(name) ~= "string" or not name:match(NAME) then
-      return nil, "a name is a plain lowercase word"
-    end
-    if PAD[name] then
-      return nil, name .. " is a pad button"
-    end
-    return true
-  end
-
-  --- Every name with a key, `{ name, key }`, in name order.
-  function self.named_keys()
-    local extra = extra_of(config())
-    local out = {}
-    for _, name in ipairs(sorted_keys(read_extra(extra).names)) do
-      out[#out + 1] = { name = name, key = extra[name] }
-    end
-    return out
-  end
-
-  --- The key a name has, or nil.
-  function self.key_of(name)
-    local dik = extra_of(config())[name]
-    return is_dik(dik) and dik or nil
-  end
-
-  --- Gives a name a key, or takes its key away with false. A key another
-  --- name had moves to this one; answers the name that lost it.
-  function self.set_key(name, dik)
-    local extra = writable(config(), "extra")
-    local lost = nil
-    if dik ~= false then
-      for _, other in ipairs(sorted_keys(extra)) do
-        if other ~= name and extra[other] == dik then
-          lost = lost or other
-          forget_key(extra, other)
-        end
-      end
-      extra[name] = dik
-    else
-      forget_key(extra, name)
-    end
-    changed()
-    return lost
   end
 
   --- What data/gamepad.lua starts from.

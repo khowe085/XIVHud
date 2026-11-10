@@ -1,9 +1,10 @@
 local new_keyboard = require("lib/keyboard")
 
 -- DirectInput scan codes.
-local ONE, EIGHT, NINE, EQUALS = 2, 9, 10, 13
+local ONE, EIGHT, NINE, ZERO, EQUALS = 2, 9, 10, 11, 13
 local SEMICOLON, APOSTROPHE, GRAVE, BACKSLASH = 39, 40, 41, 43
-local F9 = 67
+local F9, UP = 67, 200
+local LCTRL, RCTRL, LALT, LSHIFT = 29, 157, 56, 42
 
 describe("keyboard", function()
   local config, delivered, answers, chat, keyboard
@@ -46,9 +47,9 @@ describe("keyboard", function()
   end)
 
   describe("the shipped map", function()
-    it("is the crossbar's own keys", function()
+    it("carries the crossbar's own keys", function()
       local map = keyboard.config_defaults().map
-      assert.are.same({
+      for key, behavior in pairs({
         ["1"] = "crossbar.slot1",
         ["2"] = "crossbar.slot2",
         ["3"] = "crossbar.slot3",
@@ -62,14 +63,38 @@ describe("keyboard", function()
         equals = "crossbar.select",
         grave = "crossbar.switch",
         semicolon = "crossbar.left",
-      }, map)
+      }) do
+        assert.are.equal(behavior, map[key], key)
+      end
     end)
 
-    it("ships switched off, and answers fresh defaults every time", function()
+    it("carries the hotbar's six rows on Ctrl, Alt and Shift over the number row, and its set cycle", function()
+      local map = keyboard.config_defaults().map
+      for key, behavior in pairs({
+        ["ctrl+1"] = "hotbar.bar1_slot1",
+        ["ctrl+0"] = "hotbar.bar1_slot10",
+        ["alt+5"] = "hotbar.bar2_slot5",
+        ["shift+1"] = "hotbar.bar3_slot1",
+        ["ctrl+shift+1"] = "hotbar.bar4_slot1",
+        ["alt+shift+1"] = "hotbar.bar5_slot1",
+        ["ctrl+alt+shift+0"] = "hotbar.bar6_slot10",
+        ["ctrl+up"] = "hotbar.cycle",
+        ["ctrl+down"] = "hotbar.cycle_back",
+      }) do
+        assert.are.equal(behavior, map[key], key)
+      end
+      local count = 0
+      for _ in pairs(map) do
+        count = count + 1
+      end
+      assert.are.equal(13 + 60 + 2, count)
+    end)
+
+    it("ships switched on, and answers fresh defaults every time", function()
       local first = keyboard.config_defaults()
       first.map.semicolon = "changed"
       local defaults = keyboard.config_defaults()
-      assert.is_false(defaults.enabled)
+      assert.is_true(defaults.enabled)
       assert.are.equal("crossbar.left", defaults.map.semicolon)
     end)
 
@@ -126,11 +151,17 @@ describe("keyboard", function()
       assert.are.same({}, delivered)
     end)
 
-    it("delivers the release of a press it delivered, though that release arrives taken", function()
+    it("lets go of a press it delivered when another addon took the release, cancelled", function()
       answers["crossbar.left"] = true
       keyboard.on_key(SEMICOLON, true, false)
       assert.is_true(keyboard.on_key(SEMICOLON, false, true))
-      assert.are.same({ { "crossbar.left", true, false }, { "crossbar.left", false, false } }, delivered)
+      assert.are.same({ { "crossbar.left", true, false }, { "crossbar.left", false, true } }, delivered)
+    end)
+
+    it("delivers nothing for the repeats of a press another addon took", function()
+      keyboard.on_key(SEMICOLON, true, true)
+      assert.is_false(keyboard.on_key(SEMICOLON, true, false))
+      assert.are.same({}, delivered)
     end)
 
     it("delivers the release of a key held as it was switched off", function()
@@ -238,11 +269,120 @@ describe("keyboard", function()
     end)
 
     it("lists each key and what it does, in keyboard order, leaving out what is unbound or broken", function()
-      config = on({ map = { semicolon = "crossbar.left", ["1"] = "crossbar.slot1", f9 = false, nope = "x" } })
+      config = on({
+        map = {
+          semicolon = "crossbar.left",
+          ["1"] = "crossbar.slot1",
+          ["Shift+Ctrl+1"] = "hotbar.bar4_slot1",
+          ["ctrl+1"] = "hotbar.bar1_slot1",
+          f9 = false,
+          nope = "x",
+        },
+      })
       assert.are.same({
         { key = "1", behavior = "crossbar.slot1" },
+        { key = "ctrl+1", behavior = "hotbar.bar1_slot1" },
+        { key = "ctrl+shift+1", behavior = "hotbar.bar4_slot1" },
         { key = "semicolon", behavior = "crossbar.left" },
       }, keyboard.bindings())
+    end)
+  end)
+
+  --[[ Ctrl, Alt and Shift, either side, held under a key make a chord: the
+       hotbar's rows. They are matched exactly, and a key with no chord of
+       its own falls back to its bare entry, as the crossbar ignored them. ]]
+  describe("modifiers", function()
+    local function chord(modifiers, dik)
+      for _, modifier in ipairs(modifiers) do
+        keyboard.on_key(modifier, true, false)
+      end
+      local taken = keyboard.on_key(dik, true, false)
+      keyboard.on_key(dik, false, false)
+      for _, modifier in ipairs(modifiers) do
+        keyboard.on_key(modifier, false, false)
+      end
+      return taken
+    end
+
+    it("delivers a key's Ctrl chord while either Ctrl is held", function()
+      chord({ LCTRL }, ONE)
+      chord({ RCTRL }, ZERO)
+      assert.are.same({
+        { "hotbar.bar1_slot1", true, false },
+        { "hotbar.bar1_slot1", false, false },
+        { "hotbar.bar1_slot10", true, false },
+        { "hotbar.bar1_slot10", false, false },
+      }, delivered)
+    end)
+
+    it("matches the modifiers exactly, a key with no chord for them falling back to its bare entry", function()
+      chord({ LCTRL, LALT }, ONE)
+      chord({ LSHIFT }, SEMICOLON)
+      assert.are.same({
+        { "crossbar.slot1", true, false },
+        { "crossbar.slot1", false, false },
+        { "crossbar.left", true, false },
+        { "crossbar.left", false, false },
+      }, delivered)
+    end)
+
+    it("hands a chord the map names to that entry alone, though its behaviour leaves the press", function()
+      assert.is_false(chord({ LALT }, ONE))
+      assert.are.same({ { "hotbar.bar2_slot1", true, false }, { "hotbar.bar2_slot1", false, false } }, delivered)
+    end)
+
+    it("lets a chord go with its key, though its modifier came up first", function()
+      answers["hotbar.bar1_slot1"] = true
+      keyboard.on_key(LCTRL, true, false)
+      assert.is_true(keyboard.on_key(ONE, true, false))
+      keyboard.on_key(LCTRL, false, false)
+      assert.is_true(keyboard.on_key(ONE, false, false))
+      assert.are.same({ { "hotbar.bar1_slot1", true, false }, { "hotbar.bar1_slot1", false, false } }, delivered)
+    end)
+
+    it("hands a chord set to false to its key alone", function()
+      config = on({ map = { ["1"] = "crossbar.slot1", ["ctrl+1"] = false } })
+      chord({ LCTRL }, ONE)
+      assert.are.same({ { "crossbar.slot1", true, false }, { "crossbar.slot1", false, false } }, delivered)
+    end)
+
+    it("leaves a modifier's own edges to the game", function()
+      assert.is_false(keyboard.on_key(LCTRL, true, false))
+      assert.is_false(keyboard.on_key(LCTRL, false, false))
+      assert.are.same({}, delivered)
+    end)
+
+    it("reads the modifiers in any order and case, and a key whose name has a plus in it", function()
+      config = on({ map = { ["Shift+CTRL+f9"] = "x", ["ctrl+numpad+"] = "y" } })
+      chord({ LCTRL, LSHIFT }, F9)
+      chord({ RCTRL }, 0x4E)
+      assert.are.same(
+        { { "x", true, false }, { "x", false, false }, { "y", true, false }, { "y", false, false } },
+        delivered
+      )
+      assert.are.same({}, keyboard.problems())
+    end)
+
+    it("delivers nothing for a key's repeats, though a modifier arrives under it", function()
+      keyboard.on_key(UP, true, false)
+      keyboard.on_key(LCTRL, true, false)
+      assert.is_false(keyboard.on_key(UP, true, false))
+      assert.are.same({}, delivered)
+    end)
+
+    it("forgets every held modifier on a release", function()
+      keyboard.on_key(LCTRL, true, false)
+      keyboard.release()
+      keyboard.on_key(ONE, true, false)
+      assert.are.same({ { "crossbar.slot1", true, false } }, delivered)
+    end)
+
+    it("tracks the modifiers while switched off", function()
+      config = { enabled = false }
+      keyboard.on_key(LCTRL, true, false)
+      config = on()
+      keyboard.on_key(ONE, true, false)
+      assert.are.same({ { "hotbar.bar1_slot1", true, false } }, delivered)
     end)
   end)
 
@@ -273,16 +413,30 @@ describe("keyboard", function()
       assert.are.same({
         "keyboard: f10 - not a behavior",
         "keyboard: f9 - no behavior nope",
-        "keyboard: semicolon+1 - one key per entry: the keyboard reads no chords",
+        "keyboard: semicolon+1 - semicolon is no modifier: a chord is ctrl, alt or shift over one key",
         "keyboard: wat - no key wat",
       }, keyboard.problems())
     end)
 
-    it("names one key written twice, and keeps the spelling that is not the shipped one", function()
+    it("names a modifier written twice", function()
+      config = on({ map = { ["ctrl+ctrl+1"] = "x" } })
+      assert.are.same({ "keyboard: ctrl+ctrl+1 - names ctrl twice" }, keyboard.problems())
+    end)
+
+    it("names one key written twice, keeping the first in order", function()
       config = on({ map = { F9 = "accept", f9 = "cancel" } })
       assert.are.same({ "keyboard: F9 and f9 - the same key" }, keyboard.problems())
       keyboard.on_key(F9, true, false)
       assert.are.same({ { "accept", true, false } }, delivered)
+    end)
+
+    it("keeps a spelling of the user's own over the shipped one for the same chord", function()
+      config = on({ map = { ["shift+ctrl+1"] = "mine", ["ctrl+shift+1"] = "hotbar.bar4_slot1" } })
+      assert.are.same({ "keyboard: shift+ctrl+1 and ctrl+shift+1 - the same key" }, keyboard.problems())
+      keyboard.on_key(LCTRL, true, false)
+      keyboard.on_key(LSHIFT, true, false)
+      keyboard.on_key(ONE, true, false)
+      assert.are.same({ { "mine", true, false } }, delivered)
     end)
 
     it("does not ask after behaviours it has no way to ask about", function()

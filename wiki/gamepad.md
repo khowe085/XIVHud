@@ -9,8 +9,10 @@ something to do: a key for the game, an action fired as a crossbar or hotbar
 slot would fire it, or one of the crossbar's own moves. The chords live in
 XIVHud, so Steam Input, where you need it at all, only passes the pad through.
 
-It is **off until you switch it on**, and what each button does is changed
-with `//hud gamepad` commands, without editing a file.
+It is **on by default**, so set up the
+[game's own gamepad settings](#the-games-gamepad-settings) before you play
+with a pad. What each button does is changed with `//hud gamepad` commands,
+without editing a file.
 
 The bridge has not yet been run in a live client; see
 [Not yet checked in a live client](#not-yet-checked-in-a-live-client).
@@ -25,8 +27,6 @@ The bridge has not yet been run in a live client; see
   Escape - with autorun, lock-on, targeting and the map beside them.
 - **Any button or chord can carry an action**: a spell, an ability, an item, a
   chat line - anything a slot can hold, in the same words as a slot's `bind`.
-- **Buttons XInput cannot see**, such as a Steam Controller's back buttons,
-  work too, as keys Steam Input types that XIVHud learns with one command.
 - **One map for every character**, which works at the character screen too.
 
 ## What you need
@@ -35,26 +35,49 @@ The bridge has not yet been run in a live client; see
   works as it is. A PlayStation or Switch pad, or a Steam Controller, is not
   one on its own: run it through Steam Input set up as an Xbox pad (or another
   tool that presents it as one), with no chords - the bridge does those.
+  The bridge reads the Xbox pad's buttons and no others, so a Steam
+  Controller's back buttons and trackpads have to press one of those, or type
+  a key for the [keyboard map](keyboard.md).
 - **`bin/_LuaXInput.dll`**, which comes in the release zip, and the XInput
   Windows itself provides (`xinput1_4.dll`, `xinput1_3.dll` or
   `xinput9_1_0.dll`). `//hud gamepad` says if either is missing.
-- **The game's own pad buttons cleared.** FFXI reads the pad itself, and
-  nothing an addon does can keep a press from it, so a button the game still
-  has bound does two things at once. Clear the buttons in the game's own
-  gamepad settings and leave the sticks bound: the bridge reads the stick
-  clicks (L3, R3) but never where a stick points.
+- **The game's own gamepad settings set up as below.** FFXI reads the pad
+  itself, and nothing an addon does can keep a press from it, so a button the
+  game still has bound does two things at once.
 
-## Turning it on
+### The game's gamepad settings
 
-1. Type `//hud gamepad on`, or, with a character logged in, click the
-   `Gamepad` switch on the settings window's `global` panel
-   (`//hud config global`).
-2. Type `//hud gamepad`. It says which pad it is reading -
-   `gamepad: on - pad 1 connected` - or why it is reading none (see
-   [Troubleshooting](#troubleshooting)), then anything wrong with the map.
+Set these in FFXI's own gamepad configuration. All six are required:
 
-`//hud gamepad off` switches it off again. Either way the choice holds for
-every character.
+1. **Menus on the D-pad.**
+2. **Camera on the right stick.**
+3. **Movement on the left stick.**
+4. **The macro bars on the buttons that raise the crossbar** - LT and RT in
+   the shipped map. With a trigger held, the D-pad then moves the game's
+   macro bar instead of changing your target. It is not pretty, but it keeps
+   the D-pad slots under a trigger from retargeting you.
+5. **The WXHB halves on a chord with those buttons** - LT+LB and RT+RB in the
+   shipped map. A WXHB on a button of its own would reach the game bare.
+6. **Every other button unbound.** The bridge reads the stick clicks (L3,
+   R3) but never where a stick points.
+
+These follow from the game reading the pad itself: with the macro bars on LT
+and RT, a D-pad press under a trigger moves the game's macro bar rather than
+your target, which is why the crossbar can use the D-pad only under LT or RT.
+The shipped set jumps under RB (RB + D-pad for sets 5 to 8) reach the game's
+D-pad as well.
+
+## Turning it on and off
+
+It is on out of the box. Type `//hud gamepad` to see which pad it is
+reading - `gamepad: on - pad 1 connected` - or why it is reading none (see
+[Troubleshooting](#troubleshooting)), then anything wrong with the map.
+
+`//hud gamepad off` switches it off and `//hud gamepad on` back on, as does
+the `Gamepad` switch on the settings window's `global` panel
+(`//hud config global`, with a character logged in). Either way the choice
+holds for every character. Without a pad, switching it off also spares the
+search for one, which asks one XInput slot a second.
 
 ## The shipped map
 
@@ -62,8 +85,8 @@ every character.
 | --- | --- | --- |
 | A | Enter | `accept` |
 | B | Escape | `cancel` |
-| X | numpad `+` | `cycle_window` |
-| Y | numpad `*` | `lockon` |
+| X | numpad `*` | `lockon` |
+| Y | numpad `+` | `cycle_window` |
 | Start | numpad `-` | `main_menu` |
 | LB, tapped | `R`, as you let go | `autorun` |
 | L3 | `F1`, target yourself | `target_self` |
@@ -91,13 +114,11 @@ None of these needs a character logged in: one map serves every character.
 | --- | --- |
 | `//hud gamepad` | which pad is read, or why none is, then anything wrong with the map |
 | `//hud gamepad on` / `off` | switch the bridge on or off |
-| `//hud gamepad list` | every gesture and what it does, written the way `bind` takes it, then the keys you have taught it |
+| `//hud gamepad list` | every gesture and what it does, written the way `bind` takes it |
 | `//hud gamepad bind <gesture> <behaviour>` | give a gesture a named behaviour: `bind a accept`, `bind lt crossbar.left` |
 | `//hud gamepad bind <gesture> key <key>` | have it hold a key for as long as it is held: `bind lt+l3 key numpad*` |
 | `//hud gamepad bind <gesture> <type> [<action>] [<target>]` | give it an action, in a slot's words: `bind lt+r3 ma "Cure IV" t` |
 | `//hud gamepad unbind <gesture>` | take a gesture off the map, a shipped one included |
-| `//hud gamepad learn <name>` | the next key you press becomes the button `<name>` (see [Buttons XInput cannot see](#buttons-xinput-cannot-see)) |
-| `//hud gamepad learn <name> off` | give that button's key back to the game |
 
 `bind` replaces whatever the gesture did before. Every change is saved at once
 and takes effect at once. There is no command to put the shipped map back:
@@ -110,7 +131,7 @@ press last at the end. `lt+y` is Y pressed while LT is held, and `b+a` is A
 pressed while B is held. It is one word, with no spaces, in any case.
 
 The buttons are `a` `b` `x` `y` `lb` `rb` `lt` `rt` `back` `start` `l3` `r3`
-`up` `down` `left` `right`, and any name you have taught a key with `learn`.
+`up` `down` `left` `right`.
 
 - **The last button is the one that counts.** `lt+lb` is LB pressed with LT
   already held. Press LB first and you get LB's own gesture, `autorun`, tapped
@@ -175,34 +196,6 @@ crossbar's behaviours follow the crossbar's own rules, exactly as its keys do:
 nothing while the HUD or the crossbar is hidden, in layout mode or with the
 chat line open, and in edit mode only the binder and the set switch.
 
-### Buttons XInput cannot see
-
-XInput knows a standard pad's buttons and nothing more, so a Steam
-Controller's back buttons or trackpads never reach the bridge as buttons.
-Instead:
-
-1. In Steam Input, bind the button to a keyboard key nothing else uses.
-2. Type `//hud gamepad learn l4` and press that button. XIVHud answers
-   `gamepad: l4 is key <number>`.
-3. `l4` is now a button like any other: `//hud gamepad bind l4
-   crossbar.wxhb_left`, `//hud gamepad bind lt+l4 ma "Cure IV" t`.
-
-While the bridge is on and the game has focus, a learned key belongs to the
-bridge, from any keyboard: neither the game nor the HUD sees it.
-
-- `learn` takes the next key pressed. Escape cancels it. Enter, Ctrl, Shift,
-  Alt and the Windows keys are let through while it goes on waiting, so none
-  of those can be learned.
-- A key another name already had moves to the new one, and the reply says
-  which name lost it.
-- Any lowercase name of letters, digits and underscores that is not a pad
-  button will do: `l4`, `r5`, `pad_up`.
-- `learn` works with the bridge off, so the keys can be set up first.
-- `//hud gamepad learn l4 off` gives the key back to the game.
-- A button that raises a crossbar bar on its own needs slot chords of its own:
-  `l4+y`, `l4+b` and so on to `l4+left`, bound to `crossbar.slot1` to
-  `crossbar.slot8`. The shipped slot chords are under LT, RT and RB only.
-
 ## Things to know
 
 - **Nothing is read while the game is out of focus**, since XInput reads the
@@ -223,9 +216,9 @@ bridge, from any keyboard: neither the game nor the HUD sees it.
   dismounts. And a bumper pressed with its own trigger held is LB+RB rather
   than its WXHB half when the other bumper is held too and went down after
   that trigger.
-- **The keyboard still works** alongside the pad. A crossbar side held on the
-  keyboard and the same side held on the pad are one side: it drops when both
-  have let go.
+- **The [keyboard map](keyboard.md) works alongside the pad.** A crossbar
+  side held on the keyboard and the same side held on the pad are one side:
+  it drops when both have let go.
 
 ## Settings
 
@@ -240,17 +233,16 @@ It belongs to no character, so it works at the character screen, and
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| `enabled` | `false` | the bridge is on only when this is exactly `true` (`//hud gamepad on\|off`) |
+| `enabled` | `true` | the bridge is on only when this is exactly `true` (`//hud gamepad on\|off`) |
 | `map` | the shipped map | each gesture and what it does (`bind`, `unbind`); a shipped gesture you unbind is kept as `false`, or the next load would put it back |
-| `extra` | `l4`, `l5`, `r4`, `r5`, all `false` | the key each learned button arrives as, a DirectInput scan code (`learn`) |
 | `trigger_threshold` | `30` | how far, 0 to 255, a trigger must be pulled to count as pressed; it lets go 10 below that. File only |
 | `tap_seconds` | `0.25` | how long a button you also chord with can be held and still tap its own key or action as you let go. File only |
 
 Every `//hud gamepad` command reads the file again first, so after a hand edit
 type `//hud gamepad` and the edit applies. A command that changes the file
 refuses one it cannot read, rather than write the shipped map over yours.
-Deleting the file with the game closed puts the shipped map back, with no
-learned keys and the bridge off.
+Deleting the file with the game closed puts the shipped map back, with the
+bridge on.
 
 An update that changes the shipped map does not change yours. The first
 command that saved the file wrote every gesture into it, and the file wins: a
@@ -273,18 +265,13 @@ the map are added, as is a setting new to the file, such as `tap_seconds`. `bind
 | `gamepad: unavailable - no XInput library found` | Windows has none of the three XInput DLLs |
 | `the gamepad bridge did not load` | the bridge itself failed to load, or `safe_mode` is on; `load.log` holds the error |
 
-Any lines after it each name a gesture or a learned button and what is wrong
-with it - a button nothing has learned, a behaviour that does not exist, one
-gesture written twice. The rest of the map works. The same lines are said in
-chat once, when the bridge first runs. Fix them with `bind` and `unbind`, or
-with `learn` where a button has no key.
+Any lines after it each name a gesture and what is wrong with it - a button
+the pad does not have, a behaviour that does not exist, one gesture written
+twice. The rest of the map works. The same lines are said in chat once, when
+the bridge first runs. Fix them with `bind` and `unbind`.
 
 **A button does two things.** The game still has it bound: clear it in the
 game's own gamepad settings.
-
-**A key stopped working on the keyboard.** You taught it to the bridge, which
-takes it from every keyboard while it is on. `//hud gamepad list` names the
-learned keys, and `//hud gamepad learn <name> off` gives one back.
 
 ## Not yet checked in a live client
 
@@ -293,8 +280,7 @@ So far the bridge has only run against the tests. In particular: that
 inside the game; the key names behind the shipped behaviours (`enter`,
 `escape`, `numpad+`, `numpad-`, `numpad*`, `r`, `f1`, `f8`), where a wrong one silently
 does nothing; whether a key held by a gesture repeats; whether the game sees a
-tapped key, which is down for one frame only (LB's autorun depends on it); that `open_map` opens
-the map; that keys Steam Input types reach XIVHud and can be kept from the
-game; and whether a learned key arrives as the same number on every keyboard
-layout. `//hud gamepad` and `load.log` say whether the module loaded and
-whether a pad answers; most of the rest would fail without a word.
+tapped key, which is down for one frame only (LB's autorun depends on it); and
+that `open_map` opens the map. `//hud gamepad` and `load.log` say whether the
+module loaded and whether a pad answers; most of the rest would fail without a
+word.

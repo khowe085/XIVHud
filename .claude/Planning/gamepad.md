@@ -17,11 +17,20 @@ back buttons), which XInput cannot see without Steam Input. So Steam Input
 face, D-pad, Start, Back, stick clicks as XInput) plus single keys for what
 XInput has no names for, with **no chords** - the back buttons, the left
 trackpad's F9-F12 and the right stick click. The bridge reads Steam's virtual
-pad, and takes the back buttons as the keys Steam types for them (`extra`,
-below).
+pad and nothing else: the keys Steam types are the game's, or the keyboard
+map's (reading them as buttons came and went, below).
 
 The game's own pad bindings for the buttons are blanked (Kevin, 2026-10-19);
 the sticks stay bound in game. Nothing here keeps a press from the game.
+
+The game's gamepad settings, REQUIRED (Kevin, 2026-11-09, from a live client):
+menus on the D-pad, camera on the right stick, movement on the left stick,
+the game's macro bars on the buttons that raise the crossbar (LT/RT), the WXHB
+halves on chords with those buttons, everything else unbound. With the macro
+bars on LT/RT, a D-pad press under a trigger moves the game's macro bar
+rather than the target - functional, not liked - so the crossbar has the
+D-pad only under LT or RT. The shipped RB + D-pad set jumps (sets 5-8) still
+reach the game's D-pad.
 
 ## The reader: a native module (Kevin, 2026-11-04)
 
@@ -176,15 +185,16 @@ open_map     = { type = "open", action = "map" },
 
 ## The gamepad map
 
-`data/gamepad.lua`: `enabled` (ships `false`; only an explicit `true` turns it
-on), `trigger_threshold`, `tap_seconds` (0.25, 2026-11-09), `extra` (below)
-and `map`, a gesture to a behaviour
+`data/gamepad.lua`: `enabled` (ships `true` since 2026-11-09, Kevin - `false`
+until then; only an explicit `true` turns it
+on), `trigger_threshold`, `tap_seconds` (0.25, 2026-11-09) and `map`, a
+gesture to a behaviour
 name, a `{ key = }` or an action's record. Shipped (Kevin, 2026-11-05; Y,
 Start, L3, R3 and LB+RB 2026-11-09):
 
 | Gesture | Behaviour |
 | --- | --- |
-| A / B / X / Y | `accept` / `cancel` / `cycle_window` / `lockon` |
+| A / B / X / Y | `accept` / `cancel` / `lockon` / `cycle_window` (X and Y swapped 2026-11-09, Kevin) |
 | Start | `main_menu` |
 | LB | `autorun` |
 | RB | `crossbar.switch` |
@@ -199,7 +209,7 @@ Start, L3, R3 and LB+RB 2026-11-09):
 
 ```lua
 map = {
-  a = "accept", b = "cancel", x = "cycle_window", y = "lockon",
+  a = "accept", b = "cancel", x = "lockon", y = "cycle_window",
   start = "main_menu", lb = "autorun", rb = "crossbar.switch",
   ["lb+rb"] = "crossbar.draw", ["rb+lb"] = "crossbar.draw",
   lt = "crossbar.left", rt = "crossbar.right",
@@ -214,7 +224,7 @@ map = {
 
 - **A gesture** is buttons joined by `+`: the last is the trigger, the rest
   held before it, so `lt+y` is Y pressed with LT held. Buttons: `a b x y lb
-  rb lt rt back start l3 r3 up down left right`, and the `extra` names.
+  rb lt rt back start l3 r3 up down left right`.
 - **Resolved at the press**, against what is held at that moment: of the
   gestures the button triggers whose other buttons are all held, the one
   naming the most buttons wins (`lt+y` over `y`); on a tie, the one whose
@@ -226,8 +236,8 @@ map = {
   again, so LB does not turn into `autorun` on the way.
 - **Slots of the raised bar** (Kevin): `lt+y` also covers WXHB left (LT+LB
   held) and Expanded (LT+RT), and `rb+y` is the set jump through the same
-  behaviour. A gesture that raises the crossbar on its own (L4 alone, say)
-  needs its own eight slot gestures (`l4+y` ...).
+  behaviour. A gesture that raises the crossbar on its own (Back alone, say)
+  needs its own eight slot gestures (`back+y` ...).
 - **A modifier's own component behaviour stays held**: LT holds
   `crossbar.left` while `lt+y` fires slot 1, its component hearing the hold.
 - **A modifier's own game key or action is a tap** (Kevin, 2026-11-09): any
@@ -253,30 +263,17 @@ map = {
   which is the user's: the merge puts back the shipped spelling, lowercase and
   unspaced, and any other spelling sorts ahead of it.
 
-### Buttons XInput cannot see (Kevin, 2026-11-05)
+### Buttons XInput cannot see (Kevin, 2026-11-05; dropped 2026-11-09)
 
-The back buttons (L4, L5, R4, R5) have no XInput name, so Steam Input types a
-key for each and `extra` names them: `extra = { l4 = <DIK>, l5 = , r4 = ,
-r5 = }`, shipped `false` (none). A named key is then a pad button like any
-other - `l4` alone, `lt+l4` and `l4+y` are all gestures - so whether WXHB left
-is LT+LB, L4 or LT+L4 is the user's map. Any name works (a trackpad region
-too), but it may not shadow an XInput button.
-
-- While the bridge is on, a named key is the bridge's: core offers every key
-  to it before any component, and both edges of a named one are swallowed, so
-  neither the bars nor the game see it - from any keyboard. Not while the
-  game is out of focus, where nothing would poll what it took.
-- A key edge is taken at the next poll, the keys in the order they came,
-  after the pad's releases and its triggers' presses and before its other
-  presses, so LT and L4 on one frame read as LT+L4. A tap between two polls is
-  held for one, or a game key's down and up would leave in one frame, which
-  the client never samples. A repeat of a held key is ignored.
-- A named key is taken only while the polls are running: one taken after the
-  pump's guard switched it off would wait for a poll that never comes.
-- Pick keys nothing else uses. Steam's current `;`+`\` / `'`+`\` back buttons
-  would raise the crossbar through its own keys and never reach the map.
-- A key is named with `//hud gamepad learn <name>` (below), never typed as a
-  number.
+The back buttons (L4, L5, R4, R5) have no XInput name. From 2026-11-05 Steam
+Input typed a key for each, `extra` named it (`l4 = <DIK>`), and the bridge
+swallowed that key and read it as a button, the key set from the keyboard by
+`//hud gamepad learn <name> [off]`. Kevin dropped all of it on 2026-11-09
+("just noise at this point"): the bridge reads XInput's sixteen buttons and
+nothing else, so a back button presses one of those or types a key for the
+keyboard map. Nothing migrates - an `extra` block left in a file is dead
+weight, and a gesture naming `l4` is reported as naming no button, which
+`unbind` takes by its spelling.
 
 ## Commands (Kevin, 2026-11-06)
 
@@ -290,7 +287,6 @@ Nothing else in the addon needs a hand edit, so neither does the pad:
 //hud gamepad bind <gesture> <behavior>
 //hud gamepad bind <gesture> key <key name>
 //hud gamepad unbind <gesture>
-//hud gamepad learn <name> [off]    the next key pressed is that button's
 ```
 
 - **`bind` is a slot's `bind` with a gesture where the address goes** (Kevin):
@@ -303,7 +299,7 @@ Nothing else in the addon needs a hand edit, so neither does the pad:
   - `key <name>`, a game key held for as long as the gesture is: `bind lt+l3 key
     numpad*`;
   - anything a slot can hold, read by `bind`'s own record parser and validated
-    as a slot's is: `bind lt+l4 ma "Cure IV" <t>`, `bind back open map`.
+    as a slot's is: `bind lt+r3 ma "Cure IV" <t>`, `bind back open map`.
     `alias=`, `icon=` and `context=` need a slot and are refused.
   No behaviour name is a slot type, and a spec pins that, so the three cannot
   be mistaken for each other. A word that is none of them is refused, naming
@@ -311,32 +307,13 @@ Nothing else in the addon needs a hand edit, so neither does the pad:
 - The binding replaces whatever the gesture held, under every spelling: one
   gesture is stored once, under the shipped spelling where there is one, so
   the settings merge cannot put a second copy back.
-- A gesture naming a button nothing has learned is refused, pointing at
-  `learn`.
+- A gesture naming a button the pad does not have is refused, the refusal
+  listing the pad's buttons.
 - `unbind <gesture>` removes it. A shipped gesture is written `false`, which
   the settings merge would otherwise put back.
 - `list` prints each gesture and what it does in the words `bind` takes, so a
   row retyped after `bind` binds the same thing - a `jc` record keeps no
-  alias for it (review) - then the names given keys.
-- **`learn <name>`** arms a capture: the next key pressed while the game has
-  focus becomes that name's key in `extra`, both its edges swallowed, the
-  file read again first (review: it waited on a keypress, and a write must
-  not go over a hand edit or a broken file), saved and said - `l4 is key 88`.
-  Escape cancels it; Enter (what sent the chat line) and the modifiers (Ctrl,
-  Shift, Alt, Windows - the start of Alt-Tab, which learned would be kept
-  from the game's macro chords; review) go through and it goes on waiting. A
-  key another name already has MOVES to this one, and the reply says which
-  name lost it (Kevin) - which is why core offers each key to `learn` before
-  the bridge, which would otherwise take it as the old name (pinned by a
-  spec, review). Any plain lowercase name that is not a pad button can be
-  learned (Kevin), as `extra` allows. `learn <name> off` gives the key back
-  to the game (Kevin). It works with the bridge off, so keys are set up before
-  it goes on, and `core.wants_keyboard()` now counts the bridge, so the
-  keyboard handler is registered for it - a review follow-up that `learn`
-  makes load-bearing. A lost focus lets go of the keys it took, whose ups
-  will not come (review).
-- A refusal naming a button nothing knows lists the pad's buttons and the
-  learned names.
+  alias for it (review).
 - Every verb that edits re-reads `data/gamepad.lua` first and refuses one it
   could not read, as switching does.
 - `trigger_threshold` stays a file edit, and there is no `reset` (Kevin);
@@ -353,9 +330,8 @@ Nothing else in the addon needs a hand edit, so neither does the pad:
 - **Disconnect or switch-off** lets go of every held behaviour.
 - **Focus.** XInput reads the pad whichever window has focus, so the pump
   stops while the game is out of focus (a second client would otherwise act
-  on the same presses); losing focus lets go of everything held, the `extra`
-  keys included, whose ups never arrive. The starting state is asked of the
-  client (`windower.has_focus`) so an addon reloaded in the background starts
+  on the same presses); losing focus lets go of everything held. The starting
+  state is asked of the client (`windower.has_focus`) so an addon reloaded in the background starts
   out of focus. Unload lets go too.
 - **Its own guard.** The entry point drives `core.pump_gamepad` under a guard
   named `gamepad`: a component throwing on a behaviour is reported there and
@@ -454,6 +430,15 @@ The commands (2026-11-06):
 - CLAUDE.md - the commands block, the Gamepad bridge paragraph, Settings (one
   machine-wide file).
 
+The drop (2026-11-09):
+
+- `lib/gamepad` - `extra`, `on_key`, `learnable`, `named_keys`, `key_of` and
+  `set_key` go; a gesture's buttons are the pad's own.
+- `lib/gamepad_commands` - `learn`, its capture (`on_key`, `release`) and the
+  `say` dep go; a refusal names the pad's buttons alone.
+- core - the keyboard handler offers each key to the keyboard map alone, and
+  `wants_keyboard()` no longer counts the bridge.
+
 ## Unverified in a live client
 
 Everything: that `_LuaXInput.dll` loads from the addon's `bin/` (XIPivot's
@@ -462,8 +447,7 @@ answers XInputGetState inside the game process, the probe and per-frame cost,
 the `setkey` spellings `enter`, `escape`, `numpad+`, `numpad-`, `numpad*`,
 `r`, `f1` and `f8` (a wrong spelling silently does nothing), whether the game sees a tapped
 key, down for one frame only (LB's autorun rests on it), whether a key held down through
-`setkey` repeats, that keys Steam types reach Windower's keyboard event and can
-be swallowed like typed ones, and that `/map` opens the map (the opener's own
+`setkey` repeats, and that `/map` opens the map (the opener's own
 open row). `//hud gamepad` and load.log say which step failed.
 
 ## Open
@@ -482,9 +466,9 @@ open row). `//hud gamepad` and load.log say which step failed.
   one trigger or both). Three-button WXHB chords that won that tie were tried
   and dropped (review, 2026-11-09): a chord breaks when any of its buttons
   lets go, so the half fell when the other bumper did mid-roll. Nothing
-  migrates: a `data/gamepad.lua` saved before keeps Y on
-  `main_menu` and L3 on `lockon` until they are bound again (`tap_seconds`,
-  a key that file never had, is added by the merge).
+  migrates: a `data/gamepad.lua` saved before keeps its X, Y and L3 until
+  they are bound again (`tap_seconds`, a key that file never had, is added by
+  the merge).
 - If the `gamepad` guard switches the pump off after five failures, a game key
   held through `setkey ... down` stays down until the next focus loss or
   unload. An error path only.

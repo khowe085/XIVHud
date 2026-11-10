@@ -43,8 +43,7 @@ Bindings are made with the mouse: `//hud crossbar edit` opens a binder, you
 click a slot, pick which layer you are editing, and pick an action.
 
 It is played from the keyboard, or from a gamepad that XIVHud reads itself -
-the [gamepad bridge](../gamepad.md), off until you switch it on - so **a
-controller is optional**.
+the [gamepad bridge](../gamepad.md) - so **a controller is optional**.
 
 ## Features
 
@@ -114,33 +113,16 @@ another job's bindings over it.
 | `text_color` / `text_stroke` | white / dark, width 2 | label colour and outline |
 | `mp_cost_color` / `tp_cost_color` | pink / yellow | the cost text colours |
 | `binder_pos` | none | where you last left the binder window; written by the binder, not by hand |
-| `input.*` | see below | the keys the bar reads, as DirectInput key codes |
 
 The travel countdown and the action queue are settings shared with the
 [hotbar](hotbar.md): `//hud delay` and `//hud queue`, listed on the
 [home page](../Home.md#action-commands).
 
-The default keys (`input`):
-
-| Setting | Key | Code |
-| --- | --- | --- |
-| `xhb_left` | `;` | 39 |
-| `xhb_right` | `'` | 40 |
-| `w_layer` | `\` | 43 |
-| `set_switch` | `` ` `` | 41 |
-| `slot_keys` | `1`-`8` | 2-9 |
-| `shortcuts` | `=` (opens the binder while a side is held) | 13 |
-
-The keys are not changed by command. To use different ones, edit the codes in
-`config.lua` (they are DirectInput scan codes; a search for "DIK scan codes"
-finds the table) and reload the addon. The four key roles are lists, so a role
-can have several keys; to remove one, set it to `false`. `slot_keys` is in slot
-order, slot 1 first. `shortcuts` maps a key code to a `tap` verb (a bare
-press), a `chorded` verb (with a side held), or both: any `//hud crossbar`
-command without that prefix, or `draw`, `mr`, `warp [all]`, `sneak`,
-`invisible` or `reraise`. If you give one key two jobs, the roles win in the
-order left side, right side, layer key, set switch, slot keys, shortcuts, and
-chat says which was dropped.
+The keys the bar answers are not the crossbar's settings: they are the
+[keyboard map](../keyboard.md)'s, in `data/keyboard.lua`, one map for every
+character. An `input` block left in an older `config.lua` is no longer read.
+A key that used to run a `shortcuts` verb can be given the same action in the
+map instead.
 
 The bar is placed in `//hud layout` as five pieces: `main` (the XHB),
 `wxhb_left`, `wxhb_right`, `set` (the active set label) and `weapon` (the
@@ -460,7 +442,8 @@ does, rung by rung, is under [Built-ins](#built-ins).
 
 ## Keys
 
-Six keys drive the crossbar from the keyboard:
+Six keys drive the crossbar from the keyboard, through the
+[keyboard map](../keyboard.md), which ships on with these:
 
 | Key | Role |
 | --- | --- |
@@ -482,16 +465,18 @@ repeats a fire, a slot key already down when a side goes down stays the game's,
 and alt-tabbing releases a held side.
 
 **No modifiers are used.** The bar never uses Ctrl or Alt, so FFXI's own
-macro palette on those chords is untouched.
+macro palette on those chords is untouched. A modifier held under one of its
+keys is ignored (Shift+`;` still raises the left side), except where that
+chord is the [hotbar](hotbar.md)'s: Ctrl, Alt or Shift and `1` is the
+hotbar's, even with a crossbar side held, and on a hidden hotbar row it fires
+nothing at all.
 
 **Sheathe / unsheathe** is a gesture: hold `\` and tap `` ` `` with no side
 held. Mounted, the same gesture dismounts.
 
-**The [keyboard map](../keyboard.md)**, switched on with `//hud keyboard on`,
-hands these same keys to the crossbar as behaviours, the way the gamepad's
-buttons are, and everything above stays as it is. With it on, the keys are
-the map's (`data/keyboard.lua`), and the crossbar's own `input` settings are
-not read.
+The crossbar reads no key itself: the keyboard map hands it each key as a
+behaviour, the way the gamepad's buttons are. With the map off
+(`//hud keyboard off`), no key reaches it, and only the pad and the mouse do.
 
 ## Gamepad
 
@@ -506,8 +491,8 @@ behaviours, and the bridge's map puts them on the pad:
 | `crossbar.switch` | RB | the set switch, as `` ` ``: a tap moves to the next set in the rotation; held, a slot button jumps to that set |
 | `crossbar.slot1` - `crossbar.slot8` | Y, B, A, X, then D-pad ↑ → ↓ ←, each with LT, RT or RB held | fire that slot on whichever bar is raised - an XHB side, a WXHB half or Expanded Hold - or, with the switch held, jump to that set |
 | `crossbar.binder` | LT+Start, RT+Start | open or close edit mode, whatever else is held |
-| `crossbar.layer` | nothing on the pad; `\` in the [keyboard map](../keyboard.md) | held with a side, raise that side's WXHB half, as `\` does |
-| `crossbar.select` | nothing on the pad; `=` in the keyboard map | under a raised side, open or close edit mode; alone, nothing but leaving edit mode, as `=` does |
+| `crossbar.layer` | nothing on the pad; `\` in the [keyboard map](../keyboard.md) | held with a side, raise that side's WXHB half |
+| `crossbar.select` | nothing on the pad; `=` in the keyboard map | under a raised side, open or close edit mode; alone, nothing but leaving edit mode |
 | `crossbar.draw` | LB+RB, either order | draw or sheathe, as `//hud draw` does, but only while no side or WXHB half is up when it is pressed; pressed over the held switch, it keeps the switch from changing sets when RB comes up |
 
 - **A slot button fires whatever is raised**: Y under a trigger is slot 1 of
@@ -522,14 +507,13 @@ behaviours, and the bridge's map puts them on the pad:
   and goes only on a quick tap, so LB+RB draws without autorunning, in either
   order. A WXHB move can still read as LB+RB; see
   [the gamepad page](../gamepad.md#things-to-know).
-- **Any of them can move** with `//hud gamepad bind`: `bind l4
-  crossbar.wxhb_left` puts the WXHB's left half on a back button. A button
-  that raises a bar on its own needs slot chords of its own (`l4+y` bound to
+- **Any of them can move** with `//hud gamepad bind`: `bind back
+  crossbar.wxhb_left` puts the WXHB's left half on Back. A button that raises
+  a bar on its own needs slot chords of its own (`back+y` bound to
   `crossbar.slot1`, and so on), since the shipped ones are under LT, RT and RB
   only.
 
-The [gamepad page](../gamepad.md) has the whole map, how chords are read, and
-how to use buttons XInput cannot see.
+The [gamepad page](../gamepad.md) has the whole map and how chords are read.
 
 ---
 

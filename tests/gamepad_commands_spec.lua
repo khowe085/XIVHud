@@ -3,17 +3,13 @@ local new_gamepad = require("lib/gamepad")
 local new_behaviors = require("lib/behaviors")
 local new_bar_commands = require("lib/actionbar/commands")
 
-local ESCAPE, ENTER, NUMPAD_ENTER = 1, 28, 156
-
 local READ_FAILED = "gamepad: data/gamepad.lua could not be read - fix it first"
 local SPACED = "gamepad: a gesture is one word with no spaces, like lt+y"
 local BIND_FORM = "gamepad bind <gesture> <type> [<action>] [<target>] - or a behavior, or key <key name>;"
   .. " a gesture is buttons joined by +, the trigger last, like lt+y"
-local LEARN_FORM = "gamepad learn <name> [off] - the next key pressed is <name>'s"
 
 describe("gamepad commands", function()
-  -- `on_disk`, when set, is what the next re-read of the file finds.
-  local config, on_disk, readable, reloads, saved, said, focused, behaviors, commands
+  local config, readable, reloads, saved, focused, behaviors, commands
 
   -- The action service's own answers, narrowed to what these specs bind.
   local function validate(record)
@@ -78,16 +74,10 @@ describe("gamepad commands", function()
       describe_action = parser.describe_action,
       reload = function()
         reloads = reloads + 1
-        if on_disk ~= nil then
-          config, on_disk = on_disk, nil
-        end
         return readable
       end,
       save = function()
         saved = saved + 1
-      end,
-      say = function(line)
-        said[#said + 1] = line
       end,
       focused = function()
         return focused
@@ -100,15 +90,15 @@ describe("gamepad commands", function()
   end
 
   before_each(function()
-    config, on_disk = new_gamepad({}).config_defaults(), nil
-    readable, reloads, saved, said, focused = true, 0, 0, {}, true
+    config = new_gamepad({}).config_defaults()
+    readable, reloads, saved, focused = true, 0, 0, true
     build()
   end)
 
   describe("the bare verb and the switch", function()
     it("answers the status, then what is wrong with the map", function()
       config.map["lt+q"] = "accept"
-      assert.are.same({ "gamepad: off", "gamepad: lt+q - no button q" }, commands.handle({}))
+      assert.are.same({ "gamepad: on - looking for a pad", "gamepad: lt+q - no button q" }, commands.handle({}))
     end)
 
     it("re-reads the file first", function()
@@ -122,24 +112,24 @@ describe("gamepad commands", function()
       assert.are.same({ "gamepad: on - looking for a pad - paused - the game is not in focus" }, commands.handle({}))
     end)
 
-    it("switches the bridge on and off, saving each", function()
+    it("switches the bridge off and on, saving each", function()
+      assert.are.same({ "gamepad: off" }, commands.handle({ "OFF" }))
+      assert.is_false(config.enabled)
       assert.are.same({ "gamepad: on - looking for a pad" }, commands.handle({ "on" }))
       assert.is_true(config.enabled)
-      commands.handle({ "OFF" })
-      assert.is_false(config.enabled)
       assert.are.equal(2, saved)
     end)
 
     it("refuses to switch over a file it could not read", function()
       readable = false
-      assert.are.same({ READ_FAILED }, commands.handle({ "on" }))
-      assert.is_false(config.enabled)
+      assert.are.same({ READ_FAILED }, commands.handle({ "off" }))
+      assert.is_true(config.enabled)
       assert.are.equal(0, saved)
     end)
 
     it("still answers the status over a file it could not read", function()
       readable = false
-      assert.are.same({ "gamepad: off" }, commands.handle({}))
+      assert.are.same({ "gamepad: on - looking for a pad" }, commands.handle({}))
     end)
 
     it("answers the form for words it does not know, and nothing after it", function()
@@ -149,8 +139,13 @@ describe("gamepad commands", function()
         "gamepad list - every gesture and what it does",
         BIND_FORM,
         "gamepad unbind <gesture>",
-        LEARN_FORM,
       }, commands.handle({ "bogus" }))
+    end)
+
+    it("has no learn verb, and takes no key", function()
+      assert.are.same(commands.handle({ "bogus" }), commands.handle({ "learn", "l4" }))
+      assert.is_nil(commands.on_key)
+      assert.is_nil(commands.release)
     end)
   end)
 
@@ -241,16 +236,7 @@ describe("gamepad commands", function()
 
     it("names the buttons when it does not know one", function()
       assert.are.same({
-        "gamepad: lt+q - no button q; buttons are lt rt lb rb back start l3 r3 y b a x up right down left,"
-          .. " or a name given a key with //hud gamepad learn <name>",
-      }, commands.handle({ "bind", "lt+q", "accept" }))
-    end)
-
-    it("names the learned buttons among them", function()
-      config.extra.l4 = 100
-      assert.are.same({
-        "gamepad: lt+q - no button q; buttons are lt rt lb rb back start l3 r3 y b a x up right down left l4,"
-          .. " or a name given a key with //hud gamepad learn <name>",
+        "gamepad: lt+q - no button q; buttons are lt rt lb rb back start l3 r3 y b a x up right down left",
       }, commands.handle({ "bind", "lt+q", "accept" }))
     end)
 
@@ -299,8 +285,7 @@ describe("gamepad commands", function()
 
     it("names the buttons when it does not know one", function()
       assert.are.same({
-        "gamepad: lt+q - no button q; buttons are lt rt lb rb back start l3 r3 y b a x up right down left,"
-          .. " or a name given a key with //hud gamepad learn <name>",
+        "gamepad: lt+q - no button q; buttons are lt rt lb rb back start l3 r3 y b a x up right down left",
       }, commands.handle({ "unbind", "lt+q" }))
     end)
 
@@ -347,148 +332,6 @@ describe("gamepad commands", function()
     it("says when nothing is bound", function()
       config.map = { a = false }
       assert.are.same({ "gamepad: no gestures" }, commands.handle({ "list" }))
-    end)
-
-    it("names the buttons given keys after the gestures", function()
-      config.map = { b = "cancel" }
-      config.extra = { l4 = 100, l5 = false, lpad = 101 }
-      assert.are.same(
-        { "gamepad: 1 gesture", "  b cancel", "gamepad: learned l4 (key 100), lpad (key 101)" },
-        commands.handle({ "list" })
-      )
-    end)
-  end)
-
-  describe("learn", function()
-    it("arms a capture, then gives the name the next key pressed, saving", function()
-      assert.are.same({ "gamepad: press the key for l4 - Escape cancels" }, commands.handle({ "learn", "L4" }))
-      assert.is_true(commands.on_key(100, true))
-      assert.are.same({ "gamepad: l4 is key 100" }, said)
-      assert.are.equal(100, config.extra.l4)
-      assert.are.equal(1, saved)
-    end)
-
-    it("swallows the key it took until it comes up, repeats included", function()
-      commands.handle({ "learn", "l4" })
-      commands.on_key(100, true)
-      assert.is_true(commands.on_key(100, true))
-      assert.is_true(commands.on_key(100, false))
-      assert.is_false(commands.on_key(100, true))
-    end)
-
-    it("leaves keys alone with nothing armed", function()
-      assert.is_false(commands.on_key(100, true))
-      assert.is_false(commands.on_key(100, false))
-    end)
-
-    it("moves a key another name has, and says which lost it", function()
-      config.extra.r4 = 100
-      commands.handle({ "learn", "l4" })
-      commands.on_key(100, true)
-      assert.are.same({ "gamepad: l4 is key 100 - r4 has no key now" }, said)
-      assert.is_false(config.extra.r4)
-    end)
-
-    it("cancels on Escape, swallowing it", function()
-      commands.handle({ "learn", "l4" })
-      assert.is_true(commands.on_key(ESCAPE, true))
-      assert.is_true(commands.on_key(ESCAPE, false))
-      assert.are.same({ "gamepad: learn cancelled - l4 is unchanged" }, said)
-      assert.is_false(config.extra.l4)
-      assert.are.equal(0, saved)
-      assert.is_false(commands.on_key(100, true))
-    end)
-
-    it("lets Enter and the modifiers through to the game, and goes on waiting", function()
-      commands.handle({ "learn", "l4" })
-      for _, dik in ipairs({ ENTER, NUMPAD_ENTER, 29, 157, 42, 54, 56, 184, 219, 220 }) do
-        assert.is_false(commands.on_key(dik, true), tostring(dik))
-        assert.is_false(commands.on_key(dik, false), tostring(dik))
-      end
-      assert.is_true(commands.on_key(100, true))
-      assert.are.equal(100, config.extra.l4)
-    end)
-
-    it("re-reads the file before it saves the key, keeping what was edited meanwhile", function()
-      commands.handle({ "learn", "l4" })
-      on_disk = new_gamepad({}).config_defaults()
-      on_disk.map["lt+y"] = "cancel"
-      commands.on_key(100, true)
-      assert.are.equal(2, reloads)
-      assert.are.equal(100, config.extra.l4)
-      assert.are.equal("cancel", config.map["lt+y"])
-    end)
-
-    it("saves nothing over a file it cannot read by then, still taking the key", function()
-      commands.handle({ "learn", "l4" })
-      readable = false
-      assert.is_true(commands.on_key(100, true))
-      assert.are.same({ READ_FAILED }, said)
-      assert.is_false(config.extra.l4)
-      assert.are.equal(0, saved)
-      assert.is_true(commands.on_key(100, false))
-      assert.is_false(commands.on_key(100, true), "and waits no more")
-    end)
-
-    it("forgets the keys it took once told everything is let go", function()
-      commands.handle({ "learn", "l4" })
-      commands.on_key(100, true)
-      commands.release()
-      assert.is_false(commands.on_key(100, true))
-    end)
-
-    it("takes no notice of an up that arrives first", function()
-      commands.handle({ "learn", "l4" })
-      assert.is_false(commands.on_key(100, false))
-      assert.is_true(commands.on_key(101, true))
-      assert.are.equal(101, config.extra.l4)
-    end)
-
-    it("arms for the name asked last", function()
-      commands.handle({ "learn", "l4" })
-      commands.handle({ "learn", "r4" })
-      commands.on_key(100, true)
-      assert.are.equal(100, config.extra.r4)
-      assert.is_false(config.extra.l4)
-    end)
-
-    it("takes any plain name that is no pad button", function()
-      commands.handle({ "learn", "lpad" })
-      commands.on_key(100, true)
-      assert.are.equal(100, config.extra.lpad)
-    end)
-
-    it("refuses a pad button, or a name that is not a plain word", function()
-      assert.are.same({ "gamepad: a is a pad button" }, commands.handle({ "learn", "a" }))
-      assert.are.same({ "gamepad: a name is a plain lowercase word" }, commands.handle({ "learn", "l4+y" }))
-      assert.is_false(commands.on_key(100, true))
-    end)
-
-    it("takes a name's key away with off, saving", function()
-      config.extra.l4 = 100
-      assert.are.same({ "gamepad: l4 has no key now" }, commands.handle({ "learn", "l4", "OFF" }))
-      assert.is_false(config.extra.l4)
-      assert.are.equal(1, saved)
-      assert.are.same({ "gamepad: l4 had no key" }, commands.handle({ "learn", "l4", "off" }))
-      assert.are.equal(1, saved)
-    end)
-
-    it("disarms the name it takes the key from", function()
-      commands.handle({ "learn", "l4" })
-      commands.handle({ "learn", "l4", "off" })
-      assert.is_false(commands.on_key(100, true))
-    end)
-
-    it("refuses to arm over a file it could not read", function()
-      readable = false
-      assert.are.same({ READ_FAILED }, commands.handle({ "learn", "l4" }))
-      assert.is_false(commands.on_key(100, true))
-    end)
-
-    it("answers its form for anything else", function()
-      for _, words in ipairs({ { "learn" }, { "learn", "l4", "on" }, { "learn", "l4", "off", "now" } }) do
-        assert.are.same({ LEARN_FORM }, commands.handle(words))
-      end
     end)
   end)
 

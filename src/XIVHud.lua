@@ -1300,11 +1300,10 @@ end)
 
 --[[ The hotbar: the crossbar's engine with a different face, so it reads the
      same client as the crossbar does, member for member, and the same
-     action service. Registered AFTER the crossbar on purpose: the two own
-     overlapping keys (the crossbar's slot keys are the number row while a
-     side is held, the hotbar's the same row under a modifier), and core's
-     keyboard walk hands a later component the block an earlier one took -
-     so this order is the whole of the arbitration between them. ]]
+     action service. Registered AFTER the crossbar on purpose: where a slot
+     of each lies on one point in edit mode, the bar registered later owns
+     it (`service.slot_above`), as the one drawn on top. Their keys are the
+     keyboard map's to arbitrate (lib/keyboard), not this order's. ]]
 step("building the hotbar component", function()
   if safe_mode then
     return

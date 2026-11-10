@@ -10,6 +10,51 @@ Written while Kevin was away, so every call below marked **(open)** is the
 smallest option, picked to be undone - not a settled convention. This file's
 path was picked the same way, beside `gamepad.md`.
 
+## Kevin's calls after testing (2026-11-09)
+
+- **The old key path goes.** With the keyboard map and the gamepad both off,
+  no key reaches the crossbar or the hotbar ("nothing should trigger
+  crossbar / actions"). Mouse clicks on slots are not keys and stay.
+- **The map ships ON**, so keys work out of the box.
+- **The hotbar moves behind the map too**, and the map learns Ctrl/Alt/Shift
+  chords for it.
+- **Old key tests**: port each scenario the behaviour and map tests do not
+  already cover, drop the rest.
+
+### Modifier chords
+
+- A gesture is `[ctrl+][alt+][shift+]<key>`, the modifiers in any order. They
+  are tracked from their own key edges, either side (the hotbar's technique),
+  and matched EXACTLY: `ctrl+1` is not Ctrl+Alt+1.
+- A key pressed with modifiers held and no exact gesture falls back to its
+  bare gesture, since the crossbar always ignored modifiers (Shift+`;` still
+  raises the left side; Ctrl+Alt+1 reaches the crossbar's slot 1, which keeps
+  it only while a side is up - as before).
+- Any other chord (`semicolon+1`) is still reported and skipped.
+- A key already down delivers nothing until it comes up, mapped or not, taken
+  or not: Ctrl arriving under a held arrow must not make its repeats
+  `ctrl+up` (the hotbar's rule).
+
+### The hotbar
+
+- Behaviours `bar1_slot1` .. `bar8_slot10` (the anchors' names), `cycle` and
+  `cycle_back` (the CLI's words). A slot fires and keeps its key unless a
+  guard is up (chat, suppressed, layout, edit, disabled) or its row is
+  hidden; the cycle pair fire and keep neither edge, as Ctrl+Up/Down did.
+- Shipped: Ctrl, Alt, Shift, Ctrl+Shift, Alt+Shift and Ctrl+Alt+Shift over
+  `1`..`0` are rows 1-6; `ctrl+up`/`ctrl+down` cycle. Rows 7 and 8 are
+  declared and unbound, so the pad or a hand edit can reach them.
+
+### What changes from before
+
+- **Ctrl, Alt or Shift + number with a crossbar side or the switch up is the
+  hotbar's**: the chord is the more specific gesture. It used to be the
+  crossbar's, registered first. Kevin kept the chord first (2026-11-09) over
+  giving the crossbar the number row first again, knowing what follows from
+  it (Deviations, below).
+- The crossbar's `input` settings leave its defaults; a stored block is dead
+  weight.
+
 ## What it is
 
 `lib/keyboard` is to keys what `lib/gamepad` is to the pad: each key names a
@@ -43,30 +88,21 @@ with the map on the crossbar answers its keys as it always did:
   its own rules, unchanged), a game key or an action always is (a remapped
   key must not reach the game too), nothing that cannot work is. A
   behaviour already held by another key answers what its first press did.
-- **Core** offers each key to the map after `learn` and the pad's named keys
-  and before every component; a key the map takes reaches the components as
-  `blocked`, the same accumulation that lets the crossbar's number row keep
-  the hotbar quiet today. While the map is on, a component that declares
-  `behaviors()` hears no raw presses - its keys come as behaviours, and both
-  at once would hold every side twice and never cycle the set (the release
-  of one would arrive blocked). It still hears the raw releases, which do
-  nothing for a key it never saw go down. Today that is the crossbar alone.
-- **The crossbar** declares `layer` and `select`, and `on_behavior` answers
-  the verdict `on_key` would have given that key. One function decides both,
-  so the two cannot drift.
+- **Core** offers each key to the map before every component; a key the map takes reaches any component that
+  still reads raw keys as `blocked`. None shipped does: the crossbar and the
+  hotbar read behaviours alone (Kevin's call, above).
+- **The crossbar** declares `layer` and `select`; its machine lost `on_key`,
+  its DIK lists, its conflict report and its latch, and `on_behavior` answers
+  the keep verdict with the rules the keys used to.
+- **The hotbar** declares `bar1_slot1` .. `bar8_slot10`, `cycle` and
+  `cycle_back`; its machine lost its key tracking (modifiers, repeats,
+  latches - now the map's).
 - **`//hud keyboard [on|off]`** and **`//hud keyboard list`**: the switch,
   the map's problems, the map. A row on the settings window's `global` panel
   beside the gamepad's.
 
-## Calls made while Kevin was away (open)
+## Calls made while Kevin was away (still open)
 
-- **Ships off.** With it off nothing changes: the crossbar reads its own keys
-  from `config.input` as before. `//hud keyboard on` hands them to the map.
-  The gamepad bridge shipped off too; flipping the default is one line.
-- **One key per behaviour edge, no chords yet.** A `+` in a key's name is
-  reported and skipped. The pad's chord engine could be shared later; the
-  crossbar's own chording (side + number, switch + number, layer + switch)
-  stays in its input machine, where it is today.
 - **No `bind`/`unbind` yet**: the map is a file edit until the verbs are
   built, `//hud gamepad bind`'s grammar being the model.
 - **Key names** are DirectInput's, lowercased, with `numpad*`, `numpad+`,
@@ -74,8 +110,11 @@ with the map on the crossbar answers its keys as it always did:
   cannot be typed in a Windower command (it separates commands), which is why
   `semicolon` is a word.
 - **Custom crossbar shortcuts** (`config.input.shortcuts` beyond Select) have
-  no behaviour, so the map cannot reach them; neither can a `config.input`
-  edited away from the shipped keys. Nothing migrates, as ever.
+  no behaviour of their own; their verbs can be the map's actions instead.
+  Nothing migrates, as ever.
+
+(Settled by Kevin since: the map ships on, the old paths go, the hotbar
+moves behind the map and the map reads Ctrl/Alt/Shift chords - above.)
 
 ## Deviations from the crossbar's own keys
 
@@ -87,9 +126,16 @@ with the map on the crossbar answers its keys as it always did:
   open**, and the key types. Component behaviours are delivered as ever and
   decide for themselves, as the crossbar does.
 - **Switching the map off while a crossbar key is held** drops that side at
-  once (the map lets go of what it holds). Switching it on mid-hold strands
-  nothing: a behaviour-speaking component still gets the raw releases
-  (review, round 2), so the side held raw lets go raw.
+  once (the map lets go of what it holds), and from then on no key reaches
+  either bar.
+- **Ctrl, Alt or Shift + number with a crossbar side or the switch up is the
+  hotbar's** (the more particular entry), where registration order used to
+  give it to the crossbar - Kevin's call, 2026-11-09. The crossbar never sees
+  it, so under the switch the switch's release cycles as well, where it used
+  to jump to that set; and on a HIDDEN hotbar row (2-8 ship hidden), or with
+  the whole hotbar hidden or not loaded, the chord fires nothing and goes to
+  the game, where Alt+1 under a raised side used to fire the crossbar's slot
+  1. Found by review (rounds 1-3 of the keys gate).
 
 ## Unverified in a live client
 

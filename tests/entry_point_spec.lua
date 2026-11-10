@@ -780,8 +780,9 @@ describe("entry point", function()
   end)
 
   --[[ The hotbar reads the client exactly as the crossbar does, member for
-       member, off the same service - and is registered after it, which is
-       the whole of the keyboard arbitration between the two. ]]
+       member, off the same service - and is registered after it, so where a
+       slot of each lies on one point in edit mode the hotbar owns it
+       (`service.slot_above`). Their keys are the keyboard map's. ]]
   describe("the hotbar", function()
     it("is built after the crossbar, over the same service and the same reads", function()
       assert.is_not_nil(boot.ctxs.hotbar)

@@ -53,29 +53,6 @@ return function(screen_width, screen_height)
   -- is the crossbar's own.
   local config = shared.cosmetics()
   config.set_flags = shared.set_flags()
-  config.input = {
-    -- DIK codes per role; the pad bridge emits these. Every role is a list
-    -- so one role can carry several physical keys. To REMOVE an entry set
-    -- it to `false`, not nil: the defaults merge refills nil keys, never
-    -- false ones, and input.lua skips false elements.
-    xhb_left = { 39 }, -- ;
-    xhb_right = { 40 }, -- '
-    w_layer = { 43 }, -- backslash; + a side = the WXHB views
-    set_switch = { 41 }, -- backtick; tap cycle, chord jump, ours always
-    slot_keys = { 2, 3, 4, 5, 6, 7, 8, 9 }, -- positional: index = slot number
-    --[[ Dedicated keys -> //hud crossbar verbs. A `tap` verb fires on a
-           bare press, a `chorded` one while a side is held; an entry may
-           carry either, both, or - as Select does - only the chord.
-
-           Select is deliberately INERT bare (Kevin, 2026-08-21): it used to
-           open the map, and a key that is ours outright should not act on
-           its own. It is still ours, still blocked from the game, and still
-           opens the binder when chorded - the block keys off the entry
-           existing, not off it having a verb. ]]
-    shortcuts = {
-      [13] = { chorded = "edit" }, -- '='; pad Select
-    },
-  }
   config.always_show_wxhb = false -- WXHB at rest, or only while its gesture holds
   config.views = { -- what WXHB / Expanded Hold display: set + side
     -- One set per bar, so nothing duplicates what is already on screen:

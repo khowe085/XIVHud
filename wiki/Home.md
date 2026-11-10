@@ -30,7 +30,8 @@ edit by hand to get started.
   name is taken (`//hud show pb`).
 - **Gamepad.** XIVHud can read an Xbox-style pad itself and play the crossbar
   from it, with what every button and chord does changed by command (see
-  [Gamepad](gamepad.md)). It is off until you switch it on.
+  [Gamepad](gamepad.md)). It is on by default, and `//hud gamepad off`
+  switches it off.
 
 ## Installation
 
@@ -98,9 +99,9 @@ empty. It also changes set on CTRL+Up and CTRL+Down, which the game still sees.
 The bars also take a left-click on a drawn slot or the sword, and the status
 bar a click on one of its icons. If you would
 rather keep those keys, switch the component off with `//hud hide crossbar`
-or `//hud hide hotbar`; a hotbar row you hide gives its chord back too. The
-[gamepad bridge](gamepad.md), while it is on, also takes any key you have
-taught it with `//hud gamepad learn`, logged in or not.
+or `//hud hide hotbar`; a hotbar row you hide gives its chord back too. Both
+bars get their keys through the [keyboard map](keyboard.md), so
+`//hud keyboard off` gives every one of them back.
 
 Components can also be switched from the console: `//hud hide giltracker`,
 `//hud show partylist alliance1`.
@@ -152,9 +153,9 @@ per character`.
 | `//hud queue [on\|debug\|off]` | hold a bar press made during a cast or the moment after it, and send it when you can act; on by default. Without a word it prints the current setting (see [The action queue](#the-action-queue)) |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action |
 | `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default, and a change applies at once. Without a word it prints the current setting |
-| `//hud gamepad [on\|off]` | the [gamepad bridge](gamepad.md): which pad it reads, or switch it on or off; off by default |
-| `//hud gamepad list`, `bind`, `unbind`, `learn` | what each button and chord of the pad does, changed in game (see [Gamepad](gamepad.md#commands)) |
-| `//hud keyboard [on\|off]`, `list` | the [keyboard map](keyboard.md): the crossbar's keys handed to it the way the pad's buttons are; off by default |
+| `//hud gamepad [on\|off]` | the [gamepad bridge](gamepad.md): which pad it reads, or switch it on or off; on by default |
+| `//hud gamepad list`, `bind`, `unbind` | what each button and chord of the pad does, changed in game (see [Gamepad](gamepad.md#commands)) |
+| `//hud keyboard [on\|off]`, `list` | the [keyboard map](keyboard.md): the keys that drive the crossbar and the hotbar, handed to them the way the pad's buttons are; on by default, and off no key reaches either bar |
 | `//hud config [<component>\|global]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
 

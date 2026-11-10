@@ -23,18 +23,23 @@ here, and the same layers, contexts, sets and rotations apply.
 - **Four shapes per row**: 10x1, 5x2, 2x5 or 1x10. Slots are numbered left
   to right, top to bottom, so a binding stays on the same slot whatever the
   shape.
-- **Keyboard driven, no configuration**: hold a modifier and press `1` to
-  `0` - CTRL for `bar1`, ALT for `bar2`, SHIFT for `bar3`, CTRL+SHIFT for
-  `bar4`, ALT+SHIFT for `bar5`, CTRL+ALT+SHIFT for `bar6`. `bar7` and `bar8`
-  have no keys and are mouse only. The bare number row is the game's: it
-  fires nothing, so a controller cannot set a row off by accident.
-  **CTRL+Up** moves to the next set in the rotation and **CTRL+Down** to the
-  previous one, with CTRL held on its own (the game's own macro set changes on
-  the same chord, and still sees the arrow; the arrow keys' codes have not
-  been checked in a live client). Left and right modifiers both count;
-  CTRL+ALT and any other chord reach the game untouched. Holding a chord fires
-  once, and a number pressed before its modifier stays the game's until it is
-  released.
+- **Keyboard driven** through the [keyboard map](../keyboard.md), which ships
+  on: hold a modifier and press `1` to `0` - CTRL for `bar1`, ALT for `bar2`,
+  SHIFT for `bar3`, CTRL+SHIFT for `bar4`, ALT+SHIFT for `bar5`,
+  CTRL+ALT+SHIFT for `bar6`. `bar7` and `bar8` have no keys shipped; the map
+  or the gamepad can give them some. The bare number row is not the hotbar's,
+  so a controller cannot set a row off by accident. **CTRL+Up** moves to the
+  next set in the rotation and **CTRL+Down** to the previous one, with CTRL
+  held on its own (the game's own macro set changes on the same chord, and
+  still sees the arrow; the arrow keys' codes have not been checked in a live
+  client). Left and right modifiers both count; CTRL+ALT and any other chord
+  never reach the hotbar. Holding a chord fires once, and a number pressed
+  before its modifier stays what it was until it is released - the game's,
+  or the crossbar's slot while a crossbar side is up. With the
+  keyboard map off (`//hud keyboard off`), no key reaches the hotbar.
+- Each row's slots are behaviours - `hotbar.bar1_slot1` to
+  `hotbar.bar8_slot10`, with `hotbar.cycle` and `hotbar.cycle_back` - so a
+  [gamepad](../gamepad.md) gesture can fire them too.
 - None of the keys fire while the chat line is open, while the HUD is hidden
   (a cutscene with `hidecutscene` on, or zoning), in layout or edit mode,
   before a job has loaded, or while the hotbar is hidden.

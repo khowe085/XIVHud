@@ -86,9 +86,9 @@ Everything is under `//hud`. The most used:
 //hud queue [on|debug|off]     hold a bar press through a cast and send it when you can act
 //hud hidecutscene [on|off]    hide the HUD during cutscenes
 //hud config                   the settings window: change settings with the mouse
-//hud gamepad [on|off]         read an Xbox-style pad directly and play the crossbar from it (off by default)
+//hud gamepad [on|off]         read an Xbox-style pad directly and play the crossbar from it (on by default)
 //hud gamepad bind <gesture> ...  change what a pad button or chord does, as in bind lt+y crossbar.slot1
-//hud keyboard [on|off]        hand the crossbar's keys to the keyboard map, as the pad's buttons are (off by default)
+//hud keyboard [on|off]        the keyboard map that drives the crossbar and hotbar keys (on by default; off, no key reaches them)
 //hud <component> ...          that component's own settings
 ```
 

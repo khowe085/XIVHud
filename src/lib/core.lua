@@ -122,10 +122,9 @@ local HELP = {
   "  //hud gamepad list | bind <gesture> ... | unbind <gesture>",
   "                            the pad's map: bind takes a slot's words, a",
   "                            behavior or key <name>; a gesture is like lt+y",
-  "  //hud gamepad learn <name> [off]",
-  "                            the next key pressed is a button XInput cannot see",
   "  //hud keyboard [on|off]    whether the keyboard map hands keys to their",
-  "                            behaviors - the crossbar's keys, as it ships",
+  "                            behaviors - the crossbar's and the hotbar's, as",
+  "                            it ships; off, no key reaches either bar",
   "  //hud keyboard list        every key the map binds and what it does",
   "  //hud config [<name>]      the settings window: the options above and the",
   "                            components' own, changed with a click; name a",
@@ -163,10 +162,9 @@ local function new(deps)
   -- Lets go of everything the pad holds, game keys and components' behaviours
   -- alike, on the paths that must finish whatever a component or the
   -- injection does: a lost focus has the bars still to tell, and an unload a
-  -- teardown still to run. The keys `learn` took go too.
+  -- teardown still to run.
   local function release_pad()
     if deps.gamepad ~= nil then
-      gamepad_commands.release()
       pcall(function()
         deliver_pad(deps.gamepad.release())
       end)
@@ -285,7 +283,6 @@ local function new(deps)
       save = function()
         gamepad_handle.save()
       end,
-      say = say,
       focused = function()
         return focused
       end,
@@ -951,24 +948,13 @@ local function new(deps)
        inbound-blocked guard. ]]
   local function deliver_key(key, down, flags, blocked)
     layout_mode.key(key, down)
-    --[[ While the keyboard map is on, a component that speaks behaviours has
-         its keys from the map. Handed the presses raw as well it would hold
-         every side twice, and the switch's raw release, arriving taken, would
-         never cycle the set. A release still reaches it: nothing to one whose
-         key it never saw go down, the end of one it held raw as the map came
-         on. ]]
-    local mapped = down and keyboard ~= nil and keyboard.enabled()
     --[[ The block ACCUMULATES through the walk (2026-09-06): a later
          component sees a key an earlier one took as already blocked, exactly
-         as it sees one a prior addon took. Two bars own overlapping keys -
-         the crossbar's slot keys are the number row while a side is held,
-         the hotbar's the same row under CTRL, ALT or SHIFT - and neither
-         can see the other's held key, so this order is the arbitration: the
-         crossbar is registered first. Delivery is unchanged; only the flag
-         carries more. ]]
+         as it sees one a prior addon took. Delivery is unchanged; only the
+         flag carries more. ]]
     local block = false
     for _, component in ipairs(registry.all()) do
-      if component.on_keyboard and not (mapped and component.behaviors) then
+      if component.on_keyboard then
         local took = component.on_keyboard(key, down, flags, blocked or block) == true
         block = block or took
       end
@@ -976,16 +962,9 @@ local function new(deps)
     return block
   end
 
-  -- The keyboard's events. The bridge is offered each key first - `learn`
-  -- waiting for one, then the keys Steam Input types for the buttons XInput
-  -- cannot see - kept from the components and the game alike, but not while
-  -- the game is out of focus, where nothing polls what it would take. The
-  -- keyboard map is offered it next, and a key it takes reaches the
-  -- components as taken.
+  -- The keyboard's events. The keyboard map is offered each key first, and
+  -- a key it takes reaches the components as taken.
   function self.on_keyboard(key, down, flags, blocked)
-    if deps.gamepad ~= nil and focused and (gamepad_commands.on_key(key, down) or deps.gamepad.on_key(key, down)) then
-      return true
-    end
     local taken = keyboard ~= nil and keyboard.on_key(key, down, blocked == true) or false
     local block = deliver_key(key, down, flags, blocked or taken)
     return taken or block
@@ -1036,11 +1015,10 @@ local function new(deps)
   end
 
   -- Whether the keyboard handler is worth registering at all: the entry point
-  -- keeps it always-on when some component consumes keys, or the bridge does
-  -- (`learn`, and the keys Steam types), or the keyboard map does, and
-  -- layout-mode-only otherwise.
+  -- keeps it always-on when some component consumes keys, or the keyboard
+  -- map does, and layout-mode-only otherwise.
   function self.wants_keyboard()
-    if deps.gamepad ~= nil or keyboard ~= nil then
+    if keyboard ~= nil then
       return true
     end
     for _, component in ipairs(registry.all()) do
