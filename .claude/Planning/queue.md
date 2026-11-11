@@ -146,8 +146,8 @@ that action on the selected sub-target", which is what the resent token drew.
 | Fact | Set by | Cleared by | Backstop |
 | --- | --- | --- | --- |
 | `sent`: something went out, nothing back yet | a bar press or release, outgoing `0x01A` (3 magic, 7 ws, 9 ja, 16 ranged, 25 monster skill), outgoing `0x037` (item) | any `0x028` start or finish of ours, a refusal | 0.6s until the packet is seen, 2s after, or a spell's `cast_time` + 0.4s where longer (2026-11-06) |
-| `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787) | a spell's `cast_time` + 0.4s, a weaponskill 3s, an item's `cast_time` + 1s, else 30s; a finish is still read as one for 30s (2026-11-06) |
-| `lock_until`: the lock's end | a finish (2, 3, 5, 6, 11, 14, 15 of ours, and 4 naming a spell while a cast is running (2026-11-08), within 30s of a start of ours when it names that start's spell or the start named none, or naming a spell that went out and is unanswered (2026-11-07)), an interrupt, the end of a start's wait | time | none needed |
+| `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787), and while a weaponskill's start runs a 4 naming no spell (2026-11-10) | a spell's `cast_time` + 0.4s, a weaponskill 1.2s (3s until 2026-11-10), an item's `cast_time` + 1s, else 30s; a finish is still read as one for 30s (2026-11-06) |
+| `lock_until`: the lock's end | a finish (2, 3, 5, 6, 11, 14, 15 of ours, and 4 naming a spell while a cast is running (2026-11-08), within 30s of a start of ours when it names that start's spell or the start named none, or naming a spell that went out and is unanswered (2026-11-07), or naming no spell while a weaponskill's start runs, which takes the weaponskill lock (2026-11-10)), an interrupt, the end of a start's wait | time | none needed |
 
 Busy is any of the three. A held press goes on the first tick nothing is busy, or once
 its recast ends if that is within two seconds (2026-11-07, a second until 2026-11-08).
@@ -698,7 +698,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 10 | Macro casts in `queue on` | Lines only in `debug`, bar presses hold behind them | Packets count whoever sent them |
 | 11 | Mash a bar press faster than the ping, then watch for `nothing went out for the last press` on a press that did go | The line never appears on a press that went | Whether 0.6s covers the gap between a press and `outgoing chunk`, which may fire at the client's next send |
 | 12 | A pet command and a blood pact | A `sent` that ends on an answer, not the 2s backstop | Which packet answers `/pet` |
-| 13 | A weaponskill out of range | `ignored a finish with no cast running` and no lock | atom0s says that failure arrives as category 4 |
+| 13 | A weaponskill out of range | Before its start, `ignored a finish with no cast running` and no lock; after its start, `finish weaponskill naming no spell, message 78, lock 2.40s` | atom0s says that failure arrives as category 4. Kevin's 2026-11-10 run had three after a start |
 | 14 | During a cast press a `<stpc>` slot, pick a target and press OK inside the lock | `cursor`, `OK ... at <id>`, `hold`, `release`, and the cast lands on who you picked with your target unchanged | The whole of the cursor path |
 | 15 | The same, pressing OK after the lock clears | `OK`, then `out` at once, no `hold` | OK while free |
 | 16 | Press a `<stpc>` slot during a lock, then ESC | Nothing goes, the next press works | A cursor abandoned |
@@ -720,6 +720,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 32 | Press a bar spell during a cast, then type `//hud layout` | `dropped ...: //hud layout`, nothing goes | Only `suppressed` has dropped a press for this reason |
 | 33 | Press Cure IV again late in its own lock, about +1.8 after its finish | `hold Cure IV`, `release`, and it casts at about +2.72, with no `not held` and no refusal | A short recast inside a lock is held. Passes, 10 of 10 on `2e4fb77` |
 | 34 | Cast Shell V on one target, then OK it on the next as soon as the arrow can be raised, several times over | `hold Shell V`, `Shell V waits ...s on its recast` where its recast outlasts the lock, then `release`, and it casts, with no refusal | The recast grace (2026-11-07). At one second it missed Shell V without haste, 11 of 11 ending 1.28 to 1.31s past the lock (2026-11-08); unverified at two |
+| 35 | Start a weaponskill on a mob as it moves out of range, then mash a macro through | `finish weaponskill naming no spell, message 78, lock 2.40s`, then `refused` lines, then a `start` | The lock after a too-far. 2.4 is the weaponskill's, unverified there: the 2026-11-10 run brackets it between +1.07 refused and +2.57 accepted |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -785,3 +786,24 @@ target, ran its recast 1.28 to 1.31s past the lock eleven times of eleven, so ev
 press was sent and refused with 17 at one second. Two covers that with 0.7s over for
 other gear; the margin moves with fast cast and haste, which cut cast and recast
 differently.
+
+## A weaponskill's too-far, and its lost finish (Kevin, 2026-11-10)
+
+Done 2026-11-10 (Kevin), after a run that held weaponskill presses about 5.4s:
+
+- **A weaponskill that started and could not land** is answered with a spell finish
+  naming no spell (category 4, param 0, message 78, too far) 0.02 to 0.44s after its
+  start. The 2026-11-08 rule read it as a paralysis round, so the start waited out its
+  3s and locked 2.4s on top, three times in the run. While a weaponskill's start runs,
+  such a finish now ends it and locks as its finish would. Its own finish is a
+  category 3, never ignored, and replaces that lock if it comes after all. The run
+  brackets the real lock after a too-far: a Cocoon sent +1.07 after one was refused
+  (17), an Unbridled Learning sent +2.57 after another was accepted. The 2.4 it takes
+  is unverified there (row 35). Any finish naming no spell ends the start, a
+  paralysis round's too: either it was the weaponskill's own end, or the category 3
+  finish that follows replaces the lock. Should that finish be lost as well, the lock
+  starts up to 1.2s early and a held press can be refused: one re-press, and rare.
+- **A weaponskill's lost finish** now waits 1.2s, three of the server's 0.4s beats,
+  not 3: about 80 weaponskills in the run each finished within 0.89s of starting, and
+  one whose finish never came (its mob died under it) held the bar 5.4s. A late
+  finish still replaces the lock.

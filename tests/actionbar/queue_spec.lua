@@ -102,6 +102,13 @@ local function paralyzed_round(message)
   return round
 end
 
+-- What the game sends when a weaponskill that has started cannot land: too far away.
+local function too_far()
+  local finish = action(4, 0)
+  finish.targets = { { actions = { { message = 78 } } } }
+  return finish
+end
+
 -- A raw outgoing 0x01A with its category at 0x0A and its param at 0x0C.
 local function outgoing_action(category, param)
   param = param or 0
@@ -1593,6 +1600,67 @@ describe("the action queue", function()
       assert.is_true(queue.busy(), "the real finish locks")
     end)
 
+    --[[ The server answers a weaponskill that started and then could not land
+         with a finish naming no spell. Ignored as a paralysis round, it held
+         the bar for the start's whole wait and a lock on top (Kevin, 2026-11-10). ]]
+    it("ends a weaponskill on a finish naming no spell, and sends what it held after the weaponskill lock", function()
+      local queue, env = world()
+      queue.on_action(start_of(7, 42))
+      queue.press(spell(), command())
+      env.now = env.now + 0.02
+      queue.on_action(too_far())
+      env.now = env.now + 2.39
+      assert.is_nil(queue.step())
+      env.now = env.now + 0.02
+      assert.are.equal(command(), queue.step())
+    end)
+
+    it("takes the weaponskill lock as set when a finish naming no spell ends one", function()
+      local queue, env = world()
+      env.locks = { weaponskill = 1 }
+      queue.on_action(start_of(7, 42))
+      queue.on_action(too_far())
+      env.now = env.now + 0.99
+      queue.step()
+      assert.is_true(queue.busy())
+      env.now = env.now + 0.02
+      queue.step()
+      assert.is_false(queue.busy())
+    end)
+
+    it("ends a weaponskill on any finish naming no spell, a paralysis round's included", function()
+      local queue, env = world()
+      queue.on_action(start_of(7, 42))
+      env.now = env.now + 0.02
+      queue.on_action(paralyzed_round())
+      env.now = env.now + 2.41
+      queue.step()
+      assert.is_false(queue.busy())
+    end)
+
+    it("lets that weaponskill's own finish replace the lock if it comes after all", function()
+      local queue, env = world()
+      queue.on_action(start_of(7, 42))
+      env.now = env.now + 0.02
+      queue.on_action(too_far())
+      env.now = env.now + 1
+      queue.on_action(action(3, 42))
+      env.now = env.now + 2.39
+      queue.step()
+      assert.is_true(queue.busy())
+    end)
+
+    it("leaves a finish naming no spell alone once the weaponskill's wait has run out", function()
+      local queue, env = world()
+      queue.on_action(start_of(7, 42))
+      env.now = env.now + 1.3
+      queue.step()
+      queue.on_action(too_far())
+      env.now = env.now + 2.35
+      queue.step()
+      assert.is_false(queue.busy(), "the wait's own lock, not one from the late finish")
+    end)
+
     it("takes any finish after a wait whose start named nothing", function()
       local queue, env = world()
       queue.on_action(action(7, STARTING))
@@ -1638,10 +1706,10 @@ describe("the action queue", function()
       assert.is_true(queue.busy())
     end)
 
-    it("waits on a weaponskill's finish for three seconds, then its lock", function()
+    it("waits on a weaponskill's finish for 1.2 seconds, then its lock", function()
       local queue, env = world()
       queue.on_action(start_of(7, 42))
-      env.now = env.now + 5.39
+      env.now = env.now + 3.59
       queue.step()
       assert.is_true(queue.busy())
       env.now = env.now + 0.02
@@ -2014,6 +2082,13 @@ describe("the action queue", function()
       env.now = env.now + 1
       queue.on_action(action(4, 0))
       assert.is_not_nil(logged(env):find("ignored a finish naming no spell", 1, true))
+    end)
+
+    it("says a finish naming no spell ended a weaponskill, with its message and lock", function()
+      local queue, env = world({ mode = "debug" })
+      queue.on_action(start_of(7, 42))
+      queue.on_action(too_far())
+      assert.is_not_nil(logged(env):find("finish weaponskill naming no spell, message 78, lock 2.40s", 1, true))
     end)
 
     it("says a finish naming another spell was ignored after a start's wait", function()

@@ -103,12 +103,14 @@ local FINISH_BACKSTOP = 30
      UNVERIFIED: what lengthens a cast (Addle, an Arts penalty). A cast that
      overruns its wait, or a finish lag delays past the wait and the lock,
      releases a held press inside the cast, where it is refused and GearSwap
-     leaves its midcast set. WEAPONSKILL_BACKSTOP and ITEM_SLACK are guesses,
-     as are the items resource's `cast_time` being the seconds from an item's
-     start to its finish and a category 9 start naming its item in
-     `targets[1].actions[1].param`. ]]
+     leaves its midcast set. WEAPONSKILL_BACKSTOP is three of the server's
+     0.4s beats: about 80 weaponskills in Kevin's log of 2026-11-10 each
+     finished within 0.89s of starting, and at 3s one whose finish never came
+     held the bar 5.4s. ITEM_SLACK is a guess, as are the items resource's
+     `cast_time` being the seconds from an item's start to its finish and a
+     category 9 start naming its item in `targets[1].actions[1].param`. ]]
 local SPELL_SLACK = 0.4
-local WEAPONSKILL_BACKSTOP = 3
+local WEAPONSKILL_BACKSTOP = 1.2
 local ITEM_SLACK = 1
 --[[ How long past the lock a press waits for its own recast. Shell V cast on
      target after target ends its recast just after its lock, and sent on it the
@@ -557,7 +559,20 @@ local function new(deps)
     --[[ Once a start's wait has locked, the bar is idle, and only a finish
          naming what it started is that start's. ]]
     local open = running(open_until) and (running(acting_until) or acting_id == nil or act.param == acting_id)
-    if act.category == SPELL_FINISH and (act.param == 0 or not open) and not awaited then
+    --[[ The server answers a weaponskill that started and then cannot land -
+         too far away, message 78 - with a spell finish naming no spell, the
+         shape a paralysis round takes. Ignored, it held the bar for the
+         start's whole wait and a lock on top (Kevin, 2026-11-10). Any message
+         ends the start, a paralysis round's too: the weaponskill's own finish
+         is a category 3, never ignored, so one that comes after all replaces
+         the lock this one starts. UNVERIFIED: that the weaponskill's lock is
+         the right length after a too-far. Kevin's run brackets it between a
+         send refused at +1.07 and one accepted at +2.57. ]]
+    local ends_weaponskill = act.category == SPELL_FINISH
+      and act.param == 0
+      and acting_kind == "weaponskill"
+      and running(acting_until)
+    if act.category == SPELL_FINISH and (act.param == 0 or not open) and not awaited and not ends_weaponskill then
       local message = first_message(act)
       local why = not running(open_until) and "with no cast running"
         or act.param == 0 and "naming no spell"
@@ -576,8 +591,20 @@ local function new(deps)
       lock_until = nil
       return
     end
-    local lock = self.lock(finished or "interrupted")
-    note(("%s, lock %.2fs"):format(finished ~= nil and "finish " .. finished or "interrupted " .. started, lock))
+    local lock
+    if ends_weaponskill then
+      lock = self.lock("weaponskill")
+      local message = first_message(act)
+      note(
+        ("finish weaponskill naming no spell%s, lock %.2fs"):format(
+          message ~= nil and ", message " .. message or "",
+          lock
+        )
+      )
+    else
+      lock = self.lock(finished or "interrupted")
+      note(("%s, lock %.2fs"):format(finished ~= nil and "finish " .. finished or "interrupted " .. started, lock))
+    end
     acting_until, open_until, acting_kind, acting_id = nil, nil, nil, nil
     finished_at = now()
     lock_until = finished_at + lock

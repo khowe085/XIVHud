@@ -569,8 +569,10 @@ lock no later than it sends that packet, so latency can only make a release
 late, never early - where MiniQueue takes a guessed `latency = .5` off the same
 anchor and aims early. The one exception is a finish that never comes (Kevin,
 2026-11-06: lag lost several in one event, and each held the bar for 30s): a
-start then counts as finished at its spell's `cast_time` plus 0.4s, 3s for a
-weaponskill or an item's `cast_time` plus 1s, and that lock is the one anchor
+start then counts as finished at its spell's `cast_time` plus 0.4s, 1.2s for a
+weaponskill (three of the server's 0.4s beats: about 80 weaponskills in Kevin's
+log of 2026-11-10 each finished within 0.89s of starting, and the 3s it was until
+then held the bar 5.4s when a finish never came) or an item's `cast_time` plus 1s, and that lock is the one anchor
 that is not a packet, so a cast lengthened past it can release early. A held
 press then goes once that lock ends; a finish arriving late still replaces the
 lock, but a spell finish then has to name the spell the start named (Kevin,
@@ -632,7 +634,14 @@ arrived a melee round apart while Kevin was paralyzed, and sends straight after
 them were accepted, so nothing locks. One naming no spell (`param` 0, a paralysis
 round) is ignored even with a cast running, where it would start the lock early and
 close the window on the real finish (Kevin, 2026-11-08; Kevin's own paralyzed run that
-day logged about 45 of them, none of them inside a cast, and no refusal). The exception is a spell that went out, from
+day logged about 45 of them, none of them inside a cast, and no refusal). A
+weaponskill's start is the exception: the server answers one that started and
+cannot land - too far away, message 78 - with exactly that shape, so while its
+start runs one ends it and locks as its finish would (Kevin, 2026-11-10: ignored,
+each held the bar about 5.4s, three times in one run); its own finish is a
+category 3, never ignored, and replaces that lock if it comes after all. **That
+lock is unverified** after a too-far: the run brackets it between a send refused
+at +1.07 and one accepted at +2.57. The other exception is a spell that went out, from
 anything, and is still unanswered (Kevin, 2026-11-06: lag lost seven starts whose
 finishes came, and the next send went into the lock): it waits for an answer for
 its `cast_time` plus 0.4s where that is longer than 2s, and a finish inside that
