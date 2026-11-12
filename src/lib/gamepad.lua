@@ -108,8 +108,8 @@ local function defaults()
   local map = {
     a = "accept",
     b = "cancel",
-    x = "lockon",
-    y = "cycle_window",
+    x = "cycle_window",
+    y = "lockon",
     start = "main_menu",
     lb = "autorun",
     rb = "crossbar.switch",

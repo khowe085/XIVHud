@@ -194,7 +194,7 @@ Start, L3, R3 and LB+RB 2026-11-09):
 
 | Gesture | Behaviour |
 | --- | --- |
-| A / B / X / Y | `accept` / `cancel` / `lockon` / `cycle_window` (X and Y swapped 2026-11-09, Kevin) |
+| A / B / X / Y | `accept` / `cancel` / `cycle_window` / `lockon` (X and Y swapped 2026-11-09 and back 2026-11-11, Kevin) |
 | Start | `main_menu` |
 | LB | `autorun` |
 | RB | `crossbar.switch` |
@@ -209,7 +209,7 @@ Start, L3, R3 and LB+RB 2026-11-09):
 
 ```lua
 map = {
-  a = "accept", b = "cancel", x = "lockon", y = "cycle_window",
+  a = "accept", b = "cancel", x = "cycle_window", y = "lockon",
   start = "main_menu", lb = "autorun", rb = "crossbar.switch",
   ["lb+rb"] = "crossbar.draw", ["rb+lb"] = "crossbar.draw",
   lt = "crossbar.left", rt = "crossbar.right",
@@ -466,9 +466,10 @@ open row). `//hud gamepad` and load.log say which step failed.
   one trigger or both). Three-button WXHB chords that won that tie were tried
   and dropped (review, 2026-11-09): a chord breaks when any of its buttons
   lets go, so the half fell when the other bumper did mid-roll. Nothing
-  migrates: a `data/gamepad.lua` saved before keeps its X, Y and L3 until
-  they are bound again (`tap_seconds`, a key that file never had, is added by
-  the merge).
+  migrates: a `data/gamepad.lua` saved before keeps its Y and L3 until they
+  are bound again, and one saved while X was `lockon` (2026-11-09 to 11-11)
+  its X and Y (`tap_seconds`, a key that file never had, is added by the
+  merge).
 - If the `gamepad` guard switches the pump off after five failures, a game key
   held through `setkey ... down` stays down until the next focus loss or
   unload. An error path only.

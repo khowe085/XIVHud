@@ -708,7 +708,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 20 | Double-tap a `<stpc>` slot during a lock, then OK | `cursor up, OK takes ...`, one `OK`, cast at who you picked, target unchanged | FAILED before the fix, as predicted. A second press raised no arrow, OK read as one and the `/ta` ran |
 | 22 | Press a `<stpc>` slot while free, let a weaponskill go, press OK in its lock | `hold`, then `release` at the lock's end | The refused Sleep II |
 | 23 | Keep the cursor up and press a different cursor slot, then OK | The newer spell casts | The press only changes what OK casts |
-| 24 | Press a cursor slot during a macro's own `<st>` cursor | The game's usual answer, and the macro's spell on OK | An arrow this did not open is left alone |
+| 24 | Press a cursor slot during a macro's own `<st>` cursor and OK it, then press and OK the slot | `swallowed ..., another arrow is up` and no "You cannot perform that action on the selected sub-target", the macro's spell on its OK, then `cursor`, `arrow`, `OK` and the slot's spell, with no "A command error occurred" | An arrow this did not open is left alone, and GearSwap is never sent a token the game refuses (2026-11-10) |
 | 21 | ESC a cursor, then run a `/ta <stnpc>` macro | The macro's cursor works, and nothing casts | A closed cursor must not take another's line as its OK |
 | 25 | Mash a weaponskill through its own lock, then press a spell as the lock ends | `swallowed ... no TP` or `dropped ... no TP`, no `nothing went out`, and the spell goes at about +2.43 | The TP check |
 | 26 | Hold a `<stpc>` arrow on a Trust as your target dies, opening it during a lock. Repeat with `//hud queue off` | Which run leaves you on the Trust | Whether a `/ta` arrow is what strands you |
@@ -807,3 +807,27 @@ Done 2026-11-10 (Kevin), after a run that held weaponskill presses about 5.4s:
   not 3: about 80 weaponskills in the run each finished within 0.89s of starting, and
   one whose finish never came (its mob died under it) held the bar 5.4s. A late
   finish still replaces the lock.
+
+## A press under another's arrow (Kevin, 2026-11-10)
+
+Done 2026-11-11 (Kevin), after Dia III would not go in Al Zahbi:
+
+- At 23:14:08 a cursor slot was pressed under an arrow the queue had not opened. It
+  went out as typed, as row 24 had it, and the game refused it ("You cannot perform
+  that action on the selected sub-target"), which wrote no queue line. GearSwap had
+  set its `st_flag` for the token, and with the line refused no number came to clear
+  it. At 23:14:10 the next press opened its cursor as usual, and its OK went out as
+  `/ma "Dia III" 16974022`, which GearSwap passed to the game as typed, clearing the
+  flag: "A command error occurred", then `nothing went out for the last press`. The
+  press after that cast.
+- Under an arrow it did not open a press now sends nothing, says
+  `swallowed <name>, another arrow is up` in `debug`, and leaves that arrow's OK to
+  whoever opened it. It could do nothing there anyway: the token raises no arrow
+  while one is up.
+- Not covered (review, 2026-11-11): suppression and the config modes are checked
+  first, and there the queue stands aside, so a cursor press under any arrow goes as
+  typed. Covering them means deciding what a press under the queue's own arrow does
+  while it holds nothing.
+- Unverified: that GearSwap's flag is what broke the OK. It is read off GearSwap's
+  source (`flow.lua` sets it in pretarget for an `<st>` token, `triggers.lua` clears it
+  on the next outgoing text and passes that line through) and the log. Row 24.

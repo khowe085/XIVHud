@@ -384,9 +384,9 @@ down at the press, its component hearing the hold (the bridge asks
 `core.behavior_is_component`, which lib/behaviors answers off the name). It is
 automatic, Kevin's pick over a flag per gesture, so binding a chord moves its
 modifier's own key or action to the release. Shipped, it is Kevin's list: A/B
-`accept`/`cancel` (Enter, Escape), X `lockon` (`numpad*`) and Y
-`cycle_window` (`numpad+`) - swapped on 2026-11-09, Kevin having swapped them
-in game - Start `main_menu` (`numpad-`), LB `autorun` (`r`, tapped), RB the set
+`accept`/`cancel` (Enter, Escape), X `cycle_window` (`numpad+`) and Y
+`lockon` (`numpad*`) - swapped on 2026-11-09 and back on 2026-11-11, each time
+following Kevin's own map - Start `main_menu` (`numpad-`), LB `autorun` (`r`, tapped), RB the set
 switch, LT/RT the sides, LT+LB/RT+RB the WXHB halves, LT or RT + Start the
 binder, Back `open_map` (`open map`), L3 `target_self` (`f1`), R3
 `target_npc` (`f8`), the eight slots under LT, RT and RB, and LB+RB the
@@ -404,9 +404,9 @@ not its WXHB half, whenever the other bumper went down after that trigger
 won that tie were tried the same night and dropped: a chord breaks when any of
 its buttons lets go, so the half fell when the other bumper did mid-roll.
 Nothing migrates: every write saves the whole merged map, so a `data/gamepad.lua`
-saved before 2026-11-09 keeps its X, Y and L3 until they are bound again;
-`tap_seconds`, new that day, is added by the merge like any key a file never
-had.
+saved before 2026-11-09 keeps its Y and L3 until they are bound again (one
+saved while X was `lockon`, 2026-11-09 to 11-11, its X and Y); `tap_seconds`,
+new on 2026-11-09, is added by the merge like any key a file never had.
 One gesture spelled two ways is reported, and the user's spelling kept over
 the shipped one the merge put back. The bridge reads XInput's sixteen buttons
 and nothing else: a key Steam typed for a back button, named in `extra` and
@@ -618,6 +618,14 @@ had OK counted as the arrow, so the `/ta` ran and nothing cast (his Dia III and
 Sleep II). Confirmed in a live client over six runs (Kevin, 2026-10-31): on a
 single press every OK on a `<stpc>` or `<stnpc>` slot was caught, and none was
 refused by the lock. Later runs confirmed the free press and the arrow check.
+Under an arrow it did not open a press sends nothing either (Kevin, 2026-11-10),
+saying so in `debug` alone, and that arrow's OK stays its owner's: sent as
+typed, the press was refused the same way, GearSwap kept the `st_flag` it had
+set for the token, and the next cursor's OK reached the game as a bare
+`/ma "Dia III" <id>` - "A command error occurred". A config mode is the
+exception: the queue stands aside there and the press goes as typed. That the
+flag is the cause is read off GearSwap's source and the log, **unverified in a
+live client** (row 24 of the plan).
 **Open:** Kevin was left locked onto a Trust with weapons out, swinging at a monster
 he could not target, until he disengaged (2026-10-31). It predates the queue, but a
 `/ta` arrow can set your target where a `/ma` arrow cannot, so whether a target dying

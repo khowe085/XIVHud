@@ -757,12 +757,25 @@ describe("the action queue", function()
       assert.is_true((queue.on_text("/ta 12345")))
     end)
 
-    it("leaves an arrow it did not open to the game: a macro's OK is its own", function()
+    --[[ Kevin's Dia III in Al Zahbi (2026-11-10): sent under an arrow it did not
+         open, the press was refused ("You cannot perform that action on the
+         selected sub-target"), GearSwap kept the st_flag it had set for it, and
+         the next cursor's OK reached the game unparsed: "A command error occurred". ]]
+    it("sends nothing for a press under an arrow it did not open", function()
       local queue, env = world()
       env.arrow_up = true
       local taken, instead = queue.press(SHELL, SHELL_COMMAND)
-      assert.is_false(taken)
+      assert.is_true(taken)
       assert.is_nil(instead)
+    end)
+
+    it("leaves that arrow's OK to whoever opened it", function()
+      local queue, env = world()
+      env.arrow_up = true
+      queue.press(SHELL, SHELL_COMMAND)
+      assert.is_false((queue.on_text("/ta 777")))
+      assert.is_false((queue.on_text("/ta 12345")))
+      assert.is_nil(queue.held())
     end)
 
     it("opens the same cursor over /ta while busy, which GearSwap ignores", function()
@@ -2109,6 +2122,13 @@ describe("the action queue", function()
       queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
       queue.on_text("/ta 777")
       assert.is_not_nil(logged(env):find("arrow 777", 1, true))
+    end)
+
+    it("says it swallowed a press under an arrow it did not open", function()
+      local queue, env = world({ mode = "debug" })
+      env.arrow_up = true
+      queue.press(spell("Dia III", "stnpc"), 'input /ma "Dia III" <stnpc>')
+      assert.is_not_nil(logged(env):find("swallowed Dia III, another arrow is up", 1, true))
     end)
 
     it("stamps every line with the clock", function()

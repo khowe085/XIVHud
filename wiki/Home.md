@@ -349,8 +349,9 @@ off, every press goes at once and the game decides.
   whose recast outlasts the lockout by more than two seconds goes at once, and
   otherwise it is held or goes
   at once as the queue stands. Pressing another cursor slot while the arrow is
-  up sends nothing and only changes what OK will cast; an arrow a macro raised
-  is left alone. GearSwap's `pretarget` does not run for such a slot.
+  up sends nothing and only changes what OK will cast. Under an arrow XIVHud
+  did not raise (a macro's), a cursor slot does nothing at all, and OK still
+  casts the macro's spell. GearSwap's `pretarget` does not run for such a slot.
 - **Macros and typed commands** are not held, but they do count towards the
   wait, as does anything another addon sends. A press made before the game has
   answered the last one is held too.

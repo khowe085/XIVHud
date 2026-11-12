@@ -419,8 +419,11 @@ local function new(deps)
        With an arrow already up the token raises no new one, and the game answers
        it "You cannot perform that action on the selected sub-target". OK would
        then be counted as the arrow, the /ta would run and nothing would cast, so
-       nothing is sent and the press only changes what OK will cast. An arrow
-       this did not open is a macro's, and its OK sends its own command. ]]
+       nothing is sent and the press only changes what OK will cast. Under an
+       arrow this did not open nothing is sent either, and OK stays its owner's:
+       sent as typed, the press was refused the same way, and the next OK this
+       sent reached the game unparsed. UNVERIFIED: that GearSwap's st_flag, set
+       for the refused token, is why. ]]
   local function open_cursor(record, command, name)
     local blocked = deps.blocked()
     if blocked ~= nil then
@@ -429,7 +432,8 @@ local function new(deps)
     end
     if deps.arrow_up() then
       if cursor == nil then
-        return false
+        note("swallowed " .. name .. ", another arrow is up")
+        return true
       end
       note("cursor up, OK takes " .. name)
       cursor.record, cursor.command, cursor.name, cursor.at = record, command, name, now()

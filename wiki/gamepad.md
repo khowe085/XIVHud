@@ -85,8 +85,8 @@ search for one, which asks one XInput slot a second.
 | --- | --- | --- |
 | A | Enter | `accept` |
 | B | Escape | `cancel` |
-| X | numpad `*` | `lockon` |
-| Y | numpad `+` | `cycle_window` |
+| X | numpad `+` | `cycle_window` |
+| Y | numpad `*` | `lockon` |
 | Start | numpad `-` | `main_menu` |
 | LB, tapped | `R`, as you let go | `autorun` |
 | L3 | `F1`, target yourself | `target_self` |
