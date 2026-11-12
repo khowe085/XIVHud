@@ -179,7 +179,7 @@ describe("gamepad commands", function()
         { "gamepad: enter;quit is not a key name" },
         commands.handle({ "bind", "l3", "key", "enter;quit" })
       )
-      assert.are.equal("target_self", config.map.l3)
+      assert.are.equal("lockon", config.map.l3)
       assert.are.equal(0, saved)
     end)
 

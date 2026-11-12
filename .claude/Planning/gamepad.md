@@ -190,11 +190,11 @@ until then; only an explicit `true` turns it
 on), `trigger_threshold`, `tap_seconds` (0.25, 2026-11-09) and `map`, a
 gesture to a behaviour
 name, a `{ key = }` or an action's record. Shipped (Kevin, 2026-11-05; Y,
-Start, L3, R3 and LB+RB 2026-11-09):
+Start, L3, R3 and LB+RB 2026-11-09; X, Y and L3 2026-11-11, his own map):
 
 | Gesture | Behaviour |
 | --- | --- |
-| A / B / X / Y | `accept` / `cancel` / `cycle_window` / `lockon` (X and Y swapped 2026-11-09 and back 2026-11-11, Kevin) |
+| A / B / X / Y | `accept` / `cancel` / `cycle_window` / `target_self` |
 | Start | `main_menu` |
 | LB | `autorun` |
 | RB | `crossbar.switch` |
@@ -203,19 +203,19 @@ Start, L3, R3 and LB+RB 2026-11-09):
 | LT+LB / RT+RB | `crossbar.wxhb_left` / `crossbar.wxhb_right` |
 | LT+Start, RT+Start | `crossbar.binder` |
 | Back | `open_map` |
-| L3 / R3 | `target_self` / `target_npc` |
+| L3 / R3 | `lockon` / `target_npc` |
 | LT, RT or RB, + Y B A X up right down left | `crossbar.slot1` .. `crossbar.slot8` |
 | The D-pad alone | nothing |
 
 ```lua
 map = {
-  a = "accept", b = "cancel", x = "cycle_window", y = "lockon",
+  a = "accept", b = "cancel", x = "cycle_window", y = "target_self",
   start = "main_menu", lb = "autorun", rb = "crossbar.switch",
   ["lb+rb"] = "crossbar.draw", ["rb+lb"] = "crossbar.draw",
   lt = "crossbar.left", rt = "crossbar.right",
   ["lt+lb"] = "crossbar.wxhb_left", ["rt+rb"] = "crossbar.wxhb_right",
   ["lt+start"] = "crossbar.binder", ["rt+start"] = "crossbar.binder",
-  back = "open_map", l3 = "target_self", r3 = "target_npc",
+  back = "open_map", l3 = "lockon", r3 = "target_npc",
   ["lt+y"] = "crossbar.slot1", ["lt+b"] = "crossbar.slot2", -- ... lt+left = slot8
   ["rt+y"] = "crossbar.slot1", -- ... the same eight under RT
   ["rb+y"] = "crossbar.slot1", -- ... and under RB, the set jump
@@ -297,7 +297,7 @@ Nothing else in the addon needs a hand edit, so neither does the pad:
   - a shipped behaviour's name or a component's, alone: `bind a accept`,
     `bind lt crossbar.left`;
   - `key <name>`, a game key held for as long as the gesture is: `bind lt+l3 key
-    numpad*`;
+    f9`;
   - anything a slot can hold, read by `bind`'s own record parser and validated
     as a slot's is: `bind lt+r3 ma "Cure IV" <t>`, `bind back open map`.
     `alias=`, `icon=` and `context=` need a slot and are refused.
@@ -466,10 +466,9 @@ open row). `//hud gamepad` and load.log say which step failed.
   one trigger or both). Three-button WXHB chords that won that tie were tried
   and dropped (review, 2026-11-09): a chord breaks when any of its buttons
   lets go, so the half fell when the other bumper did mid-roll. Nothing
-  migrates: a `data/gamepad.lua` saved before keeps its Y and L3 until they
-  are bound again, and one saved while X was `lockon` (2026-11-09 to 11-11)
-  its X and Y (`tap_seconds`, a key that file never had, is added by the
-  merge).
+  migrates: a `data/gamepad.lua` keeps the X, Y and L3 it was saved with
+  until they are bound again (`tap_seconds`, new on 2026-11-09, is added by
+  the merge like any key a file never had).
 - If the `gamepad` guard switches the pump off after five failures, a game key
   held through `setkey ... down` stays down until the next focus loss or
   unload. An error path only.

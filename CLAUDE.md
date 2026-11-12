@@ -383,12 +383,11 @@ button still goes at the press, and a component's own behaviour still goes
 down at the press, its component hearing the hold (the bridge asks
 `core.behavior_is_component`, which lib/behaviors answers off the name). It is
 automatic, Kevin's pick over a flag per gesture, so binding a chord moves its
-modifier's own key or action to the release. Shipped, it is Kevin's list: A/B
-`accept`/`cancel` (Enter, Escape), X `cycle_window` (`numpad+`) and Y
-`lockon` (`numpad*`) - swapped on 2026-11-09 and back on 2026-11-11, each time
-following Kevin's own map - Start `main_menu` (`numpad-`), LB `autorun` (`r`, tapped), RB the set
+modifier's own key or action to the release. Shipped, it is Kevin's own map
+(2026-11-11): A/B `accept`/`cancel` (Enter, Escape), X `cycle_window`
+(`numpad+`), Y `target_self` (`f1`), Start `main_menu` (`numpad-`), LB `autorun` (`r`, tapped), RB the set
 switch, LT/RT the sides, LT+LB/RT+RB the WXHB halves, LT or RT + Start the
-binder, Back `open_map` (`open map`), L3 `target_self` (`f1`), R3
+binder, Back `open_map` (`open map`), L3 `lockon` (`numpad*`), R3
 `target_npc` (`f8`), the eight slots under LT, RT and RB, and LB+RB the
 crossbar's `draw` (Kevin, 2026-11-09), in both orders. That draw does nothing
 while a side or WXHB half is up at its press, and over a held RB it is a
@@ -404,9 +403,9 @@ not its WXHB half, whenever the other bumper went down after that trigger
 won that tie were tried the same night and dropped: a chord breaks when any of
 its buttons lets go, so the half fell when the other bumper did mid-roll.
 Nothing migrates: every write saves the whole merged map, so a `data/gamepad.lua`
-saved before 2026-11-09 keeps its Y and L3 until they are bound again (one
-saved while X was `lockon`, 2026-11-09 to 11-11, its X and Y); `tap_seconds`,
-new on 2026-11-09, is added by the merge like any key a file never had.
+keeps the X, Y and L3 it was saved with until they are bound again;
+`tap_seconds`, new on 2026-11-09, is added by the merge like any key a file
+never had.
 One gesture spelled two ways is reported, and the user's spelling kept over
 the shipped one the merge put back. The bridge reads XInput's sixteen buttons
 and nothing else: a key Steam typed for a back button, named in `extra` and
@@ -439,7 +438,7 @@ until they switch it off - unpriced in a live client.
 `+`, the trigger last (`b+a` is A with B held), any case, no spaces (a spaced
 one arrives as several words and is refused) - followed by a behaviour's name
 (`bind a accept`, `bind lt crossbar.left`), `key <name>` (`bind lt+l3 key
-numpad*`) or anything a slot can hold, read by bind's parser and refused where
+f9`) or anything a slot can hold, read by bind's parser and refused where
 it would refuse a slot's (`bind lt+r3 ma "Cure IV" <t>`; `alias=`, `icon=` and
 `context=` need a slot). A word that is no type and no behaviour is refused,
 naming the behaviours - the action service's `is_type` says which words are

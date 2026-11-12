@@ -86,10 +86,10 @@ search for one, which asks one XInput slot a second.
 | A | Enter | `accept` |
 | B | Escape | `cancel` |
 | X | numpad `+` | `cycle_window` |
-| Y | numpad `*` | `lockon` |
+| Y | `F1`, target yourself | `target_self` |
 | Start | numpad `-` | `main_menu` |
 | LB, tapped | `R`, as you let go | `autorun` |
-| L3 | `F1`, target yourself | `target_self` |
+| L3 | numpad `*` | `lockon` |
 | R3 | `F8`, target an NPC | `target_npc` |
 | Back | opens the map | `open_map` |
 | LT / RT, held | raise the crossbar's left / right side; both at once is Expanded Hold | `crossbar.left` / `crossbar.right` |
@@ -116,7 +116,7 @@ None of these needs a character logged in: one map serves every character.
 | `//hud gamepad on` / `off` | switch the bridge on or off |
 | `//hud gamepad list` | every gesture and what it does, written the way `bind` takes it |
 | `//hud gamepad bind <gesture> <behaviour>` | give a gesture a named behaviour: `bind a accept`, `bind lt crossbar.left` |
-| `//hud gamepad bind <gesture> key <key>` | have it hold a key for as long as it is held: `bind lt+l3 key numpad*` |
+| `//hud gamepad bind <gesture> key <key>` | have it hold a key for as long as it is held: `bind lt+l3 key f9` |
 | `//hud gamepad bind <gesture> <type> [<action>] [<target>]` | give it an action, in a slot's words: `bind lt+r3 ma "Cure IV" t` |
 | `//hud gamepad unbind <gesture>` | take a gesture off the map, a shipped one included |
 

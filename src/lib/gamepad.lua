@@ -109,7 +109,7 @@ local function defaults()
     a = "accept",
     b = "cancel",
     x = "cycle_window",
-    y = "lockon",
+    y = "target_self",
     start = "main_menu",
     lb = "autorun",
     rb = "crossbar.switch",
@@ -123,7 +123,7 @@ local function defaults()
     ["lt+start"] = "crossbar.binder",
     ["rt+start"] = "crossbar.binder",
     back = "open_map",
-    l3 = "target_self",
+    l3 = "lockon",
     r3 = "target_npc",
   }
   -- A slot under either side, and under the set switch, where it is a jump.
