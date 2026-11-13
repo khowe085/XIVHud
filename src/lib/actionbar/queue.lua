@@ -47,7 +47,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      nowhere, for want of anything to wait on, and so does one under a status
      GearSwap would abort it on. A
      cursor slot is judged the same way at OK, when its command is really sent,
-     rather than at the press. ]]
+     rather than at the press. A held weaponskill or spell whose target has
+     died since is dropped rather than sent at the corpse. ]]
 
 --[[ The seconds after a finish before the next action goes: too long costs a
      moment and too short loses the press. These are the shipped lengths, and
@@ -182,6 +183,14 @@ local CATEGORY_OFFSET = 11
 local PARAM_OFFSET = 13
 local ACTOR_OFFSET = 5
 local MESSAGE_OFFSET = 25
+-- Who a 0x029 is about, at 0x08.
+local FALLEN_OFFSET = 9
+-- The order of a 0x063 that lists the buffs on you, and how many it lists.
+local BUFFS_ORDER = 9
+local BUFF_SLOTS = 32
+-- A 0x053's parameter at 0x04 and its message at 0x0C.
+local SYSTEM_PARAM_OFFSET = 5
+local SYSTEM_MESSAGE_OFFSET = 13
 
 -- GearSwap's `unable_to_use` (statics.lua): the 0x029 messages that mean the
 -- last action did not happen. 94 stays out, as it does there: it answers an
@@ -199,6 +208,15 @@ for message in
 do
   REFUSALS[tonumber(message)] = true
 end
+
+--[[ The 0x029 messages that say their target died, the Debuffed addon's list:
+     defeats, falls to the ground, and that fall after a spell, a weaponskill,
+     an added effect or an ability. ]]
+local DEATHS = { [6] = true, [20] = true, [113] = true, [406] = true, [605] = true, [646] = true }
+-- How long a death is remembered: as long as a press can be held for it.
+local FALLEN_SECONDS = FINISH_BACKSTOP
+-- An id from here up is a monster's, an NPC's or a pet's, never a player's.
+local FIRST_NPC_ID = 0x01000000
 
 local function u16(data, offset)
   local low, high = data:byte(offset, offset + 1)
@@ -270,6 +288,10 @@ local function new(deps)
   -- Who a weaponskill is aimed at: the one `sent_until` waits on, and the one started.
   local sent_target, acting_target = nil, nil
   local finished_at = nil
+  -- The buffs the last 0x063 listed, or nil before one has come.
+  local listed = nil
+  -- When each target fell, by id, as a 0x029 said.
+  local fallen = {}
 
   local function now()
     return deps.now()
@@ -350,14 +372,50 @@ local function new(deps)
     sent_until, going, sent_target = nil, nil, nil
   end
 
+  -- A send has been seen leaving the client and nothing has answered it yet.
+  local function unanswered()
+    return sent_left and running(sent_until)
+  end
+
   -- A start that is over, by its finish or without one.
   local function ended()
     acting_until, open_until, acting_kind, acting_id, acting_target = nil, nil, nil, nil, nil
   end
 
-  -- Whether the client shows that target dead. One it cannot say of lives.
+  --[[ Whether that target is dead: the game said it fell, or the client shows
+       it so. The client's table alone showed none of ten deaths in time
+       (Kevin, 2026-11-12). One neither can say of lives. ]]
   local function dead(id)
-    return id ~= nil and deps.dead ~= nil and deps.dead(id) == true
+    if id == nil then
+      return false
+    end
+    local fell_at = fallen[id]
+    if fell_at ~= nil and now() - fell_at < FALLEN_SECONDS then
+      return true
+    end
+    return deps.dead ~= nil and deps.dead(id) == true
+  end
+
+  -- A target the game says died. The stale ones go as a new one comes.
+  local function fell(id)
+    local clock = now()
+    for other, at in pairs(fallen) do
+      if clock - at >= FALLEN_SECONDS then
+        fallen[other] = nil
+      end
+    end
+    fallen[id] = clock
+  end
+
+  --[[ Whether a held press is pinned to a corpse it can do nothing with: a
+       weaponskill at any, a spell at a monster's alone, since a Raise is aimed
+       at a player's. The rest are the game's to refuse. ]]
+  local function at_a_corpse(press)
+    local kind = press.record.type
+    if kind == "ma" and (press.target or 0) < FIRST_NPC_ID then
+      return false
+    end
+    return (kind == "ws" or kind == "ma") and dead(press.target)
   end
 
   --[[ A mash. Held, a second tap would spend a weaponskill's TP or an item
@@ -374,16 +432,38 @@ local function new(deps)
       and going.target == record.target
   end
 
+  --[[ A status in that list no weaponskill goes under: its id and its name.
+       Whatever numbers key the list, since nobody has seen the client's own
+       raw; a key that is no number is no slot, and a count is no status. ]]
   local function stopping_buff(buffs)
     if type(buffs) ~= "table" then
       return nil
     end
-    for _, buff in ipairs(buffs) do
-      if WEAPONSKILL_STOPPERS[buff] ~= nil then
-        return WEAPONSKILL_STOPPERS[buff]
+    for key, buff in pairs(buffs) do
+      if type(key) == "number" and WEAPONSKILL_STOPPERS[buff] ~= nil then
+        return buff, WEAPONSKILL_STOPPERS[buff]
       end
     end
     return nil
+  end
+
+  --[[ What debug says of the client's own list beside a status the packet
+       named: nothing where an array walk reaches that status there, which is
+       how every other reader of that list walks it. ]]
+  local function client_note(buffs, id)
+    if type(buffs) == "table" then
+      for _, buff in ipairs(buffs) do
+        if buff == id then
+          return ""
+        end
+      end
+      for key, buff in pairs(buffs) do
+        if type(key) == "number" and buff == id then
+          return " (in the client's list, where ipairs does not reach)"
+        end
+      end
+    end
+    return " (not in the client's list)"
   end
 
   --[[ What keeps a weaponskill from going, or nil. No packet leaves for one
@@ -404,9 +484,13 @@ local function new(deps)
     if type(tp) == "number" and tp < WEAPONSKILL_TP then
       return "no TP"
     end
-    local buff = stopping_buff(player.buffs)
-    if buff ~= nil then
-      return buff
+    --[[ The 0x063's list once one has come, which is all GearSwap judges by,
+         and the client's own before then. Stunned, the client's list never
+         named the stun while GearSwap aborted eight presses on it (Kevin,
+         2026-11-12), and debug says when the two disagree. ]]
+    local id, name = stopping_buff(listed or player.buffs)
+    if id ~= nil then
+      return listed ~= nil and name .. client_note(player.buffs, id) or name
     end
     if vitals ~= nil and vitals.hp == 0 then
       return "dead"
@@ -454,11 +538,16 @@ local function new(deps)
     answered()
     ended()
     lock_until, finished_at = nil, nil
+    -- Not a fresh table each time: this runs every frame while the queue is off.
+    if next(fallen) ~= nil then
+      fallen = {}
+    end
   end
 
-  local function hold(name, record, command)
+  -- `target` is the id the press was pinned to, where it was pinned to one.
+  local function hold(name, record, command, target)
     note("hold " .. name .. (held ~= nil and ", replacing " .. held.name or ""))
-    held = { name = name, record = record, command = command, at = now() }
+    held = { name = name, record = record, command = command, target = target, at = now() }
   end
 
   --- What is held, or nil. Introspection.
@@ -480,6 +569,9 @@ local function new(deps)
       note("cleared: " .. reason)
     end
     forget()
+    -- The list was the old zone's, life's, job's or character's: the client's
+    -- own answers until the next 0x063.
+    listed = nil
   end
 
   --[[ A cursor slot is judged at OK, when the command is really sent. Nothing
@@ -555,15 +647,15 @@ local function new(deps)
       note("swallowed " .. name .. ", already going")
       return true
     end
-    local pinned = command
+    local pinned, target = command, nil
     if record.target ~= nil then
-      pinned = deps.pin(command, record.target)
+      pinned, target = deps.pin(command, record.target)
       if pinned == nil then
         note("not held: " .. name .. ", <" .. record.target .. "> cannot be pinned")
         return false
       end
     end
-    hold(name, record, pinned)
+    hold(name, record, pinned, target)
     return true
   end
 
@@ -611,7 +703,7 @@ local function new(deps)
       leaving(open.record)
       return true, aimed
     end
-    hold(open.name, open.record, aimed)
+    hold(open.name, open.record, aimed, tonumber(id))
     return true
   end
 
@@ -619,6 +711,11 @@ local function new(deps)
   function self.on_action(act)
     if not self.enabled() or type(act) ~= "table" then
       return
+    end
+    -- What acts is alive, whatever fell under that id before. A cast cut short
+    -- is no act: dying cuts one short.
+    if act.actor_id ~= nil and act.param ~= INTERRUPT_PARAM then
+      fallen[act.actor_id] = nil
     end
     local started, finished = START_KINDS[act.category], FINISH_KINDS[act.category]
     if started == nil and finished == nil then
@@ -697,15 +794,62 @@ local function new(deps)
       return
     end
     local message = u16(data, MESSAGE_OFFSET) % 32768
-    if not REFUSALS[message] then
+    if DEATHS[message] then
+      local id = u32(data, FALLEN_OFFSET)
+      fell(id)
+      note(("fell %d, message %d"):format(id, message))
+      return
+    end
+    local refusal = REFUSALS[message]
+    if not refusal and not unanswered() then
       return
     end
     local player = deps.get_player()
     if player == nil or u32(data, ACTOR_OFFSET) ~= player.id then
       return
     end
+    if not refusal then
+      -- Named for a log to show a refusal the list above is missing.
+      note(("unlisted message %d with the last send unanswered%s"):format(message, since_finish()))
+      return
+    end
     note("refused, message " .. message .. since_finish())
     answered()
+  end
+
+  --- The entry point's one parse of a 0x063, whether the queue is on or not:
+  --- its ninth order lists the buffs on you, and the list must be the current
+  --- one when it is switched on. nil when the parse failed.
+  function self.on_update(parsed)
+    if type(parsed) ~= "table" or parsed.Order ~= BUFFS_ORDER or type(parsed["Buffs 1"]) ~= "number" then
+      return
+    end
+    local buffs = {}
+    for slot = 1, BUFF_SLOTS do
+      buffs[slot] = parsed["Buffs " .. slot]
+    end
+    listed = buffs
+  end
+
+  --[[ A raw 0x053. The server answers a Trust cast it refuses ("You have called
+       forth your maximum number of alter egos") with no 0x029, so that send is
+       waited out as unanswered: 2.4s of a held bar, ten times in one of
+       Kevin's runs (2026-11-12). Debug names what comes while a send is
+       unanswered, for a log to say which messages those are. UNVERIFIED: that
+       they are 0x053s at all. ]]
+  function self.on_system_message(data)
+    if not self.enabled() or type(data) ~= "string" or #data < SYSTEM_MESSAGE_OFFSET + 1 then
+      return
+    end
+    if unanswered() then
+      note(
+        ("system message %d (param %d) with the last send unanswered%s"):format(
+          u16(data, SYSTEM_MESSAGE_OFFSET),
+          u32(data, SYSTEM_PARAM_OFFSET),
+          since_finish()
+        )
+      )
+    end
   end
 
   --- A raw outgoing packet, whoever sent it: a bar, a macro, GearSwap.
@@ -749,7 +893,7 @@ local function new(deps)
        nothing after a start its target died under. If it does, what goes out
        at the death is refused. ]]
   local function target_died()
-    if sent_left and running(sent_until) and dead(sent_target) then
+    if unanswered() and dead(sent_target) then
       answered()
       note("the target died, no answer to come")
     end
@@ -763,8 +907,13 @@ local function new(deps)
     local clock = now()
     target_died()
     if sent_until ~= nil and clock >= sent_until then
+      local line = "nothing went out for the last press"
+      if sent_left then
+        -- With who a weaponskill left for, to set beside the deaths debug names.
+        line = "no answer to the last send" .. (sent_target ~= nil and ", a weaponskill at " .. sent_target or "")
+      end
       answered()
-      note(sent_left and "no answer to the last send" or "nothing went out for the last press")
+      note(line)
     end
     if open_until ~= nil and clock >= open_until then
       local waiting = acting_until ~= nil
@@ -839,6 +988,10 @@ local function new(deps)
     local stop = what_stops(held.record)
     if stop ~= nil then
       self.drop(stop)
+      return nil
+    end
+    if at_a_corpse(held) then
+      self.drop("the target died")
       return nil
     end
     local release = held

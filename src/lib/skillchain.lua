@@ -1264,7 +1264,7 @@ local function new(deps)
        receive; the zone-out chunk on the already-forwarded dispatch says
        the same thing. ]]
   --[[ `parsed` is the entry point's one decode of the packet, handed to every
-       reader; 0x63 is read from it alone (three components want that id, and
+       reader; 0x63 is read from it alone (four readers want that id, and
        the raw bytes are not decoded a second time here). nil when the parse
        failed, which reads as nothing having arrived. ]]
   function self.on_chunk(id, data, parsed)

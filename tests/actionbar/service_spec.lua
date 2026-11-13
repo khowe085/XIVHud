@@ -280,6 +280,14 @@ describe("the action service", function()
       assert.are.equal("bt", env.asked_token)
     end)
 
+    it("answers the id it pinned beside the command, and none for a token it left as written", function()
+      local service = world()
+      local _, id = service.pinned_command('input /item "Ring" <bt>', "bt")
+      assert.are.equal(99, id)
+      local _, none = service.pinned_command('input /item "Ring" <me>', "me")
+      assert.is_nil(none)
+    end)
+
     it("folds a hand-edited upper-case token before pinning it", function()
       local service = world()
       assert.are.equal('input /item "Ring" 99', service.pinned_command('input /item "Ring" <T>', "T"))
@@ -1117,6 +1125,66 @@ describe("the action service", function()
         service.tick()
         assert.is_true(service.queue.busy())
       end)
+
+      it("is dead once the action message says it fell, whatever the client's mob shows", function()
+        local service, env = queued()
+        env.mobs = { [MOB] = { id = MOB, hpp = 40, status = 1 } }
+        service.on_outgoing(0x01A, WEAPONSKILL_AT_MOB)
+        service.tick()
+        assert.is_true(service.queue.busy())
+        -- A raw 0x029: someone at 0x04, MOB at 0x08, message 6 at 0x18.
+        local fell = string.rep("\0", 4)
+          .. string.char(0x78, 0x03, 0, 0)
+          .. string.char(0x41, 0x66, 0x03, 0x01)
+          .. string.rep("\0", 12)
+          .. string.char(6, 0, 0, 0)
+        service.on_chunk(MESSAGE, fell, nil)
+        service.tick()
+        assert.is_false(service.queue.busy())
+      end)
+    end)
+
+    describe("a weaponskill under a status", function()
+      local CHAR_UPDATE = 0x063
+      local BLADE = { type = "ws", action = "Savage Blade", target = "t" }
+      local BLADE_COMMAND = 'input /ws "Savage Blade" <t>'
+
+      -- The entry point's one parse of a 0x063 of the ninth order, with one
+      -- buff on you.
+      local function parsed_buffs(id)
+        local parsed = { Order = 9, ["Buffs 1"] = id }
+        for slot = 2, 32 do
+          parsed["Buffs " .. slot] = 255
+        end
+        return parsed
+      end
+
+      it("is judged by the buffs the character update lists, off its one parse", function()
+        local service = queued()
+        service.on_chunk(CHAR_UPDATE, "raw", parsed_buffs(10))
+        assert.is_true(service.queue.press(BLADE, BLADE_COMMAND))
+      end)
+
+      it("goes while that update lists nothing that stops one", function()
+        local service = queued()
+        service.on_chunk(CHAR_UPDATE, "raw", parsed_buffs(33))
+        assert.is_false(service.queue.press(BLADE, BLADE_COMMAND))
+      end)
+
+      it("is judged by the client's list where the update did not parse", function()
+        local service, env = queued()
+        env.player.buffs = { 10 }
+        service.on_chunk(CHAR_UPDATE, "raw", nil)
+        assert.is_true(service.queue.press(BLADE, BLADE_COMMAND))
+      end)
+    end)
+
+    it("hears a system message, which debug names while a send is unanswered", function()
+      local service, env = queued("debug")
+      service.on_outgoing(0x01A, string.rep("\0", 10) .. string.char(3, 0) .. string.rep("\0", 16))
+      -- A raw 0x053: message 298 at 0x0C.
+      service.on_chunk(0x053, string.rep("\0", 12) .. string.char(42, 1, 0, 0), nil)
+      assert.truthy(logged(env):find("system message 298", 1, true))
     end)
 
     it("names its mode among the tuning core seeds, shipping on", function()

@@ -364,10 +364,11 @@ off, every press goes at once and the game decides.
 - **What drops a held press:** zoning, dying, changing job or logging out; a
   cutscene that hides the HUD; opening `//hud layout`, `//hud config` or edit
   mode; anything that reloads a bar - a reset, a slot switch, a copy, a login;
-  switching the queue off or unloading the addon; and 30 seconds passing, held
-  or waiting for a ranged attack or an unknown action to end. A press made
-  while `//hud config` is open goes at once; in layout or edit mode, or while
-  the HUD is hidden, the bars fire nothing anyway.
+  switching the queue off or unloading the addon; the target of a held
+  weaponskill dying, or the monster a held spell is aimed at; and 30 seconds
+  passing, held or waiting for a ranged attack or an unknown action to end. A
+  press made while `//hud config` is open goes at once; in layout or edit
+  mode, or while the HUD is hidden, the bars fire nothing anyway.
 - **Lag.** The game tells the queue when a cast starts and when it finishes,
   and lag can lose either message. If the finish never comes, a spell counts
   as finished at its cast time plus 0.4 seconds, a weaponskill after 1.2 seconds
@@ -380,6 +381,11 @@ off, every press goes at once and the game decides.
 - **A weaponskill whose target dies.** The game sends nothing more for one: no
   answer if it was sent as the target died, no finish if it had started. The
   queue stops waiting as soon as the target is dead, and a held press goes.
+  The one exception is a death that shows more than 1.2 seconds after the
+  weaponskill started: the usual wait after a weaponskill has begun by then,
+  and runs its course. A weaponskill held for a target that dies before it can
+  go is dropped rather than sent at the corpse, and so is a held spell aimed
+  at a monster that has died. A Raise held for a fallen player still goes.
 
 If you use Selindrile's GearSwap files, leave their MiniQueue off.
 

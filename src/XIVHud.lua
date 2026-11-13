@@ -1198,7 +1198,7 @@ end)
 --[[ The status bar: the player's own buffs and debuffs on three anchored bars
      (`bar1`, `bar2`, `bar3`). Presence comes off the player service; the
      expiries ride the 0x063 chunk, which the chunk handler below pre-parses
-     once for its three readers. The wall clock is what the packet's
+     once for its four readers. The wall clock is what the packet's
      timestamps count in.
 
      Gated on safe_mode alone, targetbar's rule: the icons draw by id and the
@@ -1735,12 +1735,13 @@ windower.register_event(
      Pre-existing, and not this change's to fix. ]]
 if not safe_mode and not libraries_error then
   local ACTION_CHUNK = 0x028
-  --[[ 0x063, the character update: one id over several orders, and three
-       readers - the crossbar's skillchain engine (order 9's buff ids), expbar
-       (order 2's limit points and merits) and the status bar (order 9's ids
-       with their expiries). Windower's field definition for it switches on
-       the order byte, so one packets.parse serves every order and every
-       reader; until 2026-09-04 each of the three decoded it again. ]]
+  --[[ 0x063, the character update: one id over several orders, and four
+       readers - the crossbar's skillchain engine and the action queue (order
+       9's buff ids), expbar (order 2's limit points and merits) and the
+       status bar (order 9's ids with their expiries). Windower's field
+       definition for it switches on the order byte, so one packets.parse
+       serves every order and every reader; until 2026-09-04 each of the
+       first three decoded it again. ]]
   local CHAR_UPDATE_CHUNK = 0x063
   local structured = partylist_packets
       and {
