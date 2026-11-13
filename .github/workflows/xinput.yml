@@ -1,0 +1,45 @@
+name: _LuaXInput
+
+# Builds native/xinput's _LuaXInput.dll for Windower 4 and smoke-tests it,
+# under a stock Lua 5.1.5, on a runner with no pad. Runs on every pull request
+# that touches it, and is called by package.yml, which ships the Windower
+# build in the zip's bin/.
+
+on:
+  pull_request:
+    paths:
+      - 'native/xinput/**'
+      - '.github/workflows/xinput.yml'
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch Lua 5.1.5
+        shell: pwsh
+        run: |
+          $tarball = Join-Path $env:RUNNER_TEMP 'lua-5.1.5.tar.gz'
+          Invoke-WebRequest -Uri 'https://www.lua.org/ftp/lua-5.1.5.tar.gz' -OutFile $tarball
+          $actual = (Get-FileHash $tarball -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne '2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333') {
+            throw "lua-5.1.5.tar.gz has SHA-256 $actual, not lua.org's"
+          }
+          tar -xzf $tarball -C $env:RUNNER_TEMP
+
+      - name: Build and smoke-test
+        shell: cmd
+        run: native\xinput\build.cmd test "%RUNNER_TEMP%\lua-5.1.5\src"
+
+      - name: Upload the Windower build
+        uses: actions/upload-artifact@v4
+        with:
+          name: LuaXInput
+          path: native/xinput/build/windower/_LuaXInput.dll
+          if-no-files-found: error

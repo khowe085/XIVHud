@@ -146,8 +146,8 @@ that action on the selected sub-target", which is what the resent token drew.
 | Fact | Set by | Cleared by | Backstop |
 | --- | --- | --- | --- |
 | `sent`: something went out, nothing back yet | a bar press or release, outgoing `0x01A` (3 magic, 7 ws, 9 ja, 16 ranged, 25 monster skill), outgoing `0x037` (item) | any `0x028` start or finish of ours, a refusal | 0.6s until the packet is seen, 2s after, or a spell's `cast_time` + 0.4s where longer (2026-11-06) |
-| `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787) | a spell's `cast_time` + 0.4s, a weaponskill 3s, an item's `cast_time` + 1s, else 30s; a finish is still read as one for 30s (2026-11-06) |
-| `lock_until`: the lock's end | a finish (2, 3, 5, 6, 11, 14, 15 of ours, and 4 naming a spell while a cast is running (2026-11-08), within 30s of a start of ours when it names that start's spell or the start named none, or naming a spell that went out and is unanswered (2026-11-07)), an interrupt, the end of a start's wait | time | none needed |
+| `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787), and while a weaponskill's start runs a 4 naming no spell (2026-11-10) | a spell's `cast_time` + 0.4s, a weaponskill 1.2s (3s until 2026-11-10), an item's `cast_time` + 1s, else 30s; a finish is still read as one for 30s (2026-11-06) |
+| `lock_until`: the lock's end | a finish (2, 3, 5, 6, 11, 14, 15 of ours, and 4 naming a spell while a cast is running (2026-11-08), within 30s of a start of ours when it names that start's spell or the start named none, or naming a spell that went out and is unanswered (2026-11-07), or naming no spell while a weaponskill's start runs, which takes the weaponskill lock (2026-11-10)), an interrupt, the end of a start's wait | time | none needed |
 
 Busy is any of the three. A held press goes on the first tick nothing is busy, or once
 its recast ends if that is within two seconds (2026-11-07, a second until 2026-11-08).
@@ -698,7 +698,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 10 | Macro casts in `queue on` | Lines only in `debug`, bar presses hold behind them | Packets count whoever sent them |
 | 11 | Mash a bar press faster than the ping, then watch for `nothing went out for the last press` on a press that did go | The line never appears on a press that went | Whether 0.6s covers the gap between a press and `outgoing chunk`, which may fire at the client's next send |
 | 12 | A pet command and a blood pact | A `sent` that ends on an answer, not the 2s backstop | Which packet answers `/pet` |
-| 13 | A weaponskill out of range | `ignored a finish with no cast running` and no lock | atom0s says that failure arrives as category 4 |
+| 13 | A weaponskill out of range | Before its start, `ignored a finish with no cast running` and no lock; after its start, `finish weaponskill naming no spell, message 78, lock 2.40s` | atom0s says that failure arrives as category 4. Kevin's 2026-11-10 run had three after a start |
 | 14 | During a cast press a `<stpc>` slot, pick a target and press OK inside the lock | `cursor`, `OK ... at <id>`, `hold`, `release`, and the cast lands on who you picked with your target unchanged | The whole of the cursor path |
 | 15 | The same, pressing OK after the lock clears | `OK`, then `out` at once, no `hold` | OK while free |
 | 16 | Press a `<stpc>` slot during a lock, then ESC | Nothing goes, the next press works | A cursor abandoned |
@@ -708,7 +708,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 20 | Double-tap a `<stpc>` slot during a lock, then OK | `cursor up, OK takes ...`, one `OK`, cast at who you picked, target unchanged | FAILED before the fix, as predicted. A second press raised no arrow, OK read as one and the `/ta` ran |
 | 22 | Press a `<stpc>` slot while free, let a weaponskill go, press OK in its lock | `hold`, then `release` at the lock's end | The refused Sleep II |
 | 23 | Keep the cursor up and press a different cursor slot, then OK | The newer spell casts | The press only changes what OK casts |
-| 24 | Press a cursor slot during a macro's own `<st>` cursor | The game's usual answer, and the macro's spell on OK | An arrow this did not open is left alone |
+| 24 | Press a cursor slot during a macro's own `<st>` cursor and OK it, then press and OK the slot | `swallowed ..., another arrow is up` and no "You cannot perform that action on the selected sub-target", the macro's spell on its OK, then `cursor`, `arrow`, `OK` and the slot's spell, with no "A command error occurred" | An arrow this did not open is left alone, and GearSwap is never sent a token the game refuses (2026-11-10) |
 | 21 | ESC a cursor, then run a `/ta <stnpc>` macro | The macro's cursor works, and nothing casts | A closed cursor must not take another's line as its OK |
 | 25 | Mash a weaponskill through its own lock, then press a spell as the lock ends | `swallowed ... no TP` or `dropped ... no TP`, no `nothing went out`, and the spell goes at about +2.43 | The TP check |
 | 26 | Hold a `<stpc>` arrow on a Trust as your target dies, opening it during a lock. Repeat with `//hud queue off` | Which run leaves you on the Trust | Whether a `/ta` arrow is what strands you |
@@ -720,6 +720,15 @@ start bracket the true lock. Every line is in `debug.log`.
 | 32 | Press a bar spell during a cast, then type `//hud layout` | `dropped ...: //hud layout`, nothing goes | Only `suppressed` has dropped a press for this reason |
 | 33 | Press Cure IV again late in its own lock, about +1.8 after its finish | `hold Cure IV`, `release`, and it casts at about +2.72, with no `not held` and no refusal | A short recast inside a lock is held. Passes, 10 of 10 on `2e4fb77` |
 | 34 | Cast Shell V on one target, then OK it on the next as soon as the arrow can be raised, several times over | `hold Shell V`, `Shell V waits ...s on its recast` where its recast outlasts the lock, then `release`, and it casts, with no refusal | The recast grace (2026-11-07). At one second it missed Shell V without haste, 11 of 11 ending 1.28 to 1.31s past the lock (2026-11-08); unverified at two |
+| 35 | Start a weaponskill on a mob as it moves out of range, then mash a macro through | `finish weaponskill naming no spell, message 78, lock 2.40s`, then `refused` lines, then a `start` | The lock after a too-far. 2.4 is the weaponskill's, unverified there: the 2026-11-10 run brackets it between +1.07 refused and +2.57 accepted |
+| 36 | Mash a weaponskill slot on a mob that dies while the weaponskill is readying | `the target died, no finish to come`, then `out weaponskill` at once and either a `start` or `refused` lines | Whether the game locks after a weaponskill its target died under; the refusals, if any, bracket that lock. The line never came on `dd6753a` (2026-11-12, once of once), the death asked of the client's table alone |
+| 37 | Mash a weaponskill slot as a mob dies with the next one in reach | `the target died, no answer to come`, then `out weaponskill` and its `start` inside a second | The wait a dead target cost was 2s; whether GearSwap holds the press back itself is unknown. The line never came on `dd6753a` (2026-11-12, nine of nine); the game's death messages are read since |
+| 38 | Press a cursor slot where no arrow can be raised, wait 2s, then run a `/ta <stnpc>` macro and OK it | `no arrow for <name>`, and the macro's cursor works with nothing cast | A cursor that raised no arrow must not take another's OK |
+| 39 | Start a ranged attack on a mob that dies before the shot | Whether an interrupt or a finish follows the `start ranged`, or nothing for 30s | Whether a ranged start needs the dead-target rule too (review, 2026-11-12) |
+| 40 | With 1000 TP, press a weaponskill slot under Amnesia, and again stunned or asleep | `swallowed <name>, amnesia` (or `stun`, `sleep`), no `out weaponskill`, and no `Abort:` line in chat | That the press no longer reaches GearSwap. Failed on `dd6753a` (2026-11-12): three stuns were never seen, asked of the client's list. The `0x063` is read since, and `(not in the client's list)` after the status says the client's list still lacks it, `(in the client's list, where ipairs does not reach)` that it holds it off its array |
+| 41 | Mash a weaponskill slot through a lock while the party kills the mob, then stop pressing | `dropped <name>: the target died`, and no `out weaponskill` at the corpse | The held drop, and that the game's death messages reach the client for someone else's kill |
+| 42 | OK a Sleepga's cursor on a mob during a lock, and have the mob die before the lock ends | `dropped Sleepga: the target died`, and the next Sleepga goes at once | The held drop for a spell, and that a monster's id is never under 0x01000000 |
+| 43 | With the party full, let AutoTrust cast a Trust, and another with enmity held | `system message <id> (param <n>) with the last send unanswered` after the `out spell`, or `unlisted message <id> with the last send unanswered` if the answer is a `0x029` after all | Which packet and which ids answer a refused Trust cast, before anything takes them for refusals |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -785,3 +794,280 @@ target, ran its recast 1.28 to 1.31s past the lock eleven times of eleven, so ev
 press was sent and refused with 17 at one second. Two covers that with 0.7s over for
 other gear; the margin moves with fast cast and haste, which cut cast and recast
 differently.
+
+## A weaponskill's too-far, and its lost finish (Kevin, 2026-11-10)
+
+Done 2026-11-10 (Kevin), after a run that held weaponskill presses about 5.4s:
+
+- **A weaponskill that started and could not land** is answered with a spell finish
+  naming no spell (category 4, param 0, message 78, too far) 0.02 to 0.44s after its
+  start. The 2026-11-08 rule read it as a paralysis round, so the start waited out its
+  3s and locked 2.4s on top, three times in the run. While a weaponskill's start runs,
+  such a finish now ends it and locks as its finish would. Its own finish is a
+  category 3, never ignored, and replaces that lock if it comes after all. The run
+  brackets the real lock after a too-far: a Cocoon sent +1.07 after one was refused
+  (17), an Unbridled Learning sent +2.57 after another was accepted. A run on
+  2026-11-11 narrowed it: GearSwap's Nat. Meditation, sent +2.03 after a too-far, was
+  refused (17). The 2.4 it takes is unverified there (row 35). Any finish naming no spell ends the start, a
+  paralysis round's too: either it was the weaponskill's own end, or the category 3
+  finish that follows replaces the lock. Should that finish be lost as well, the lock
+  starts up to 1.2s early and a held press can be refused: one re-press, and rare.
+- **A weaponskill's lost finish** now waits 1.2s, three of the server's 0.4s beats,
+  not 3: about 80 weaponskills in the run each finished within 0.89s of starting, and
+  one whose finish never came (its mob died under it) held the bar 5.4s. A late
+  finish still replaces the lock.
+
+## A press under another's arrow (Kevin, 2026-11-10)
+
+Done 2026-11-11 (Kevin), after Dia III would not go in Al Zahbi:
+
+- At 23:14:08 a cursor slot was pressed under an arrow the queue had not opened. It
+  went out as typed, as row 24 had it, and the game refused it ("You cannot perform
+  that action on the selected sub-target"), which wrote no queue line. GearSwap had
+  set its `st_flag` for the token, and with the line refused no number came to clear
+  it. At 23:14:10 the next press opened its cursor as usual, and its OK went out as
+  `/ma "Dia III" 16974022`, which GearSwap passed to the game as typed, clearing the
+  flag: "A command error occurred", then `nothing went out for the last press`. The
+  press after that cast.
+- Under an arrow it did not open a press now sends nothing, says
+  `swallowed <name>, another arrow is up` in `debug`, and leaves that arrow's OK to
+  whoever opened it. It could do nothing there anyway: the token raises no arrow
+  while one is up.
+- Not covered (review, 2026-11-11): suppression and the config modes are checked
+  first, and there the queue stands aside, so a cursor press under any arrow goes as
+  typed. Covering them means deciding what a press under the queue's own arrow does
+  while it holds nothing.
+- Unverified: that GearSwap's flag is what broke the OK. It is read off GearSwap's
+  source (`flow.lua` sets it in pretarget for an `<st>` token, `triggers.lua` clears it
+  on the next outgoing text and passes that line through) and the log. Row 24.
+
+## A weaponskill whose target dies (Kevin, 2026-11-11)
+
+Done 2026-11-12 (Kevin: "Fix both cases"), after a BLU run on `a947c86` where a
+weaponskill's target died under it thirteen times:
+
+- **Sent as the mob died**, ten times. The server answers nothing, and the bar sat out
+  its 2s each time; four of those delayed the next weaponskill by 1.4 to 2s, and the
+  rest had nothing in reach. A weaponskill that left for a target the client now shows
+  dead - no HP, or status 2 or 3 - is no longer waited on. Nothing started, so nothing
+  locks. This is the likely cause of the weaponskills left unanswered in the runs of
+  2026-11-01 above.
+- **Started, then the mob died**, three times, and once more in an RDM run that night.
+  No finish comes and the TP is kept; the bar waited 1.2s and then locked 2.4s. The
+  start now ends at the death with no lock. **Unverified: that the game locks nothing
+  there** (row 36). Should it, what goes out at the death is refused, and the refusals
+  bracket the real lock.
+- Weaponskills alone. A Raise is aimed at a corpse, and a cast cut short has its
+  interrupt.
+- A target the client no longer has reads as alive: by then the wait is over anyway.
+- Unknown: whether GearSwap holds back a press sent that soon after a weaponskill of
+  its own (row 37).
+- A death the client shows only after the 1.2s a start is waited on lifts nothing: the
+  lock the lost finish was given stands (review, 2026-11-12). A lost finish followed by
+  a kill looks the same, so row 36 decides whether it should.
+- A weaponskill HELD while its target lived is pinned to that mob, so at the death it
+  was released at the corpse - GearSwap's precast ran and nothing answered (review,
+  2026-11-12). Kevin, 2026-11-12: "yes. Drop a held weaponskill when its pinned target
+  has died". Done, below.
+- Unverified: that the client never shows 0% for a mob still alive. Dead is `hpp` 0 or
+  status 2 or 3, the focus target's own test; were a sliver of HP rounded down, the wait
+  would end early and a held press go out into the weaponskill (review, 2026-11-12).
+  The live runs below say the opposite failure is the real one: the table showed no
+  death in time, ten times of ten. The same reading drops a held weaponskill or spell
+  now, so a living mob shown at 0% would lose every press held for it.
+
+## A cursor that raised no arrow (review, 2026-11-11)
+
+Done 2026-11-12. A cursor slot's token can raise no arrow at all: the game refuses it
+with the chat log open, for one. The cursor was kept for its 30s all the same, with no
+number counted, so the next `/ta` cursor anyone opened had its arrow taken for this
+one's and its OK for this one's OK: the line was blocked and the stale spell cast at
+that target. Two reviewers found it by reading; no run has shown it.
+
+- A cursor that has counted no number 2s after it opened, with no arrow up, is given
+  up, saying `no arrow for <name>` in `debug`. The arrow's number comes back within a
+  frame or two of the token in every run so far.
+- It is timed, not counted off a second token as the reviewers proposed: another addon
+  that blocks and re-sends `/ta` lines would put this cursor's own token through twice.
+- Inside those 2s the hole is still open: another cursor's arrow number is counted as
+  this one's, and its OK is then taken (review, 2026-11-12).
+- A client that stalls more than 2s between the token and its arrow's number has a live
+  cursor given up, and its OK would then move the target and cast nothing (review,
+  2026-11-12). No run has shown a number that late.
+- Row 38.
+
+## A weaponskill you cannot use (Kevin, 2026-11-12)
+
+Done 2026-11-12, after an Ambuscade run where every weaponskill pressed under Amnesia
+drew GearSwap's `Abort: You have Amnesia.` in chat. Kevin: "silently drop WS presses
+where I don't have TP, Amnesia, or am stunned. The same conditions as what selindrile's
+gearswap aborts on. Do not drop based on range".
+
+- The conditions are read off Kevin's GearSwap (`libs/Sel-Include.lua` `filter_precast`,
+  `libs/Sel-Utility.lua` `check_disable` and `check_amnesia`, `libs/Sel-Mappings.lua`
+  `disable_list`): terror, sleep, Lullaby, stun, Animated, Charm, petrification; 0 HP; a
+  status that is neither Idle nor Engaged; amnesia; impairment. The TP test is his own
+  `user_filter_precast`, and the queue already had it.
+- The ids are Windower's buffs resource's for those names: sleep 2 and 19, petrification
+  7, stun 10, charm 14 and 17, amnesia 16, terror 28, Lullaby 193, impairment 261,
+  animated 633.
+- It rides the TP rule: judged at the press, at a cursor's OK and at the release, a
+  press that shows nothing, and only while the queue is on. `debug` names what stopped
+  it.
+- Weaponskills alone, as asked. An ability under Amnesia, and a spell or an ability
+  while stunned, still reach GearSwap and draw its `Abort:` line.
+- No range test (Kevin): the weaponskill gate removed on 2026-10-16 had one, and it
+  misjudged some monsters' hitboxes. Selindrile's precast filters have none on a
+  weaponskill either: only his AutoWS and his `smartws` command judge range.
+- Not his `check_doom`, which sends a Cursna or a Holy Water in the press's place, nor
+  his `just_acted`, which is his MiniQueue.
+- Row 40.
+
+## The first live runs of `dd6753a` (Kevin, 2026-11-12)
+
+Two runs in `debug`, each with its chat log: an hour of Dynamis [D] on RDM with Trusts,
+then 27 minutes of Sheol C on BLU in a party.
+
+**What held.** About 115 weaponskills on RDM and over a hundred on BLU, each `out`,
+`start`, `finish`; the TP rule swallowed several hundred mashed presses and drew no
+chat line.
+`cleared: death`, `dropped ...: suppressed` at the zone and the cursor lines read as
+designed. Nobody was under Amnesia, petrified, charmed or terrorized, no cursor raised
+no arrow, and nothing ranged was fired, so rows 38 and 39 saw nothing.
+
+**What `dd6753a` added and never fired.**
+
+- **The statuses** (row 40). Three stuns - Seismostomp at 20:07:59, Aerial Wheel at
+  20:32:52, Tail Slap at 21:29:47 - and through each, presses with the TP for a
+  weaponskill went on to GearSwap: fifteen in all, not one `swallowed ..., stun`. Under
+  the third GearSwap printed `Abort: You are stunned.` eight times. (Under the first two
+  its `just_acted` cancelled the presses first and in silence, since the weaponskill
+  sent as the stun landed was never answered and stayed its `prepared_action`.) One
+  press as a sleep wore off drew `Abort: You are asleep.` the same way.
+  - GearSwap's `player.buffs` is the `0x063` order 9 and nothing else
+    (`packet_parsing.lua`; its `0x037` read is commented out). The queue asked the
+    client's `get_player().buffs`, through `lib/player`, with `ipairs`.
+  - So the queue reads that packet too now, off the entry point's one parse of it (its
+    fourth reader), and the client's list only until one has come - after a `//lua
+    reload` until the next buff change, and after a zone, a death, a job change or a
+    logout until the next one. Why the client's
+    list failed is NOT known: it may lack the status, or not be a plain array. It is
+    read with `pairs` now, over its numeric keys alone so that a count is no status, and
+    `debug` says how the client's list holds the status the packet named: `(not in the
+    client's list)`, `(in the client's list, where ipairs does not reach)`, or nothing
+    where an array walk finds it. Everything else in the addon that reads that list with
+    `ipairs` (the status bar, the context layers, the mounted check, the stealth ladders'
+    silence test) is open to the same question until a log answers it: the second note
+    is the one that would implicate them. The status bar shows the same thing sooner -
+    a stun with no icon on it is a list that lacks the status.
+  - GearSwap skips the blank order-9 `0x063` that follows a zone (a flag set on `0x00A`,
+    `packet_parsing.lua`). The queue takes it, so until the real one comes it sees no
+    status; that can only let a press through (review, 2026-11-12).
+- **The dead target** (rows 36 and 37). Nine weaponskills left for a mob the party
+  killed that moment and each waited out its 2s; one had started, and sat 1.2s and
+  then a 2.4s lock. `the target died` was never written, the death asked of the
+  client's mob table alone (`hpp` 0, or status 2 or 3). What that table showed is not
+  known.
+  - The game's own word is read now: a `0x029` whose message is one of 6, 20, 113,
+    406, 605, 646 (the Debuffed addon's `Unit died` list, checked against Windower's
+    action messages), its target at 0x08. A death is remembered 30s - as long as a
+    press is held - or until that id acts again, and forgotten on a clear. A cast cut
+    short is no act: dying cuts one short, and whether that packet comes before the
+    death or after is not known. The table is still asked beside it.
+  - The remembered death outranks a table that shows the mob alive, so one back up
+    under the same id inside 30s - a reraise, a respawn - reads as dead until it acts:
+    a weaponskill at it is not waited on, and a press held for it is dropped (review,
+    2026-11-12; left as it is, the table having shown no death in time either).
+  - `debug` writes `fell <id>, message <n>` for each death and `no answer to the last
+    send, a weaponskill at <id>` when one is waited out, so the next log can say
+    whether the deaths came, and for which ids, if the rule is silent again.
+  - A Trust called again takes a new id - 17983489, then 17983493, then 17983497 for
+    Valaineral in the RDM run - so a death should not outlive its id onto the next
+    one (review, 2026-11-12, asked).
+  - Kevin's game filters must be off for those to reach the client, as they are for
+    his damage parse. Unverified (row 41).
+
+**Held presses at a corpse** (Kevin, 2026-11-12: yes to the weaponskill, and "Yes,
+monsters only" to a spell). A held Expiacion pinned at 21:42:34 went out at 21:42:35 at
+a Rarab killed in between, unanswered. On RDM a Sleepga OK'd at 20:20:52 on a statue
+whose death blow had landed was held 1.2s, released at the corpse and never answered;
+the Sleepga OK'd on the pack meanwhile waited that out, was then cancelled in silence
+by GearSwap (the first still its `prepared_action`), and went on a third press, 4.0s
+after its OK.
+
+- At the release, a held weaponskill whose pinned target is dead is dropped, and a held
+  spell whose pinned target is a dead monster: `dropped <name>: the target died`.
+- A monster is an id from 0x01000000 up. A player's is below it, so a held Raise goes.
+- An ability, an item and a ranged attack are released as before.
+- The id rides the pin: `pinned_command` answers it beside the command, and a cursor's
+  OK carries its own.
+- Not done: a spell SENT as its target dies is still waited on for its cast time plus
+  0.4s - Sleepga 3.4s, three times in the RDM run. GearSwap keeps such a spell as its
+  `prepared_action` for 3.4s or more and cancels the same spell sent again, so an
+  earlier release of the bar would buy little.
+- Rows 41 and 42.
+
+**Trust casts the server refuses** (Kevin, 2026-11-12: "Yes, log them"). AutoTrust cast
+a Trust eleven times with the party full or enmity held. The game answered "You have
+called forth your maximum number of alter egos" or "You cannot use Trust magic while
+having gained enmity", the queue saw no refusal for either, and ten of them held the
+bar 2.4s: a Silence went 2.08s late and Utsusemi went up first, two Dia III went 1.84s
+and 1.30s late and were pressed again, and a Stun pressed at 20:35:00 was never cast.
+
+- Neither line is in Windower's action messages, so they are taken to be `0x053`
+  system messages. Unverified here, but GearSwap agrees for one of them: its own
+  `parse.i[0x053]` takes messages 298-301 (0x12A-0x12D) for a Trust cast refused - not
+  the leader, not solo, the party full, already called - and runs aftercast (review,
+  2026-11-12). The enmity line is not on its list.
+- `debug` names a `0x053` that comes while a send is unanswered, id and parameter.
+  Nothing acts on one until a log has shown which they are. Row 43.
+- A `0x029` the queue does not know for a refusal was dropped in silence, so those two
+  logs cannot say none came. `debug` names one of your own that comes while a send is
+  unanswered too (`unlisted message <id>`), whichever packet it turns out to be.
+
+**Seen, and left alone.**
+
+- A second "You cannot see" inside about 1.4s of the first is not seen by the queue at
+  all: 20:42:05 and 21:29:13, each chat line with no `refused` beside it, and the send
+  then waited out its 2s. One 1.6s after the first is seen (twice). The handler drops
+  nothing, so the packet never reached the addon. My guess, at 70%: the two chunks are
+  byte for byte the same, and Windower takes the second for the first one's resend.
+- 20:07:54, `not held: Sleepga on recast 1.52s, lock 0.00s`: an OK with nothing busy
+  goes out on its recast, and GearSwap printed `Abort: [Sleepga] waiting on recast.`
+- A spell pressed while resting drew `Abort: You can't act while your status is:
+  Resting.` (20:43:19). Weaponskills alone are judged, as asked.
+- Three times a slot was mashed that opened Blind's cursor - 13, 3 and 30 presses -
+  each just before Sanguine Blade went out (20:28:59, 20:31:14, 20:41:55). Whether that
+  was the wrong slot under the thumb or the bar resolving the wrong one is Kevin's to
+  say.
+
+## A third run of `dd6753a` (Kevin, 2026-11-12, 21:53 to 23:02)
+
+RDM in Sortie with a party of six and no Trusts, so nothing here speaks to row 43.
+Still `dd6753a`: none of the fixes above were in it.
+
+- **Amnesia** (row 40). Triboulex's at 22:59:51. The weaponskill already out was
+  refused (191, 90); one more left 0.09s later, before GearSwap knew of it either, and
+  was never answered (2.02s); the next four presses went on to GearSwap and each drew
+  `Abort: You have Amnesia.` So the client's list failed for amnesia as it had for
+  stun: it is not one status.
+- **Stuns.** Two, and each caught a held Dia III at its release rather than a
+  weaponskill: `Abort: You are stunned.` at 22:33:57 and 22:58:57, each pressed again.
+  A Dia III sent as a third stun landed (22:59:00) was never answered, 2.4s. Spells
+  are not judged, as asked.
+- **Dead targets** (row 36). Two weaponskills left as the mob died - 22:47:12, Kevin's
+  own melee kill, and 22:51:08 - and each waited out its 2s, `the target died` never
+  written. The first printed "Vanar defeats the Abject Obdella", so its `0x029` came.
+- **Whose kills print.** Kevin's own print a "defeats" line and nobody else's does,
+  and no party member's attack prints at all. If that is Battlemod's filter the death
+  messages still reach the addon; if it is the game's, row 41 fails for a kill that is
+  not his. The `fell` lines will say.
+- **The locks held.** Over fifty held spells were released at +2.72 to +2.74 and every
+  one started, two of them after an interrupt; a held weaponskill released at +2.45
+  and one sent at +2.42 both started.
+- **A recast with nothing busy**, five times: three drew GearSwap's `waiting on
+  recast` (0.83s to 1.13s left) and were pressed again, two went (0.80s and 0.03s).
+- **Two slots inside three frames** (22:41:27): Frazzle III's cursor, then 0.05s later
+  a Dispel press that took its OK. The same question as Blind above.
+- A weaponskill sent with the TP for it was refused "not enough TP" (192) once,
+  22:24:39, a monster's move landing in between. Nothing to do.

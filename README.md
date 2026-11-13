@@ -7,7 +7,7 @@ A Final Fantasy XIV style HUD for Final Fantasy XI, as a
 
 XIVHud draws widgets over FFXI's own display the way FFXIV draws them: a
 parameter bar, a party list, a target bar, a cross hotbar driven by held keys
-(or a controller through Steam Input), a keyboard hotbar, a status display
+or a gamepad, a keyboard hotbar, a status display
 with timers, an experience bar, a skillchain indicator, and small trackers
 for gil, inventory, equipment and movement speed. Every widget is switched on
 or off, moved and resized in an in-game layout mode, and every character
@@ -24,7 +24,8 @@ keeps its own arrangement.
   XIVHud adds is what makes them one HUD: shared placement,
   per-character settings, layout slots, and a common command line. The
   [Credits](#credits) section at the end names every project, and the
-  `LICENSE.txt` files under `src/` reproduce their notices - except for three
+  `LICENSE.txt` files under `src/` reproduce their notices (Lua's sits with its
+  headers in `native/xinput/include/`) - except for three
   ports, thtracker, SpeedChecker and enemybar2, which are credited in their
   source files only.
 - **It was written with AI.** The code, the tests and the documentation were
@@ -56,7 +57,7 @@ and where settings are stored.
 
 | Component | Alias | What it shows | Wiki |
 | --- | --- | --- | --- |
-| Crossbar | `cb` | FFXIV's cross hotbar: sixteen slots per set, eight sets, driven by held keys (or a controller through Steam Input), with a mouse binder | [crossbar](wiki/components/crossbar.md) |
+| Crossbar | `cb` | FFXIV's cross hotbar: sixteen slots per set, eight sets, driven by held keys or a [gamepad](wiki/gamepad.md), with a mouse binder | [crossbar](wiki/components/crossbar.md) |
 | Hotbar | `hb` | FFXIV's hotbar: ten slots in a row on the number keys, up to eight rows, with the same kinds of binding and the same commands as the crossbar | [hotbar](wiki/components/hotbar.md) |
 | Parameter bar | `pb` | HP, MP and TP bars with numbers, plus melee accuracy and multi-attack rows | [parambar](wiki/components/parambar.md) |
 | Party list | `pl` | your party (HP/MP/TP, jobs, buffs, distance) and both alliance parties (HP and MP) | [partylist](wiki/components/partylist.md) |
@@ -85,12 +86,16 @@ Everything is under `//hud`. The most used:
 //hud queue [on|debug|off]     hold a bar press through a cast and send it when you can act
 //hud hidecutscene [on|off]    hide the HUD during cutscenes
 //hud config                   the settings window: change settings with the mouse
+//hud gamepad [on|off]         read an Xbox-style pad directly and play the crossbar from it (on by default)
+//hud gamepad bind <gesture> ...  change what a pad button or chord does, as in bind lt+y crossbar.slot1
+//hud keyboard [on|off]        the keyboard map that drives the crossbar and hotbar keys (on by default; off, no key reaches them)
 //hud <component> ...          that component's own settings
 ```
 
 A component's alias stands in for its name anywhere (`//hud hide gt`). See
 the [wiki](wiki/Home.md#commands) for the full set, including layout slots,
-copying settings between characters, and the buff order and filter commands.
+copying settings between characters, and the buff order and filter commands,
+and the [gamepad page](wiki/gamepad.md) for setting up a pad.
 
 ## Development
 
@@ -99,10 +104,14 @@ release zip. Logic is kept apart from the Windower API so it can be tested
 outside the game with [busted](https://lunarmodules.github.io/busted/):
 
 ```
-busted            run the tests
-luacheck .        lint
-stylua --check .  formatting
+busted                      run the tests
+make -C native/xinput test  test the gamepad's native XInput module (needs gcc)
+luacheck .                  lint
+stylua --check .            formatting
 ```
+
+The gamepad bridge's one native piece, `native/xinput`, is a 32-bit Windows
+DLL; a GitHub Action builds it and ships it in the zip's `bin/`.
 
 Nothing here can run the addon itself. That needs Windower and a live FFXI
 client on Windows. [CLAUDE.md](CLAUDE.md) describes the architecture and the
@@ -113,7 +122,8 @@ platform rules in detail.
 XIVHud's own code is released under the BSD 3-clause licence, © 2026
 Azureblood2; the notice is at the top of every source file. Borrowed code and
 art keep their original licences, listed below; their notices are reproduced in
-the `LICENSE.txt` files under `src/`, apart from three ports (thtracker,
+the `LICENSE.txt` files under `src/` (Lua's sits with its headers in
+`native/xinput/include/`), apart from three ports (thtracker,
 SpeedChecker and enemybar2) that are credited in their source files only.
 
 ## Credits
@@ -144,6 +154,7 @@ licence.
 | pointwatch | Byrthnoth | BSD 3-clause | the experience bar: which packets and messages carry experience, limit and exemplar points |
 | [barfiller](https://github.com/Windower/Lua/tree/live/addons/barfiller) | Morath86 | BSD 3-clause | the experience bar's art and its bar |
 | [BG Wiki](https://www.bg-wiki.com/) | its editors | see site | the subjob ability table and the master-level cap behind the binder's subjob layers |
+| [Lua](https://www.lua.org/) | Lua.org, PUC-Rio | MIT | the Lua 5.1 headers the gamepad's native XInput module is compiled against |
 | [Windower](https://github.com/Windower/Lua) | Windower | BSD 3-clause | the platform, its Lua libraries, and the generated resources the buff order is derived from |
 
 Final Fantasy XI and Final Fantasy XIV are the property of Square Enix. The

@@ -9,14 +9,8 @@ describe("crossbar defaults", function()
     defaults = build_defaults(WIDTH, HEIGHT)
   end)
 
-  it("ships the v4 input map", function()
-    assert.same({ 39 }, defaults.input.xhb_left)
-    assert.same({ 40 }, defaults.input.xhb_right)
-    assert.same({ 43 }, defaults.input.w_layer)
-    assert.same({ 41 }, defaults.input.set_switch)
-    assert.same({ 2, 3, 4, 5, 6, 7, 8, 9 }, defaults.input.slot_keys)
-    -- Chord only: bare Select does nothing, though the key stays ours.
-    assert.same({ chorded = "edit" }, defaults.input.shortcuts[13])
+  it("ships no key map: its keys are the keyboard map's", function()
+    assert.is_nil(defaults.input)
   end)
 
   it("points each view at a set nothing else is showing", function()
@@ -123,9 +117,7 @@ describe("crossbar defaults", function()
   it("builds a fresh table on every call", function()
     local first = build_defaults(WIDTH, HEIGHT)
     local second = build_defaults(WIDTH, HEIGHT)
-    first.input.slot_keys[1] = 999
     first.set_flags[1].cycle.drawn = false
-    assert.equal(2, second.input.slot_keys[1])
     assert.is_true(second.set_flags[1].cycle.drawn)
   end)
 end)

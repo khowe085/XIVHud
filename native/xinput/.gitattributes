@@ -1,0 +1,2 @@
+# GNU make reads a CR as part of the line.
+Makefile text eol=lf

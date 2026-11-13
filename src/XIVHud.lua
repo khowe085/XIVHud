@@ -266,6 +266,12 @@ local function register_mouse()
   end
 end
 
+-- Switched off, the keyboard handler hears no key's up again, so what the
+-- keyboard map held is let go there.
+local function release_keyboard()
+  core.release_keyboard()
+end
+
 local function register_keyboard()
   if not keyboard_event_id then
     -- The full signature. `flags` and the inbound `blocked` used to be
@@ -274,7 +280,7 @@ local function register_keyboard()
       "keyboard",
       guard.wrap("keyboard", function(key, down, flags, blocked)
         return core.on_keyboard(key, down, flags, blocked)
-      end, false)
+      end, false, release_keyboard)
     )
   end
 end
@@ -890,6 +896,7 @@ local action_service = step("building the action service", function()
     time = os.time,
     get_player = read_player,
     get_mob_by_target = read_mob_by_target,
+    get_mob_by_id = read_mob_by_id,
     get_items = get_items,
     get_spells = get_spells,
     get_abilities = get_abilities,
@@ -923,6 +930,79 @@ local action_service = step("building the action service", function()
     end,
   })
 end)
+
+--[[ The gamepad bridge (lib/gamepad): an XInput pad read through
+     _LuaXInput, the native module in native/xinput, each gesture handed to
+     core as a behaviour by `core.pump_gamepad` (driven from prerender under
+     a guard of its own, below), which lib/behaviors makes a game key sent
+     with `setkey`, an action, or a bar's own. Optional, like the libraries
+     above - a failure here costs the pad, not the addon - and built even
+     when the module or the XInput DLL is missing, so `//hud gamepad` can say
+     which. Not in safe mode, which has no render loop to poll it. Its reads
+     of core close over the `core` local, which the next step fills in. ]]
+local gamepad = nil
+-- A gesture's or a key's action: bind's own parser and labeller, and the
+-- action service's types and validate, the service's three absent without it.
+local behavior_actions = nil
+if not safe_mode then
+  local ok, err = pcall(function()
+    -- XIPivot's route to a native module, Windower 4 having no ffi: the
+    -- addon's own bin/ on the cpath, in forward slashes as XIPivot writes
+    -- it, and FIRST, so another addon's copy earlier on the path cannot
+    -- stand in for this one.
+    package.cpath = windower.addon_path:gsub("\\", "/") .. "bin/?.dll;" .. package.cpath
+    -- Before the require: a native load that crashes the client is not
+    -- something pcall can catch, and this is the line load.log ends on.
+    trace("loading _LuaXInput")
+    local loaded, module = pcall(require, "_LuaXInput")
+    local reader, unavailable = require("lib/xinput")(loaded and module or nil)
+    if reader then
+      trace("gamepad: " .. reader.library)
+    else
+      -- The require's own error is the one clue a DLL that will not load leaves.
+      trace("gamepad unavailable: " .. tostring(unavailable) .. (loaded and "" or " - " .. tostring(module)))
+    end
+    gamepad = require("lib/gamepad")({
+      read = reader and reader.read or nil,
+      unavailable = unavailable,
+      now = os.clock,
+      -- Asked only to name the map's dead entries, so the components are
+      -- registered by the time it is.
+      check = function(behavior)
+        if core == nil then
+          return true
+        end
+        return core.behavior_check(behavior)
+      end,
+      -- Until core is built every behaviour reads as a component's, so
+      -- nothing waits for a tap.
+      is_component = function(behavior)
+        return core == nil or core.behavior_is_component(behavior)
+      end,
+      config = function()
+        return core and core.gamepad_config() or nil
+      end,
+    })
+  end)
+  if not ok then
+    trace("gamepad bridge unavailable: " .. tostring(err))
+  end
+  -- Apart from the bridge's: the keyboard map's actions are these too, and a
+  -- bridge that would not load must not take them with it.
+  local built, why = pcall(function()
+    local service_actions = action_service ~= nil and action_service.actions or nil
+    local parser = require("lib/actionbar/commands")({ validate = service_actions and service_actions.validate })
+    behavior_actions = { describe = parser.describe_action }
+    if service_actions ~= nil then
+      behavior_actions.parse = parser.parse_action
+      behavior_actions.is_type = service_actions.is_type
+      behavior_actions.validate = service_actions.validate
+    end
+  end)
+  if not built then
+    trace("behaviour actions unavailable: " .. tostring(why))
+  end
+end
 
 step("building the framework", function()
   core = new_core({
@@ -959,6 +1039,18 @@ step("building the framework", function()
     resources = libraries_error == nil and res or nil,
     -- `//hud warp` and its kin, and the tuning core.lua carries for them.
     actions = action_service,
+    gamepad = gamepad,
+    -- The keyboard map, and the raw chat line it leaves typed keys to.
+    keyboard_map = not safe_mode,
+    chat_open = chat_open,
+    -- A behaviour's game key: down while it is held, up when it lets go.
+    send_key = function(name, down)
+      send_command("setkey " .. name .. (down and " down" or " up"))
+    end,
+    behavior_actions = behavior_actions,
+    has_focus = function()
+      return windower.has_focus()
+    end,
     screen = screen,
     now = os.clock,
     chat = chat,
@@ -1106,7 +1198,7 @@ end)
 --[[ The status bar: the player's own buffs and debuffs on three anchored bars
      (`bar1`, `bar2`, `bar3`). Presence comes off the player service; the
      expiries ride the 0x063 chunk, which the chunk handler below pre-parses
-     once for its three readers. The wall clock is what the packet's
+     once for its four readers. The wall clock is what the packet's
      timestamps count in.
 
      Gated on safe_mode alone, targetbar's rule: the icons draw by id and the
@@ -1215,11 +1307,10 @@ end)
 
 --[[ The hotbar: the crossbar's engine with a different face, so it reads the
      same client as the crossbar does, member for member, and the same
-     action service. Registered AFTER the crossbar on purpose: the two own
-     overlapping keys (the crossbar's slot keys are the number row while a
-     side is held, the hotbar's the same row under a modifier), and core's
-     keyboard walk hands a later component the block an earlier one took -
-     so this order is the whole of the arbitration between them. ]]
+     action service. Registered AFTER the crossbar on purpose: where a slot
+     of each lies on one point in edit mode, the bar registered later owns
+     it (`service.slot_above`), as the one drawn on top. Their keys are the
+     keyboard map's to arbitrate (lib/keyboard), not this order's. ]]
 step("building the hotbar component", function()
   if safe_mode then
     return
@@ -1549,14 +1640,25 @@ windower.register_event(
 )
 
 if not safe_mode then
+  -- Either guard below switched off leaves the pad never polled again, so
+  -- what it held is let go there.
+  local function release_gamepad()
+    core.release_gamepad()
+  end
+  -- The pad has a guard of its own: a component throwing on one of its keys
+  -- is reported and counted under `gamepad`, and the frame tick carries on.
+  local pump_gamepad = guard.wrap("gamepad", function()
+    core.pump_gamepad()
+  end, nil, release_gamepad)
   windower.register_event(
     "prerender",
     guard.wrap("prerender", function()
       -- Before core touches a component: the mob memo is good for one frame,
       -- and a component reading a target must not see the previous frame's.
       player_service.begin_frame()
+      pump_gamepad()
       core.on_prerender()
-    end)
+    end, nil, release_gamepad)
   )
 end
 
@@ -1633,12 +1735,13 @@ windower.register_event(
      Pre-existing, and not this change's to fix. ]]
 if not safe_mode and not libraries_error then
   local ACTION_CHUNK = 0x028
-  --[[ 0x063, the character update: one id over several orders, and three
-       readers - the crossbar's skillchain engine (order 9's buff ids), expbar
-       (order 2's limit points and merits) and the status bar (order 9's ids
-       with their expiries). Windower's field definition for it switches on
-       the order byte, so one packets.parse serves every order and every
-       reader; until 2026-09-04 each of the three decoded it again. ]]
+  --[[ 0x063, the character update: one id over several orders, and four
+       readers - the crossbar's skillchain engine and the action queue (order
+       9's buff ids), expbar (order 2's limit points and merits) and the
+       status bar (order 9's ids with their expiries). Windower's field
+       definition for it switches on the order byte, so one packets.parse
+       serves every order and every reader; until 2026-09-04 each of the
+       first three decoded it again. ]]
   local CHAR_UPDATE_CHUNK = 0x063
   local structured = partylist_packets
       and {
@@ -1767,6 +1870,11 @@ for _, event in ipairs({ "gain focus", "lose focus", "gain buff", "lose buff", "
              about fifty attempts, and the binding reload lands up to ~200ms
              later than it used to on a change that takes a menu to make. ]]
         player_service.invalidate("player")
+      end
+      -- Focus reaches core whether or not a character is scoped, which
+      -- dispatch does not: the keys it strands are not a character's.
+      if event == "gain focus" or event == "lose focus" then
+        core.on_focus(event == "gain focus")
       end
       -- The service before the bars: a job change ends the trip it was
       -- holding, and `warp all` is answered here rather than by a bar.

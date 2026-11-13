@@ -98,43 +98,46 @@ local function new(deps)
   end
 
   -- Reads one file. Returns nil (and warns) for anything that is not a table
-  -- produced by a chunk that ran cleanly in the sandbox.
+  -- produced by a chunk that ran cleanly in the sandbox; the second answer is
+  -- false where a file was there and could not be read, an absent one being
+  -- nothing wrong.
   local function load_file(path)
     local contents = deps.read_file(path)
     if not contents or contents == "" then
-      return nil
+      return nil, true
     end
 
     local chunk, syntax_error = load_chunk(contents, "@" .. path)
     if not chunk then
       notify("could not parse " .. path .. ": " .. tostring(syntax_error) .. " (using defaults)")
-      return nil
+      return nil, false
     end
 
     setfenv(chunk, {})
     local ok, value = pcall(chunk)
     if not ok then
       notify("could not read " .. path .. ": " .. tostring(value) .. " (using defaults)")
-      return nil
+      return nil, false
     end
     if type(value) ~= "table" then
       notify("ignoring " .. path .. ": expected a table, got " .. type(value) .. " (using defaults)")
-      return nil
+      return nil, false
     end
 
-    return value
+    return value, true
   end
 
   -- The merge walks the loaded table, so a hand-written cycle would recurse
-  -- until the stack gives out. Defaults are the fallback there too.
+  -- until the stack gives out. Defaults are the fallback there too. The second
+  -- answer is load_file's, false too where the merge failed.
   local function merged_from(path, defaults)
-    local stored = load_file(path) or {}
-    local ok, merged = pcall(merge_defaults, stored, defaults)
+    local stored, readable = load_file(path)
+    local ok, merged = pcall(merge_defaults, stored or {}, defaults)
     if not ok then
       notify("could not merge " .. path .. ": " .. tostring(merged) .. " (using defaults)")
-      return deep_copy(defaults)
+      return deep_copy(defaults), false
     end
-    return merged
+    return merged, readable
   end
 
   local function write(path, value, label)
@@ -201,6 +204,36 @@ local function new(deps)
       end
       handle._config = deep_copy(handle.defaults)
       return handle.save()
+    end
+
+    return claim(name, handle)
+  end
+
+  --[[ The machine-wide namespace: one file, `data/<name>.lua`, outside every
+       character - read with none scoped and the same whoever logs in. It
+       claims no `character_scoped`, so a slot switch never re-reads it; a
+       change of character re-reads it with everything else. ]]
+  function self.register_global(name, defaults)
+    local handle = { name = name, defaults = deep_copy(defaults or {}) }
+
+    function handle.path()
+      return "data/" .. name .. ".lua"
+    end
+
+    -- Whether the file could be read: a caller about to save the whole of it
+    -- must not write the defaults over one it could not.
+    function handle.load()
+      local config, readable = merged_from(handle.path(), handle.defaults)
+      handle._config = config
+      return readable
+    end
+
+    function handle.get()
+      return handle._config
+    end
+
+    function handle.save()
+      return write(handle.path(), handle._config, name .. " config")
     end
 
     return claim(name, handle)

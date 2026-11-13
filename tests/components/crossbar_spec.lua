@@ -32,10 +32,6 @@ local function hud_draw(widget)
   push(widget)
 end
 
--- Default DIKs: `;` is the left side, `1`-`8` sit on DIK 2-9.
-local SIDE = 39
-local SLOT_3 = 4
-
 --[[ Core places EVERY anchor from the config; these specs drive the widget
      directly, so this stands in for it. `set` and `weapon` land at the
      defaults' own offsets from the main origin - exactly where both drew
@@ -94,21 +90,19 @@ describe("crossbar stand-in", function()
   it("implements the contract under the component's name", function()
     assert.are.equal("crossbar", widget.name)
     assert.are.equal("cb", widget.alias)
-    assert.are.same({ 39 }, widget.defaults.input.xhb_left)
     assert.is_nil(widget.get_bounds())
   end)
 
-  it("lets every key through before it is attached", function()
-    assert.is_false(widget.on_keyboard(SIDE, true, 0, false))
-    assert.are.equal(0, #env.chat)
+  it("reads no key of its own: its keys reach it as behaviours", function()
+    assert.is_nil(widget.on_keyboard)
   end)
 
   it("blocks its side key once attached, without chatter", function()
     -- Since CB4 the panel shows which side is active; saying every press
     -- and release to chat would be spam in play, so activations are silent.
     attach()
-    assert.is_true(widget.on_keyboard(SIDE, true, 0, false))
-    assert.is_true(widget.on_keyboard(SIDE, false, 0, false), "the latched release is swallowed too")
+    assert.is_true(widget.on_behavior("left", true))
+    widget.on_behavior("left", false)
     assert.are.equal(0, #env.chat, "side activation is shown by the panel, not said")
   end)
 
@@ -117,21 +111,15 @@ describe("crossbar stand-in", function()
     -- with no client to name a job there are no bindings to fire. The press
     -- is still ours (blocked), just empty.
     attach()
-    widget.on_keyboard(SIDE, true, 0, false)
-    assert.is_true(widget.on_keyboard(SLOT_3, true, 0, false))
+    widget.on_behavior("left", true)
+    assert.is_true(widget.on_behavior("slot3", true))
     assert.are.equal(0, #env.chat, "nothing to say: an empty slot is silent")
-  end)
-
-  it("leaves a bare slot key to the game", function()
-    attach()
-    assert.is_false(widget.on_keyboard(SLOT_3, true, 0, false))
-    assert.are.equal(0, #env.chat)
   end)
 
   it("hands its keys back while the chat box has focus", function()
     attach()
     env.chat_open = true
-    assert.is_false(widget.on_keyboard(SIDE, true, 0, false))
+    assert.is_false(widget.on_behavior("left", true))
   end)
 
   it("keeps its side key blocked while suppressed, which also hides it", function()
@@ -142,68 +130,38 @@ describe("crossbar stand-in", function()
     attach()
     env.suppressed = true
     widget.hide()
-    assert.is_true(widget.on_keyboard(SIDE, true, 0, false))
-    assert.is_false(widget.on_keyboard(SLOT_3, true, 0, false), "slot keys are the game's under suppression")
+    assert.is_true(widget.on_behavior("left", true))
+    assert.is_false(widget.on_behavior("slot3", true), "slot keys are the game's under suppression")
   end)
 
   it("keeps its side key blocked during layout mode", function()
     attach()
     env.layout = true
-    assert.is_true(widget.on_keyboard(SIDE, true, 0, false))
-    assert.is_false(widget.on_keyboard(SLOT_3, true, 0, false), "slot keys fall through in layout mode")
+    assert.is_true(widget.on_behavior("left", true))
+    assert.is_false(widget.on_behavior("slot3", true), "slot keys fall through in layout mode")
   end)
 
-  it("goes fully inert when hidden, except for a latched release", function()
+  it("goes fully inert when hidden", function()
     attach()
-    assert.is_true(widget.on_keyboard(SIDE, true, 0, false))
     widget.hide()
-    assert.is_true(widget.on_keyboard(SIDE, false, 0, false), "the game never saw the press")
-    assert.is_false(widget.on_keyboard(SIDE, true, 0, false), "a fresh press falls through while hidden")
+    assert.is_false(widget.on_behavior("left", true), "a press falls through while hidden")
   end)
 
-  it("survives a config whose input block is garbage, on the default keys", function()
-    -- One hand-broken config file must not leave every later component
-    -- unattached at login: a non-table input block degrades to the shipped
-    -- defaults instead of crashing attach.
-    local config = require("components/crossbar/defaults")(1920, 1080)
-    config.input = 42
-    assert.has_no.errors(function()
-      widget.attach(config)
-    end)
-    widget.show()
-    assert.is_true(widget.on_keyboard(SIDE, true, 0, false), "the default side key still blocks")
-  end)
-
-  it("says once when a hand-edited key map gives a slot key a shortcut too", function()
-    -- The shipped map is disjoint, so only a hand-edited file gets here. The
-    -- slot key wins and the shortcut is dropped - a resolution the player has
-    -- to be told about, or the key simply appears to do nothing.
-    local config = require("components/crossbar/defaults")(1920, 1080)
-    config.input.shortcuts[5] = { tap = "open map" }
-    widget.attach(config)
-    assert.are.equal(1, #env.chat, "one line, not one per key event")
-    local said = env.chat[1]
-    assert.is_not_nil(said:find("5", 1, true), "names the DIK: " .. said)
-    assert.is_not_nil(said:lower():find("slot"), "and says which role kept it: " .. said)
-    widget.show()
-    widget.on_keyboard(5, true, 0, false)
-    assert.are.equal(1, #env.chat, "and never repeats it as the key is used")
-  end)
-
-  it("resets its held state when focus is lost", function()
+  it("lowers the bar when focus is lost", function()
     attach()
-    widget.on_keyboard(SIDE, true, 0, false)
+    widget.on_behavior("left", true)
     push(widget, "lose focus")
-    assert.is_false(widget.on_keyboard(SIDE, false, 0, false), "the latch went with the focus")
+    assert.is_false(widget.on_behavior("slot3", true), "no bar is raised any more")
   end)
 
   it("starts from scratch after a detach", function()
     attach()
-    widget.on_keyboard(SIDE, true, 0, false)
+    widget.on_behavior("left", true)
     widget.detach()
-    assert.is_false(widget.on_keyboard(SIDE, true, 0, false))
     attach()
-    assert.is_true(widget.on_keyboard(SIDE, true, 0, false), "not read as an auto-repeat of the stranded press")
+    assert.is_false(widget.on_behavior("slot3", true), "the side held before the detach is forgotten")
+    widget.on_behavior("slot3", false)
+    assert.is_true(widget.on_behavior("left", true), "and a fresh press raises it")
   end)
 
   it("refuses an authoring verb before a job is scoped, without a store", function()
@@ -313,8 +271,6 @@ end)
 -- anchors and bounds all work headless (which is also what keeps the specs
 -- above honest about never having drawn anything).
 describe("crossbar widget", function()
-  local RIGHT = 40 -- default DIK for the right side (')
-
   local env, ctx, prims, widget
 
   before_each(function()
@@ -418,14 +374,14 @@ describe("crossbar widget", function()
     assert.are.same({ 80, 80 }, { hits[5].width, hits[5].height }, "the frame scales with the slot")
     -- The panel scales with the grid: the right side's offset and the art's
     -- size both carry the anchor scale.
-    widget.on_keyboard(RIGHT, true, 0, false)
+    widget.on_behavior("right", true)
     local panel = images_at(100 + 300 * 2, 900)[1]
     assert.is_not_nil(panel, "the scaled right panel sits one scaled side gap over")
     assert.are.same({ 330 * 2, 180 * 2 }, { panel.width, panel.height })
   end)
 
   it("panels the held side and clears it on release", function()
-    widget.on_keyboard(39, true, 0, false)
+    widget.on_behavior("left", true)
     local panel = images_at(100, 900)[1]
     assert.is_not_nil(panel, "the left panel sits at the anchor origin")
     assert.is_true(panel.visible)
@@ -433,15 +389,15 @@ describe("crossbar widget", function()
     assert.are.same({ 330, 180 }, { panel.width, panel.height })
     assert.is_false(panel.last.fit, "the panel is sized too")
     assert.are.equal(widget.defaults.button_bg_alpha, panel.last.alpha)
-    widget.on_keyboard(39, false, 0, false)
+    widget.on_behavior("left", false)
     assert.is_false(panel.visible)
-    widget.on_keyboard(RIGHT, true, 0, false)
+    widget.on_behavior("right", true)
     assert.are.equal(100 + 300, panel.x, "the right side's panel sits one side gap over")
     assert.is_true(panel.visible)
   end)
 
   it("carries a lit panel along with a move", function()
-    widget.on_keyboard(39, true, 0, false)
+    widget.on_behavior("left", true)
     widget.set_pos(500, 700, "main")
     local panel = images_at(500, 700)[1]
     assert.is_not_nil(panel, "the panel follows the anchor")
@@ -452,8 +408,8 @@ describe("crossbar widget", function()
     -- Layer + side = the WXHB view. The bar exists since CB5, but nothing
     -- may draw before its own anchor has been placed - and the panel must
     -- not be painted at the main origin for a wxhb bar either.
-    widget.on_keyboard(43, true, 0, false)
-    widget.on_keyboard(39, true, 0, false)
+    widget.on_behavior("layer", true)
+    widget.on_behavior("left", true)
     local panel = nil
     for _, prim in ipairs(prims.images) do
       if prim.last.path == "addon/assets/own/bar_bg_compact.png" then
@@ -480,7 +436,7 @@ describe("crossbar widget", function()
     local fresh_widget = require("components/crossbar/crossbar")(bare_ctx)
     fresh_widget.attach(fresh_widget.defaults)
     fresh_widget.show()
-    fresh_widget.on_keyboard(39, true, 0, false)
+    fresh_widget.on_behavior("left", true)
     assert.has_no.errors(function()
       fresh_widget.set_scale(2, "main")
     end)
@@ -494,8 +450,8 @@ describe("crossbar widget", function()
   end)
 
   it("hides the whole XHB while Expanded Hold replaces it", function()
-    widget.on_keyboard(39, true, 0, false)
-    widget.on_keyboard(RIGHT, true, 0, false)
+    widget.on_behavior("left", true)
+    widget.on_behavior("right", true)
     -- The XHB's 32 slot prims yield to Expanded's eight slots (16 visible
     -- prims: background+frame) plus its active panel, centred on main.
     local expanded = images_at(100 + 30 + 150 + 46, 900 + 35)
@@ -508,7 +464,7 @@ describe("crossbar widget", function()
     -- names the XHB's set whether or not Expanded has replaced it - and the
     -- sword.
     assert.are.equal(16 + 1 + 1 + 1, visible_count(), "eight slots, the panel, the set label, the sword")
-    widget.on_keyboard(RIGHT, false, 0, false)
+    widget.on_behavior("right", false)
     assert.are.equal(32 + 1 + 1 + 1, visible_count(), "the survivor's XHB side returns, panelled, label and all")
   end)
 
@@ -631,9 +587,9 @@ describe("crossbar widget", function()
     -- Hold a side, hide, release while hidden: the widget is disabled, so
     -- no activate intent arrives and the widget's own side memory goes
     -- stale. show() must resync from the machine rather than trust it.
-    widget.on_keyboard(39, true, 0, false)
+    widget.on_behavior("left", true)
     widget.hide()
-    widget.on_keyboard(39, false, 0, false)
+    widget.on_behavior("left", false)
     widget.show()
     local panel = images_at(100, 900)[1]
     assert.is_false(panel.visible, "nobody holds a side any more")
@@ -642,10 +598,10 @@ describe("crossbar widget", function()
     -- show() lights the panel from the machine's truth even though the
     -- activate intent went by unheard.
     widget.hide()
-    widget.on_keyboard(39, true, 0, false)
+    widget.on_behavior("left", true)
     widget.show()
     assert.is_true(panel.visible, "the machine knows the side is held")
-    widget.on_keyboard(39, false, 0, false)
+    widget.on_behavior("left", false)
     assert.is_false(panel.visible, "and the release clears it as usual")
   end)
 
@@ -751,7 +707,7 @@ describe("crossbar widget", function()
   end)
 
   it("blanks on detach and forgets its side on re-attach", function()
-    widget.on_keyboard(39, true, 0, false)
+    widget.on_behavior("left", true)
     local panel = images_at(100, 900)[1]
     assert.is_true(panel.visible)
     widget.detach()
@@ -761,7 +717,7 @@ describe("crossbar widget", function()
     assert.is_false(panel.visible, "the old side is forgotten")
     -- A re-attach straight over a live hold forgets it too: the fresh
     -- machine holds nothing, and the widget's memory must not outlive it.
-    widget.on_keyboard(39, true, 0, false)
+    widget.on_behavior("left", true)
     assert.is_true(panel.visible)
     widget.attach(widget.defaults)
     assert.is_false(panel.visible, "a fresh machine holds nothing")
@@ -1169,12 +1125,30 @@ describe("crossbar live widget", function()
     return prims.texts[(GROUP_INDEX[group] * 8 + slot - 1) * 3 + TEXT_KIND[kind]]
   end
 
+  local BEHAVIOUR_OF = {
+    [39] = "left",
+    [40] = "right",
+    [43] = "layer",
+    [41] = "switch",
+    [13] = "select",
+    [2] = "slot1",
+    [3] = "slot2",
+    [4] = "slot3",
+    [5] = "slot4",
+    [6] = "slot5",
+    [7] = "slot6",
+    [8] = "slot7",
+    [9] = "slot8",
+  }
+
+  --[[ The keyboard map's DIKs, as the behaviours it turns them into. A key
+       with no behaviour is nothing to the bar. ]]
   local function press(dik)
-    return widget.on_keyboard(dik, true, 0, false)
+    return widget.on_behavior(BEHAVIOUR_OF[dik] or "none", true)
   end
 
   local function release(dik)
-    return widget.on_keyboard(dik, false, 0, false)
+    return widget.on_behavior(BEHAVIOUR_OF[dik] or "none", false)
   end
 
   local function said()
@@ -1196,7 +1170,7 @@ describe("crossbar live widget", function()
         fresh = new_crossbar(bare_ctx)
       end)
       fresh.attach(fresh.defaults, function() end, store)
-      assert.is_true(fresh.on_keyboard(LEFT, true, 0, false), "the machine still runs headless")
+      assert.is_true(fresh.on_behavior("left", true), "the machine still runs headless")
     end)
   end)
 
@@ -1414,7 +1388,7 @@ describe("crossbar live widget", function()
       env.suppressed = true
       widget.hide()
       assert.is_true(press(LEFT), "suppressed but the user still wants it")
-      assert.is_true(release(LEFT))
+      release(LEFT)
       env.user_visible = false
       assert.is_false(press(LEFT), "the flag flip alone releases the keys")
       release(LEFT)
@@ -1455,7 +1429,7 @@ describe("crossbar live widget", function()
       assert.are.same({}, env.commands, "nothing fires")
       assert.are.equal(0, #env.chat)
       release(DIK_SLOT[3])
-      assert.is_true(release(SHORTCUT), "latched releases stay swallowed")
+      release(SHORTCUT)
       release(SWITCH)
       release(LAYER)
       release(RIGHT)
@@ -1478,24 +1452,6 @@ describe("crossbar live widget", function()
         press(DIK_SLOT[3])
         assert.are.same({}, env.commands, guard)
       end
-    end)
-
-    it("survives a hand-configured ninth slot key", function()
-      -- input's slot map is positional and a hand-edited file can carry a
-      -- ninth entry; the flash has nowhere to draw but the binding fires.
-      local files = war_bindings()
-      files.WAR.sets[1].left[9] = { type = "ja", action = "Provoke", target = "me" }
-      build_world({
-        store_files = files,
-        tune_config = function(tuned)
-          tuned.input.slot_keys = { 2, 3, 4, 5, 6, 7, 8, 9, 10 }
-        end,
-      })
-      press(LEFT)
-      assert.has_no.errors(function()
-        press(10)
-      end)
-      assert.are.same({ 'input /ja "Provoke" <me>' }, env.commands)
     end)
 
     it("flashes the fired slot and fades it out", function()
@@ -1600,48 +1556,12 @@ describe("crossbar live widget", function()
       assert.are.equal("attack", sword_art())
     end)
 
-    it("still fires the framework's verbs from a shortcut key", function()
-      build_world({
-        tune_config = function(tuned)
-          tuned.input.shortcuts[58] = { tap = "draw" }
-          tuned.input.shortcuts[59] = { tap = "warp" }
-        end,
-      })
-      press(58)
-      release(58)
+    it("mirrors the weapon state at once when its draw behaviour flips it", function()
+      build_world()
+      widget.on_behavior("draw", true)
+      widget.on_behavior("draw", false)
       assert.are.equal("drawn", service_under_test.weapon_state())
       assert.are.equal("attack", sword_art(), "and the bar mirrored it at once")
-      press(59)
-      release(59)
-      assert.is_not_nil(said():lower():find("warp"), "the ladder was walked: " .. said())
-    end)
-
-    it("fires reraise from a shortcut key", function()
-      build_world({
-        tune_config = function(tuned)
-          tuned.input.shortcuts[58] = { tap = "reraise" }
-        end,
-      })
-      press(58)
-      release(58)
-      -- A WAR with nothing learned and no bag the ladder can read reaches
-      -- the first item, the stealth ladders' own rule for an unread bag.
-      assert.are.same({ 'input /item "Super Reraiser" <me>' }, env.commands, said())
-    end)
-
-    it("ignores a hand-edited non-string shortcut verb", function()
-      build_world({
-        tune_config = function(tuned)
-          tuned.input.shortcuts = { [13] = { tap = 5, chorded = true } }
-        end,
-      })
-      assert.has_no.errors(function()
-        press(SHORTCUT)
-        release(SHORTCUT)
-        press(LEFT)
-        press(SHORTCUT)
-      end)
-      assert.are.same({}, env.commands)
     end)
 
     it("repaints the draw slot's icon when the gesture flips the weapon state", function()
@@ -1669,20 +1589,8 @@ describe("crossbar live widget", function()
            carrying a verb, so the game never sees it either. ]]
       build_world()
       assert.is_true(press(SHORTCUT), "still swallowed")
-      assert.is_true(release(SHORTCUT))
-      assert.are.same({}, env.commands)
-    end)
-
-    it("still routes a tap verb where one is configured", function()
-      -- The mechanism is intact; only the shipped default dropped its tap.
-      build_world({
-        tune_config = function(fresh)
-          fresh.input.shortcuts[13] = { tap = "open map", chorded = "edit" }
-        end,
-      })
-      press(SHORTCUT)
       release(SHORTCUT)
-      assert.are.same({ "input /map" }, env.commands)
+      assert.are.same({}, env.commands)
     end)
 
     it("routes the shortcut chord to the binder", function()
@@ -3266,14 +3174,14 @@ describe("crossbar live widget", function()
         local icon = image_of("xhb_left", 3, "icon")
         assert.is_true(image_of("xhb_left", 3, "chain").visible)
         assert.is_false(icon.visible)
-        widget.on_keyboard(39, true, 0, false)
+        widget.on_behavior("left", true)
         -- Asserted BEFORE the next tick, which is the only frame in which
         -- the bug is visible: the tick re-pushes the right answer, so a
         -- check after it passes with or without refresh's chain term.
         assert.is_false(icon.visible, "not even for the one frame between the refresh and the tick")
         push(widget)
         assert.is_false(icon.visible, "refresh must not resurrect the icon under the chain result")
-        widget.on_keyboard(39, false, 0, false)
+        widget.on_behavior("left", false)
         assert.is_false(icon.visible, "and the release runs a refresh of its own")
         -- Layout mode's per-move refreshes run the same predicate.
         widget.set_preview(true)
@@ -6146,5 +6054,133 @@ describe("crossbar live widget", function()
       assert.is_true(widget.on_mouse(MOUSE_LEFT_DOWN, x, y, 0))
       assert.are.same({ "input /attack off" }, env.commands, "the sword, not Provoke")
     end)
+  end)
+end)
+
+-- A behaviour reaches the bar through the machine its keys do, and moves it
+-- the same way.
+describe("crossbar behaviours", function()
+  local ctx, prims, widget
+
+  before_each(function()
+    prims = fakes.prims()
+    ctx = {
+      screen = function()
+        return 1920, 1080
+      end,
+      say = function() end,
+      chat_open = function()
+        return false
+      end,
+      suppressed = function()
+        return false
+      end,
+      layout_active = function()
+        return false
+      end,
+      new_image = prims.new_image,
+      new_text = prims.new_text,
+      asset = function(path)
+        return "addon/" .. path
+      end,
+    }
+    ctx.actions = fakes.action_service(ctx)
+    service_under_test = ctx.actions
+    widget = new_crossbar(ctx)
+  end)
+
+  local function panel()
+    for _, prim in ipairs(prims.images) do
+      if prim.x == 100 and prim.y == 900 and prim.last.path == "addon/assets/own/bar_bg_compact.png" then
+        return prim
+      end
+    end
+    return nil
+  end
+
+  it("declares the sides, the WXHB halves, the layer, the switch, the binder, select, draw and eight slots", function()
+    assert.are.same({
+      "left",
+      "right",
+      "wxhb_left",
+      "wxhb_right",
+      "layer",
+      "switch",
+      "binder",
+      "select",
+      "draw",
+      "slot1",
+      "slot2",
+      "slot3",
+      "slot4",
+      "slot5",
+      "slot6",
+      "slot7",
+      "slot8",
+    }, widget.behaviors())
+  end)
+
+  it("declares every crossbar behaviour the shipped gamepad map names", function()
+    local declared = {}
+    for _, name in ipairs(widget.behaviors()) do
+      declared["crossbar." .. name] = true
+    end
+    for gesture, behavior in pairs(require("lib/gamepad")({}).config_defaults().map) do
+      if type(behavior) == "string" and behavior:match("^crossbar%.") then
+        assert.is_true(declared[behavior] == true, gesture .. " names " .. behavior)
+      end
+    end
+  end)
+
+  it("declares every crossbar behaviour the shipped keyboard map names", function()
+    local declared = {}
+    for _, name in ipairs(widget.behaviors()) do
+      declared["crossbar." .. name] = true
+    end
+    for key, behavior in pairs(require("lib/keyboard")({}).config_defaults().map) do
+      if type(behavior) == "string" and behavior:match("^crossbar%.") then
+        assert.is_true(declared[behavior] == true, key .. " names " .. behavior)
+      end
+    end
+  end)
+
+  it("hears nothing before it is attached, and takes no key", function()
+    assert.has_no.errors(function()
+      widget.on_behavior("left", true)
+    end)
+    assert.is_false(widget.on_behavior("right", true))
+  end)
+
+  it("says whether the key a behaviour came from is the bar's, as its own keys would", function()
+    widget.attach(widget.defaults)
+    place_all(widget, 100, 900)
+    widget.show()
+    assert.is_false(widget.on_behavior("slot1", true), "the number row is the game's with nothing raised")
+    widget.on_behavior("slot1", false)
+    assert.is_true(widget.on_behavior("left", true))
+    assert.is_true(widget.on_behavior("slot1", true))
+  end)
+
+  it("panels the side its behaviour holds, and clears it on the let-go", function()
+    widget.attach(widget.defaults)
+    place_all(widget, 100, 900)
+    widget.show()
+    widget.on_behavior("left", true)
+    assert.is_not_nil(panel(), "the left panel sits at the anchor origin")
+    assert.is_true(panel().visible)
+    widget.on_behavior("left", false)
+    assert.is_false(panel().visible)
+  end)
+
+  it("toggles the weapon state on its draw behaviour's press", function()
+    widget.attach(widget.defaults)
+    place_all(widget, 100, 900)
+    widget.show()
+    widget.on_behavior("draw", true)
+    assert.are.equal("drawn", service_under_test.weapon_state())
+    widget.on_behavior("draw", false)
+    assert.are.equal("drawn", service_under_test.weapon_state(), "not on the let-go")
+    widget.on_behavior("draw", true)
+    assert.are.equal("sheathed", service_under_test.weapon_state())
   end)
 end)

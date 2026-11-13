@@ -28,6 +28,10 @@ edit by hand to get started.
   logged out, and comes back on its own.
 - **Short names.** Every component answers to a short alias wherever its
   name is taken (`//hud show pb`).
+- **Gamepad.** XIVHud can read an Xbox-style pad itself and play the crossbar
+  from it, with what every button and chord does changed by command (see
+  [Gamepad](gamepad.md)). It is on by default, and `//hud gamepad off`
+  switches it off.
 
 ## Installation
 
@@ -44,7 +48,9 @@ edit by hand to get started.
 4. To load it every time you start the game, add the line `lua load xivhud`
    to `Windower4/scripts/init.txt`.
 
-To update, unzip the new release over the old folder. Your settings (`data/`),
+To update, close the game and unzip the new release over the old folder:
+Windows will not replace `bin/_LuaXInput.dll` while the game has it loaded.
+Your settings (`data/`),
 your own art (`icons/custom/`) and the icon cache (`cache/`) are not in the zip
 and survive the update.
 
@@ -93,7 +99,9 @@ empty. It also changes set on CTRL+Up and CTRL+Down, which the game still sees.
 The bars also take a left-click on a drawn slot or the sword, and the status
 bar a click on one of its icons. If you would
 rather keep those keys, switch the component off with `//hud hide crossbar`
-or `//hud hide hotbar`; a hotbar row you hide gives its chord back too.
+or `//hud hide hotbar`; a hotbar row you hide gives its chord back too. Both
+bars get their keys through the [keyboard map](keyboard.md), so
+`//hud keyboard off` gives every one of them back.
 
 Components can also be switched from the console: `//hud hide giltracker`,
 `//hud show partylist alliance1`.
@@ -102,7 +110,7 @@ Components can also be switched from the console: `//hud hide giltracker`,
 
 | Component | Alias | On by default | What it shows |
 | --- | --- | --- | --- |
-| [Crossbar](components/crossbar.md) | `cb` | yes | FFXIV's cross hotbar: sixteen slots per set, driven by held keys, or a controller through Steam Input |
+| [Crossbar](components/crossbar.md) | `cb` | yes | FFXIV's cross hotbar: sixteen slots per set, driven by held keys or a [gamepad](gamepad.md) |
 | [Hotbar](components/hotbar.md) | `hb` | yes (row 1) | FFXIV's hotbar: ten slots in a row on the number keys, up to eight rows, with the same kinds of binding and the same commands as the crossbar |
 | [Parameter bar](components/parambar.md) | `pb` | yes | HP, MP and TP bars with numbers, plus melee accuracy and multi-attack rows |
 | [Party list](components/partylist.md) | `pl` | yes (main party) | your party (HP/MP/TP, jobs, buffs, distance) and both alliance parties (HP and MP) |
@@ -121,8 +129,8 @@ All commands start with `//hud` (`//xivhud` is registered as a second name).
 Verbs and component names are not case-sensitive, and a component's alias
 stands in for its name anywhere: `//hud reset tb` is `//hud reset targetbar`.
 Settings are per character, so until one is loaded everything but `help`,
-`list` and `copy` answers `log in first - XIVHud configuration is per
-character`.
+`list`, `copy` and `gamepad` answers `log in first - XIVHud configuration is
+per character`.
 
 | Command | What it does |
 | --- | --- |
@@ -145,6 +153,9 @@ character`.
 | `//hud queue [on\|debug\|off]` | hold a bar press made during a cast or the moment after it, and send it when you can act; on by default. Without a word it prints the current setting (see [The action queue](#the-action-queue)) |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action |
 | `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default, and a change applies at once. Without a word it prints the current setting |
+| `//hud gamepad [on\|off]` | the [gamepad bridge](gamepad.md): which pad it reads, or switch it on or off; on by default |
+| `//hud gamepad list`, `bind`, `unbind` | what each button and chord of the pad does, changed in game (see [Gamepad](gamepad.md#commands)) |
+| `//hud keyboard [on\|off]`, `list` | the [keyboard map](keyboard.md): the keys that drive the crossbar and the hotbar, handed to them the way the pad's buttons are; on by default, and off no key reaches either bar |
 | `//hud config [<component>\|global]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
 
@@ -236,8 +247,9 @@ control at its limit does nothing, and a press that slides off a control
 before release does nothing either.
 
 `global` holds the travel delay, the action queue and its waits (see
-[Action commands](#action-commands)) and whether the HUD hides during
-cutscenes. The components with a page of their own are the parameter bar,
+[Action commands](#action-commands)), whether the HUD hides during cutscenes,
+the [gamepad bridge](gamepad.md)'s switch, unless `//hud gamepad` says the
+bridge is unavailable, and the [keyboard map](keyboard.md)'s switch. The components with a page of their own are the parameter bar,
 target bar, party list, status bar, equipment viewer, inventory tracker,
 crossbar and hotbar; each one's page says what is on it. A number that needs a
 value the steps do not land on, the buff order and filter lists, and anything
@@ -324,7 +336,11 @@ off, every press goes at once and the game decides.
   does not count.
 - **Weaponskills.** A weaponskill you have under 1000 TP for does nothing at
   all, not even the game's usual message, and one held is dropped if the TP is
-  gone when you could act.
+  gone when you could act. The same goes for a weaponskill pressed while you
+  cannot use one: asleep, petrified, stunned, charmed, terrorized, animated,
+  under Amnesia or Impairment, dead, or doing something other than standing or
+  fighting (resting, mounted, in a cutscene). Range is not checked: a
+  weaponskill pressed out of range still goes, and the game answers it.
 - **Targets.** A held press aimed at `<t>` or `<bt>` stays on the target you
   had when you pressed, and with nothing targeted it is not held. A slot bound
   with no target takes whatever the game gives it when it goes, and `<me>` and
@@ -333,31 +349,43 @@ off, every press goes at once and the game decides.
 - **Cursor slots.** A slot that opens a cursor (`<st>`, `<stpc>` and the like)
   is decided when you press OK rather than when you press the slot, so you can
   pick your target during a cast and press OK whenever you like. OK is then
-  judged as a press is: a weaponskill under 1000 TP sends nothing, an action
+  judged as a press is: a weaponskill under 1000 TP, or one you cannot use,
+  sends nothing, an action
   whose recast outlasts the lockout by more than two seconds goes at once, and
   otherwise it is held or goes
   at once as the queue stands. Pressing another cursor slot while the arrow is
-  up sends nothing and only changes what OK will cast; an arrow a macro raised
-  is left alone. GearSwap's `pretarget` does not run for such a slot.
+  up sends nothing and only changes what OK will cast. Under an arrow XIVHud
+  did not raise (a macro's), a cursor slot does nothing at all, and OK still
+  casts the macro's spell. A press that raises no arrow at all is forgotten
+  after two seconds. GearSwap's `pretarget` does not run for such a slot.
 - **Macros and typed commands** are not held, but they do count towards the
   wait, as does anything another addon sends. A press made before the game has
   answered the last one is held too.
 - **What drops a held press:** zoning, dying, changing job or logging out; a
   cutscene that hides the HUD; opening `//hud layout`, `//hud config` or edit
   mode; anything that reloads a bar - a reset, a slot switch, a copy, a login;
-  switching the queue off or unloading the addon; and 30 seconds passing, held
-  or waiting for a ranged attack or an unknown action to end. A press made
-  while `//hud config` is open goes at once; in layout or edit mode, or while
-  the HUD is hidden, the bars fire nothing anyway.
+  switching the queue off or unloading the addon; the target of a held
+  weaponskill dying, or the monster a held spell is aimed at; and 30 seconds
+  passing, held or waiting for a ranged attack or an unknown action to end. A
+  press made while `//hud config` is open goes at once; in layout or edit
+  mode, or while the HUD is hidden, the bars fire nothing anyway.
 - **Lag.** The game tells the queue when a cast starts and when it finishes,
   and lag can lose either message. If the finish never comes, a spell counts
-  as finished at its cast time plus 0.4 seconds, a weaponskill after 3 seconds
+  as finished at its cast time plus 0.4 seconds, a weaponskill after 1.2 seconds
   and an item at its cast time plus 1 second; the wait for that kind then runs
   and a held press goes. If the start is lost, a spell you sent waits for an
   answer as long as its cast time plus 0.4 seconds, so its finish still starts
   the wait. A spell the server drops with no answer at all holds the bar that
   long. A cast slowed past these times by a debuff can let a held press go
   early, and the game then refuses it.
+- **A weaponskill whose target dies.** The game sends nothing more for one: no
+  answer if it was sent as the target died, no finish if it had started. The
+  queue stops waiting as soon as the target is dead, and a held press goes.
+  The one exception is a death that shows more than 1.2 seconds after the
+  weaponskill started: the usual wait after a weaponskill has begun by then,
+  and runs its course. A weaponskill held for a target that dies before it can
+  go is dropped rather than sent at the corpse, and so is a held spell aimed
+  at a monster that has died. A Raise held for a fallen player still goes.
 
 If you use Selindrile's GearSwap files, leave their MiniQueue off.
 
@@ -412,6 +440,8 @@ Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/config.lua  the comp
 Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/layout.lua  its position, scale and on/off state
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/<JOB>.lua     the crossbar's bindings for that job (the hotbar's sit beside it in hotbar/)
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/SHARED.lua    the bindings of the sets marked shared across jobs
+Windower4/addons/XIVHud/data/gamepad.lua                                the gamepad map, one for every character
+Windower4/addons/XIVHud/data/keyboard.lua                               the keyboard map, one for every character
 Windower4/addons/XIVHud/cache/items/                                    item icons read from the game (a cache: delete it only with the addon unloaded)
 Windower4/addons/XIVHud/cache/packets/<Character>/                      the last character-stats packet per job, for the experience bar and the binder's subjob level cap (a cache)
 Windower4/addons/XIVHud/icons/custom/                                   your own crossbar and hotbar art
@@ -516,14 +546,19 @@ when the message changes, not every frame. After five errors in one handler
 over the session chat says `the <name> handler has been disabled after 5
 failures - '//lua reload xivhud' to try again` and that part of the addon
 stops: a disabled mouse or keyboard handler hands your input back to the game,
-a disabled `prerender` handler freezes the whole HUD, and a disabled `command`
-handler leaves `//hud` silent. Reload to try again, and report the message.
+a disabled `prerender` handler freezes the whole HUD and stops the pad, a
+disabled `command` handler leaves `//hud` silent, and a disabled `gamepad`
+handler stops the pad alone. A stopped pad or keyboard lets go of whatever it
+held. Reload to try again, and report the message.
 
 **`item icons are not being read: the game's item data has changed`.** A game
 update has moved the item icons and XIVHud needs an update. It applies to the
 equipment viewer and both action bars, which share one icon cache; the
 [equipment viewer](components/equipviewer.md) page has `icons probe` and the
 rest.
+
+**The gamepad does nothing.** `//hud gamepad` says why; the
+[gamepad page](gamepad.md#troubleshooting) lists its answers.
 
 **`crossbar: DIK <n> is bound to more than one thing`.** A hand-edited key map
 in the crossbar's `config.lua` gives one key two jobs; the first keeps it.

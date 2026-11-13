@@ -116,7 +116,9 @@ local MOUNTED_BUFF = 252
 local ACTION_CHUNK = 0x028
 local MESSAGE_CHUNK = 0x029
 local ZONE_OUT_CHUNK = 0x0B
-local SC_CHUNKS = { [MESSAGE_CHUNK] = true, [0x63] = true, [ZONE_OUT_CHUNK] = true }
+local CHARACTER_UPDATE_CHUNK = 0x063
+local SYSTEM_MESSAGE_CHUNK = 0x053
+local SC_CHUNKS = { [MESSAGE_CHUNK] = true, [CHARACTER_UPDATE_CHUNK] = true, [ZONE_OUT_CHUNK] = true }
 local DEAD_STATUSES = { [2] = true, [3] = true }
 
 --[[ A deferred use's target pinning. A command's target is resolved by the
@@ -599,7 +601,8 @@ local function new(deps)
        at the press; the suffix is matched literally over a tail of the
        command's own length, and a command that does not end in the
        expected `<token>` is refused - a substitution this cannot prove
-       correct is worse than no press. ]]
+       correct is worse than no press. The id it pinned is answered beside
+       the command. ]]
   local function pinned_command(command, target)
     if type(command) ~= "string" then
       return nil
@@ -619,7 +622,7 @@ local function new(deps)
     if command:sub(-#suffix):lower() ~= suffix then
       return nil
     end
-    return command:sub(1, #command - #suffix) .. " " .. tostring(id)
+    return command:sub(1, #command - #suffix) .. " " .. tostring(id), id
   end
   self.pinned_command = pinned_command
 
@@ -678,6 +681,11 @@ local function new(deps)
     -- and disappears without one (Kevin, 2026-10-31).
     arrow_up = function()
       return selected_id("st") ~= nil
+    end,
+    -- A mob the client no longer has reads as alive: nothing says otherwise.
+    dead = function(id)
+      local mob = deps.get_mob_by_id ~= nil and deps.get_mob_by_id(id) or nil
+      return type(mob) == "table" and (tonumber(mob.hpp) == 0 or DEAD_STATUSES[mob.status] == true)
     end,
   })
   self.queue = queue
@@ -1190,6 +1198,10 @@ local function new(deps)
     end
     if id == MESSAGE_CHUNK then
       queue.on_message(data)
+    elseif id == CHARACTER_UPDATE_CHUNK then
+      queue.on_update(parsed)
+    elseif id == SYSTEM_MESSAGE_CHUNK then
+      queue.on_system_message(data)
     end
   end
 

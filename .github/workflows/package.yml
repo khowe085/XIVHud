@@ -7,6 +7,10 @@ name: Package addon
 # Windower loads an addon from addons/<folder>/<folder>.lua, so the main .lua in
 # src/ must be named <repo-name>.lua. The "Check source" step warns if it isn't.
 #
+# The gamepad bridge's _LuaXInput.dll is built from native/xinput by
+# xinput.yml, called first, and lands in the zip's bin/: no binary is
+# committed.
+#
 #   push to main / rc/**  -> build + upload a workflow artifact
 #   push a vX.Y.Z tag     -> build + create a GitHub Release with the zip attached
 
@@ -21,7 +25,11 @@ permissions:
   contents: write # required to create releases
 
 jobs:
+  xinput:
+    uses: ./.github/workflows/xinput.yml
+
   package:
+    needs: xinput
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -56,6 +64,13 @@ jobs:
           if [ ! -f "src/${name}.lua" ]; then
             echo "::warning::Windower loads addons/${name}/${name}.lua, but src/${name}.lua is missing. Rename your main .lua to ${name}.lua (or rename the repository) or the packaged addon will not load."
           fi
+
+      - name: Fetch _LuaXInput
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: LuaXInput
+          path: src/bin
 
       - name: Stage and zip
         if: steps.check.outputs.skip != 'true'

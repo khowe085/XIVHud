@@ -323,6 +323,18 @@ describe("commands", function()
       assert.are.same({ action = "tune", verb = "queue", words = {} }, parse("queue"))
       assert.are.same({ action = "tune", verb = "queue", words = { "debug" } }, parse("Queue", "debug"))
     end)
+
+    it("passes gamepad through the same way, and reserves it", function()
+      assert.is_true(commands.reserved.gamepad)
+      assert.are.same({ action = "tune", verb = "gamepad", words = {} }, parse("gamepad"))
+      assert.are.same({ action = "tune", verb = "gamepad", words = { "off" } }, parse("GamePad", "off"))
+    end)
+
+    it("passes keyboard through the same way, and reserves it", function()
+      assert.is_true(commands.reserved.keyboard)
+      assert.are.same({ action = "tune", verb = "keyboard", words = {} }, parse("keyboard"))
+      assert.are.same({ action = "tune", verb = "keyboard", words = { "list" } }, parse("KeyBoard", "list"))
+    end)
   end)
 
   describe("config", function()

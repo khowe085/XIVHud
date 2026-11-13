@@ -87,6 +87,202 @@ describe("entry point", function()
     end)
   end)
 
+  describe("the gamepad bridge", function()
+    -- _LuaXInput as it answers with one pad in the first slot holding
+    -- `buttons` - until a spec changes `pad_buttons`.
+    local pad_buttons
+    local function fake_module(buttons)
+      pad_buttons = buttons
+      return {
+        library = function()
+          return "xinput1_4.dll"
+        end,
+        get_state = function(index, out)
+          if index ~= 0 then
+            return nil, "not_connected", 1167
+          end
+          out.buttons, out.left_trigger, out.right_trigger = pad_buttons, 0, 0
+          return out
+        end,
+      }
+    end
+
+    it("is handed to core, saying why it reads nothing without the module", function()
+      assert.are.equal("gamepad: unavailable - _LuaXInput not loaded", boot.core_deps.gamepad.status())
+      assert.are.same({}, boot.core_deps.gamepad.poll())
+    end)
+
+    it("looks for the module in the addon's own bin/ before anywhere else", function()
+      assert.are.equal("addons/XIVHud/bin/?.dll;?.dll", boot.package.cpath)
+    end)
+
+    it("puts the addon's path on the cpath in forward slashes, as XIPivot does", function()
+      boot = harness.boot({ addon_path = "C:\\Windower4\\addons\\XIVHud\\" })
+      assert.are.equal("C:/Windower4/addons/XIVHud/bin/?.dll;?.dll", boot.package.cpath)
+    end)
+
+    it("reads the pad through the module where it loads", function()
+      boot = harness.boot({ xinput = fake_module(0x1000) })
+      boot.gamepad_config = { enabled = true }
+      assert.are.same({ { behavior = "accept", down = true } }, boot.core_deps.gamepad.poll())
+      assert.are.equal("gamepad: on - pad 1 connected", boot.core_deps.gamepad.status())
+      pad_buttons = 0
+      assert.are.same({ { behavior = "accept", down = false } }, boot.core_deps.gamepad.poll())
+    end)
+
+    it("hands core a behaviour's game key as setkey, down and then up", function()
+      boot.core_deps.send_key("enter", true)
+      boot.core_deps.send_key("enter", false)
+      assert.are.same({ "setkey enter down", "setkey enter up" }, boot.commands)
+    end)
+
+    it("hands core bind's own reading of a gesture's action, validated as a slot's is", function()
+      local actions = boot.core_deps.behavior_actions
+      assert.are.same({ type = "open", action = "map" }, actions.parse({ "open", "map" }))
+      local record, why = actions.parse({ "nope", "x" })
+      assert.is_nil(record)
+      assert.are.equal("unknown action type: nope", why)
+      assert.are.equal("open map", actions.describe({ type = "open", action = "map" }))
+      assert.is_true(actions.is_type("ma"))
+      assert.is_false(actions.is_type("nope"))
+      assert.is_true(actions.validate({ type = "ma", action = "Cure" }))
+    end)
+
+    it("asks core whether each behaviour can work, to name the map's dead entries", function()
+      boot = harness.boot({ xinput = fake_module(0) })
+      boot.gamepad_config = { enabled = true, map = { a = "nope" } }
+      boot.known_behaviors = {}
+      assert.are.same({ "gamepad: a - no behavior nope" }, boot.core_deps.gamepad.problems())
+      boot.known_behaviors = { nope = true }
+      assert.are.same({}, boot.core_deps.gamepad.problems())
+    end)
+
+    it("asks core which behaviours are a component's own, so LB's autorun waits for its release", function()
+      boot = harness.boot({ xinput = fake_module(0x0100) })
+      boot.gamepad_config = { enabled = true }
+      assert.are.same({}, boot.core_deps.gamepad.poll())
+      pad_buttons = 0
+      assert.are.same({ { behavior = "autorun", down = true } }, boot.core_deps.gamepad.poll())
+    end)
+
+    it("pumps the pad every frame through a handler of its own", function()
+      boot.handlers["prerender"]()
+      assert.are.equal(1, boot.pumps)
+      boot.pump_raises = true
+      local chatted = #boot.chat
+      boot.handlers["prerender"]()
+      assert.are.equal(2, boot.prerenders, "a failing pump leaves the frame tick running")
+      assert.is_true(#boot.chat > chatted)
+      assert.is_not_nil(boot.chat[#boot.chat]:find("gamepad", 1, true))
+    end)
+
+    --[[ Switched off, the handler never polls again, so whatever the pad held -
+         a raised side, a game key - would stay down until a reload. ]]
+    it("has core let go of the pad once, when that handler is switched off", function()
+      boot.pump_raises = true
+      for _ = 1, 4 do
+        boot.handlers["prerender"]()
+      end
+      assert.are.equal(0, boot.pad_releases)
+      boot.handlers["prerender"]()
+      boot.handlers["prerender"]()
+      assert.are.equal(1, boot.pad_releases)
+      assert.are.equal(5, boot.pumps, "and the pad is not polled again")
+    end)
+
+    -- The frame tick is what polls the pad, so switched off it strands the pad the same way.
+    it("has core let go of the pad once, when the frame tick is switched off", function()
+      boot.prerender_raises = true
+      for _ = 1, 4 do
+        boot.handlers["prerender"]()
+      end
+      assert.are.equal(0, boot.pad_releases)
+      boot.handlers["prerender"]()
+      boot.handlers["prerender"]()
+      assert.are.equal(1, boot.pad_releases)
+      assert.are.equal(5, boot.pumps, "and the pad is not polled again")
+    end)
+
+    it("lets core ask the client whether the game has focus", function()
+      assert.is_true(boot.core_deps.has_focus())
+      boot.focused = false
+      assert.is_false(boot.core_deps.has_focus())
+    end)
+
+    it("tells core when the game gains and loses focus", function()
+      boot.handlers["lose focus"]()
+      boot.handlers["gain focus"]()
+      assert.are.same({ false, true }, boot.focus)
+    end)
+
+    it("takes its settings from core's machine-wide file, and is off without one", function()
+      boot = harness.boot({ xinput = fake_module(0x0001) })
+      assert.are.same({}, boot.core_deps.gamepad.poll())
+      boot.gamepad_config = { enabled = false }
+      assert.are.same({}, boot.core_deps.gamepad.poll())
+      assert.are.equal("gamepad: off", boot.core_deps.gamepad.status())
+    end)
+
+    it("traces which XInput library it found, or why none, with the require's own error", function()
+      local trace = boot.files["addons/XIVHud/load.log"]
+      assert.is_not_nil(
+        trace:find("gamepad unavailable: _LuaXInput not loaded - module '_LuaXInput' not found", 1, true)
+      )
+      boot = harness.boot({ xinput = fake_module(0) })
+      assert.is_not_nil(boot.files["addons/XIVHud/load.log"]:find("gamepad: xinput1_4.dll", 1, true))
+    end)
+
+    it("traces that it is loading the module before it does, a native crash being silent", function()
+      local trace = boot.files["addons/XIVHud/load.log"]
+      local loading = trace:find("loading _LuaXInput", 1, true)
+      assert.is_not_nil(loading)
+      assert.is_true(loading < trace:find("gamepad unavailable", 1, true))
+    end)
+
+    it("is not built in safe mode, where nothing would poll it", function()
+      local safe = harness.boot({ xinput = fake_module(0), files = { ["addons/XIVHud/safe_mode"] = "" } })
+      assert.is_nil(safe.core_deps.gamepad)
+    end)
+  end)
+
+  describe("the keyboard map", function()
+    it("is built in core, handed the raw chat line to judge keys by", function()
+      assert.is_true(boot.core_deps.keyboard_map)
+      boot.chat_open = true
+      assert.is_true(boot.core_deps.chat_open())
+      boot.chat_open = false
+      assert.is_false(boot.core_deps.chat_open())
+    end)
+
+    it("is not built in safe mode", function()
+      local safe = harness.boot({ files = { ["addons/XIVHud/safe_mode"] = "" } })
+      assert.is_not_true(safe.core_deps.keyboard_map)
+    end)
+
+    --[[ Switched off, the handler hears no key again, so whatever the map held -
+         a raised side, a game key - would never get its up. ]]
+    it("has core let go of the keys it holds once, when the keyboard handler is switched off", function()
+      local SEMICOLON = 39
+      boot.core_deps.set_input_capture(true)
+      boot.keyboard_raises = true
+      for _ = 1, 4 do
+        boot.handlers["keyboard"](SEMICOLON, true, 0, false)
+      end
+      assert.are.equal(0, boot.key_releases)
+      boot.handlers["keyboard"](SEMICOLON, true, 0, false)
+      boot.handlers["keyboard"](SEMICOLON, true, 0, false)
+      assert.are.equal(1, boot.key_releases)
+    end)
+
+    it("keeps its actions though the gamepad bridge fails to load", function()
+      local failed = harness.boot({ require_fails = { ["lib/gamepad"] = "boom" } })
+      assert.is_nil(failed.core_deps.gamepad)
+      local actions = failed.core_deps.behavior_actions
+      assert.are.same({ type = "open", action = "map" }, actions.parse({ "open", "map" }))
+      assert.is_true(actions.validate({ type = "ma", action = "Cure" }))
+    end)
+  end)
+
   --[[ The inventory tracker is the only component that reads the WHOLE item
        table, and the only one that reads no packet through the packets
        library: the one field it wants is a byte of the chunk. Neither fact is
@@ -626,8 +822,9 @@ describe("entry point", function()
   end)
 
   --[[ The hotbar reads the client exactly as the crossbar does, member for
-       member, off the same service - and is registered after it, which is
-       the whole of the keyboard arbitration between the two. ]]
+       member, off the same service - and is registered after it, so where a
+       slot of each lies on one point in edit mode the hotbar owns it
+       (`service.slot_above`). Their keys are the keyboard map's. ]]
   describe("the hotbar", function()
     it("is built after the crossbar, over the same service and the same reads", function()
       assert.is_not_nil(boot.ctxs.hotbar)
@@ -694,6 +891,11 @@ describe("entry point", function()
       assert.are.equal(boot.ctxs.crossbar.get_player, boot.service_deps.get_player)
       assert.are.equal(boot.ctxs.crossbar.get_mob_by_target, boot.service_deps.get_mob_by_target)
       assert.is_nil(boot.core_deps.get_mob_by_target, "core reads no target")
+    end)
+
+    it("reads a mob by its id through the player service too, for the queue", function()
+      assert.is_not_nil(boot.service_deps.get_mob_by_id)
+      assert.are.equal(boot.ctxs.targetbar.get_mob_by_id, boot.service_deps.get_mob_by_id)
     end)
 
     it("reads its tuning off core's own config", function()

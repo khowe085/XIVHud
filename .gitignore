@@ -15,6 +15,8 @@
 # Packaging output (see .github/workflows/package.yml)
 /dist/
 /*.zip
+# _LuaXInput's builds: the test library (Makefile) and the DLLs (build.cmd)
+/native/xinput/build/
 
 # Runtime load trace written by src/XIVHud.lua
 load.log
