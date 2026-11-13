@@ -134,6 +134,9 @@ local function world(opts)
       env.asked_token = token
       return env.target
     end,
+    get_mob_by_id = function(id)
+      return env.mobs ~= nil and env.mobs[id] or nil
+    end,
     get_items = function(bag)
       return env.items[bag]
     end,
@@ -1084,6 +1087,36 @@ describe("the action service", function()
       env.now = env.now + 0.02
       service.tick()
       assert.is_false(service.queue.busy())
+    end)
+
+    describe("a weaponskill's target", function()
+      local MOB = 17000001
+      -- A raw outgoing 0x01A for a weaponskill at MOB, its id at 0x04.
+      local WEAPONSKILL_AT_MOB = string.rep("\0", 4)
+        .. string.char(0x41, 0x66, 0x03, 0x01)
+        .. string.rep("\0", 2)
+        .. string.char(7, 0)
+        .. string.rep("\0", 16)
+
+      it("is dead once the client's mob has no HP left, or lies dead", function()
+        for _, dead in ipairs({ { hpp = 0, status = 1 }, { hpp = 3, status = 2 }, { hpp = 3, status = 3 } }) do
+          local service, env = queued()
+          env.mobs = { [MOB] = { id = MOB, hpp = 40, status = 1 } }
+          service.on_outgoing(0x01A, WEAPONSKILL_AT_MOB)
+          service.tick()
+          assert.is_true(service.queue.busy())
+          env.mobs[MOB] = dead
+          service.tick()
+          assert.is_false(service.queue.busy(), "status " .. dead.status)
+        end
+      end)
+
+      it("lives for all the queue knows when the client no longer has the mob", function()
+        local service = queued()
+        service.on_outgoing(0x01A, WEAPONSKILL_AT_MOB)
+        service.tick()
+        assert.is_true(service.queue.busy())
+      end)
     end)
 
     it("names its mode among the tuning core seeds, shipping on", function()

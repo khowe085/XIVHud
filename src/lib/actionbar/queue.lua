@@ -44,7 +44,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      far off when the lock clears is dropped. A press whose recast ends inside
      the lock, or within RECAST_GRACE after it, is held, since sent it could only
      be refused, and its release waits for the recast. A weaponskill under its TP goes
-     nowhere, for want of anything to wait on. A
+     nowhere, for want of anything to wait on, and so does one under a status
+     GearSwap would abort it on. A
      cursor slot is judged the same way at OK, when its command is really sent,
      rather than at the press. ]]
 
@@ -91,6 +92,8 @@ local LOCK_RANGE = { min = 0, max = 5, step = 0.1 }
 local LEAVE_BACKSTOP = 0.6
 -- How long what left may go unanswered.
 local ANSWER_BACKSTOP = 2
+-- How long a cursor's token may go without its arrow's number.
+local ARROW_BACKSTOP = 2
 -- Past the longest cast there is, and the longest a press is held.
 local FINISH_BACKSTOP = 30
 --[[ How long a start keeps the bar busy without its finish (Kevin, 2026-11-06:
@@ -132,6 +135,25 @@ local CURSOR_TARGETS = { st = true, stpc = true, stal = true, stnpc = true, stpt
 local NUMBERS_AT_OK = 2
 -- What any weaponskill takes.
 local WEAPONSKILL_TP = 1000
+--[[ The statuses no weaponskill goes under: the ones Selindrile's GearSwap
+     aborts one on, his disable_list and check_amnesia's two, under the ids
+     Windower's buffs resource gives those names. Range is deliberately not a
+     test: the client misjudges the reach of some monsters. ]]
+local WEAPONSKILL_STOPPERS = {
+  [2] = "sleep",
+  [7] = "petrification",
+  [10] = "stun",
+  [14] = "charm",
+  [16] = "amnesia",
+  [17] = "charm",
+  [19] = "sleep",
+  [28] = "terror",
+  [193] = "lullaby",
+  [261] = "impairment",
+  [633] = "animated",
+}
+-- Idle and engaged, the two his check_disable lets an action through in.
+local ACTING_STATUSES = { [0] = true, [1] = true }
 
 -- The 0x028 categories, as atom0s' GP_SERV_COMMAND_BATTLE2 notes number them.
 local START_KINDS = { [7] = "weaponskill", [8] = "spell", [9] = "item", [12] = "ranged" }
@@ -155,6 +177,7 @@ local ITEM_OUT = 0x037
 -- GearSwap's outgoing_action_category_table, and its 0x037 for an item.
 local OUTGOING_KINDS = { [3] = "spell", [7] = "weaponskill", [9] = "ability", [16] = "ranged", [25] = "monster skill" }
 -- 1-based, header included.
+local TARGET_OFFSET = 5
 local CATEGORY_OFFSET = 11
 local PARAM_OFFSET = 13
 local ACTOR_OFFSET = 5
@@ -198,6 +221,12 @@ local function first_message(act)
   return first_action(act).message
 end
 
+-- The id of who an action is aimed at.
+local function first_target(act)
+  local target = type(act.targets) == "table" and act.targets[1] or nil
+  return type(target) == "table" and target.id or nil
+end
+
 local function cast_seconds(deps, kind, id)
   if deps.cast_seconds == nil or type(id) ~= "number" then
     return nil
@@ -238,6 +267,8 @@ local function new(deps)
   local sent_left = false
   -- The id of the spell `sent_until` waits on, whose finish can come without its start.
   local sent_spell = nil
+  -- Who a weaponskill is aimed at: the one `sent_until` waits on, and the one started.
+  local sent_target, acting_target = nil, nil
   local finished_at = nil
 
   local function now()
@@ -312,10 +343,21 @@ local function new(deps)
   --- straight out too.
   local function leaving(record)
     sent_until, sent_left, sent_spell, going = now() + LEAVE_BACKSTOP, false, nil, record
+    sent_target = nil
   end
 
   local function answered()
-    sent_until, going = nil, nil
+    sent_until, going, sent_target = nil, nil, nil
+  end
+
+  -- A start that is over, by its finish or without one.
+  local function ended()
+    acting_until, open_until, acting_kind, acting_id, acting_target = nil, nil, nil, nil, nil
+  end
+
+  -- Whether the client shows that target dead. One it cannot say of lives.
+  local function dead(id)
+    return id ~= nil and deps.dead ~= nil and deps.dead(id) == true
   end
 
   --[[ A mash. Held, a second tap would spend a weaponskill's TP or an item
@@ -332,17 +374,47 @@ local function new(deps)
       and going.target == record.target
   end
 
-  --[[ No packet leaves for a weaponskill under its TP, so there is no answer to
-       wait out, and held across one that spent the TP it cannot go (73 of 73 in
-       Kevin's logs). A client that reports no TP leaves it to the game. ]]
-  local function no_tp(record)
+  local function stopping_buff(buffs)
+    if type(buffs) ~= "table" then
+      return nil
+    end
+    for _, buff in ipairs(buffs) do
+      if WEAPONSKILL_STOPPERS[buff] ~= nil then
+        return WEAPONSKILL_STOPPERS[buff]
+      end
+    end
+    return nil
+  end
+
+  --[[ What keeps a weaponskill from going, or nil. No packet leaves for one
+       under its TP, so there is no answer to wait out, and held across one that
+       spent the TP it cannot go (73 of 73 in Kevin's logs). The rest is what
+       GearSwap aborts one on, each abort a line of chat. What the client does
+       not report is left to the game. ]]
+  local function what_stops(record)
     if record.type ~= "ws" then
-      return false
+      return nil
     end
     local player = deps.get_player()
-    local vitals = player ~= nil and player.vitals or nil
-    local tp = type(vitals) == "table" and vitals.tp or nil
-    return type(tp) == "number" and tp < WEAPONSKILL_TP
+    if type(player) ~= "table" then
+      return nil
+    end
+    local vitals = type(player.vitals) == "table" and player.vitals or nil
+    local tp = vitals ~= nil and vitals.tp or nil
+    if type(tp) == "number" and tp < WEAPONSKILL_TP then
+      return "no TP"
+    end
+    local buff = stopping_buff(player.buffs)
+    if buff ~= nil then
+      return buff
+    end
+    if vitals ~= nil and vitals.hp == 0 then
+      return "dead"
+    end
+    if type(player.status) == "number" and not ACTING_STATUSES[player.status] then
+      return "status " .. player.status
+    end
+    return nil
   end
 
   local function lock_left()
@@ -378,9 +450,10 @@ local function new(deps)
   end
 
   local function forget()
-    held, going, cursor = nil, nil, nil
-    sent_until, acting_until, lock_until, finished_at = nil, nil, nil, nil
-    open_until, acting_kind, acting_id = nil, nil, nil
+    held, cursor = nil, nil
+    answered()
+    ended()
+    lock_until, finished_at = nil, nil
   end
 
   local function hold(name, record, command)
@@ -456,8 +529,9 @@ local function new(deps)
     if type(record.target) == "string" and CURSOR_TARGETS[record.target:lower()] then
       return open_cursor(record, command, name)
     end
-    if no_tp(record) then
-      note("swallowed " .. name .. ", no TP")
+    local stop = what_stops(record)
+    if stop ~= nil then
+      note("swallowed " .. name .. ", " .. stop)
       return true
     end
     -- Asked first because it counts for nothing either way: a GearSwap filter
@@ -522,8 +596,9 @@ local function new(deps)
     local open = cursor
     cursor = nil
     note("OK " .. open.name .. " at " .. id)
-    if no_tp(open.record) then
-      note("swallowed " .. open.name .. ", no TP")
+    local stop = what_stops(open.record)
+    if stop ~= nil then
+      note("swallowed " .. open.name .. ", " .. stop)
       return true
     end
     local aimed = open.command:gsub("<[^<>]*>$", id)
@@ -570,8 +645,8 @@ local function new(deps)
          ends the start, a paralysis round's too: the weaponskill's own finish
          is a category 3, never ignored, so one that comes after all replaces
          the lock this one starts. UNVERIFIED: that the weaponskill's lock is
-         the right length after a too-far. Kevin's run brackets it between a
-         send refused at +1.07 and one accepted at +2.57. ]]
+         the right length after a too-far. Kevin's runs bracket it between a
+         send refused at +2.03 and one accepted at +2.57. ]]
     local ends_weaponskill = act.category == SPELL_FINISH
       and act.param == 0
       and acting_kind == "weaponskill"
@@ -592,6 +667,7 @@ local function new(deps)
       open_until = at + FINISH_BACKSTOP
       acting_kind = started
       acting_id = first_action(act).param
+      acting_target = first_target(act)
       lock_until = nil
       return
     end
@@ -609,7 +685,7 @@ local function new(deps)
       lock = self.lock(finished or "interrupted")
       note(("%s, lock %.2fs"):format(finished ~= nil and "finish " .. finished or "interrupted " .. started, lock))
     end
-    acting_until, open_until, acting_kind, acting_id = nil, nil, nil, nil
+    ended()
     finished_at = now()
     lock_until = finished_at + lock
   end
@@ -662,17 +738,37 @@ local function new(deps)
     end
     sent_until, sent_left = now() + wait, true
     sent_spell = kind == "spell" and action ~= 0 and action or nil
+    sent_target = kind == "weaponskill" and u32(data, TARGET_OFFSET) or nil
+  end
+
+  --[[ A weaponskill whose target has died gets nothing more. Sent as the mob
+       died it is never answered, and started it is never finished, its TP
+       kept: thirteen in one of Kevin's runs (2026-11-11), each 2s or 3.6s of a
+       dead bar. Weaponskills alone, since a Raise is aimed at a corpse and a
+       cast cut short has its interrupt. UNVERIFIED: that the game locks
+       nothing after a start its target died under. If it does, what goes out
+       at the death is refused. ]]
+  local function target_died()
+    if sent_left and running(sent_until) and dead(sent_target) then
+      answered()
+      note("the target died, no answer to come")
+    end
+    if acting_kind == "weaponskill" and running(acting_until) and dead(acting_target) then
+      ended()
+      note("the target died, no finish to come")
+    end
   end
 
   local function expire()
     local clock = now()
+    target_died()
     if sent_until ~= nil and clock >= sent_until then
       answered()
       note(sent_left and "no answer to the last send" or "nothing went out for the last press")
     end
     if open_until ~= nil and clock >= open_until then
       local waiting = acting_until ~= nil
-      open_until, acting_until, acting_kind, acting_id = nil, nil, nil, nil
+      ended()
       if waiting then
         note("no finish for the last start")
         self.drop("no finish for the last start")
@@ -692,6 +788,15 @@ local function new(deps)
     -- catch it the /ta would move your target.
     if cursor ~= nil and clock - cursor.at >= FINISH_BACKSTOP and not deps.arrow_up() then
       note("no OK for " .. cursor.name)
+      cursor = nil
+    end
+    --[[ The arrow's number comes back within a frame or two of the token. One
+         that has not come by now never will: the token raised no arrow, and
+         the next numbers through here are another cursor's, whose OK this
+         would take and cast its own spell at. Not counted off a second token,
+         since another addon may send this one's own line through twice. ]]
+    if cursor ~= nil and cursor.numbers == 0 and clock - cursor.at >= ARROW_BACKSTOP and not deps.arrow_up() then
+      note("no arrow for " .. cursor.name)
       cursor = nil
     end
   end
@@ -731,8 +836,9 @@ local function new(deps)
       end
       return nil
     end
-    if no_tp(held.record) then
-      self.drop("no TP")
+    local stop = what_stops(held.record)
+    if stop ~= nil then
+      self.drop(stop)
       return nil
     end
     local release = held

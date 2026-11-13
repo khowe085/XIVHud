@@ -334,7 +334,11 @@ The first reader called XInput through LuaJIT's ffi, written before anyone
 had asked whether Windower had one. `core.pump_gamepad` polls it
 from the entry point's prerender, under a guard of its OWN (`gamepad`), so a
 component throwing on a behaviour never counts against the frame tick - every
-edge of the poll is still delivered and the first error raised after. It runs
+edge of the poll is still delivered and the first error raised after. Should
+that guard switch the pump off, or `prerender`'s switch off the frame tick that
+calls it, the entry point has core let go of everything the pad held
+(`core.release_gamepad`, through `lib/guard`'s `on_disable`): a pad nothing
+polls would never let it go (2026-11-12, from review). It runs
 logged in or not, as keyboard delivery runs, but never OUT OF FOCUS: XInput
 reads the pad whichever window has it, so a second client would act on it too,
 and a lost focus lets go of everything the pad held, CANCELLED - an up that
@@ -412,8 +416,9 @@ and nothing else: a key Steam typed for a back button, named in `extra` and
 taught with `//hud gamepad learn`, was read as a button until Kevin dropped
 both on 2026-11-09 ("just noise at this point"), so a back button presses an
 XInput one or types a key for the keyboard map, and an `extra` block or an
-`l4` gesture left in a file is dead weight - the gesture reported as naming no
-button, and `unbind` taking it by its spelling. Nothing can keep a
+`l4` gesture left in a file is dead weight - the gesture reported as naming an
+unknown button, and `unbind` taking it by its spelling, however a hand edit
+cased or spaced it. Nothing can keep a
 press from the game, which reads the pad itself, so the game's own gamepad
 settings are part of the setup, and the wiki's gamepad page lists them as
 REQUIRED (Kevin, 2026-11-09, from a live client): menus on the D-pad, camera
@@ -440,8 +445,11 @@ one arrives as several words and is refused) - followed by a behaviour's name
 (`bind a accept`, `bind lt crossbar.left`), `key <name>` (`bind lt+l3 key
 f9`) or anything a slot can hold, read by bind's parser and refused where
 it would refuse a slot's (`bind lt+r3 ma "Cure IV" <t>`; `alias=`, `icon=` and
-`context=` need a slot). A word that is no type and no behaviour is refused,
-naming the behaviours - the action service's `is_type` says which words are
+`context=` need a slot). A word that is no type and no behaviour is refused
+as `unknown behavior <word>`, and a button the pad does not have as `unknown
+button <name>` (Kevin, 2026-11-12: the first named every behaviour there is,
+about 2,000 characters of chat, and the second every button) - the action
+service's `is_type` says which words are
 types, and `validate` asks it first, so the two cannot disagree. A binding
 replaces what the gesture held under every spelling; `unbind` writes `false`
 over a shipped gesture, which the settings merge would otherwise put back;
@@ -505,7 +513,10 @@ track one, raising its side without firing), a release another addon took
 lets go CANCELLED, so the switch does not take it for a tap (the crossbar's
 old rule, found missing by review), and with the chat line open a
 key whose behaviour is no component's types instead. Losing focus, switching
-it off and unloading let go of everything it holds, cancelled. Key names are
+it off and unloading let go of everything it holds, cancelled, and so does
+`lib/guard` switching the `keyboard` handler off (`core.release_keyboard`,
+through the guard's `on_disable`, 2026-11-12, from review): no key's up would
+be heard again. Key names are
 DirectInput's, lowercased, with Enter, Escape and the numpad operators as
 `setkey` spells them (`;` cannot be typed in a Windower command), looked up
 whole before a `+` reads as a chord, so `numpad+` and `ctrl+numpad+` work. A
@@ -559,7 +570,20 @@ nowhere** (Kevin, 2026-10-31): pressed, free or busy, nothing is sent, not even 
 be refused, and what is held stays; a cursor's is judged the same way at OK; held,
 it is dropped at the release, since the TP only reads as spent by then. No packet
 leaves for one, so it used to sit out the 0.6s below and make the next action late:
-a weaponskill held across another went nowhere 73 times of 73.
+a weaponskill held across another went nowhere 73 times of 73. **So does one you
+cannot use** (Kevin, 2026-11-12), judged at the same three moments and as silent:
+under a status Selindrile's GearSwap aborts a weaponskill on - his `disable_list`
+and `check_amnesia`, by the ids Windower's buffs resource gives those names: sleep
+(2, 19), petrification (7), stun (10), charm (14, 17), amnesia (16), terror (28),
+Lullaby (193), impairment (261) and animated (633) - or at no HP, or in a player
+status that is neither idle (0) nor engaged (1). GearSwap answered each such press
+with an `Abort:` line of chat. Weaponskills alone: a spell or an ability pressed
+under the same status goes as before. **Range is deliberately not a test** (Kevin):
+the weaponskill gate removed on 2026-10-16 judged range, and misjudged some
+monsters' hitboxes. Paralysis is not one either, as it is not Selindrile's: the
+weaponskill may still go. A buff list, HP or status the client does not report is
+left to the game. `debug` names what stopped it (`swallowed Savage Blade, amnesia`).
+**Unverified in a live client** (row 40 of the plan).
 
 **No packet says a lock is over** (atom0s' `0x0028` notes and LandSandBoat's
 server packets show none), so the lock's LENGTH is the one constant, and it is
@@ -625,6 +649,13 @@ set for the token, and the next cursor's OK reached the game as a bare
 exception: the queue stands aside there and the press goes as typed. That the
 flag is the cause is read off GearSwap's source and the log, **unverified in a
 live client** (row 24 of the plan).
+A cursor whose token raised no arrow is given up after 2s (2026-11-12, from
+review). The arrow's number comes back within a frame or two of the token, so
+one that has not come never will; kept for its 30s, such a cursor took the arrow
+and the OK of the next `/ta` cursor anyone opened, and cast its own spell there.
+It is timed rather than counted off a second token, since another addon may
+send the queue's own token line through twice. **Unverified in a live client**
+(row 38).
 **Open:** Kevin was left locked onto a Trust with weapons out, swinging at a monster
 he could not target, until he disengaged (2026-10-31). It predates the queue, but a
 `/ta` arrow can set your target where a `/ma` arrow cannot, so whether a target dying
@@ -647,14 +678,27 @@ cannot land - too far away, message 78 - with exactly that shape, so while its
 start runs one ends it and locks as its finish would (Kevin, 2026-11-10: ignored,
 each held the bar about 5.4s, three times in one run); its own finish is a
 category 3, never ignored, and replaces that lock if it comes after all. **That
-lock is unverified** after a too-far: the run brackets it between a send refused
-at +1.07 and one accepted at +2.57. The other exception is a spell that went out, from
+lock is unverified** after a too-far: two runs bracket it between a send refused
+at +2.03 and one accepted at +2.57. The other exception is a spell that went out, from
 anything, and is still unanswered (Kevin, 2026-11-06: lag lost seven starts whose
 finishes came, and the next send went into the lock): it waits for an answer for
 its `cast_time` plus 0.4s where that is longer than 2s, and a finish inside that
 naming it (its `param`) is its own and locks - one naming any other spell, or a
 paralysis round, is ignored (Kevin, 2026-11-07). A refusal still ends the wait at once; a spell the server
 drops without one holds the bar that long.
+
+**A weaponskill whose target dies gets nothing more** (Kevin, 2026-11-12, after
+a run where it happened thirteen times). Sent as the mob died, the server never
+answers it, and the bar sat out its 2s; started, no finish comes, the TP is
+kept, and the bar waited 1.2s and then locked 2.4s. Once the client shows the
+target dead - no HP, or status 2 or 3, asked by id through the player service -
+the queue stops waiting, and after a start it locks NOTHING - where the death
+shows inside the 1.2s the start is waited on; seen later, the lock the lost
+finish was given stands. **Unverified: that
+the game locks nothing there** (row 36 of the plan); should it, what goes out
+at the death is refused, and the refusals bracket the real lock. Weaponskills
+alone: a Raise is aimed at a corpse, and a cast cut short has its interrupt. A
+target the client no longer has reads as alive.
 
 `debug` is `on` plus a line per edge in `<addon>/debug.log`, appended with raw `io`,
 dated and stamped with the clock, and never in chat (Kevin, 2026-11-01; the client

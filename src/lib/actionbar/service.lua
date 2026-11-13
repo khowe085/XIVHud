@@ -679,6 +679,11 @@ local function new(deps)
     arrow_up = function()
       return selected_id("st") ~= nil
     end,
+    -- A mob the client no longer has reads as alive: nothing says otherwise.
+    dead = function(id)
+      local mob = deps.get_mob_by_id ~= nil and deps.get_mob_by_id(id) or nil
+      return type(mob) == "table" and (tonumber(mob.hpp) == 0 or DEAD_STATUSES[mob.status] == true)
+    end,
   })
   self.queue = queue
 

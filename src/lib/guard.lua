@@ -55,8 +55,10 @@ local function new(deps)
 
   -- Wraps one handler. `fallback` is returned whenever the handler fails or has
   -- been switched off — pass `false` for the mouse and keyboard handlers, whose
-  -- return value decides whether input reaches the game.
-  function self.wrap(name, handler, fallback)
+  -- return value decides whether input reaches the game. `on_disable` is called
+  -- once as the handler is switched off, for an owner holding something only
+  -- the handler would have let go of.
+  function self.wrap(name, handler, fallback, on_disable)
     local errors, last_message, disabled = 0, nil, false
 
     return function(...)
@@ -87,6 +89,9 @@ local function new(deps)
             errors
           )
         )
+        if on_disable ~= nil then
+          pcall(on_disable)
+        end
       end
 
       return fallback

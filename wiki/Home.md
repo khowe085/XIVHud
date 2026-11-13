@@ -336,7 +336,11 @@ off, every press goes at once and the game decides.
   does not count.
 - **Weaponskills.** A weaponskill you have under 1000 TP for does nothing at
   all, not even the game's usual message, and one held is dropped if the TP is
-  gone when you could act.
+  gone when you could act. The same goes for a weaponskill pressed while you
+  cannot use one: asleep, petrified, stunned, charmed, terrorized, animated,
+  under Amnesia or Impairment, dead, or doing something other than standing or
+  fighting (resting, mounted, in a cutscene). Range is not checked: a
+  weaponskill pressed out of range still goes, and the game answers it.
 - **Targets.** A held press aimed at `<t>` or `<bt>` stays on the target you
   had when you pressed, and with nothing targeted it is not held. A slot bound
   with no target takes whatever the game gives it when it goes, and `<me>` and
@@ -345,13 +349,15 @@ off, every press goes at once and the game decides.
 - **Cursor slots.** A slot that opens a cursor (`<st>`, `<stpc>` and the like)
   is decided when you press OK rather than when you press the slot, so you can
   pick your target during a cast and press OK whenever you like. OK is then
-  judged as a press is: a weaponskill under 1000 TP sends nothing, an action
+  judged as a press is: a weaponskill under 1000 TP, or one you cannot use,
+  sends nothing, an action
   whose recast outlasts the lockout by more than two seconds goes at once, and
   otherwise it is held or goes
   at once as the queue stands. Pressing another cursor slot while the arrow is
   up sends nothing and only changes what OK will cast. Under an arrow XIVHud
   did not raise (a macro's), a cursor slot does nothing at all, and OK still
-  casts the macro's spell. GearSwap's `pretarget` does not run for such a slot.
+  casts the macro's spell. A press that raises no arrow at all is forgotten
+  after two seconds. GearSwap's `pretarget` does not run for such a slot.
 - **Macros and typed commands** are not held, but they do count towards the
   wait, as does anything another addon sends. A press made before the game has
   answered the last one is held too.
@@ -371,6 +377,9 @@ off, every press goes at once and the game decides.
   the wait. A spell the server drops with no answer at all holds the bar that
   long. A cast slowed past these times by a debuff can let a held press go
   early, and the game then refuses it.
+- **A weaponskill whose target dies.** The game sends nothing more for one: no
+  answer if it was sent as the target died, no finish if it had started. The
+  queue stops waiting as soon as the target is dead, and a held press goes.
 
 If you use Selindrile's GearSwap files, leave their MiniQueue off.
 
@@ -531,9 +540,10 @@ when the message changes, not every frame. After five errors in one handler
 over the session chat says `the <name> handler has been disabled after 5
 failures - '//lua reload xivhud' to try again` and that part of the addon
 stops: a disabled mouse or keyboard handler hands your input back to the game,
-a disabled `prerender` handler freezes the whole HUD, a disabled `command`
-handler leaves `//hud` silent, and a disabled `gamepad` handler stops the pad,
-leaving any key it held down until the game next loses focus. Reload to try again, and report the message.
+a disabled `prerender` handler freezes the whole HUD and stops the pad, a
+disabled `command` handler leaves `//hud` silent, and a disabled `gamepad`
+handler stops the pad alone. A stopped pad or keyboard lets go of whatever it
+held. Reload to try again, and report the message.
 
 **`item icons are not being read: the game's item data has changed`.** A game
 update has moved the item icons and XIVHud needs an update. It applies to the

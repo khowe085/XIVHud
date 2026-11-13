@@ -199,7 +199,7 @@ local function read_gesture(text)
       return nil, "an empty button"
     end
     if not PAD[part] then
-      return nil, "no button " .. part, part
+      return nil, "unknown button " .. part, part
     end
     if seen[part] then
       return nil, "names " .. part .. " twice"
@@ -283,6 +283,18 @@ local function writable_map(settings)
     settings.map = defaults().map
   end
   return settings.map
+end
+
+-- Every key in `map` that is `spelling` once its case and spaces go: how a
+-- gesture the pad cannot read is found, however a hand edit wrote it.
+local function spelled_as(map, spelling)
+  local found = {}
+  for _, text in ipairs(sorted_keys(map)) do
+    if type(text) == "string" and spelling_of(text) == spelling then
+      found[#found + 1] = text
+    end
+  end
+  return found
 end
 
 -- Every spelling in `map` of the gesture whose key is `key`.
@@ -647,10 +659,11 @@ local function new(deps)
     if buttons ~= nil then
       found = spellings_of(map, gesture_key(buttons))
       shipped = spellings_of(DEFAULTS.map, gesture_key(buttons))
-    elseif spelling ~= nil and map[spelling] ~= nil then
-      found = { spelling }
     else
-      return nil, why, missing
+      found = spelling ~= nil and spelled_as(map, spelling) or {}
+      if #found == 0 then
+        return nil, why, missing
+      end
     end
     local bound = false
     for _, other in ipairs(found) do
@@ -671,17 +684,6 @@ local function new(deps)
 
   function self.set_enabled(on)
     config().enabled = on == true
-  end
-
-  --- The pad's own buttons, in the order a poll answers them.
-  function self.buttons()
-    local names = {}
-    for _, list in ipairs(PAD_LISTS) do
-      for _, button in ipairs(list) do
-        names[#names + 1] = button.name
-      end
-    end
-    return names
   end
 
   --- Every gesture the map holds, `{ gesture, behavior }`, in spelling

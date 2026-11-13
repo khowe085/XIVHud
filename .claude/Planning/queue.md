@@ -721,6 +721,11 @@ start bracket the true lock. Every line is in `debug.log`.
 | 33 | Press Cure IV again late in its own lock, about +1.8 after its finish | `hold Cure IV`, `release`, and it casts at about +2.72, with no `not held` and no refusal | A short recast inside a lock is held. Passes, 10 of 10 on `2e4fb77` |
 | 34 | Cast Shell V on one target, then OK it on the next as soon as the arrow can be raised, several times over | `hold Shell V`, `Shell V waits ...s on its recast` where its recast outlasts the lock, then `release`, and it casts, with no refusal | The recast grace (2026-11-07). At one second it missed Shell V without haste, 11 of 11 ending 1.28 to 1.31s past the lock (2026-11-08); unverified at two |
 | 35 | Start a weaponskill on a mob as it moves out of range, then mash a macro through | `finish weaponskill naming no spell, message 78, lock 2.40s`, then `refused` lines, then a `start` | The lock after a too-far. 2.4 is the weaponskill's, unverified there: the 2026-11-10 run brackets it between +1.07 refused and +2.57 accepted |
+| 36 | Mash a weaponskill slot on a mob that dies while the weaponskill is readying | `the target died, no finish to come`, then `out weaponskill` at once and either a `start` or `refused` lines | Whether the game locks after a weaponskill its target died under; the refusals, if any, bracket that lock |
+| 37 | Mash a weaponskill slot as a mob dies with the next one in reach | `the target died, no answer to come`, then `out weaponskill` and its `start` inside a second | The wait a dead target cost was 2s; whether GearSwap holds the press back itself is unknown |
+| 38 | Press a cursor slot where no arrow can be raised, wait 2s, then run a `/ta <stnpc>` macro and OK it | `no arrow for <name>`, and the macro's cursor works with nothing cast | A cursor that raised no arrow must not take another's OK |
+| 39 | Start a ranged attack on a mob that dies before the shot | Whether an interrupt or a finish follows the `start ranged`, or nothing for 30s | Whether a ranged start needs the dead-target rule too (review, 2026-11-12) |
+| 40 | With 1000 TP, press a weaponskill slot under Amnesia, and again stunned or asleep | `swallowed <name>, amnesia` (or `stun`, `sleep`), no `out weaponskill`, and no `Abort:` line in chat | That the client reports those statuses under the ids the resource names, and that the press no longer reaches GearSwap |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -798,8 +803,9 @@ Done 2026-11-10 (Kevin), after a run that held weaponskill presses about 5.4s:
   such a finish now ends it and locks as its finish would. Its own finish is a
   category 3, never ignored, and replaces that lock if it comes after all. The run
   brackets the real lock after a too-far: a Cocoon sent +1.07 after one was refused
-  (17), an Unbridled Learning sent +2.57 after another was accepted. The 2.4 it takes
-  is unverified there (row 35). Any finish naming no spell ends the start, a
+  (17), an Unbridled Learning sent +2.57 after another was accepted. A run on
+  2026-11-11 narrowed it: GearSwap's Nat. Meditation, sent +2.03 after a too-far, was
+  refused (17). The 2.4 it takes is unverified there (row 35). Any finish naming no spell ends the start, a
   paralysis round's too: either it was the weaponskill's own end, or the category 3
   finish that follows replaces the lock. Should that finish be lost as well, the lock
   starts up to 1.2s early and a held press can be refused: one re-press, and rare.
@@ -831,3 +837,75 @@ Done 2026-11-11 (Kevin), after Dia III would not go in Al Zahbi:
 - Unverified: that GearSwap's flag is what broke the OK. It is read off GearSwap's
   source (`flow.lua` sets it in pretarget for an `<st>` token, `triggers.lua` clears it
   on the next outgoing text and passes that line through) and the log. Row 24.
+
+## A weaponskill whose target dies (Kevin, 2026-11-11)
+
+Done 2026-11-12 (Kevin: "Fix both cases"), after a BLU run on `a947c86` where a
+weaponskill's target died under it thirteen times:
+
+- **Sent as the mob died**, ten times. The server answers nothing, and the bar sat out
+  its 2s each time; four of those delayed the next weaponskill by 1.4 to 2s, and the
+  rest had nothing in reach. A weaponskill that left for a target the client now shows
+  dead - no HP, or status 2 or 3 - is no longer waited on. Nothing started, so nothing
+  locks. This is the likely cause of the weaponskills left unanswered in the runs of
+  2026-11-01 above.
+- **Started, then the mob died**, three times, and once more in an RDM run that night.
+  No finish comes and the TP is kept; the bar waited 1.2s and then locked 2.4s. The
+  start now ends at the death with no lock. **Unverified: that the game locks nothing
+  there** (row 36). Should it, what goes out at the death is refused, and the refusals
+  bracket the real lock.
+- Weaponskills alone. A Raise is aimed at a corpse, and a cast cut short has its
+  interrupt.
+- A target the client no longer has reads as alive: by then the wait is over anyway.
+- Unknown: whether GearSwap holds back a press sent that soon after a weaponskill of
+  its own (row 37).
+- A death the client shows only after the 1.2s a start is waited on lifts nothing: the
+  lock the lost finish was given stands (review, 2026-11-12). A lost finish followed by
+  a kill looks the same, so row 36 decides whether it should.
+- Unverified: that the client never shows 0% for a mob still alive. Dead is `hpp` 0 or
+  status 2 or 3, the focus target's own test; were a sliver of HP rounded down, the wait
+  would end early and a held press go out into the weaponskill (review, 2026-11-12).
+
+## A cursor that raised no arrow (review, 2026-11-11)
+
+Done 2026-11-12. A cursor slot's token can raise no arrow at all: the game refuses it
+with the chat log open, for one. The cursor was kept for its 30s all the same, with no
+number counted, so the next `/ta` cursor anyone opened had its arrow taken for this
+one's and its OK for this one's OK: the line was blocked and the stale spell cast at
+that target. Two reviewers found it by reading; no run has shown it.
+
+- A cursor that has counted no number 2s after it opened, with no arrow up, is given
+  up, saying `no arrow for <name>` in `debug`. The arrow's number comes back within a
+  frame or two of the token in every run so far.
+- It is timed, not counted off a second token as the reviewers proposed: another addon
+  that blocks and re-sends `/ta` lines would put this cursor's own token through twice.
+- Inside those 2s the hole is still open: another cursor's arrow number is counted as
+  this one's, and its OK is then taken (review, 2026-11-12).
+- Row 38.
+
+## A weaponskill you cannot use (Kevin, 2026-11-12)
+
+Done 2026-11-12, after an Ambuscade run where every weaponskill pressed under Amnesia
+drew GearSwap's `Abort: You have Amnesia.` in chat. Kevin: "silently drop WS presses
+where I don't have TP, Amnesia, or am stunned. The same conditions as what selindrile's
+gearswap aborts on. Do not drop based on range".
+
+- The conditions are read off Kevin's GearSwap (`libs/Sel-Include.lua` `filter_precast`,
+  `libs/Sel-Utility.lua` `check_disable` and `check_amnesia`, `libs/Sel-Mappings.lua`
+  `disable_list`): terror, sleep, Lullaby, stun, Animated, Charm, petrification; 0 HP; a
+  status that is neither Idle nor Engaged; amnesia; impairment. The TP test is his own
+  `user_filter_precast`, and the queue already had it.
+- The ids are Windower's buffs resource's for those names: sleep 2 and 19, petrification
+  7, stun 10, charm 14 and 17, amnesia 16, terror 28, Lullaby 193, impairment 261,
+  animated 633.
+- It rides the TP rule: judged at the press, at a cursor's OK and at the release, a
+  press that shows nothing, and only while the queue is on. `debug` names what stopped
+  it.
+- Weaponskills alone, as asked. An ability under Amnesia, and a spell or an ability
+  while stunned, still reach GearSwap and draw its `Abort:` line.
+- No range test (Kevin): the weaponskill gate removed on 2026-10-16 had one, and it
+  misjudged some monsters' hitboxes. Selindrile's precast filters have none on a
+  weaponskill either: only his AutoWS and his `smartws` command judge range.
+- Not his `check_doom`, which sends a Cursna or a Holy Water in the press's place, nor
+  his `just_acted`, which is his MiniQueue.
+- Row 40.

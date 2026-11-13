@@ -575,7 +575,7 @@ describe("gamepad", function()
 
     it("reads a gesture on one as naming no button, whatever the config holds", function()
       config = on({ extra = { l4 = 100 }, map = { l4 = "accept" } })
-      assert.are.same({ "gamepad: l4 - no button l4" }, pad.problems())
+      assert.are.same({ "gamepad: l4 - unknown button l4" }, pad.problems())
     end)
   end)
 
@@ -799,7 +799,7 @@ describe("gamepad", function()
         "gamepad: a - no behavior nope",
         "gamepad: b - not a behavior",
         "gamepad: lt+lt - names lt twice",
-        "gamepad: lt+q - no button q",
+        "gamepad: lt+q - unknown button q",
         "gamepad: y - enter;quit is not a key name",
       }, pad.problems())
     end)
@@ -893,7 +893,7 @@ describe("gamepad", function()
       it("names the button it does not know", function()
         local spelling, why, missing = pad.bind("lt+l5", "accept")
         assert.is_nil(spelling)
-        assert.are.equal("no button l5", why)
+        assert.are.equal("unknown button l5", why)
         assert.are.equal("l5", missing)
         assert.is_nil(config.map["lt+l5"])
       end)
@@ -947,10 +947,19 @@ describe("gamepad", function()
         assert.is_nil(config.map["lt+l5"])
       end)
 
+      it("finds such a gesture however the file spells it", function()
+        config.map["L4"] = "accept"
+        config.map["lt + l4"] = "cancel"
+        assert.are.equal("l4", pad.unbind("l4"))
+        assert.is_nil(config.map["L4"])
+        assert.are.equal("lt+l4", pad.unbind("LT+L4"))
+        assert.is_nil(config.map["lt + l4"])
+      end)
+
       it("names a button it does not know in a gesture the map does not hold", function()
         local spelling, why, missing = pad.unbind("lt+q")
         assert.is_nil(spelling)
-        assert.are.equal("no button q", why)
+        assert.are.equal("unknown button q", why)
         assert.are.equal("q", missing)
       end)
 
@@ -968,13 +977,6 @@ describe("gamepad", function()
       assert.is_false(pad.enabled())
       pad.set_enabled(true)
       assert.is_true(config.enabled)
-    end)
-
-    it("names the pad's buttons in the order it answers them", function()
-      assert.are.same(
-        { "lt", "rt", "lb", "rb", "back", "start", "l3", "r3", "y", "b", "a", "x", "up", "right", "down", "left" },
-        pad.buttons()
-      )
     end)
 
     it("lists every gesture and what it does, in order, removals left out", function()

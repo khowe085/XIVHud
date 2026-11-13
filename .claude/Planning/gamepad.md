@@ -272,8 +272,9 @@ swallowed that key and read it as a button, the key set from the keyboard by
 ("just noise at this point"): the bridge reads XInput's sixteen buttons and
 nothing else, so a back button presses one of those or types a key for the
 keyboard map. Nothing migrates - an `extra` block left in a file is dead
-weight, and a gesture naming `l4` is reported as naming no button, which
-`unbind` takes by its spelling.
+weight, and a gesture naming `l4` is reported as naming an unknown button,
+which `unbind` takes by its spelling - however a hand edit cased or spaced it
+(2026-11-12, from review: `L4` and `lt + l4` could not be removed).
 
 ## Commands (Kevin, 2026-11-06)
 
@@ -302,13 +303,14 @@ Nothing else in the addon needs a hand edit, so neither does the pad:
     as a slot's is: `bind lt+r3 ma "Cure IV" <t>`, `bind back open map`.
     `alias=`, `icon=` and `context=` need a slot and are refused.
   No behaviour name is a slot type, and a spec pins that, so the three cannot
-  be mistaken for each other. A word that is none of them is refused, naming
-  the behaviours.
+  be mistaken for each other. A word that is none of them is refused as
+  `unknown behavior <word>` (Kevin, 2026-11-12: it named every behaviour, about
+  2,000 characters of chat).
 - The binding replaces whatever the gesture held, under every spelling: one
   gesture is stored once, under the shipped spelling where there is one, so
   the settings merge cannot put a second copy back.
-- A gesture naming a button the pad does not have is refused, the refusal
-  listing the pad's buttons.
+- A gesture naming a button the pad does not have is refused as `unknown
+  button <name>`, with no list of the pad's buttons (Kevin, 2026-11-12).
 - `unbind <gesture>` removes it. A shipped gesture is written `false`, which
   the settings merge would otherwise put back.
 - `list` prints each gesture and what it does in the words `bind` takes, so a
@@ -469,6 +471,10 @@ open row). `//hud gamepad` and load.log say which step failed.
   migrates: a `data/gamepad.lua` keeps the X, Y and L3 it was saved with
   until they are bound again (`tap_seconds`, new on 2026-11-09, is added by
   the merge like any key a file never had).
-- If the `gamepad` guard switches the pump off after five failures, a game key
-  held through `setkey ... down` stays down until the next focus loss or
-  unload. An error path only.
+- Fixed 2026-11-12 (three reviewers, 2026-11-11): when the `gamepad` guard
+  switched the pump off after five failures, whatever the pad held - a raised
+  side, a game key down through `setkey` - stayed held until the next focus
+  loss or unload. `lib/guard`'s `wrap` takes an `on_disable` now, and the entry
+  point's lets go through `core.release_gamepad`. The `prerender` guard takes
+  the same one (review, 2026-11-12): the frame tick is what calls the pump, so
+  a component throwing five times in its own tick stranded the pad the same way.

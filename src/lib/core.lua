@@ -1003,6 +1003,19 @@ local function new(deps)
     deliver_pad(deps.gamepad.poll())
   end
 
+  --- Lets go of everything the pad holds, for the entry point: its guard has
+  --- switched the pump off, and nothing will poll the pad again.
+  function self.release_gamepad()
+    release_pad()
+  end
+
+  --- Lets go of everything the keyboard map holds, for the entry point: its
+  --- guard has switched the keyboard handler off, and no key's up will be
+  --- heard again.
+  function self.release_keyboard()
+    release_keys()
+  end
+
   --- A lost focus strands everything held: the pad and the keyboard map let
   --- go of their own, and the keyboard's ups never come - the components
   --- forget those themselves.

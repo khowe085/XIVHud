@@ -91,12 +91,12 @@ local function new(deps)
     return status()
   end
 
+  -- A button the pad does not have is the whole of what is wrong, and says so.
   local function refusal(gesture, why, missing)
-    local line = "gamepad: " .. gesture .. " - " .. why
     if missing ~= nil then
-      line = line .. "; buttons are " .. table.concat(pad.buttons(), " ")
+      return { "gamepad: " .. why }
     end
-    return { line }
+    return { "gamepad: " .. gesture .. " - " .. why }
   end
 
   -- What a gesture does, in the words `bind` takes after the gesture.
@@ -137,8 +137,7 @@ local function new(deps)
       return nil, "actions need the action service, which did not load"
     end
     if not is_action_type(kind) then
-      return nil,
-        kind .. " is neither a bind type nor a behavior - behaviors are " .. table.concat(deps.behaviors.names(), ", ")
+      return nil, "unknown behavior " .. kind
     end
     return parse_action({ unpack(words, 3) })
   end

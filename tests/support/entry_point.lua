@@ -320,9 +320,13 @@ local function build_core(boot)
   --[[ Stands in for a component reading the target during its per-frame update.
        What that buys a spec is the ordering of `begin_frame` against
        `core.on_prerender`: a component must never see the memo a key press
-       filled during the previous frame. ]]
+       filled during the previous frame. `prerender_raises` stands in for a
+       component throwing in its frame tick. ]]
   function core.on_prerender()
     boot.prerenders = boot.prerenders + 1
+    if boot.prerender_raises then
+      error("prerender failed", 0)
+    end
     local component = boot.ctxs.targetbar
     if component ~= nil and component.get_mob_by_target ~= nil then
       boot.prerender_targets[#boot.prerender_targets + 1] = component.get_mob_by_target("t")
@@ -358,6 +362,22 @@ local function build_core(boot)
     if boot.pump_raises then
       error("pump failed", 0)
     end
+  end
+
+  function core.release_gamepad()
+    boot.pad_releases = boot.pad_releases + 1
+  end
+
+  -- `keyboard_raises` stands in for a component throwing on a key.
+  function core.on_keyboard()
+    if boot.keyboard_raises then
+      error("key failed", 0)
+    end
+    return false
+  end
+
+  function core.release_keyboard()
+    boot.key_releases = boot.key_releases + 1
   end
 
   function core.on_focus(focused)
@@ -437,8 +457,11 @@ function M.boot(options)
     dispatches = {},
     -- Every windower.send_command, in order.
     commands = {},
-    -- core.pump_gamepad and core.on_prerender calls, and every core.on_focus.
+    -- core.pump_gamepad, core.release_gamepad, core.release_keyboard and
+    -- core.on_prerender calls, and every core.on_focus.
     pumps = 0,
+    pad_releases = 0,
+    key_releases = 0,
     prerenders = 0,
     focus = {},
     service_calls = {},

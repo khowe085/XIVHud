@@ -98,7 +98,7 @@ describe("gamepad commands", function()
   describe("the bare verb and the switch", function()
     it("answers the status, then what is wrong with the map", function()
       config.map["lt+q"] = "accept"
-      assert.are.same({ "gamepad: on - looking for a pad", "gamepad: lt+q - no button q" }, commands.handle({}))
+      assert.are.same({ "gamepad: on - looking for a pad", "gamepad: lt+q - unknown button q" }, commands.handle({}))
     end)
 
     it("re-reads the file first", function()
@@ -208,12 +208,11 @@ describe("gamepad commands", function()
       assert.are.equal(0, saved)
     end)
 
-    it("refuses a word that is neither a bind type nor a behaviour, naming the behaviours", function()
-      assert.are.same({
-        "gamepad: acept is neither a bind type nor a behavior - behaviors are "
-          .. table.concat(behaviors.names(), ", "),
-      }, commands.handle({ "bind", "a", "acept" }))
-      assert.are.equal("accept", behaviors.names()[1])
+    --[[ It named every behaviour there is: about 2,000 characters of chat for
+         one mistyped word. ]]
+    it("refuses a word that is neither a bind type nor a behaviour, in a line", function()
+      assert.are.same({ "gamepad: unknown behavior acept" }, commands.handle({ "bind", "a", "acept" }))
+      assert.are.equal(0, saved)
     end)
 
     it("refuses words after a behaviour's name", function()
@@ -234,10 +233,8 @@ describe("gamepad commands", function()
       assert.are.equal(0, saved)
     end)
 
-    it("names the buttons when it does not know one", function()
-      assert.are.same({
-        "gamepad: lt+q - no button q; buttons are lt rt lb rb back start l3 r3 y b a x up right down left",
-      }, commands.handle({ "bind", "lt+q", "accept" }))
+    it("names the button it does not know, and no others", function()
+      assert.are.same({ "gamepad: unknown button q" }, commands.handle({ "bind", "lt+q", "accept" }))
     end)
 
     it("says what else is wrong with a gesture", function()
@@ -283,10 +280,8 @@ describe("gamepad commands", function()
       assert.are.same({ SPACED }, commands.handle({ "unbind", "lt", "+", "y" }))
     end)
 
-    it("names the buttons when it does not know one", function()
-      assert.are.same({
-        "gamepad: lt+q - no button q; buttons are lt rt lb rb back start l3 r3 y b a x up right down left",
-      }, commands.handle({ "unbind", "lt+q" }))
+    it("names the button it does not know, and no others", function()
+      assert.are.same({ "gamepad: unknown button q" }, commands.handle({ "unbind", "lt+q" }))
     end)
 
     it("refuses over a file it could not read", function()
@@ -338,7 +333,7 @@ describe("gamepad commands", function()
   describe("the map's problems", function()
     it("are answered once, for the first poll to say", function()
       config.map["lt+q"] = "accept"
-      assert.are.same({ "gamepad: lt+q - no button q" }, commands.unsaid_problems())
+      assert.are.same({ "gamepad: lt+q - unknown button q" }, commands.unsaid_problems())
       assert.are.same({}, commands.unsaid_problems())
     end)
 

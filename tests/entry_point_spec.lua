@@ -176,6 +176,33 @@ describe("entry point", function()
       assert.is_not_nil(boot.chat[#boot.chat]:find("gamepad", 1, true))
     end)
 
+    --[[ Switched off, the handler never polls again, so whatever the pad held -
+         a raised side, a game key - would stay down until a reload. ]]
+    it("has core let go of the pad once, when that handler is switched off", function()
+      boot.pump_raises = true
+      for _ = 1, 4 do
+        boot.handlers["prerender"]()
+      end
+      assert.are.equal(0, boot.pad_releases)
+      boot.handlers["prerender"]()
+      boot.handlers["prerender"]()
+      assert.are.equal(1, boot.pad_releases)
+      assert.are.equal(5, boot.pumps, "and the pad is not polled again")
+    end)
+
+    -- The frame tick is what polls the pad, so switched off it strands the pad the same way.
+    it("has core let go of the pad once, when the frame tick is switched off", function()
+      boot.prerender_raises = true
+      for _ = 1, 4 do
+        boot.handlers["prerender"]()
+      end
+      assert.are.equal(0, boot.pad_releases)
+      boot.handlers["prerender"]()
+      boot.handlers["prerender"]()
+      assert.are.equal(1, boot.pad_releases)
+      assert.are.equal(5, boot.pumps, "and the pad is not polled again")
+    end)
+
     it("lets core ask the client whether the game has focus", function()
       assert.is_true(boot.core_deps.has_focus())
       boot.focused = false
@@ -230,6 +257,21 @@ describe("entry point", function()
     it("is not built in safe mode", function()
       local safe = harness.boot({ files = { ["addons/XIVHud/safe_mode"] = "" } })
       assert.is_not_true(safe.core_deps.keyboard_map)
+    end)
+
+    --[[ Switched off, the handler hears no key again, so whatever the map held -
+         a raised side, a game key - would never get its up. ]]
+    it("has core let go of the keys it holds once, when the keyboard handler is switched off", function()
+      local SEMICOLON = 39
+      boot.core_deps.set_input_capture(true)
+      boot.keyboard_raises = true
+      for _ = 1, 4 do
+        boot.handlers["keyboard"](SEMICOLON, true, 0, false)
+      end
+      assert.are.equal(0, boot.key_releases)
+      boot.handlers["keyboard"](SEMICOLON, true, 0, false)
+      boot.handlers["keyboard"](SEMICOLON, true, 0, false)
+      assert.are.equal(1, boot.key_releases)
     end)
 
     it("keeps its actions though the gamepad bridge fails to load", function()
@@ -849,6 +891,11 @@ describe("entry point", function()
       assert.are.equal(boot.ctxs.crossbar.get_player, boot.service_deps.get_player)
       assert.are.equal(boot.ctxs.crossbar.get_mob_by_target, boot.service_deps.get_mob_by_target)
       assert.is_nil(boot.core_deps.get_mob_by_target, "core reads no target")
+    end)
+
+    it("reads a mob by its id through the player service too, for the queue", function()
+      assert.is_not_nil(boot.service_deps.get_mob_by_id)
+      assert.are.equal(boot.ctxs.targetbar.get_mob_by_id, boot.service_deps.get_mob_by_id)
     end)
 
     it("reads its tuning off core's own config", function()

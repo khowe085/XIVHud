@@ -266,6 +266,12 @@ local function register_mouse()
   end
 end
 
+-- Switched off, the keyboard handler hears no key's up again, so what the
+-- keyboard map held is let go there.
+local function release_keyboard()
+  core.release_keyboard()
+end
+
 local function register_keyboard()
   if not keyboard_event_id then
     -- The full signature. `flags` and the inbound `blocked` used to be
@@ -274,7 +280,7 @@ local function register_keyboard()
       "keyboard",
       guard.wrap("keyboard", function(key, down, flags, blocked)
         return core.on_keyboard(key, down, flags, blocked)
-      end, false)
+      end, false, release_keyboard)
     )
   end
 end
@@ -890,6 +896,7 @@ local action_service = step("building the action service", function()
     time = os.time,
     get_player = read_player,
     get_mob_by_target = read_mob_by_target,
+    get_mob_by_id = read_mob_by_id,
     get_items = get_items,
     get_spells = get_spells,
     get_abilities = get_abilities,
@@ -1633,11 +1640,16 @@ windower.register_event(
 )
 
 if not safe_mode then
+  -- Either guard below switched off leaves the pad never polled again, so
+  -- what it held is let go there.
+  local function release_gamepad()
+    core.release_gamepad()
+  end
   -- The pad has a guard of its own: a component throwing on one of its keys
   -- is reported and counted under `gamepad`, and the frame tick carries on.
   local pump_gamepad = guard.wrap("gamepad", function()
     core.pump_gamepad()
-  end)
+  end, nil, release_gamepad)
   windower.register_event(
     "prerender",
     guard.wrap("prerender", function()
@@ -1646,7 +1658,7 @@ if not safe_mode then
       player_service.begin_frame()
       pump_gamepad()
       core.on_prerender()
-    end)
+    end, nil, release_gamepad)
   )
 end
 

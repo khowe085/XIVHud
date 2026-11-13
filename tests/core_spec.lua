@@ -626,6 +626,34 @@ describe("core", function()
       assert.are.same({ "left", false, true }, widget.heard[2])
     end)
 
+    it("lets go of everything the pad holds when asked to", function()
+      pad_core()
+      local widget = core.register(behaving_widget())
+      login()
+      pad.queued = { { behavior = "crossbar.left", down = true } }
+      core.pump_gamepad()
+      pad.held = { { behavior = "crossbar.left", down = false, cancelled = true } }
+      core.release_gamepad()
+      assert.are.equal(1, pad.releases)
+      assert.are.same({ "left", false, true }, widget.heard[2])
+    end)
+
+    it("lets go without raising, whatever a component does with the let-go", function()
+      pad_core()
+      local widget = core.register(behaving_widget())
+      login()
+      widget.on_behavior = function(_, down)
+        if not down then
+          error("broken let-go", 0)
+        end
+      end
+      pad.queued = { { behavior = "crossbar.left", down = true } }
+      core.pump_gamepad()
+      pad.held = { { behavior = "crossbar.left", down = false, cancelled = true } }
+      assert.has_no.errors(core.release_gamepad)
+      assert.are.equal(1, pad.releases)
+    end)
+
     it("sends a gesture's own game key to the game", function()
       pad_core()
       local own = { key = "f1" }
@@ -1177,6 +1205,40 @@ describe("core", function()
       core.on_keyboard(SEMICOLON, true, 0, false)
       core.on_unload()
       assert.are.same({ "left", false, true }, widget.heard[6])
+    end)
+
+    it("lets go of every key it holds, cancelled, when asked to", function()
+      keyboard_core(ON)
+      local widget = core.register(behaving_widget(true))
+      login()
+      core.on_keyboard(SEMICOLON, true, 0, false)
+      core.release_keyboard()
+      assert.are.same({ "left", false, true }, widget.heard[2])
+    end)
+
+    it("lets go without raising, whatever a component does with the let-go", function()
+      keyboard_core(ON)
+      local widget = core.register(behaving_widget(true))
+      login()
+      local let_go = 0
+      widget.on_behavior = function(_, down)
+        if not down then
+          let_go = let_go + 1
+          error("broken let-go", 0)
+        end
+        return true
+      end
+      core.on_keyboard(SEMICOLON, true, 0, false)
+      assert.has_no.errors(core.release_keyboard)
+      assert.are.equal(1, let_go)
+    end)
+
+    it("has nothing to let go of where the map was never built", function()
+      deps, env = fakes.core_deps()
+      core = new_core(deps)
+      assert.has_no.errors(function()
+        core.release_keyboard()
+      end)
     end)
 
     it("leaves a key bound to a game key to type while the chat line is open", function()

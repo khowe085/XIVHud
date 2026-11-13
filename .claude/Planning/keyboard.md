@@ -137,6 +137,16 @@ moves behind the map and the map reads Ctrl/Alt/Shift chords - above.)
   the game, where Alt+1 under a raised side used to fire the crossbar's slot
   1. Found by review (rounds 1-3 of the keys gate).
 
+## A handler the guard switched off (review, 2026-11-12)
+
+Fixed 2026-11-12 (Kevin: "Yes, fix it"). When `lib/guard` switched the
+`keyboard` handler off after five failures, no key's up was heard again, so
+whatever the map held - a raised side, a game key down through `setkey` -
+stayed held until the next focus loss or unload. The entry point's `keyboard`
+guard now takes the `on_disable` the pad's does and lets go through
+`core.release_keyboard`, cancelled, as a lost focus does. The gap is older
+than the pad's; the review of the pad's fix found it.
+
 ## Unverified in a live client
 
 All of it - in particular that a release Windower delivers after the map was
