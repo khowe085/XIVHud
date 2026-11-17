@@ -45,7 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      the lock, or within RECAST_GRACE after it, is held, since sent it could only
      be refused, and its release waits for the recast. A weaponskill under its TP goes
      nowhere, for want of anything to wait on, and so does one under a status
-     GearSwap would abort it on. A
+     GearSwap would abort it on, or aimed at a target the game has just said fell. A
      cursor slot is judged the same way at OK, when its command is really sent,
      rather than at the press. A held weaponskill or spell whose target has
      died since is dropped rather than sent at the corpse. ]]
@@ -223,6 +223,12 @@ local TRUST_REFUSALS = { [296] = true, [297] = true, [298] = true, [299] = true,
 local DEATHS = { [6] = true, [20] = true, [113] = true, [406] = true, [605] = true, [646] = true }
 -- How long a death is remembered: as long as a press can be held for it.
 local FALLEN_SECONDS = FINISH_BACKSTOP
+--[[ How long after a death a weaponskill pressed at the corpse goes nowhere.
+     Far short of the memory: a mob back up under its id inside that - an NM
+     popped again, one that reraises - would take no weaponskill from the bar
+     until it acted. Every press at a corpse came within 0.48s of the death
+     over a weekend (Kevin, 2026-11-16: "Yes, 2 seconds"). ]]
+local CORPSE_SECONDS = 2
 -- An id from here up is a monster's, an NPC's or a pet's, never a player's.
 local FIRST_NPC_ID = 0x01000000
 
@@ -390,18 +396,17 @@ local function new(deps)
     acting_until, open_until, acting_kind, acting_id, acting_target = nil, nil, nil, nil, nil
   end
 
-  --[[ Whether that target is dead: the game said it fell, or the client shows
-       it so. The client's table alone showed none of ten deaths in time
-       (Kevin, 2026-11-12). One neither can say of lives. ]]
+  --[[ Whether that target is dead, by the game's word alone. The client's mob
+       table is not asked: it shows a mob dead a third of a second or more
+       before the packets of the weaponskill that killed it arrive, which ended
+       21 of 65 waits early over a weekend (Kevin, 2026-11-16). One the game
+       has said nothing of lives. ]]
   local function dead(id)
     if id == nil then
       return false
     end
     local fell_at = fallen[id]
-    if fell_at ~= nil and now() - fell_at < FALLEN_SECONDS then
-      return true
-    end
-    return deps.dead ~= nil and deps.dead(id) == true
+    return fell_at ~= nil and now() - fell_at < FALLEN_SECONDS
   end
 
   -- A target the game says died. The stale ones go as a new one comes.
@@ -424,6 +429,25 @@ local function new(deps)
       return false
     end
     return (kind == "ws" or kind == "ma") and dead(press.target)
+  end
+
+  --[[ What keeps a weaponskill from a target that has only just fallen, or
+       nil. 44 went out at a corpse over a weekend (Kevin, 2026-11-16), each
+       costing GearSwap its precast and a packet the server ignores, and about
+       13 of them were pressed after the game's word, all inside half a second
+       of it. Weaponskills alone, and a target nothing names is the game's.
+       The id sets the line beside its `fell`, and the age says how long after
+       a death presses still come. ]]
+  local function at_the_fallen(record, target)
+    local fell_at = target ~= nil and fallen[target] or nil
+    if record.type ~= "ws" or fell_at == nil then
+      return nil
+    end
+    local ago = now() - fell_at
+    if ago >= CORPSE_SECONDS then
+      return nil
+    end
+    return ("the target died (%d fell %.2fs ago)"):format(target, ago)
   end
 
   --[[ A mash. Held, a second tap would spend a weaponskill's TP or an item
@@ -629,7 +653,11 @@ local function new(deps)
     if type(record.target) == "string" and CURSOR_TARGETS[record.target:lower()] then
       return open_cursor(record, command, name)
     end
-    local stop = what_stops(record)
+    local pinned, target = command, nil
+    if record.target ~= nil then
+      pinned, target = deps.pin(command, record.target)
+    end
+    local stop = what_stops(record) or at_the_fallen(record, target)
     if stop ~= nil then
       note("swallowed " .. name .. ", " .. stop)
       return true
@@ -655,13 +683,9 @@ local function new(deps)
       note("swallowed " .. name .. ", already going")
       return true
     end
-    local pinned, target = command, nil
-    if record.target ~= nil then
-      pinned, target = deps.pin(command, record.target)
-      if pinned == nil then
-        note("not held: " .. name .. ", <" .. record.target .. "> cannot be pinned")
-        return false
-      end
+    if record.target ~= nil and pinned == nil then
+      note("not held: " .. name .. ", <" .. record.target .. "> cannot be pinned")
+      return false
     end
     hold(name, record, pinned, target)
     return true
@@ -696,7 +720,7 @@ local function new(deps)
     local open = cursor
     cursor = nil
     note("OK " .. open.name .. " at " .. id)
-    local stop = what_stops(open.record)
+    local stop = what_stops(open.record) or at_the_fallen(open.record, tonumber(id))
     if stop ~= nil then
       note("swallowed " .. open.name .. ", " .. stop)
       return true

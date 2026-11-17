@@ -20,14 +20,7 @@ local function world(opts)
     casts = { spell = {}, item = {} },
     blocked = nil,
     pins = {},
-    dead = {},
   }
-  local dead = nil
-  if not opts.no_dead then
-    dead = function(id)
-      return env.dead[id] == true
-    end
-  end
   local queue = new_queue({
     no_packets = opts.no_packets,
     now = function()
@@ -67,7 +60,8 @@ local function world(opts)
     arrow_up = function()
       return env.arrow_up == true
     end,
-    dead = dead,
+    -- What the client's mob table would say, which the queue must not ask.
+    dead = opts.dead,
   })
   return queue, env
 end
@@ -171,6 +165,11 @@ local function fall_message(target, message, actor)
     .. string.rep("\0", 12)
     .. string.char(message % 256, math.floor(message / 256))
     .. string.rep("\0", 2)
+end
+
+-- The game's word that `target` fell, which is all the queue takes for a death.
+local function falls(queue, target)
+  queue.on_message(fall_message(target))
 end
 
 -- A 0x063 of the ninth order as the entry point's one parse hands it over: the
@@ -1861,17 +1860,17 @@ describe("the action queue", function()
         env.now = env.now + 0.3
         queue.step()
         assert.is_true(queue.busy())
-        env.dead[MOB] = true
+        falls(queue, MOB)
         queue.step()
         assert.is_false(queue.busy())
       end)
 
       it("sends what it held once that target is dead", function()
-        local queue, env = world()
+        local queue = world()
         queue.on_outgoing(0x01A, outgoing_action(WEAPONSKILL, 42, MOB))
         queue.press(spell(), command())
         assert.is_nil(queue.step())
-        env.dead[MOB] = true
+        falls(queue, MOB)
         assert.are.equal(command(), queue.step())
       end)
 
@@ -1888,7 +1887,7 @@ describe("the action queue", function()
 
       it("waits out a spell's answer whose target is dead: a Raise is aimed at one", function()
         local queue, env = world()
-        env.dead[MOB] = true
+        falls(queue, MOB)
         queue.on_outgoing(0x01A, outgoing_action(MAGIC, 12, MOB))
         env.now = env.now + 1.99
         queue.step()
@@ -1901,14 +1900,14 @@ describe("the action queue", function()
         queue.press(spell(), command())
         env.now = env.now + 0.3
         assert.is_nil(queue.step())
-        env.dead[MOB] = true
+        falls(queue, MOB)
         assert.are.equal(command(), queue.step())
       end)
 
       it("leaves a spell's start alone when its target is dead", function()
         local queue, env = world()
         env.casts.spell[12] = 3
-        env.dead[MOB] = true
+        falls(queue, MOB)
         local start = start_of(8, 12)
         start.targets[1].id = MOB
         queue.on_action(start)
@@ -1920,7 +1919,7 @@ describe("the action queue", function()
       it("still locks on that weaponskill's finish if it comes after all", function()
         local queue, env = world()
         queue.on_action(weaponskill_at(MOB))
-        env.dead[MOB] = true
+        falls(queue, MOB)
         queue.step()
         assert.is_false(queue.busy())
         queue.on_action(action(3, 42))
@@ -1934,7 +1933,7 @@ describe("the action queue", function()
         queue.on_action(weaponskill_at(MOB))
         env.now = env.now + 1.21
         queue.step()
-        env.dead[MOB] = true
+        falls(queue, MOB)
         env.now = env.now + 2.3
         queue.step()
         assert.is_true(queue.busy())
@@ -1944,28 +1943,35 @@ describe("the action queue", function()
       end)
 
       it("ends the start that comes after the answer it stopped waiting for", function()
-        local queue, env = world()
+        local queue = world()
         queue.on_outgoing(0x01A, outgoing_action(WEAPONSKILL, 42, MOB))
-        env.dead[MOB] = true
+        falls(queue, MOB)
         queue.step()
         queue.on_action(weaponskill_at(MOB))
         queue.step()
         assert.is_false(queue.busy())
       end)
 
-      it("reads a client that cannot say as one whose target lives", function()
-        local queue, env = world({ no_dead = true })
+      --[[ Kevin, 2026-11-16: the client's mob table shows a mob dead a third of
+           a second or more before the packets of the weaponskill that killed
+           it arrive, and 21 waits of 65 ended early on it over a weekend. ]]
+      it("asks no mob table, which shows the death ahead of the killing blow's own packets", function()
+        local queue, env = world({
+          dead = function()
+            return true
+          end,
+        })
         queue.on_outgoing(0x01A, outgoing_action(WEAPONSKILL, 42, MOB))
+        queue.step()
+        assert.is_true(queue.busy())
         queue.on_action(weaponskill_at(MOB))
         env.now = env.now + 1.19
         queue.step()
         assert.is_true(queue.busy())
       end)
 
-      --[[ Kevin, 2026-11-12: ten weaponskills left for targets that died and
-           every one waited out its 2s, and one that had started its 3.6s: the
-           client's own table never showed the death in time. The game says a
-           death in a 0x029, by the messages the Debuffed addon reads one off. ]]
+      --[[ The game says a death in a 0x029, by the messages the Debuffed addon
+           reads one off, and that is all the queue takes for one. ]]
       for _, message in ipairs({ 6, 20, 113, 406, 605, 646 }) do
         it(("stops waiting once the game says the target fell, message %d"):format(message), function()
           local queue, env = world()
@@ -1978,16 +1984,6 @@ describe("the action queue", function()
           assert.is_false(queue.busy())
         end)
       end
-
-      it("ends a start once the game says its target fell", function()
-        local queue, env = world()
-        queue.on_action(weaponskill_at(MOB))
-        queue.press(spell(), command())
-        env.now = env.now + 0.3
-        assert.is_nil(queue.step())
-        queue.on_message(fall_message(MOB))
-        assert.are.equal(command(), queue.step())
-      end)
 
       it("takes no notice of another target falling", function()
         local queue = world()
@@ -2290,53 +2286,46 @@ describe("the action queue", function()
 
     it("drops a weaponskill whose target is dead at the release", function()
       local queue, env = held_at(MONSTER, BLADE, BLADE_COMMAND)
-      env.dead[MONSTER] = true
+      falls(queue, MONSTER)
       assert.is_nil(release(queue, env))
       assert.is_nil(queue.held())
       assert.is_false(queue.busy())
     end)
 
-    it("drops it when the game said that target fell", function()
-      local queue, env = held_at(MONSTER, BLADE, BLADE_COMMAND)
-      queue.on_message(fall_message(MONSTER))
-      assert.is_nil(release(queue, env))
-      assert.is_nil(queue.held())
-    end)
-
     it("releases a weaponskill whose target lives", function()
       local queue, env = held_at(MONSTER, BLADE, BLADE_COMMAND)
-      env.dead[MONSTER + 1] = true
+      falls(queue, MONSTER + 1)
       assert.are.equal('input /ws "Savage Blade" 17000001', release(queue, env))
     end)
 
     it("drops a spell pinned to a dead monster", function()
       local queue, env = held_at(MONSTER, SLEEPGA, SLEEPGA_COMMAND)
-      env.dead[MONSTER] = true
+      falls(queue, MONSTER)
       assert.is_nil(release(queue, env))
       assert.is_nil(queue.held())
     end)
 
     it("releases a spell pinned to a dead player: a Raise is aimed at one", function()
       local queue, env = held_at(PLAYER, { type = "ma", action = "Raise", target = "t" }, 'input /ma "Raise" <t>')
-      env.dead[PLAYER] = true
+      falls(queue, PLAYER)
       assert.are.equal('input /ma "Raise" 71391', release(queue, env))
     end)
 
     it("releases an ability pinned to a dead monster, which is the game's to refuse", function()
       local queue, env = held_at(MONSTER, PROVOKE, PROVOKE_COMMAND)
-      env.dead[MONSTER] = true
+      falls(queue, MONSTER)
       assert.are.equal('input /ja "Provoke" 17000001', release(queue, env))
     end)
 
     it("releases what was pinned to nothing", function()
       local queue, env = held_at(MONSTER, spell(), command())
-      env.dead[MONSTER] = true
+      falls(queue, MONSTER)
       assert.are.equal(command(), release(queue, env))
     end)
 
     it("judges the target a newer press pinned", function()
       local queue, env = held_at(MONSTER, BLADE, BLADE_COMMAND)
-      env.dead[MONSTER] = true
+      falls(queue, MONSTER)
       env.pinned = MONSTER + 1
       queue.press(BLADE, BLADE_COMMAND)
       assert.are.equal('input /ws "Savage Blade" 17000002', release(queue, env))
@@ -2351,9 +2340,136 @@ describe("the action queue", function()
       queue.on_text("/ta 17000001")
       queue.on_text("/ta 17000001")
       queue.on_action(action(4, 1))
-      env.dead[MONSTER] = true
+      falls(queue, MONSTER)
       assert.is_nil(release(queue, env))
       assert.is_nil(queue.held())
+    end)
+  end)
+
+  --[[ Kevin, 2026-11-16: over a weekend 44 weaponskills went out at a mob that
+       had just died. Each cost GearSwap its precast and a packet the server
+       ignores, and GearSwap then cancelled the next press nine times. About
+       13 of them were pressed after the game's word, which is all a rule at
+       the press can see. ]]
+  describe("a weaponskill pressed at a target that has fallen", function()
+    local BLADE = { type = "ws", action = "Savage Blade", target = "t" }
+    local BLADE_COMMAND = 'input /ws "Savage Blade" <t>'
+    local MONSTER = 17000001
+
+    local function ready()
+      local queue, env = world()
+      env.player.vitals = { tp = 3000, hp = 1500 }
+      env.pinned = MONSTER
+      return queue, env
+    end
+
+    it("goes nowhere while nothing is busy", function()
+      local queue = ready()
+      falls(queue, MONSTER)
+      local taken, instead = queue.press(BLADE, BLADE_COMMAND)
+      assert.is_true(taken)
+      assert.is_nil(instead)
+      assert.is_false(queue.busy())
+    end)
+
+    it("is not held either", function()
+      local queue = ready()
+      start_cast(queue)
+      falls(queue, MONSTER)
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+      assert.is_nil(queue.held())
+    end)
+
+    it("goes nowhere while busy, and leaves what was held alone", function()
+      local queue = ready()
+      start_cast(queue)
+      queue.press(spell("Stone"), command("Stone"))
+      falls(queue, MONSTER)
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+      assert.are.equal(command("Stone"), queue.held().command)
+    end)
+
+    it("goes at a target that lives", function()
+      local queue = ready()
+      falls(queue, MONSTER + 1)
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("goes once that target has acted again", function()
+      local queue = ready()
+      falls(queue, MONSTER)
+      queue.on_action(action(1, 0, MONSTER))
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("goes where nothing can say who it is aimed at", function()
+      local queue = ready()
+      falls(queue, MONSTER)
+      local unpinned = { type = "ws", action = "Savage Blade", target = "ft" }
+      assert.is_false(queue.press(unpinned, 'input /ws "Savage Blade" <ft>'))
+    end)
+
+    it("is judged at OK on a cursor", function()
+      local queue = ready()
+      falls(queue, MONSTER)
+      queue.press({ type = "ws", action = "Savage Blade", target = "stnpc" }, 'input /ws "Savage Blade" <stnpc>')
+      queue.on_text("/ta <stnpc>")
+      queue.on_text("/ta 17000001")
+      local kept, instead = queue.on_text("/ta 17000001")
+      assert.is_true(kept)
+      assert.is_nil(instead)
+      assert.is_false(queue.busy())
+      assert.is_nil(queue.held())
+    end)
+
+    it("leaves a spell pressed at a fallen monster to the game", function()
+      local queue = ready()
+      falls(queue, MONSTER)
+      assert.is_false(queue.press({ type = "ma", action = "Sleepga", target = "t" }, 'input /ma "Sleepga" <t>'))
+    end)
+
+    --[[ A death is remembered 30s, and a mob back up under its id inside that
+         would take no weaponskill from the bar until it acted. No press at a
+         corpse came later than 0.48s after the death, so this rule looks back
+         two seconds and no further (Kevin, 2026-11-16: "Yes, 2 seconds"). ]]
+    describe("more than a moment after the death", function()
+      it("still goes nowhere just short of two seconds", function()
+        local queue, env = ready()
+        falls(queue, MONSTER)
+        env.now = env.now + 1.99
+        assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+      end)
+
+      it("goes as it always did from two seconds on", function()
+        local queue, env = ready()
+        falls(queue, MONSTER)
+        env.now = env.now + 2
+        assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      end)
+
+      it("goes at a cursor's OK from two seconds on", function()
+        local queue, env = ready()
+        falls(queue, MONSTER)
+        env.now = env.now + 2
+        queue.press({ type = "ws", action = "Savage Blade", target = "stnpc" }, 'input /ws "Savage Blade" <stnpc>')
+        queue.on_text("/ta <stnpc>")
+        queue.on_text("/ta 17000001")
+        local kept, instead = queue.on_text("/ta 17000001")
+        assert.is_true(kept)
+        assert.are.equal('input /ws "Savage Blade" 17000001', instead)
+      end)
+
+      it("is held from two seconds on, and dropped at the release while the death is remembered", function()
+        local queue, env = ready()
+        falls(queue, MONSTER)
+        env.now = env.now + 2
+        finish_cast(queue)
+        assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+        assert.is_not_nil(queue.held())
+        env.now = env.now + 2.71
+        assert.is_nil(queue.step())
+        assert.is_nil(queue.held())
+      end)
     end)
   end)
 
@@ -3050,7 +3166,7 @@ describe("the action queue", function()
       start_cast(queue)
       queue.press({ type = "ws", action = "Savage Blade", target = "t" }, 'input /ws "Savage Blade" <t>')
       queue.on_action(action(4, 1))
-      env.dead[MOB] = true
+      falls(queue, MOB)
       env.now = env.now + 2.71
       queue.step()
       assert.truthy(logged(env):find("dropped Savage Blade: the target died", 1, true))
@@ -3064,6 +3180,35 @@ describe("the action queue", function()
       env.now = env.now + 2.01
       queue.step()
       assert.truthy(logged(env):find("no answer to the last send, a weaponskill at 17000001", 1, true))
+    end)
+
+    -- The id sets the line beside its `fell`, and the age says how long after
+    -- a death presses still come, which is what a shorter memory would rest on.
+    it("says a weaponskill pressed at a fallen target went nowhere, at whom and how long after", function()
+      local queue, env = world({ mode = "debug" })
+      env.player.vitals = { tp = 3000, hp = 1500 }
+      env.pinned = MOB
+      falls(queue, MOB)
+      env.now = env.now + 0.31
+      queue.press({ type = "ws", action = "Savage Blade", target = "t" }, 'input /ws "Savage Blade" <t>')
+      assert.truthy(
+        logged(env):find("swallowed Savage Blade, the target died (17000001 fell 0.31s ago)", 1, true),
+        logged(env)
+      )
+    end)
+
+    it("says the same of one judged at a cursor's OK", function()
+      local queue, env = world({ mode = "debug" })
+      env.player.vitals = { tp = 3000, hp = 1500 }
+      falls(queue, MOB)
+      env.now = env.now + 0.25
+      queue.press({ type = "ws", action = "Savage Blade", target = "stnpc" }, 'input /ws "Savage Blade" <stnpc>')
+      queue.on_text("/ta 17000001")
+      queue.on_text("/ta 17000001")
+      assert.truthy(
+        logged(env):find("swallowed Savage Blade, the target died (17000001 fell 0.25s ago)", 1, true),
+        logged(env)
+      )
     end)
 
     it("names a system message that comes with a send unanswered", function()
@@ -3251,7 +3396,7 @@ describe("the action queue", function()
 
     it("says a weaponskill's target died, before its answer and before its finish", function()
       local queue, env = world({ mode = "debug" })
-      env.dead[MOB] = true
+      falls(queue, MOB)
       queue.on_outgoing(0x01A, outgoing_action(WEAPONSKILL, 42, MOB))
       queue.step()
       assert.is_not_nil(logged(env):find("the target died, no answer to come", 1, true))

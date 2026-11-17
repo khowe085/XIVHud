@@ -896,7 +896,6 @@ local action_service = step("building the action service", function()
     time = os.time,
     get_player = read_player,
     get_mob_by_target = read_mob_by_target,
-    get_mob_by_id = read_mob_by_id,
     get_items = get_items,
     get_spells = get_spells,
     get_abilities = get_abilities,

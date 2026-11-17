@@ -893,9 +893,8 @@ describe("entry point", function()
       assert.is_nil(boot.core_deps.get_mob_by_target, "core reads no target")
     end)
 
-    it("reads a mob by its id through the player service too, for the queue", function()
-      assert.is_not_nil(boot.service_deps.get_mob_by_id)
-      assert.are.equal(boot.ctxs.targetbar.get_mob_by_id, boot.service_deps.get_mob_by_id)
+    it("hands the action service no mob table: the queue takes a death from the game's message alone", function()
+      assert.is_nil(boot.service_deps.get_mob_by_id)
     end)
 
     it("reads its tuning off core's own config", function()

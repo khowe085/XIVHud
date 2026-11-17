@@ -339,8 +339,11 @@ off, every press goes at once and the game decides.
   gone when you could act. The same goes for a weaponskill pressed while you
   cannot use one: asleep, petrified, stunned, charmed, terrorized, animated,
   under Amnesia or Impairment, dead, or doing something other than standing or
-  fighting (resting, mounted, in a cutscene). Range is not checked: a
-  weaponskill pressed out of range still goes, and the game answers it.
+  fighting (resting, mounted, in a cutscene) - and for one pressed in the two
+  seconds after the game reports its target dead, which is not sent at the
+  corpse, where the slot is aimed at `<t>`, `<bt>` or a cursor. Range is not
+  checked: a weaponskill pressed out of range still goes, and the game answers
+  it.
 - **Targets.** A held press aimed at `<t>` or `<bt>` stays on the target you
   had when you pressed, and with nothing targeted it is not held. A slot bound
   with no target takes whatever the game gives it when it goes, and `<me>` and
@@ -349,8 +352,8 @@ off, every press goes at once and the game decides.
 - **Cursor slots.** A slot that opens a cursor (`<st>`, `<stpc>` and the like)
   is decided when you press OK rather than when you press the slot, so you can
   pick your target during a cast and press OK whenever you like. OK is then
-  judged as a press is: a weaponskill under 1000 TP, or one you cannot use,
-  sends nothing, an action
+  judged as a press is: a weaponskill under 1000 TP, one you cannot use, or
+  one aimed at a target the game has just reported dead sends nothing, an action
   whose recast outlasts the lockout by more than two seconds goes at once, and
   otherwise it is held or goes
   at once as the queue stands. Pressing another cursor slot while the arrow is
@@ -384,8 +387,8 @@ off, every press goes at once and the game decides.
   in a party you do not lead - the queue stops waiting on it at once.
 - **A weaponskill whose target dies.** The game sends nothing more for one: no
   answer if it was sent as the target died, no finish if it had started. The
-  queue stops waiting as soon as the target is dead, and a held press goes.
-  The one exception is a death that shows more than 1.2 seconds after the
+  queue stops waiting as soon as the game reports the death, and a held press
+  goes. The one exception is a death reported more than 1.2 seconds after the
   weaponskill started: the usual wait after a weaponskill has begun by then,
   and runs its course. A weaponskill held for a target that dies before it can
   go is dropped rather than sent at the corpse, and so is a held spell aimed

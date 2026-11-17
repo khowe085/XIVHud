@@ -592,8 +592,12 @@ them GearSwap answered eight presses `Abort: You are stunned.` Why the client's 
 failed is not known, and `debug` adds `(not in the client's list)` when the packet
 names a status that list does not, or `(in the client's list, where ipairs does not
 reach)` when only a walk of every key finds it there - every other reader of that
-list walks it with `ipairs`. **Unverified in a live client since** (row 40
-of the plan).
+list walks it with `ipairs`. **Confirmed in a live client** (Kevin's weekend of
+2026-11-14, row 40 of the plan): 211 presses were swallowed under amnesia, stun,
+sleep and terror, none reached GearSwap, and the client's list agreed with the packet
+every time. So the first runs' failure was most likely not the list's at all: those
+runs, like the first session of that weekend, were probably on the build before the
+rule existed.
 
 **No packet says a lock is over** (atom0s' `0x0028` notes and LandSandBoat's
 server packets show none), so the lock's LENGTH is the one constant, and it is
@@ -704,23 +708,44 @@ answers it, and the bar sat out its 2s; started, no finish comes, the TP is
 kept, and the bar waited 1.2s and then locked 2.4s. Once the target is dead
 the queue stops waiting, and after a start it locks NOTHING - where the death
 shows inside the 1.2s the start is waited on; seen later, the lock the lost
-finish was given stands. **Dead is the game's word first**: a `0x029` saying the
+finish was given stands. **Dead is the game's word alone** (Kevin, 2026-11-16): a `0x029` saying the
 target fell, by the Debuffed addon's messages (6, 20, 113, 406, 605, 646),
 remembered for 30s or until that id acts again, an interrupted cast being no act.
-The client's mob table - no HP, or status 2 or 3, asked by id through the player
-service - is asked beside it, and alone it caught none of ten deaths in Kevin's
-run of 2026-11-12. `debug` writes each death the game reports (`fell <id>, message
+The client's mob table was asked beside it until then and is not any more: it shows
+a mob dead a third of a second or more BEFORE the packets of the weaponskill that
+killed it arrive, so over a weekend on `a93e3ec` 21 of 65 waits ended early on the
+player's own killing blow, the bar reading free in mid-weaponskill. The message came
+for every one of the 44 real ones, other players' kills among them (859 deaths
+reported). `debug` writes each death the game reports (`fell <id>, message
 <n>`) and who an unanswered weaponskill left for, so a log can set the two side
 by side. **Unverified: that
 the game locks nothing there** (row 36 of the plan); should it, what goes out
 at the death is refused, and the refusals bracket the real lock. Weaponskills
 alone: a Raise is aimed at a corpse, and a cast cut short has its interrupt. A
-target neither can say of reads as alive. **A held weaponskill pinned to a target
+target the game has said nothing of reads as alive. **A weaponskill pressed within two
+seconds of the game saying its target fell goes nowhere** (Kevin, 2026-11-16), judged at the press
+and at a cursor's OK as the TP and the statuses are, and silent outside `debug`
+(`swallowed <name>, the target died (<id> fell <n>s ago)`). 44 went out at a corpse
+that weekend, each costing GearSwap its precast and a packet the server ignores, and
+GearSwap cancelled the press after it nine times. **The rule stops only one pressed
+after the game's word**, about 13 of those 44: 17 left before the death message came,
+14 inside the frame or two a press takes to leave, and the 13 all left within half a
+second of it. **Two seconds, and not the 30 a death is remembered for** (Kevin, after
+review: "Yes, 2 seconds"): a mob back up under the id that fell - an NM popped again at
+once, one that reraises - would otherwise take no weaponskill from the bar until it
+acted, and one id's two deaths came 42.7s apart that weekend. From two seconds on the
+press goes as it always did; held instead, it is still dropped at the release while
+the death is remembered. Weaponskills alone, and where nothing can say who a press is
+aimed at (`<ft>`, `<pN>`, a slot bound with no target) it goes as before.
+With the table gone a death the game sends no message for is never seen; whether a
+chat filter on other players' battle messages withholds one is unverified (Kevin's
+are off, for his damage parse). **Unverified in a live client** (row 44). **A held weaponskill pinned to a target
 that has died is dropped at the release**, and so is a held spell pinned to a dead
 monster (Kevin, 2026-11-12: a held Sleepga released at a statue 1.2s dead was never
 answered, and the Sleepga meant for the pack went out 4s late). A monster is an id
 from 0x01000000 up, never a player's, so a held Raise still goes, and an ability is
-released as before. **Unverified in a live client** (rows 41 and 42).
+released as before. Each was dropped once in a live client, and rightly (Kevin's
+weekend of 2026-11-14, rows 41 and 42).
 
 `debug` is `on` plus a line per edge in `<addon>/debug.log`, appended with raw `io`,
 dated and stamped with the clock, and never in chat (Kevin, 2026-11-01; the client

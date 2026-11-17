@@ -1106,24 +1106,16 @@ describe("the action service", function()
         .. string.char(7, 0)
         .. string.rep("\0", 16)
 
-      it("is dead once the client's mob has no HP left, or lies dead", function()
-        for _, dead in ipairs({ { hpp = 0, status = 1 }, { hpp = 3, status = 2 }, { hpp = 3, status = 3 } }) do
+      -- The client shows a mob dead before the packets of the blow that killed
+      -- it (Kevin, 2026-11-16), so its table says nothing here.
+      it("lives however the client's mob table shows it, until the game says it fell", function()
+        for _, shown in ipairs({ { hpp = 0, status = 1 }, { hpp = 3, status = 2 }, { hpp = 3, status = 3 } }) do
           local service, env = queued()
-          env.mobs = { [MOB] = { id = MOB, hpp = 40, status = 1 } }
+          env.mobs = { [MOB] = shown }
           service.on_outgoing(0x01A, WEAPONSKILL_AT_MOB)
           service.tick()
-          assert.is_true(service.queue.busy())
-          env.mobs[MOB] = dead
-          service.tick()
-          assert.is_false(service.queue.busy(), "status " .. dead.status)
+          assert.is_true(service.queue.busy(), "status " .. shown.status)
         end
-      end)
-
-      it("lives for all the queue knows when the client no longer has the mob", function()
-        local service = queued()
-        service.on_outgoing(0x01A, WEAPONSKILL_AT_MOB)
-        service.tick()
-        assert.is_true(service.queue.busy())
       end)
 
       it("is dead once the action message says it fell, whatever the client's mob shows", function()

@@ -721,14 +721,15 @@ start bracket the true lock. Every line is in `debug.log`.
 | 33 | Press Cure IV again late in its own lock, about +1.8 after its finish | `hold Cure IV`, `release`, and it casts at about +2.72, with no `not held` and no refusal | A short recast inside a lock is held. Passes, 10 of 10 on `2e4fb77` |
 | 34 | Cast Shell V on one target, then OK it on the next as soon as the arrow can be raised, several times over | `hold Shell V`, `Shell V waits ...s on its recast` where its recast outlasts the lock, then `release`, and it casts, with no refusal | The recast grace (2026-11-07). At one second it missed Shell V without haste, 11 of 11 ending 1.28 to 1.31s past the lock (2026-11-08); unverified at two |
 | 35 | Start a weaponskill on a mob as it moves out of range, then mash a macro through | `finish weaponskill naming no spell, message 78, lock 2.40s`, then `refused` lines, then a `start` | The lock after a too-far. 2.4 is the weaponskill's, unverified there: the 2026-11-10 run brackets it between +1.07 refused and +2.57 accepted |
-| 36 | Mash a weaponskill slot on a mob that dies while the weaponskill is readying | `the target died, no finish to come`, then `out weaponskill` at once and either a `start` or `refused` lines | Whether the game locks after a weaponskill its target died under; the refusals, if any, bracket that lock. The line never came on `dd6753a` (2026-11-12, once of once), the death asked of the client's table alone |
-| 37 | Mash a weaponskill slot as a mob dies with the next one in reach | `the target died, no answer to come`, then `out weaponskill` and its `start` inside a second | The wait a dead target cost was 2s; whether GearSwap holds the press back itself is unknown. The line never came on `dd6753a` (2026-11-12, nine of nine); the game's death messages are read since |
+| 36 | Mash a weaponskill slot on a mob that dies while the weaponskill is readying | `the target died, no finish to come`, then `out weaponskill` at once and either a `start` or `refused` lines | Whether the game locks after a weaponskill its target died under; the refusals, if any, bracket that lock. The line never came on `dd6753a` (2026-11-12, once of once), the death asked of the client's table alone. On `a93e3ec` it came fourteen times and each was early, off that table and under the player's own killing blow; the table is not asked since (2026-11-16), so the line now needs someone else's kill between the start and the finish |
+| 37 | Mash a weaponskill slot as a mob dies with the next one in reach | `the target died, no answer to come`, then `out weaponskill` and its `start` inside a second | The wait a dead target cost was 2s; whether GearSwap holds the press back itself is unknown. The line never came on `dd6753a` (2026-11-12, nine of nine); the game's death messages are read since. Confirmed on `a93e3ec` (weekend of 2026-11-14): 44 times, and the next weaponskill landed 17 times of the 39 one was pressed. Such a press is swallowed since (row 44) |
 | 38 | Press a cursor slot where no arrow can be raised, wait 2s, then run a `/ta <stnpc>` macro and OK it | `no arrow for <name>`, and the macro's cursor works with nothing cast | A cursor that raised no arrow must not take another's OK |
 | 39 | Start a ranged attack on a mob that dies before the shot | Whether an interrupt or a finish follows the `start ranged`, or nothing for 30s | Whether a ranged start needs the dead-target rule too (review, 2026-11-12) |
-| 40 | With 1000 TP, press a weaponskill slot under Amnesia, and again stunned or asleep | `swallowed <name>, amnesia` (or `stun`, `sleep`), no `out weaponskill`, and no `Abort:` line in chat | That the press no longer reaches GearSwap. Failed on `dd6753a` (2026-11-12): three stuns were never seen, asked of the client's list. The `0x063` is read since, and `(not in the client's list)` after the status says the client's list still lacks it, `(in the client's list, where ipairs does not reach)` that it holds it off its array |
-| 41 | Mash a weaponskill slot through a lock while the party kills the mob, then stop pressing | `dropped <name>: the target died`, and no `out weaponskill` at the corpse | The held drop, and that the game's death messages reach the client for someone else's kill |
-| 42 | OK a Sleepga's cursor on a mob during a lock, and have the mob die before the lock ends | `dropped Sleepga: the target died`, and the next Sleepga goes at once | The held drop for a spell, and that a monster's id is never under 0x01000000 |
+| 40 | With 1000 TP, press a weaponskill slot under Amnesia, and again stunned or asleep | `swallowed <name>, amnesia` (or `stun`, `sleep`), no `out weaponskill`, and no `Abort:` line in chat | That the press no longer reaches GearSwap. Failed on `dd6753a` (2026-11-12): three stuns were never seen, asked of the client's list. The `0x063` is read since, and `(not in the client's list)` after the status says the client's list still lacks it, `(in the client's list, where ipairs does not reach)` that it holds it off its array. Confirmed on `a93e3ec` (weekend of 2026-11-14): 211 swallowed, none through, and neither note was ever written |
+| 41 | Mash a weaponskill slot through a lock while the party kills the mob, then stop pressing | `dropped <name>: the target died`, and no `out weaponskill` at the corpse | The held drop, and that the game's death messages reach the client for someone else's kill. Confirmed on `a93e3ec` (weekend of 2026-11-14): an Expiacion dropped, and 859 `fell` lines, others' kills among them |
+| 42 | OK a Sleepga's cursor on a mob during a lock, and have the mob die before the lock ends | `dropped Sleepga: the target died`, and the next Sleepga goes at once | The held drop for a spell, and that a monster's id is never under 0x01000000. Seen once on `a93e3ec` (weekend of 2026-11-14), a Dia III, dropped rightly |
 | 43 | With the party full, let AutoTrust cast a Trust, and another with enmity held | `refused, system message 298 (param <n>)` for the full party and `300` for the enmity, each right after the `out spell`, and a press held behind it goes at once. `no spell was waiting` after one means it freed nothing. 296 or 297, should either come, reads the same | That these are what the game sends and free the bar, and that 298 and 300 are those two lines, as LandSandBoat's table has them |
+| 44 | Mash a weaponskill slot on a mob as it dies, and keep mashing until the next one is targeted | `swallowed <name>, the target died (<id> fell <n>s ago)` for each press in the two seconds after that mob's `fell` line, no `out weaponskill` at it then, and the first press on the next target goes | The press at a fallen target (2026-11-16), and that nothing alive is taken for one. The ages say whether two seconds is enough: no corpse was pressed at more than half a second after its death on `a93e3ec`, and an `out weaponskill` at a corpse later than two seconds, with `the target died, no answer to come` after it, is one the window missed |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -1092,3 +1093,96 @@ Still `dd6753a`: none of the fixes above were in it.
   a Dispel press that took its OK. The same question as Blind above.
 - A weaponskill sent with the TP for it was refused "not enough TP" (192) once,
   22:24:39, a monster's move landing in between. Nothing to do.
+
+## A weekend on `a93e3ec` (Kevin, 2026-11-14 and 2026-11-15)
+
+One `debug.log` holding three sessions, told apart by the clock starting over, with the
+chat logs beside it. The first (2026-11-13 20:00 to 02:31) was NOT `a93e3ec`: it writes
+the bare `no answer` after a weaponskill, no `fell` line and no status swallow, and 36
+presses under a status went on to GearSwap. The other two (2026-11-14 17:56 to 00:37 and
+2026-11-15 15:01 to 21:40) were, and everything below is theirs.
+
+**What held.**
+
+- **The statuses** (row 40). 211 weaponskill presses swallowed - amnesia 174 over ten
+  episodes, stun 24 over three, sleep 10, terror 3 - and none reached GearSwap. The
+  client's list agreed with the packet every time: neither note was ever written. So
+  that list most likely never failed (my reading, at 80%): the runs of 2026-11-12 that
+  showed it failing were probably on the build before `dd6753a`, as this weekend's
+  first session was.
+- **The locks.** 715 held presses released and none refused by a lock; seven were
+  refused for range or line of sight. A macro after a weaponskill was refused at +2.17
+  and accepted at +2.33; after a spell, refused up to +2.58.
+- **The death messages** (row 41). 859 `fell` lines, message 6 for 849 of them and 20
+  for ten, other players' kills among them.
+- **Held presses at a corpse** (rows 41 and 42). Two, an Expiacion and a Dia III, each
+  dropped rightly.
+
+**What the mob table got wrong.** 65 waits ended on a dead target. 44 were real: a
+weaponskill sent at a mob whose death message had already come, the wait ending a
+median 0.02s after the send. 21 were early: the client's table showed the mob dead 0.33
+to 0.5s before the start or the finish of the player's OWN killing weaponskill arrived,
+no death message having come yet, and the bar read free in mid-weaponskill. All
+fourteen `no finish to come` were among them. No press is seen going out into one.
+Kevin, 2026-11-16: "Yes, fix both".
+
+- The table is not asked any more. A death is the `0x029` alone, which came for every
+  one of the 44. The service's `dead` dep is gone, and the `get_mob_by_id` the entry
+  point handed it for that.
+- Row 36 is therefore still open: no weaponskill has been seen to start and then lose
+  its target to someone else's blow.
+- The remembered death has no table left to outrank (the review note of 2026-11-12
+  above): a mob back up under the same id reads as dead until it acts, or 30s.
+
+**Weaponskills sent at a corpse.** After those 44 the next press went out and landed 17
+times, went out at a corpse again 11 times, was cancelled by GearSwap nine times (the
+one before it still its `prepared_action`), was refused once and was another kind of
+send once; five times nothing was pressed.
+
+- A weaponskill pressed within two seconds of the game saying its target fell goes
+  nowhere now, at the press, free or busy, and at a cursor's OK: `swallowed <name>, the
+  target died (<id> fell <n>s ago)` in `debug`, nothing in chat. Weaponskills alone. A
+  press nothing can pin (`<ft>`, `<pN>`) goes as before, and so does a slot bound with
+  no target, the binder's default: nothing names who it is aimed at, so neither this
+  rule nor the held drop can judge it (review, 2026-11-16).
+- **It stops about 13 of the 44, not all of them** (measured after the review,
+  2026-11-16). Set against the newest `fell` line before each: 17 left BEFORE the
+  message came, and their wait ends when it does; 27 left at or after it, every one
+  within 0.48s. A press takes 0.01 to 0.04s to leave as a packet (1,160 releases, mean
+  0.019s), so the 14 that left within 0.04s were pressed before the message or in its
+  frame, and the 13 from 0.05s to 0.48s after it are the ones a rule at the press can
+  see. Nobody mashed at a corpse for longer than half a second.
+- The target is the pin's, so the pin is asked at every press that names a target,
+  where it was asked only at a hold.
+- **Two seconds, not the 30 a death is remembered for** (review, 2026-11-16; Kevin:
+  "Yes, 2 seconds"). On the 30s memory, a mob back up under the id that fell and not
+  yet acting - an NM popped again at once, a mob that reraises - would take no
+  weaponskill from the bar until it acted, a press that silently does nothing where a
+  death wrongly remembered used to cost a wait ended early or a held press. No id fell
+  twice inside 30s in these logs; nine did inside two minutes, the nearest two deaths
+  of one id 42.7s apart, so a respawn inside 30s is not ruled out. Two seconds is four
+  times the latest press seen at a corpse.
+- From two seconds on the press goes as it always did, and the wait for it ends at once
+  if the mob is still a corpse. Held instead, it is dropped at the release while the
+  death is remembered: the wait and the held drop keep the 30s.
+- The line's id and age are there to show a swallow at a mob that is up, and how long
+  after a death presses come. Row 44.
+- With the table gone a death the game sends no message for is never seen. Whether a
+  chat filter on other players' battle messages withholds one is unverified; Kevin's
+  are off (review, 2026-11-16).
+
+**Seen, and left alone.**
+
+- A spell SENT as its target dies still waits its cast time plus 0.4s: Thunder V, Fire
+  V and Blizzard V 7.9s each, Silence 3.4s. Kevin's call, not asked for.
+- 21 Stonega and Diaga from a macro, sent inside a lock, were never answered: the
+  server dropped them with no refusal.
+- Row 43 saw nothing. The one Trust refused was for enmity gained in mid-cast, which
+  came as a start and then `interrupted spell`.
+- Unlisted `0x029` messages 4, 5, 204, 206 and 234 came with a send unanswered. None is
+  a refusal.
+- 71 lines of `Abort: You have Amnesia.` inside three seconds (2026-11-14 21:05:52),
+  the framerate near zero. Not the bar's: the queue had swallowed all 29 Expiacion
+  presses of that episode and logged no press through the burst, which began as Mighty
+  Guard wore off and ended in `out ability Unbridled Learning` and `out ability
+  Diffusion`. GearSwap's own BLU auto-buff chain (`Vanar_Blu_Gear.lua`), at 85%.
