@@ -613,7 +613,8 @@ lock, but a spell finish then has to name the spell the start named (Kevin,
 and what it held is dropped. Everything else is a packet, whoever caused it: outgoing
 `0x01A`/`0x037` (the only sight of a macro or of what GearSwap injects),
 `0x028` starts, finishes and interrupts, `0x029` refusals (GearSwap's
-`unable_to_use` list), all through handlers the resource libraries gate, so with
+`unable_to_use` list) and the six `0x053` system messages that refuse a Trust cast
+(below), all through handlers the resource libraries gate, so with
 the libraries failed the queue reads as off whatever `core.lua` says (the entry
 point's `no_packets`): it would see no cast and no lock, and a cursor slot's OK
 would reach the game as a `/ta`. Macros and typed commands are never held, but their
@@ -725,16 +726,24 @@ released as before. **Unverified in a live client** (rows 41 and 42).
 dated and stamped with the clock, and never in chat (Kevin, 2026-11-01; the client
 runs on another computer). What went out, started or was refused says how long after
 the last finish it did. The file is never truncated, and it is written from `debug`
-alone, a line when something happens and never one per frame. A `0x053` system
-message that comes while a send is unanswered is named there (`system message <id>
+alone, a line when something happens and never one per frame. Any `0x053` system
+message but the six below that comes while a send is unanswered is named there (`system message <id>
 (param <n>)`), and so is a `0x029` of your own that is no refusal the queue knows
-(`unlisted message <id>`). Nothing acts on either: a Trust cast the server refuses -
-the party full, or enmity held - is answered by no refusal the queue knows, and each
-held the bar 2.4s, ten times in one run (Kevin, 2026-11-12), so a log has to say
-which messages those are first. GearSwap's own `0x053` handler takes messages 298-301
-for a refused Trust cast (not the leader, not solo, the party full, already called),
-so the party-full line is very likely one of them; the enmity line's id is not known.
-**Unverified in a live client** (row 43).
+(`unlisted message <id>`); nothing acts on those. **A Trust cast the server refuses
+is taken to be answered by a system message**: the queue saw no refusal for one, and
+unanswered each held the bar 2.4s, ten times in one run (Kevin, 2026-11-12). `0x053`
+messages 296-301 end the wait for whatever spell went out and is unanswered (Kevin,
+2026-11-12: "Yes, add them", and of the first two the day after: "Add 296 and 297
+first") - a spell's wait and no other, so one arriving late frees neither a
+weaponskill's wait nor a press still on its way out. They are LandSandBoat's six for
+a Trust not called (`scripts/enum/msg.lua`): seeking a party (296), just after an
+invite (297), the maximum number of alter egos already called (298), that alter ego
+already out (299), enmity held (300) and a caster neither solo nor the party leader
+(301) - both lines of that run among them. GearSwap's own handler takes the last four
+for its newest command interrupted; the first two rest on that table alone. `debug`
+writes `refused, system message <id> (param <n>)`, with `no spell was waiting` after
+it where it freed nothing. **Unverified in a live client** (row 43), the reading of
+all six included.
 **The lock lengths are settings** (`//hud queue lock [<kind> <seconds>]`, 0 to 5 in
 tenths, and a row each on the settings window's `global` panel, Kevin, 2026-10-31).
 `core.lua`'s `queue_locks` holds only the kinds that have been set, deliberately

@@ -1547,6 +1547,83 @@ describe("the action queue", function()
       env.now = env.now + 2.01
       assert.is_false(queue.busy())
     end)
+
+    --[[ Kevin, 2026-11-12: AutoTrust cast a Trust with the party full, the queue
+         saw no refusal, and each such cast held the bar 2.4s, ten times in one
+         run. These are LandSandBoat's six system messages for a Trust not
+         called, the last four of them GearSwap's too; that they are what the
+         game sends is unverified here. ]]
+    describe("a Trust cast the game refuses", function()
+      local TRUST = 900
+
+      for _, message in ipairs({ 296, 297, 298, 299, 300, 301 }) do
+        it("ends the wait for the spell that went out on system message " .. message, function()
+          local queue = world()
+          queue.on_outgoing(0x01A, outgoing_action(MAGIC, TRUST))
+          queue.on_system_message(system_message(message))
+          assert.is_false(queue.busy())
+        end)
+      end
+
+      it("lets a press held behind that cast go", function()
+        local queue = world()
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, TRUST))
+        assert.is_true(queue.press(spell(), command()))
+        queue.on_system_message(system_message(298))
+        assert.are.equal(command(), queue.step())
+      end)
+
+      it("takes no other system message for one", function()
+        local queue = world()
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, TRUST))
+        queue.on_system_message(system_message(295))
+        queue.on_system_message(system_message(302))
+        assert.is_true(queue.busy())
+      end)
+
+      it("ends no wait but a spell's", function()
+        local queue = world()
+        queue.on_outgoing(0x01A, outgoing_action(WEAPONSKILL, 42))
+        queue.on_system_message(system_message(298))
+        assert.is_true(queue.busy())
+      end)
+
+      it("leaves a press that has not left the client yet waiting", function()
+        local queue = world()
+        assert.is_false(queue.press(spell(), command()))
+        queue.on_system_message(system_message(298))
+        assert.is_true(queue.busy())
+      end)
+
+      it("ends no cast that has started", function()
+        local queue = world()
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, TRUST))
+        queue.on_action(start_of(8, TRUST))
+        queue.on_system_message(system_message(298))
+        assert.is_true(queue.busy())
+      end)
+
+      it("leaves the lock running", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.now = env.now + 1
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, TRUST))
+        queue.on_system_message(system_message(298))
+        assert.is_true(queue.busy())
+        -- Past the lock, and still inside the 2s that cast would have been waited on.
+        env.now = env.now + 1.71
+        assert.is_false(queue.busy())
+      end)
+
+      it("hears nothing while the queue is off", function()
+        local queue, env = world()
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, TRUST))
+        env.mode = "off"
+        queue.on_system_message(system_message(298))
+        env.mode = "on"
+        assert.is_true(queue.busy())
+      end)
+    end)
   end)
 
   describe("the backstops", function()
@@ -2993,15 +3070,35 @@ describe("the action queue", function()
       local queue, env = world({ mode = "debug" })
       queue.on_outgoing(0x01A, outgoing_action(MAGIC, 12))
       env.now = env.now + 0.5
-      queue.on_system_message(system_message(298, 7))
-      assert.truthy(logged(env):find("system message 298 (param 7) with the last send unanswered", 1, true))
+      queue.on_system_message(system_message(12, 7))
+      assert.truthy(logged(env):find("system message 12 (param 7) with the last send unanswered", 1, true))
       queue.step()
       assert.is_true(queue.busy())
     end)
 
+    it("says a Trust cast was refused, by its system message", function()
+      local queue, env = world({ mode = "debug" })
+      finish_cast(queue)
+      env.now = env.now + 3
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC, 900))
+      env.now = env.now + 0.5
+      queue.on_system_message(system_message(298, 7))
+      assert.truthy(logged(env):find("refused, system message 298 (param 7) +3.50s after finish", 1, true))
+      assert.is_nil(logged(env):find("with the last send unanswered", 1, true))
+      assert.is_nil(logged(env):find("no spell was waiting", 1, true))
+    end)
+
+    it("says when that refusal found no spell waiting on an answer", function()
+      local queue, env = world({ mode = "debug" })
+      queue.on_outgoing(0x01A, outgoing_action(WEAPONSKILL, 42))
+      queue.on_system_message(system_message(299))
+      assert.truthy(logged(env):find("refused, system message 299 (param 0), no spell was waiting", 1, true))
+      assert.is_nil(logged(env):find("with the last send unanswered", 1, true))
+    end)
+
     it("stays quiet about a system message with nothing unanswered, or too short to read", function()
       local queue, env = world({ mode = "debug" })
-      queue.on_system_message(system_message(298))
+      queue.on_system_message(system_message(12))
       assert.are.same({}, env.log)
       queue.on_outgoing(0x01A, outgoing_action(MAGIC, 12))
       env.log = {}

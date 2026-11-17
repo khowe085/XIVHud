@@ -378,6 +378,10 @@ off, every press goes at once and the game decides.
   the wait. A spell the server drops with no answer at all holds the bar that
   long. A cast slowed past these times by a debuff can let a held press go
   early, and the game then refuses it.
+- **A Trust the game will not call.** When the game refuses a Trust cast -
+  you have called your maximum, that alter ego is already out, you hold
+  enmity, you are seeking a party, you have just invited someone, or you are
+  in a party you do not lead - the queue stops waiting on it at once.
 - **A weaponskill whose target dies.** The game sends nothing more for one: no
   answer if it was sent as the target died, no finish if it had started. The
   queue stops waiting as soon as the target is dead, and a held press goes.

@@ -209,6 +209,14 @@ do
   REFUSALS[tonumber(message)] = true
 end
 
+--[[ The 0x053 messages that say a Trust was not called, by LandSandBoat's
+     system message table: seeking a party, just after an invite, the maximum
+     number already called, that alter ego already out, enmity held, and a
+     caster neither solo nor the party leader. GearSwap's own handler takes
+     the last four for the cast interrupted (packet_parsing.lua); the first
+     two rest on that table alone (Kevin, 2026-11-13). ]]
+local TRUST_REFUSALS = { [296] = true, [297] = true, [298] = true, [299] = true, [300] = true, [301] = true }
+
 --[[ The 0x029 messages that say their target died, the Debuffed addon's list:
      defeats, falls to the ground, and that fall after a spell, a weaponskill,
      an added effect or an ability. ]]
@@ -832,19 +840,38 @@ local function new(deps)
   end
 
   --[[ A raw 0x053. The server answers a Trust cast it refuses ("You have called
-       forth your maximum number of alter egos") with no 0x029, so that send is
-       waited out as unanswered: 2.4s of a held bar, ten times in one of
-       Kevin's runs (2026-11-12). Debug names what comes while a send is
-       unanswered, for a log to say which messages those are. UNVERIFIED: that
-       they are 0x053s at all. ]]
+       forth your maximum number of alter egos") with one of these and no
+       0x029, and waited out as unanswered each held the bar 2.4s, ten times in
+       one of Kevin's runs (2026-11-12). The Trust refusals end the wait for
+       whatever spell went out and is unanswered, Trust or not, as GearSwap's
+       handler takes its four for its newest command; and no other wait, so one
+       arriving late frees neither a weaponskill's nor a press still on its way
+       out. Debug names any other that comes while a send is unanswered.
+       UNVERIFIED in a live client. ]]
   function self.on_system_message(data)
     if not self.enabled() or type(data) ~= "string" or #data < SYSTEM_MESSAGE_OFFSET + 1 then
+      return
+    end
+    local message = u16(data, SYSTEM_MESSAGE_OFFSET)
+    if TRUST_REFUSALS[message] then
+      local waiting = sent_spell ~= nil and running(sent_until)
+      note(
+        ("refused, system message %d (param %d)%s%s"):format(
+          message,
+          u32(data, SYSTEM_PARAM_OFFSET),
+          since_finish(),
+          waiting and "" or ", no spell was waiting"
+        )
+      )
+      if waiting then
+        answered()
+      end
       return
     end
     if unanswered() then
       note(
         ("system message %d (param %d) with the last send unanswered%s"):format(
-          u16(data, SYSTEM_MESSAGE_OFFSET),
+          message,
           u32(data, SYSTEM_PARAM_OFFSET),
           since_finish()
         )

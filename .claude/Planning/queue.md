@@ -728,7 +728,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 40 | With 1000 TP, press a weaponskill slot under Amnesia, and again stunned or asleep | `swallowed <name>, amnesia` (or `stun`, `sleep`), no `out weaponskill`, and no `Abort:` line in chat | That the press no longer reaches GearSwap. Failed on `dd6753a` (2026-11-12): three stuns were never seen, asked of the client's list. The `0x063` is read since, and `(not in the client's list)` after the status says the client's list still lacks it, `(in the client's list, where ipairs does not reach)` that it holds it off its array |
 | 41 | Mash a weaponskill slot through a lock while the party kills the mob, then stop pressing | `dropped <name>: the target died`, and no `out weaponskill` at the corpse | The held drop, and that the game's death messages reach the client for someone else's kill |
 | 42 | OK a Sleepga's cursor on a mob during a lock, and have the mob die before the lock ends | `dropped Sleepga: the target died`, and the next Sleepga goes at once | The held drop for a spell, and that a monster's id is never under 0x01000000 |
-| 43 | With the party full, let AutoTrust cast a Trust, and another with enmity held | `system message <id> (param <n>) with the last send unanswered` after the `out spell`, or `unlisted message <id> with the last send unanswered` if the answer is a `0x029` after all | Which packet and which ids answer a refused Trust cast, before anything takes them for refusals |
+| 43 | With the party full, let AutoTrust cast a Trust, and another with enmity held | `refused, system message 298 (param <n>)` for the full party and `300` for the enmity, each right after the `out spell`, and a press held behind it goes at once. `no spell was waiting` after one means it freed nothing. 296 or 297, should either come, reads the same | That these are what the game sends and free the bar, and that 298 and 300 are those two lines, as LandSandBoat's table has them |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -1016,11 +1016,32 @@ and 1.30s late and were pressed again, and a Stun pressed at 20:35:00 was never 
 
 - Neither line is in Windower's action messages, so they are taken to be `0x053`
   system messages. Unverified here, but GearSwap agrees for one of them: its own
-  `parse.i[0x053]` takes messages 298-301 (0x12A-0x12D) for a Trust cast refused - not
-  the leader, not solo, the party full, already called - and runs aftercast (review,
-  2026-11-12). The enmity line is not on its list.
+  `parse.i[0x053]` takes messages 298-301 (0x12A-0x12D) for a Trust cast refused - by
+  its comment a caster neither solo nor the party leader, a full party, an alter ego
+  already out - and runs aftercast on its newest command (review, 2026-11-12).
+- LandSandBoat's system message table names them (`scripts/enum/msg.lua`, `base`
+  branch, read 2026-11-12): 296 seeking a party, 297 "While inviting a party member,
+  you must wait a while", 298 "You have called forth your maximum number of alter
+  egos", 299 already called, 300 "You cannot use Trust magic while having gained
+  enmity", 301 neither solo nor the party leader. So BOTH lines of that run are among
+  GearSwap's four, whatever its comment leaves out. 296 and 297 are not GearSwap's.
 - `debug` names a `0x053` that comes while a send is unanswered, id and parameter.
-  Nothing acts on one until a log has shown which they are. Row 43.
+  Row 43.
+- Kevin, 2026-11-12, on GearSwap's four: "Yes, add them". A `0x053` 298-301 ends the
+  wait for whatever spell went out and is unanswered, and `debug` writes `refused,
+  system message <id> (param <n>)`. A spell's wait alone: one arriving late frees
+  neither a weaponskill's wait nor a press that has not left the client, and `debug`
+  then adds `no spell was waiting`. Nothing locks, no cast having happened.
+- Kevin, 2026-11-13, of the two GearSwap does not take: "Add 296 and 297 first". All
+  six of LandSandBoat's are refusals now, the first two on that table alone.
+- It does not ask whether that spell IS a Trust: another spell sent before the refusal
+  came would have its wait ended instead, and a press held behind it would go out into
+  its cast. GearSwap blocks a second command while the first is unanswered, so it
+  would take a macro sent past it; left as it is (review, 2026-11-12).
+- Not known: whether the game ever refuses at the END of a Trust's cast, the party
+  having filled meanwhile. That refusal would come after the start, with no send
+  waiting, and free nothing - the start would run to its backstop and lock 2.7s. The
+  log would show `no spell was waiting` (review, 2026-11-12).
 - A `0x029` the queue does not know for a refusal was dropped in silence, so those two
   logs cannot say none came. `debug` names one of your own that comes while a send is
   unanswered too (`unlisted message <id>`), whichever packet it turns out to be.

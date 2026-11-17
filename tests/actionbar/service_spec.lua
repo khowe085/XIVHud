@@ -1179,12 +1179,15 @@ describe("the action service", function()
       end)
     end)
 
-    it("hears a system message, which debug names while a send is unanswered", function()
+    it("hears the system message that refuses a Trust cast, and stops waiting on that cast", function()
       local service, env = queued("debug")
-      service.on_outgoing(0x01A, string.rep("\0", 10) .. string.char(3, 0) .. string.rep("\0", 16))
+      -- A raw 0x01A: a spell, category 3 at 0x0A, with its id, 900, at 0x0C.
+      service.on_outgoing(0x01A, string.rep("\0", 10) .. string.char(3, 0, 132, 3) .. string.rep("\0", 14))
+      assert.is_true(service.queue.busy())
       -- A raw 0x053: message 298 at 0x0C.
       service.on_chunk(0x053, string.rep("\0", 12) .. string.char(42, 1, 0, 0), nil)
-      assert.truthy(logged(env):find("system message 298", 1, true))
+      assert.is_false(service.queue.busy())
+      assert.truthy(logged(env):find("refused, system message 298", 1, true))
     end)
 
     it("names its mode among the tuning core seeds, shipping on", function()
