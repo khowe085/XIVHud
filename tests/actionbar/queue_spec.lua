@@ -1894,14 +1894,51 @@ describe("the action queue", function()
         assert.is_true(queue.busy())
       end)
 
-      it("ends a start once its target is dead, with no lock", function()
+      --[[ Kevin's run of 2026-11-17: twice a weaponskill started and its target
+           died before it landed. Freed at the death, the next weaponskill went
+           unanswered 0.88s after the one start and was refused 2.45s after the
+           other, while one sent 2.95s after a start was accepted: the lock a
+           finish would have begun. ]]
+      it("ends a start once its target is dead, and locks as its finish would", function()
         local queue, env = world()
         queue.on_action(weaponskill_at(MOB))
         queue.press(spell(), command())
-        env.now = env.now + 0.3
-        assert.is_nil(queue.step())
+        env.now = env.now + 0.76
         falls(queue, MOB)
+        assert.is_nil(queue.step())
+        env.now = env.now + 2.39
+        assert.is_nil(queue.step())
+        env.now = env.now + 0.02
         assert.are.equal(command(), queue.step())
+      end)
+
+      it("locks from a beat after the start when the death's word comes sooner than a finish could", function()
+        local queue, env = world()
+        queue.on_action(weaponskill_at(MOB))
+        env.now = env.now + 0.1
+        falls(queue, MOB)
+        queue.step()
+        env.now = env.now + 2.69
+        queue.step()
+        assert.is_true(queue.busy())
+        env.now = env.now + 0.02
+        queue.step()
+        assert.is_false(queue.busy())
+      end)
+
+      it("takes the weaponskill lock as set when a death ends a start", function()
+        local queue, env = world()
+        env.locks = { weaponskill = 1 }
+        queue.on_action(weaponskill_at(MOB))
+        env.now = env.now + 0.5
+        falls(queue, MOB)
+        queue.step()
+        env.now = env.now + 0.99
+        queue.step()
+        assert.is_true(queue.busy())
+        env.now = env.now + 0.02
+        queue.step()
+        assert.is_false(queue.busy())
       end)
 
       it("leaves a spell's start alone when its target is dead", function()
@@ -1916,16 +1953,16 @@ describe("the action queue", function()
         assert.is_true(queue.busy())
       end)
 
-      it("still locks on that weaponskill's finish if it comes after all", function()
+      it("lets that weaponskill's finish replace the death's lock if it comes after all", function()
         local queue, env = world()
         queue.on_action(weaponskill_at(MOB))
         falls(queue, MOB)
         queue.step()
-        assert.is_false(queue.busy())
+        env.now = env.now + 1
         queue.on_action(action(3, 42))
         env.now = env.now + 2.39
         queue.step()
-        assert.is_true(queue.busy())
+        assert.is_true(queue.busy(), "the finish's lock, which outlasts the death's")
       end)
 
       it("keeps the lock a lost finish was given when the death shows only after it", function()
@@ -1942,12 +1979,19 @@ describe("the action queue", function()
         assert.is_false(queue.busy())
       end)
 
-      it("ends the start that comes after the answer it stopped waiting for", function()
-        local queue = world()
+      it("locks from the start that comes after the answer it stopped waiting for", function()
+        local queue, env = world()
         queue.on_outgoing(0x01A, outgoing_action(WEAPONSKILL, 42, MOB))
         falls(queue, MOB)
         queue.step()
+        assert.is_false(queue.busy())
+        env.now = env.now + 0.3
         queue.on_action(weaponskill_at(MOB))
+        queue.step()
+        env.now = env.now + 2.79
+        queue.step()
+        assert.is_true(queue.busy())
+        env.now = env.now + 0.02
         queue.step()
         assert.is_false(queue.busy())
       end)
@@ -2429,28 +2473,29 @@ describe("the action queue", function()
     end)
 
     --[[ A death is remembered 30s, and a mob back up under its id inside that
-         would take no weaponskill from the bar until it acted. No press at a
-         corpse came later than 0.48s after the death, so this rule looks back
-         two seconds and no further (Kevin, 2026-11-16: "Yes, 2 seconds"). ]]
+         would take no weaponskill from the bar until it acted, so this rule
+         looks back three seconds and no further. It was two (Kevin,
+         2026-11-16) until a run on it showed presses at a corpse up to 1.76s
+         after the death, nine of 52 past a second (Kevin, 2026-11-18). ]]
     describe("more than a moment after the death", function()
-      it("still goes nowhere just short of two seconds", function()
+      it("still goes nowhere just short of three seconds", function()
         local queue, env = ready()
         falls(queue, MONSTER)
-        env.now = env.now + 1.99
+        env.now = env.now + 2.99
         assert.is_true(queue.press(BLADE, BLADE_COMMAND))
       end)
 
-      it("goes as it always did from two seconds on", function()
+      it("goes as it always did from three seconds on", function()
         local queue, env = ready()
         falls(queue, MONSTER)
-        env.now = env.now + 2
+        env.now = env.now + 3
         assert.is_false(queue.press(BLADE, BLADE_COMMAND))
       end)
 
-      it("goes at a cursor's OK from two seconds on", function()
+      it("goes at a cursor's OK from three seconds on", function()
         local queue, env = ready()
         falls(queue, MONSTER)
-        env.now = env.now + 2
+        env.now = env.now + 3
         queue.press({ type = "ws", action = "Savage Blade", target = "stnpc" }, 'input /ws "Savage Blade" <stnpc>')
         queue.on_text("/ta <stnpc>")
         queue.on_text("/ta 17000001")
@@ -2459,10 +2504,10 @@ describe("the action queue", function()
         assert.are.equal('input /ws "Savage Blade" 17000001', instead)
       end)
 
-      it("is held from two seconds on, and dropped at the release while the death is remembered", function()
+      it("is held from three seconds on, and dropped at the release while the death is remembered", function()
         local queue, env = ready()
         falls(queue, MONSTER)
-        env.now = env.now + 2
+        env.now = env.now + 3
         finish_cast(queue)
         assert.is_true(queue.press(BLADE, BLADE_COMMAND))
         assert.is_not_nil(queue.held())
@@ -3402,7 +3447,18 @@ describe("the action queue", function()
       assert.is_not_nil(logged(env):find("the target died, no answer to come", 1, true))
       queue.on_action(weaponskill_at(MOB))
       queue.step()
-      assert.is_not_nil(logged(env):find("the target died, no finish to come", 1, true))
+      assert.is_not_nil(logged(env):find("the target died, no finish to come, lock 2.40s", 1, true))
+    end)
+
+    it("says what went out ahead of the finish a death was taken for", function()
+      local queue, env = world({ mode = "debug" })
+      queue.on_action(weaponskill_at(MOB))
+      env.now = env.now + 0.1
+      falls(queue, MOB)
+      queue.step()
+      env.now = env.now + 0.1
+      queue.on_outgoing(0x01A, outgoing_action(ABILITY))
+      assert.is_not_nil(logged(env):find("out ability -0.20s after finish", 1, true))
     end)
 
     it("says a cursor raised no arrow", function()

@@ -339,7 +339,7 @@ off, every press goes at once and the game decides.
   gone when you could act. The same goes for a weaponskill pressed while you
   cannot use one: asleep, petrified, stunned, charmed, terrorized, animated,
   under Amnesia or Impairment, dead, or doing something other than standing or
-  fighting (resting, mounted, in a cutscene) - and for one pressed in the two
+  fighting (resting, mounted, in a cutscene) - and for one pressed in the three
   seconds after the game reports its target dead, which is not sent at the
   corpse, where the slot is aimed at `<t>`, `<bt>` or a cursor. Range is not
   checked: a weaponskill pressed out of range still goes, and the game answers
@@ -387,10 +387,14 @@ off, every press goes at once and the game decides.
   in a party you do not lead - the queue stops waiting on it at once.
 - **A weaponskill whose target dies.** The game sends nothing more for one: no
   answer if it was sent as the target died, no finish if it had started. The
-  queue stops waiting as soon as the game reports the death, and a held press
-  goes. The one exception is a death reported more than 1.2 seconds after the
-  weaponskill started: the usual wait after a weaponskill has begun by then,
-  and runs its course. A weaponskill held for a target that dies before it can
+  queue stops waiting for either as soon as the game reports the death. A
+  weaponskill that was never answered leaves nothing to wait out, and a held
+  press goes at once. One that had started still costs the usual wait after a
+  weaponskill, as the game makes you wait there too: it runs from the death,
+  or from 0.4 seconds after the start if the death is reported sooner, and a
+  held press goes after it. A death reported more than 1.2 seconds after the
+  weaponskill started changes nothing: the usual wait has begun by then, and
+  runs its course. A weaponskill held for a target that dies before it can
   go is dropped rather than sent at the corpse, and so is a held spell aimed
   at a monster that has died. A Raise held for a fallen player still goes.
 

@@ -609,8 +609,10 @@ anchor and aims early. The one exception is a finish that never comes (Kevin,
 start then counts as finished at its spell's `cast_time` plus 0.4s, 1.2s for a
 weaponskill (three of the server's 0.4s beats: about 80 weaponskills in Kevin's
 log of 2026-11-10 each finished within 0.89s of starting, and the 3s it was until
-then held the bar 5.4s when a finish never came) or an item's `cast_time` plus 1s, and that lock is the one anchor
-that is not a packet, so a cast lengthened past it can release early. A held
+then held the bar 5.4s when a finish never came) or an item's `cast_time` plus 1s, and that lock's anchor
+is not a packet, so a cast lengthened past it can release early. (The lock after a
+weaponskill whose target died, below, has the only other: 0.4s after the start, where
+the death is reported sooner than that.) A held
 press then goes once that lock ends; a finish arriving late still replaces the
 lock, but a spell finish then has to name the spell the start named (Kevin,
 2026-11-07), so a paralysis round cannot lock an idle bar. A start nothing can time (ranged, an unknown id) keeps the 30s backstop,
@@ -706,9 +708,23 @@ drops without one holds the bar that long.
 a run where it happened thirteen times). Sent as the mob died, the server never
 answers it, and the bar sat out its 2s; started, no finish comes, the TP is
 kept, and the bar waited 1.2s and then locked 2.4s. Once the target is dead
-the queue stops waiting, and after a start it locks NOTHING - where the death
+the queue stops waiting. One never answered locks nothing, confirmed in a live
+client (Kevin's run of 2026-11-17: the next weaponskill went 0.19 to 0.48s later
+and started, three times of three). **One that had started locks as its finish
+would** (Kevin, 2026-11-18: "Yes, both"): the weaponskill's lock, from the death
+message or from 0.4s after the start, whichever is later - where the death
 shows inside the 1.2s the start is waited on; seen later, the lock the lost
-finish was given stands. **Dead is the game's word alone** (Kevin, 2026-11-16): a `0x029` saying the
+finish was given stands. It locked NOTHING there until then, and twice in that
+run the bar was freed at the death: the next weaponskill went unanswered 0.88s
+after the one start and was refused 2.45s after the other ("Unable to use weapon
+skill."), while one sent 2.95s after a start was accepted - an ordinary
+weaponskill's lock, whose finish came 0.44s after its start at the median of
+233. The death message came 0.44 and 0.76s after the start, at or after that
+would-be finish, so the lock may run a few tenths long. **Unverified at that
+length, and that it never runs short** (row 36 of the plan): two samples, the
+second's lock ending inside its own bracket (refused at 2.45s, accepted at 3.11s,
+the lock to 2.84s), and a bar press is held through it, so only a macro can test
+the edge. **Dead is the game's word alone** (Kevin, 2026-11-16): a `0x029` saying the
 target fell, by the Debuffed addon's messages (6, 20, 113, 406, 605, 646),
 remembered for 30s or until that id acts again, an interrupted cast being no act.
 The client's mob table was asked beside it until then and is not any more: it shows
@@ -718,28 +734,35 @@ player's own killing blow, the bar reading free in mid-weaponskill. The message 
 for every one of the 44 real ones, other players' kills among them (859 deaths
 reported). `debug` writes each death the game reports (`fell <id>, message
 <n>`) and who an unanswered weaponskill left for, so a log can set the two side
-by side. **Unverified: that
-the game locks nothing there** (row 36 of the plan); should it, what goes out
-at the death is refused, and the refusals bracket the real lock. Weaponskills
+by side. Weaponskills
 alone: a Raise is aimed at a corpse, and a cast cut short has its interrupt. A
-target the game has said nothing of reads as alive. **A weaponskill pressed within two
-seconds of the game saying its target fell goes nowhere** (Kevin, 2026-11-16), judged at the press
+target the game has said nothing of reads as alive. **A weaponskill pressed within three
+seconds of the game saying its target fell goes nowhere** (Kevin, 2026-11-16; two seconds
+until 2026-11-18), judged at the press
 and at a cursor's OK as the TP and the statuses are, and silent outside `debug`
 (`swallowed <name>, the target died (<id> fell <n>s ago)`). 44 went out at a corpse
 that weekend, each costing GearSwap its precast and a packet the server ignores, and
 GearSwap cancelled the press after it nine times. **The rule stops only one pressed
 after the game's word**, about 13 of those 44: 17 left before the death message came,
 14 inside the frame or two a press takes to leave, and the 13 all left within half a
-second of it. **Two seconds, and not the 30 a death is remembered for** (Kevin, after
-review: "Yes, 2 seconds"): a mob back up under the id that fell - an NM popped again at
-once, one that reraises - would otherwise take no weaponskill from the bar until it
-acted, and one id's two deaths came 42.7s apart that weekend. From two seconds on the
+second of it. **Three seconds, and not the 30 a death is remembered for**: a mob back
+up under the id that fell - an NM popped again at once, one that reraises - would
+otherwise take no weaponskill from the bar until it acted, and one id's two deaths came
+42.7s apart that weekend. It was two (Kevin, after review: "Yes, 2 seconds") until a run
+on it (2026-11-17), where the presses came up to 1.76s after the death, nine of 52 past
+a second: the weekend's half second was only what its logs could show, every press
+after the first that went out being hidden behind it (`already going`, or cancelled by
+GearSwap). The last mob of a pull leaves the target on its corpse, so that mash ends
+when the player stops, and two seconds had 0.24s to spare (Kevin, 2026-11-18: "Yes,
+both"). From three seconds on the
 press goes as it always did; held instead, it is still dropped at the release while
 the death is remembered. Weaponskills alone, and where nothing can say who a press is
 aimed at (`<ft>`, `<pN>`, a slot bound with no target) it goes as before.
 With the table gone a death the game sends no message for is never seen; whether a
 chat filter on other players' battle messages withholds one is unverified (Kevin's
-are off, for his damage parse). **Unverified in a live client** (row 44). **A held weaponskill pinned to a target
+are off, for his damage parse). **Confirmed in a live client at two seconds** (that run,
+row 44): 52 presses swallowed over 11 deaths, and no weaponskill left at a corpse the
+game had reported. **A held weaponskill pinned to a target
 that has died is dropped at the release**, and so is a held spell pinned to a dead
 monster (Kevin, 2026-11-12: a held Sleepga released at a statue 1.2s dead was never
 answered, and the Sleepga meant for the pack went out 4s late). A monster is an id

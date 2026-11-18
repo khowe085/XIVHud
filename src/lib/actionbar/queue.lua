@@ -35,7 +35,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      can only arrive late, by about a round trip, and never early. Everything
      else is a packet: what went out, what started, what finished and what was
      refused - a macro's as much as a bar's. A cast time bounds only how long a
-     spell or a start may go unanswered when lag loses its packet.
+     spell or a start may go unanswered when lag loses its packet. A weaponskill
+     whose target dies before it lands has no finish to measure from, and the
+     death's packet stands in for it (see target_died).
 
      It holds ONE press, the newest, and sends it once. It never waits long on
      a recast, which is the defect that made Selindrile's MiniQueue unusable: a
@@ -116,6 +118,10 @@ local FINISH_BACKSTOP = 30
 local SPELL_SLACK = 0.4
 local WEAPONSKILL_BACKSTOP = 1.2
 local ITEM_SLACK = 1
+--[[ How soon the server finishes a weaponskill it has started: its beat. The
+     client saw 233 of Kevin's finish 0.44s after their start at the median
+     (2026-11-17). ]]
+local WEAPONSKILL_BEAT = 0.4
 --[[ How long past the lock a press waits for its own recast. Shell V cast on
      target after target ends its recast just after its lock, and sent on it the
      press was refused (Kevin, 2026-11-07). Without haste that was 1.28 to 1.31s
@@ -226,9 +232,11 @@ local FALLEN_SECONDS = FINISH_BACKSTOP
 --[[ How long after a death a weaponskill pressed at the corpse goes nowhere.
      Far short of the memory: a mob back up under its id inside that - an NM
      popped again, one that reraises - would take no weaponskill from the bar
-     until it acted. Every press at a corpse came within 0.48s of the death
-     over a weekend (Kevin, 2026-11-16: "Yes, 2 seconds"). ]]
-local CORPSE_SECONDS = 2
+     until it acted. It was 2 (Kevin, 2026-11-16) until a run on it: 52
+     presses came up to 1.76s after the death, nine of them past a second,
+     and the last mob of a pull leaves the target on the corpse (Kevin,
+     2026-11-18). ]]
+local CORPSE_SECONDS = 3
 -- An id from here up is a monster's, an NPC's or a pet's, never a player's.
 local FIRST_NPC_ID = 0x01000000
 
@@ -295,6 +303,8 @@ local function new(deps)
   local open_until, acting_kind = nil, nil
   -- The id the last start named, which a finish must name once its wait has locked.
   local acting_id = nil
+  -- When the last start came.
+  local acting_at = nil
   -- Whether what `sent_until` waits on has been seen leaving the client.
   local sent_left = false
   -- The id of the spell `sent_until` waits on, whose finish can come without its start.
@@ -352,11 +362,12 @@ local function new(deps)
 
   -- How long after the last finish this happened: printed on what went out,
   -- what started and what was refused, which together bracket the real lock.
+  -- Signed, since a finish a death is taken for can lie a beat ahead.
   local function since_finish()
     if finished_at == nil then
       return ""
     end
-    return (" +%.2fs after finish"):format(now() - finished_at)
+    return (" %+.2fs after finish"):format(now() - finished_at)
   end
 
   local function running(until_at)
@@ -394,6 +405,7 @@ local function new(deps)
   -- A start that is over, by its finish or without one.
   local function ended()
     acting_until, open_until, acting_kind, acting_id, acting_target = nil, nil, nil, nil, nil
+    acting_at = nil
   end
 
   --[[ Whether that target is dead, by the game's word alone. The client's mob
@@ -792,6 +804,7 @@ local function new(deps)
     if started ~= nil and act.param ~= INTERRUPT_PARAM then
       note("start " .. started .. since_finish())
       local at = now()
+      acting_at = at
       acting_until = at + finish_backstop(deps, started, act)
       open_until = at + FINISH_BACKSTOP
       acting_kind = started
@@ -940,17 +953,30 @@ local function new(deps)
        died it is never answered, and started it is never finished, its TP
        kept: thirteen in one of Kevin's runs (2026-11-11), each 2s or 3.6s of a
        dead bar. Weaponskills alone, since a Raise is aimed at a corpse and a
-       cast cut short has its interrupt. UNVERIFIED: that the game locks
-       nothing after a start its target died under. If it does, what goes out
-       at the death is refused. ]]
+       cast cut short has its interrupt.
+
+       One never answered locks nothing: the next weaponskill went 0.19 to
+       0.48s later and started, three times of three (Kevin, 2026-11-17). One
+       that had started locks as if it had finished: twice in that run the
+       bar was freed at the death, and the next weaponskill went unanswered
+       0.88s after the one start and was refused 2.45s after the other, while
+       one sent 2.95s after a start was accepted. So the death is taken for
+       the finish, and no sooner than a beat after the start, where the
+       server would have finished it. The word of a death can trail that, so
+       this may hold a few tenths longer than the game does. UNVERIFIED: that
+       it never holds shorter. Two samples, and a beat after the start is not
+       a packet. ]]
   local function target_died()
     if unanswered() and dead(sent_target) then
       answered()
       note("the target died, no answer to come")
     end
     if acting_kind == "weaponskill" and running(acting_until) and dead(acting_target) then
+      local lock = self.lock("weaponskill")
+      finished_at = math.max(fallen[acting_target], acting_at + WEAPONSKILL_BEAT)
       ended()
-      note("the target died, no finish to come")
+      lock_until = finished_at + lock
+      note(("the target died, no finish to come, lock %.2fs"):format(lock))
     end
   end
 
