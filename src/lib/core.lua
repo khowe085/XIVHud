@@ -43,9 +43,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      - Character scoping. Configs do not exist until login, so components are
        attached on login and detached on logout. ]]
 
+local new_behaviors = require("lib/behaviors")
 local new_buffs = require("lib/buffs")
 local new_commands = require("lib/commands")
 local new_config_window = require("lib/config_window")
+local new_gamepad_commands = require("lib/gamepad_commands")
+local new_keyboard = require("lib/keyboard")
+local new_keyboard_commands = require("lib/keyboard_commands")
 local new_layout = require("lib/layout")
 local new_layout_mode = require("lib/layout_mode")
 local new_overlay = require("lib/overlay")
@@ -113,6 +117,15 @@ local HELP = {
   "  //hud queue lock [<kind> <seconds>]",
   "                            how long the queue waits after an action: spell,",
   "                            weaponskill, ability, item, ranged or interrupted",
+  "  //hud gamepad [on|off]     whether an XInput pad's gestures drive their",
+  "                            behaviors, which pad is read, and the map's problems",
+  "  //hud gamepad list | bind <gesture> ... | unbind <gesture>",
+  "                            the pad's map: bind takes a slot's words, a",
+  "                            behavior or key <name>; a gesture is like lt+y",
+  "  //hud keyboard [on|off]    whether the keyboard map hands keys to their",
+  "                            behaviors - the crossbar's and the hotbar's, as",
+  "                            it ships; off, no key reaches either bar",
+  "  //hud keyboard list        every key the map binds and what it does",
   "  //hud config [<name>]      the settings window: the options above and the",
   "                            components' own, changed with a click; name a",
   "                            component, or global, to open on its panel",
@@ -130,6 +143,40 @@ local function new(deps)
   local config_window
   local next_character_check = nil
   local awaiting_login = false
+  -- Asked of the client once, at load - an addon (re)loaded in a background
+  -- client must not read the pad - and told by the focus events after. One
+  -- that cannot be asked is taken as focused, as it was before the asking.
+  local focused = true
+  if deps.has_focus ~= nil then
+    local asked, answer = pcall(deps.has_focus)
+    focused = not asked or answer ~= false
+  end
+  -- Hands a list of the pad's edges to the behaviours; defined beside the
+  -- keyboard dispatch, far below, and used by the unload above it.
+  local deliver_pad
+  -- `//hud gamepad` (lib/gamepad_commands), built with the behaviours below.
+  local gamepad_commands = nil
+  -- The keyboard map (lib/keyboard), its file and `//hud keyboard`, likewise.
+  local keyboard, keyboard_handle, keyboard_commands = nil, nil, nil
+
+  -- Lets go of everything the pad holds, game keys and components' behaviours
+  -- alike, on the paths that must finish whatever a component or the
+  -- injection does: a lost focus has the bars still to tell, and an unload a
+  -- teardown still to run.
+  local function release_pad()
+    if deps.gamepad ~= nil then
+      pcall(function()
+        deliver_pad(deps.gamepad.release())
+      end)
+    end
+  end
+
+  -- The keys the keyboard map holds, on the same paths and a switch-off.
+  local function release_keys()
+    if keyboard ~= nil then
+      pcall(keyboard.release)
+    end
+  end
 
   local function say(message)
     deps.chat(message)
@@ -159,6 +206,131 @@ local function new(deps)
     return core_handle and core_handle.get() or nil
   end
   self.config = core_config
+
+  --[[ The gamepad bridge's settings belong to the machine, not a character
+       (Kevin, 2026-10-20): one file, data/gamepad.lua, read before any login
+       so the pad works at the character screen, and the same for everyone
+       who logs in. ]]
+  local gamepad_handle = deps.gamepad ~= nil and settings.register_global("gamepad", deps.gamepad.config_defaults())
+    or nil
+
+  function self.gamepad_config()
+    return gamepad_handle and gamepad_handle.get() or nil
+  end
+
+  -- Every behaviour a registered component declares, as `<component>.<name>`.
+  local function component_behaviors()
+    local names = {}
+    for _, component in ipairs(registry.all()) do
+      local declared = type(component.behaviors) == "function" and component.behaviors() or nil
+      if type(declared) == "table" then
+        for _, name in ipairs(declared) do
+          names[#names + 1] = component.name .. "." .. name
+        end
+      end
+    end
+    return names
+  end
+
+  -- Answers whether the component took the key behind a press.
+  local function deliver_behavior(qualified, down, cancelled)
+    local name, behavior = qualified:match("^([^.]+)%.(.+)$")
+    local component = name ~= nil and registry.get(name) or nil
+    if component ~= nil and type(component.on_behavior) == "function" then
+      return component.on_behavior(behavior, down, cancelled) == true
+    end
+    return false
+  end
+
+  --[[ The behaviours (lib/behaviors), only where a bridge or the keyboard map
+       drives them, and each one's verbs. An action needs a character: logged
+       out, it does nothing. `behavior_actions` is the action service's typed
+       half - bind's parser and labeller, its types and its validate - absent
+       where the service did not load. ]]
+  local behavior_actions = deps.behavior_actions or {}
+  local behaviors = nil
+  if deps.gamepad ~= nil or deps.keyboard_map == true then
+    behaviors = new_behaviors({
+      send_key = deps.send_key,
+      validate = behavior_actions.validate,
+      -- Where a slot's press would not go, neither does a behaviour's action.
+      fire_action = function(record)
+        if deps.actions == nil or settings.character() == nil then
+          return
+        end
+        if self.suppressed() or self.layout_active() or self.config_active() then
+          return
+        end
+        if deps.actions.edit_owner ~= nil and deps.actions.edit_owner() ~= nil then
+          return
+        end
+        deps.actions.fire(record)
+      end,
+      components = component_behaviors,
+      deliver = deliver_behavior,
+    })
+  end
+  if deps.gamepad ~= nil then
+    gamepad_commands = new_gamepad_commands({
+      gamepad = deps.gamepad,
+      behaviors = behaviors,
+      parse_action = behavior_actions.parse,
+      is_action_type = behavior_actions.is_type,
+      describe_action = behavior_actions.describe,
+      reload = function()
+        return gamepad_handle.load()
+      end,
+      save = function()
+        gamepad_handle.save()
+      end,
+      focused = function()
+        return focused
+      end,
+    })
+  end
+  --[[ The keyboard map (2026-11-09): keys as behaviours, the crossbar's own
+       as it ships, in one machine-wide file as the pad's map is. Not in safe
+       mode, where the entry point leaves `keyboard_map` out. ]]
+  if deps.keyboard_map == true then
+    keyboard = new_keyboard({
+      config = function()
+        return keyboard_handle and keyboard_handle.get() or nil
+      end,
+      deliver = function(behavior, down, cancelled)
+        return behaviors.edge(behavior, down, cancelled)
+      end,
+      is_component = behaviors.is_component,
+      check = behaviors.check,
+      chat_open = deps.chat_open,
+    })
+    keyboard_handle = settings.register_global("keyboard", keyboard.config_defaults())
+    keyboard_commands = new_keyboard_commands({
+      keyboard = keyboard,
+      reload = function()
+        return keyboard_handle.load()
+      end,
+      save = function()
+        keyboard_handle.save()
+      end,
+      release = release_keys,
+      describe_action = behavior_actions.describe,
+    })
+  end
+
+  --- Whether a gesture's behaviour can work: true, or nil and why. The
+  --- bridge asks, to name the map's dead entries.
+  function self.behavior_check(value)
+    if behaviors == nil then
+      return nil, "the gamepad bridge did not load"
+    end
+    return behaviors.check(value)
+  end
+
+  --- Whether a gesture's behaviour is a component's own. The bridge asks,
+  --- to keep only the rest back for a tap.
+  function self.behavior_is_component(value)
+    return behaviors ~= nil and behaviors.is_component(value)
+  end
 
   --[[ The action service's tuning lives in core.lua beside snap and
        hideCutscene: the travel delay was never meant to vary by slot, and a
@@ -656,6 +828,9 @@ local function new(deps)
       set_layout_mode(false)
     end
     config_window.close()
+    -- A game key held through `setkey` would stay down after the addon goes.
+    release_pad()
+    release_keys()
     overlay.destroy_all()
     registry.destroy_all()
     handles = {}
@@ -771,16 +946,12 @@ local function new(deps)
        in the component's own input module, not in dispatch going quiet. The
        full signature is forwarded; `blocked` in particular feeds the
        inbound-blocked guard. ]]
-  function self.on_keyboard(key, down, flags, blocked)
+  local function deliver_key(key, down, flags, blocked)
     layout_mode.key(key, down)
     --[[ The block ACCUMULATES through the walk (2026-09-06): a later
          component sees a key an earlier one took as already blocked, exactly
-         as it sees one a prior addon took. Two bars own overlapping keys -
-         the crossbar's slot keys are the number row while a side is held,
-         the hotbar's the same row under CTRL, ALT or SHIFT - and neither
-         can see the other's held key, so this order is the arbitration: the
-         crossbar is registered first. Delivery is unchanged; only the flag
-         carries more. ]]
+         as it sees one a prior addon took. Delivery is unchanged; only the
+         flag carries more. ]]
     local block = false
     for _, component in ipairs(registry.all()) do
       if component.on_keyboard then
@@ -791,10 +962,78 @@ local function new(deps)
     return block
   end
 
+  -- The keyboard's events. The keyboard map is offered each key first, and
+  -- a key it takes reaches the components as taken.
+  function self.on_keyboard(key, down, flags, blocked)
+    local taken = keyboard ~= nil and keyboard.on_key(key, down, blocked == true) or false
+    local block = deliver_key(key, down, flags, blocked or taken)
+    return taken or block
+  end
+
+  --[[ Every edge is delivered even when a component throws on one - a lost
+       let-go would leave a side held - and the first error is raised after,
+       for the entry point's own guard to report: the pad has a handler of
+       its own, so a failure here never counts against the frame tick. ]]
+  deliver_pad = function(edges)
+    local failure = nil
+    for _, edge in ipairs(edges) do
+      local ok, err = pcall(behaviors.edge, edge.behavior, edge.down, edge.cancelled)
+      if not ok and failure == nil then
+        failure = err
+      end
+    end
+    if failure ~= nil then
+      error(failure, 0)
+    end
+  end
+
+  --- One poll of the pad, its edges handed to the behaviours - logged in or
+  --- not, as keyboard delivery runs, but never out of focus: XInput reads the
+  --- pad whichever window has it. The first with the bridge on says what is
+  --- wrong with the map, once.
+  function self.pump_gamepad()
+    if deps.gamepad == nil or not focused then
+      return
+    end
+    if deps.gamepad.enabled() then
+      for _, line in ipairs(gamepad_commands.unsaid_problems()) do
+        say(line)
+      end
+    end
+    deliver_pad(deps.gamepad.poll())
+  end
+
+  --- Lets go of everything the pad holds, for the entry point: its guard has
+  --- switched the pump off, and nothing will poll the pad again.
+  function self.release_gamepad()
+    release_pad()
+  end
+
+  --- Lets go of everything the keyboard map holds, for the entry point: its
+  --- guard has switched the keyboard handler off, and no key's up will be
+  --- heard again.
+  function self.release_keyboard()
+    release_keys()
+  end
+
+  --- A lost focus strands everything held: the pad and the keyboard map let
+  --- go of their own, and the keyboard's ups never come - the components
+  --- forget those themselves.
+  function self.on_focus(gained)
+    focused = gained
+    if not gained then
+      release_pad()
+      release_keys()
+    end
+  end
+
   -- Whether the keyboard handler is worth registering at all: the entry point
-  -- keeps it always-on when some component consumes keys, and layout-mode-only
-  -- otherwise.
+  -- keeps it always-on when some component consumes keys, or the keyboard
+  -- map does, and layout-mode-only otherwise.
   function self.wants_keyboard()
+    if keyboard ~= nil then
+      return true
+    end
     for _, component in ipairs(registry.all()) do
       if component.on_keyboard then
         return true
@@ -1382,6 +1621,32 @@ local function new(deps)
     return "hide in cutscenes: " .. (on and "on" or "off")
   end
 
+  -- lib/gamepad_commands' own: the switch, the map and the keys it names.
+  local function tune_gamepad(words)
+    return gamepad_commands.handle(words)
+  end
+
+  local function require_gamepad()
+    if deps.gamepad ~= nil then
+      return true
+    end
+    say("the gamepad bridge did not load")
+    return false
+  end
+
+  -- lib/keyboard_commands' own: the switch and the map.
+  local function tune_keyboard(words)
+    return keyboard_commands.handle(words)
+  end
+
+  local function require_keyboard()
+    if keyboard ~= nil then
+      return true
+    end
+    say("the keyboard map did not load")
+    return false
+  end
+
   --[[ Written only when set, so a lock nobody has touched follows the shipped
        length, and in tenths, which is what the settings window steps in. ]]
   local function tune_queue_lock(words)
@@ -1449,11 +1714,31 @@ local function new(deps)
     return usage
   end
 
-  local TUNERS = { delay = tune_delay, hidecutscene = tune_hidecutscene, queue = tune_queue }
+  local TUNERS = {
+    delay = tune_delay,
+    hidecutscene = tune_hidecutscene,
+    queue = tune_queue,
+    gamepad = tune_gamepad,
+    keyboard = tune_keyboard,
+  }
   -- The ones that are the action service's own tuning, and need it loaded.
   local SERVICE_TUNERS = { delay = true, queue = true }
 
   local function run_tune(action)
+    -- The bridge's file and the keyboard map's are no character's, so they
+    -- need none scoped.
+    if action.verb == "gamepad" then
+      if require_gamepad() then
+        say_lines(tune_gamepad(action.words))
+      end
+      return
+    end
+    if action.verb == "keyboard" then
+      if require_keyboard() then
+        say_lines(tune_keyboard(action.words))
+      end
+      return
+    end
     if not require_character() then
       return
     end
@@ -1465,7 +1750,7 @@ local function new(deps)
 
   --[[ The settings window ---------------------------------------------------
        Core's third config mode, beside layout mode and the bars' binders.
-       It lists `global` - the options core.lua carries - and every
+       It lists `global` - the framework's own options - and every
        component declaring `config_panel()`, an opt-in member detected
        exactly as `handle_buffs` is, and every click goes back out through
        the handler the same words reach when they are typed. ]]
@@ -1525,6 +1810,22 @@ local function new(deps)
       value = core_config().hideCutscene ~= false,
       command = { "hidecutscene" },
     }
+    if deps.gamepad ~= nil and deps.gamepad.available() then
+      rows[#rows + 1] = {
+        label = "Gamepad",
+        kind = "toggle",
+        value = deps.gamepad.enabled(),
+        command = { "gamepad" },
+      }
+    end
+    if keyboard ~= nil then
+      rows[#rows + 1] = {
+        label = "Keyboard map",
+        kind = "toggle",
+        value = keyboard.enabled(),
+        command = { "keyboard" },
+      }
+    end
     return { rows = rows }
   end
 
@@ -1539,34 +1840,40 @@ local function new(deps)
   --- One change, as the words a player would have typed after `//hud` (for
   --- `global`) or after the component's name. Answers the handler's reply.
   local function config_apply(name, words, route)
+    local reply
     if name == GLOBAL_PANEL then
       local tuner = TUNERS[words[1]]
-      if tuner == nil or (SERVICE_TUNERS[words[1]] and deps.actions == nil) then
+      if
+        tuner == nil
+        or (SERVICE_TUNERS[words[1]] and deps.actions == nil)
+        or (words[1] == "gamepad" and deps.gamepad == nil)
+        or (words[1] == "keyboard" and keyboard == nil)
+      then
         return nil
       end
       local rest = {}
       for index = 2, #words do
         rest[index - 1] = words[index]
       end
-      return tuner(rest)
-    end
-    --[[ A panel naming a handler its widget does not carry: said, as the
-         CLI says it, not thrown - this runs inside the mouse handler. The
-         two routes are kept apart rather than falling back on one another:
-         buff words handed to a command parser would be read as something
-         else. ]]
-    local component = registry.get(name) or {}
-    local reply
-    if route == "buffs" then
-      if not component.handle_buffs then
-        return name .. " draws no buffs"
-      end
-      reply = component.handle_buffs(words)
+      reply = tuner(rest)
     else
-      if not component.handle_command then
-        return name .. " takes no commands"
+      --[[ A panel naming a handler its widget does not carry: said, as the
+           CLI says it, not thrown - this runs inside the mouse handler. The
+           two routes are kept apart rather than falling back on one
+           another: buff words handed to a command parser would be read as
+           something else. ]]
+      local component = registry.get(name) or {}
+      if route == "buffs" then
+        if not component.handle_buffs then
+          return name .. " draws no buffs"
+        end
+        reply = component.handle_buffs(words)
+      else
+        if not component.handle_command then
+          return name .. " takes no commands"
+        end
+        reply = component.handle_command(words)
       end
-      reply = component.handle_command(words)
     end
     -- The window has one status line, and a command's second line is where
     -- it puts a warning: what the window cannot hold is said in chat, as the

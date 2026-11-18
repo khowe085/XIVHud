@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      Presence is read off ctx.get_player() every tick (the service caches the
      client read and refreshes it on every buff event); the expiries arrive
      on the 0x063 chunk, already decoded once by the entry point for its
-     three readers - and, at attach, off the last 0x063 the client sent
+     four readers - and, at attach, off the last 0x063 the client sent
      (ctx.last_incoming, through the same parse), since nothing re-sends it
      after a reload until a buff changes and order 9 is what usually sits
      there. A tick that changes nothing pushes nothing: each cell remembers

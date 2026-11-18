@@ -649,6 +649,21 @@ describe("crossbar actions", function()
       assert.is_true(actions.validate({ type = "mr" }))
       assert.is_nil(state.fired)
     end)
+
+    -- What a gesture's bind asks before reading a word as a type.
+    it("knows every type it validates, and nothing else", function()
+      local actions = build()
+      for _, kind in ipairs({ "ma", "ja", "ws", "item", "pet", "mount", "ct", "ex", "enchanteditem", "jc", "ra" }) do
+        assert.is_true(actions.is_type(kind), kind)
+      end
+      for _, kind in ipairs(SHIPPED_BUILTINS) do
+        assert.is_true(actions.is_type(kind), kind)
+      end
+      for _, kind in ipairs({ "spell", "accept", "key", "" }) do
+        assert.is_false(actions.is_type(kind), kind)
+      end
+      assert.is_false(actions.is_type(nil))
+    end)
   end)
 
   describe("verb collisions", function()

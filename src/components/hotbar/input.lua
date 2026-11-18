@@ -26,65 +26,34 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
---[[ The hotbar's key machine: the DIK stream in, one intent out. A
-     modifier picks the row and the number row `1234567890` picks slots 1-10
-     of it - CTRL bar1, ALT bar2, SHIFT bar3, CTRL+SHIFT bar4, ALT+SHIFT
-     bar5, CTRL+ALT+SHIFT bar6 - matched EXACTLY, so CTRL+ALT alone is
-     nothing and reaches the game whole. bar7 and bar8 have no keys. The
-     BARE number row is nobody's (Kevin, 2026-10-09): it fired bar1 until
-     then, and a controller mapped through Steam Input presses it by
-     accident, so every row moved down one chord and the bare row went back
-     to the game. The table is fixed rather than config: the rows are
-     XIV's own chords (CTRL, ALT, SHIFT over the number row), so there is
-     nothing to choose.
+--[[ The hotbar's behaviours: a row's slot, `bar<row>_slot<n>`, and the set
+     cycle, `cycle` and `cycle_back` - in; one intent out, and for a press
+     whether the key behind it is the hotbar's. Which key or chord that was
+     - the shipped keyboard map has Ctrl, Alt and Shift over the number row
+     (2026-11-09) - its repeats and its release are the keyboard map's.
 
-     Modifiers are tracked from their own down/up edges, the crossbar's and
-     layout mode's technique, with the same caveat: one released while the
-     client has no focus is stuck until `focus_lost` resets it.
+     A slot fires and keeps its key: that swallows a Ctrl or Alt chord too,
+     knowing it does nothing to the game's macro palette - `return true`
+     swallows a bare key and does not stop FFXI acting on a CTRL/ALT chord,
+     so a user of rows 1, 2 and 4-6 keeps the matching in-game macros inert
+     (Kevin's call, 2026-09-06). Under any guard - chat open, suppressed,
+     layout mode, edit mode, disabled - nothing fires and nothing is kept: no
+     key of the hotbar's is worth protecting through a cutscene the way the
+     crossbar's `;` is. A row the user HID (`deps.row_hidden`, the per-anchor
+     switch) is the same: its chord goes back to the game rather than firing
+     a bar nobody can see (Kevin, 2026-10-09). The cycle pair fire and keep
+     NEITHER edge: a block cannot keep a CTRL chord from the game, and a
+     swallowed up after CTRL lifted is a camera that keeps turning. No
+     Windower globals. ]]
 
-     The block verdict: a number key the machine fires is swallowed on the
-     down AND the matching up, so the game never sees half a key; that
-     swallows the CTRL and ALT chords too, knowing it does nothing to the
-     game's macro palette - `return true` swallows a bare key and does not
-     stop FFXI acting on a CTRL/ALT chord, so a user of rows 1, 2 and 4-6
-     keeps the matching in-game macros inert (Kevin's call, 2026-09-06).
-     Under any guard - chat open, suppressed, layout mode, edit mode,
-     disabled - or on a key a prior addon took, nothing fires and nothing is
-     blocked: no key of the hotbar's is worth protecting through a cutscene
-     the way the crossbar's `;` is. A row the user HID (`deps.row_hidden`,
-     the per-anchor switch) is the same: its chord goes back to the game
-     rather than firing a bar nobody can see (Kevin, 2026-10-09 - the rows
-     fired hidden until then, XIV's own rule, and it was a surprise). The
-     cycle keys - CTRL+Up the next set, CTRL+Down the previous - are the one
-     pair that claims NEITHER edge: a
-     block cannot keep a CTRL chord from the game, and a swallowed up after
-     CTRL lifted is a camera that keeps turning. The arrows' scan codes
-     (200/208) are unverified in a client. No Windower globals. ]]
-
--- DirectInput scan codes: the number row, the arrows that cycle the active
--- set under CTRL (Kevin, 2026-09-06: the game cycles its macro sets on the
--- same chord, the caveat the rows already carry), and the three modifiers,
--- each side.
-local CYCLE_OF = { [200] = 1, [208] = -1 }
-local SLOT_OF = { [2] = 1, [3] = 2, [4] = 3, [5] = 4, [6] = 5, [7] = 6, [8] = 7, [9] = 8, [10] = 9, [11] = 10 }
-local MODIFIER_OF = {
-  [29] = "ctrl",
-  [157] = "ctrl",
-  [42] = "shift",
-  [54] = "shift",
-  [56] = "alt",
-  [184] = "alt",
-}
--- Which row each exact modifier set fires, keyed c/a/s in that order; no
--- entry for the empty set, so a bare number is never ours.
-local BAR_OF = {
-  c = "bar1",
-  a = "bar2",
-  s = "bar3",
-  cs = "bar4",
-  as = "bar5",
-  cas = "bar6",
-}
+local ROWS, SLOTS = 8, 10
+local SLOT_OF = {}
+for row = 1, ROWS do
+  for slot = 1, SLOTS do
+    SLOT_OF["bar" .. row .. "_slot" .. slot] = { bar = "bar" .. row, slot = slot }
+  end
+end
+local CYCLE_OF = { cycle = 1, cycle_back = -1 }
 
 -- Injected guard accessors default to false so a missing one reads as "off".
 local function flag(accessor)
@@ -94,28 +63,6 @@ end
 local function new(deps)
   local self = {}
 
-  -- Which modifier DIKs are down; a modifier is held while any of its keys is.
-  local held = {}
-  -- The number keys whose down this machine took, so the up is taken too.
-  local latched = {}
-  -- Every slot or arrow key currently down, ours or not.
-  local down = {}
-
-  local function modifier_held(which)
-    for dik, name in pairs(MODIFIER_OF) do
-      if name == which and held[dik] then
-        return true
-      end
-    end
-    return false
-  end
-
-  local function combo()
-    return (modifier_held("ctrl") and "c" or "")
-      .. (modifier_held("alt") and "a" or "")
-      .. (modifier_held("shift") and "s" or "")
-  end
-
   local function guarded()
     return flag(deps.chat_open)
       or flag(deps.suppressed)
@@ -124,67 +71,20 @@ local function new(deps)
       or flag(deps.disabled)
   end
 
-  --- One keyboard event in; the intent (`{ bar, slot }`) or nil out, plus the
-  --- block verdict Windower needs.
-  function self.on_key(dik, pressed, _flags, blocked)
-    local modifier = MODIFIER_OF[dik]
-    if modifier ~= nil then
-      -- Tracked through every guard, so the row is right when it lifts.
-      held[dik] = pressed or nil
+  --- One edge of a behaviour in; the intent (`{ bar, slot }` or `{ cycle }`)
+  --- or nil out, and for a press whether the key behind it is the hotbar's.
+  function self.on_behavior(name, pressed)
+    local target, cycle = SLOT_OF[name], CYCLE_OF[name]
+    if not pressed or (target == nil and cycle == nil) or guarded() then
       return nil, false
     end
-    local cycle = CYCLE_OF[dik]
-    local slot = SLOT_OF[dik]
-    if slot == nil and cycle == nil then
-      return nil, false
-    end
-    if not pressed then
-      local ours = latched[dik] == true
-      latched[dik] = nil
-      down[dik] = nil
-      return nil, ours
-    end
-    if latched[dik] then
-      -- Auto-repeat of a key already down: still ours, and fires nothing.
-      return nil, true
-    end
-    --[[ A key that went down as the game's stays the game's until it lifts:
-         its OS auto-repeats must not become ours when CTRL arrives under a
-         held arrow (the camera key would then never be released to the
-         game) or when a guard lifts under a held number - the crossbar's
-         press-edge rule. ]]
-    local repeated = down[dik] == true
-    down[dik] = true
-    if repeated or blocked or guarded() then
-      return nil, false
-    end
-    local held_set = combo()
     if cycle ~= nil then
-      --[[ CTRL alone: CTRL+Up is the next set, CTRL+Down the previous. A
-           bare arrow is the game's camera and any other chord is nobody's.
-           Neither edge is claimed: a block cannot keep a CTRL chord from
-           the game, so the game sees this down whatever we answer, and a
-           latched up would be swallowed even after CTRL lifted - an arrow
-           the game saw go down and never come up is a camera that keeps
-           turning. `down` still keeps the repeats from firing again. ]]
-      if held_set ~= "c" then
-        return nil, false
-      end
       return { cycle = cycle }, false
     end
-    local bar = BAR_OF[held_set]
-    if bar == nil or (deps.row_hidden ~= nil and deps.row_hidden(bar) == true) then
+    if deps.row_hidden ~= nil and deps.row_hidden(target.bar) == true then
       return nil, false
     end
-    latched[dik] = true
-    return { bar = bar, slot = slot }, true
-  end
-
-  --- Alt-tab mid-press: the releases will never arrive.
-  function self.focus_lost()
-    held = {}
-    latched = {}
-    down = {}
+    return { bar = target.bar, slot = target.slot }, true
   end
 
   return self

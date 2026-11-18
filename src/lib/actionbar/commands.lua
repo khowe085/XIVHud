@@ -610,6 +610,100 @@ local function split_action_target(rest)
   return name, nil, nil, (not delimited and #rest >= 2 and last ~= "") and last or nil
 end
 
+--[[ The record a type and the words in front of any label carry - `bind`'s
+     reading, and that of an action no slot holds (a behaviour's). Answers the
+     record and the word a name swallowed, for `bind` to second-guess, or nil,
+     nil and why. A refusal suggests marking the words as an alias only where
+     `advise_alias` says the line could still take one. ]]
+local function parse_record(kind, head, advise_alias, bar_name)
+  local record = { type = kind }
+  local labelled = not advise_alias
+  if NO_ACTION_TYPES[kind] then
+    if kind == "ra" and #head > 0 then
+      record.target = target_of(head[1])
+      if record.target == nil then
+        --[[ Its own refusal rather than the shared target advice, which
+             would tell a type that takes NO action name to quote the
+             name. `ra Shoot` is what the old positional grammar's muscle
+             memory types for a label, so both readings are named. ]]
+        return nil,
+          nil,
+          "ra takes a target or a label - " .. head[1] .. " is neither; use " .. TARGET_TOKENS_ADVICE .. label_hint(
+            join(head),
+            labelled
+          )
+      end
+      if #head > 1 then
+        local extra = join(head, 2)
+        return nil,
+          nil,
+          "ra takes a target, then alias=, icon= and context= - drop " .. extra .. label_hint(extra, labelled)
+      end
+    elseif kind ~= "ra" and #head > 0 then
+      local extra = join(head)
+      return nil, nil, kind .. " takes no action name or target - drop " .. extra .. label_hint(extra, labelled)
+    end
+  elseif WHOLE_LINE_TYPES[kind] then
+    --[[ Every word up to the marker, with the user's own quoting put
+         BACK. An argument can only carry whitespace where they quoted it
+         - the client groups a quoted run and strips the quotes - so a
+         word with a space in it is one they delimited, and a chat line
+         has to reach the game with those quotes or it will not cast
+         (`ct ma "Cure IV" <t>`). A word already carrying a quote is left
+         alone, deliberately: those quotes are the user's own, and a
+         second pair around them would say something they did not type. A
+         quoted run with no space in it is indistinguishable from
+         a bare word by the time we are asked and keeps no quotes -
+         harmless, the game needing none around a single word. ]]
+    local said = {}
+    for index, word in ipairs(head) do
+      local delimit = word:find("%s") ~= nil and word:find('"', 1, true) == nil
+      said[index] = delimit and ('"' .. word .. '"') or word
+    end
+    -- Trimmed like every other name: `undelimit` only trims what it
+    -- strips, and a line stored with the user's trailing space says it.
+    local line = trim(undelimit(trim(join(said))))
+    record.action = line ~= "" and line or nil
+  elseif kind == "open" then
+    if #head < 1 then
+      return nil, nil, "open takes one screen name - try //hud " .. bar_name .. " open for the list"
+    end
+    if #head > 1 then
+      -- The pointer, not just the arity: an extra word here usually means
+      -- the screen names are what the user is missing.
+      local extra = join(head, 2)
+      return nil,
+        nil,
+        "open takes one screen name, then alias=, icon= and context= - "
+          .. extra
+          .. " is neither; drop it"
+          .. label_hint(extra, labelled)
+          .. ", or try //hud "
+          .. bar_name
+          .. " open for the list"
+    end
+    record.action = undelimit(head[1]):lower()
+  elseif kind == "jc" then
+    if #head ~= 1 then
+      return nil, nil, "jc takes one main/sub pair, like WAR/BLM, then alias=, icon= and context="
+    end
+    local main, sub = jobchange.parse(undelimit(head[1]))
+    if main == nil then
+      return nil, nil, sub
+    end
+    -- The binder's label: the icon already says the main job.
+    record.action, record.alias = main .. "/" .. sub, sub
+  else
+    local action, target, complaint, absorbed = split_action_target(head)
+    if complaint ~= nil then
+      return nil, nil, complaint
+    end
+    record.action, record.target = action, target
+    return record, absorbed
+  end
+  return record, nil
+end
+
 local function new(deps)
   local self = {}
 
@@ -903,8 +997,6 @@ local function new(deps)
     end
     local kind = args[3]:lower()
     local rest = slice(args, 4)
-    local record = { type = kind }
-    local absorbed = nil
     --[[ The labels are found FIRST: the marker that opens one is also what
          ends the action name -- the one job the quotes used to do, before a
          live client showed they never reach us. Each type then reads its own
@@ -918,88 +1010,9 @@ local function new(deps)
     local targetable = kind == "ra"
       or not (NO_ACTION_TYPES[kind] or WHOLE_LINE_TYPES[kind] or kind == "open" or kind == "jc")
     local labelled = has_alias(rest, labels_at)
-    if NO_ACTION_TYPES[kind] then
-      if kind == "ra" and #head > 0 then
-        record.target = target_of(head[1])
-        if record.target == nil then
-          --[[ Its own refusal rather than the shared target advice, which
-               would tell a type that takes NO action name to quote the
-               name. `ra Shoot` is what the old positional grammar's muscle
-               memory types for a label, so both readings are named. ]]
-          return hint(
-            "ra takes a target or a label - "
-              .. head[1]
-              .. " is neither; use "
-              .. TARGET_TOKENS_ADVICE
-              .. label_hint(join(head), labelled)
-          )
-        end
-        if #head > 1 then
-          local extra = join(head, 2)
-          return hint(
-            "ra takes a target, then alias=, icon= and context= - drop " .. extra .. label_hint(extra, labelled)
-          )
-        end
-      elseif kind ~= "ra" and #head > 0 then
-        local extra = join(head)
-        return hint(kind .. " takes no action name or target - drop " .. extra .. label_hint(extra, labelled))
-      end
-    elseif WHOLE_LINE_TYPES[kind] then
-      --[[ Every word up to the marker, with the user's own quoting put
-           BACK. An argument can only carry whitespace where they quoted it
-           - the client groups a quoted run and strips the quotes - so a
-           word with a space in it is one they delimited, and a chat line
-           has to reach the game with those quotes or it will not cast
-           (`ct ma "Cure IV" <t>`). A word already carrying a quote is left
-           alone, deliberately: those quotes are the user's own, and a
-           second pair around them would say something they did not type. A
-           quoted run with no space in it is indistinguishable from
-           a bare word by the time we are asked and keeps no quotes -
-           harmless, the game needing none around a single word. ]]
-      local said = {}
-      for index, word in ipairs(head) do
-        local delimit = word:find("%s") ~= nil and word:find('"', 1, true) == nil
-        said[index] = delimit and ('"' .. word .. '"') or word
-      end
-      -- Trimmed like every other name: `undelimit` only trims what it
-      -- strips, and a line stored with the user's trailing space says it.
-      local line = trim(undelimit(trim(join(said))))
-      record.action = line ~= "" and line or nil
-    elseif kind == "open" then
-      if #head < 1 then
-        return hint("open takes one screen name - try //hud " .. bar_name .. " open for the list")
-      end
-      if #head > 1 then
-        -- The pointer, not just the arity: an extra word here usually means
-        -- the screen names are what the user is missing.
-        local extra = join(head, 2)
-        return hint(
-          "open takes one screen name, then alias=, icon= and context= - "
-            .. extra
-            .. " is neither; drop it"
-            .. label_hint(extra, labelled)
-            .. ", or try //hud "
-            .. bar_name
-            .. " open for the list"
-        )
-      end
-      record.action = undelimit(head[1]):lower()
-    elseif kind == "jc" then
-      if #head ~= 1 then
-        return hint("jc takes one main/sub pair, like WAR/BLM, then alias=, icon= and context=")
-      end
-      local main, sub = jobchange.parse(undelimit(head[1]))
-      if main == nil then
-        return hint(sub)
-      end
-      -- The binder's label: the icon already says the main job.
-      record.action, record.alias = main .. "/" .. sub, sub
-    else
-      local complaint_text
-      record.action, record.target, complaint_text, absorbed = split_action_target(head)
-      if complaint_text ~= nil then
-        return hint(complaint_text)
-      end
+    local record, absorbed, record_complaint = parse_record(kind, head, not labelled, bar_name)
+    if record == nil then
+      return hint(record_complaint)
     end
     if labels_at <= #rest then
       local labels, labels_complaint = take_labels(rest, labels_at, targetable, record.target ~= nil)
@@ -1111,6 +1124,33 @@ local function new(deps)
     end
     return told, false, true
   end
+
+  --- An action's words as `bind` takes them after the address, as the client
+  --- hands them over, for a caller with no slot to put it in (a gesture):
+  --- the record, or nil and why, with no bar's name in front.
+  function self.parse_action(words)
+    if type(words) ~= "table" or #words == 0 then
+      return nil, "an empty action"
+    end
+    local rest = slice(words, 2)
+    if labels_begin(rest) <= #rest then
+      return nil, "alias=, icon= and context= need a slot - drop them"
+    end
+    local record, _, complaint = parse_record(words[1]:lower(), rest, false, bar_name)
+    if record == nil then
+      return nil, complaint
+    end
+    -- A label is a slot's to show, and `jc` writes its sub job as one.
+    record.alias = nil
+    local ok, why = deps.validate(record)
+    if ok == nil then
+      return nil, why
+    end
+    return record
+  end
+
+  --- An action as `list` prints one, in the words `bind` takes.
+  self.describe_action = record_label
 
   --- `unbind <address> [context=<layer>]` -- the addressed layer only.
   local function unbind(args)

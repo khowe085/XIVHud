@@ -412,6 +412,18 @@ local function new(deps)
     return entry and entry.icon
   end
 
+  --- Whether `bind` has a type of that name. Validate asks it first, so a
+  --- type it does not know can never be one validate passes.
+  function self.is_type(kind)
+    return GAME_TYPES[kind] == true
+      or kind == "ct"
+      or kind == "ex"
+      or kind == "enchanteditem"
+      or kind == "jc"
+      or kind == "ra"
+      or (kind ~= nil and BUILTINS[kind] ~= nil)
+  end
+
   --- Bind-time validation: is this record something resolve() could fire?
   --- Answers true, or nil + a hint naming what is wrong. Nothing is executed
   --- -- `mr` and `warp` resolve through their collaborators, and validating
@@ -423,6 +435,9 @@ local function new(deps)
     local kind = record.type
     if record.target ~= nil and type(record.target) ~= "string" then
       return nil, "target must be a string when present"
+    end
+    if not self.is_type(kind) then
+      return nil, "unknown action type: " .. tostring(kind)
     end
     if GAME_TYPES[kind] then
       if not valid_name(record.action) then

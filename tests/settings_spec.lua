@@ -24,6 +24,52 @@ describe("settings", function()
     })
   end)
 
+  --[[ One file under data/ for the whole install, outside every character:
+       what a gamepad is set to belongs to the machine, and must hold at the
+       character screen, where no character is scoped. ]]
+  describe("the machine-wide namespace", function()
+    it("is one file under data/, read with no character scoped", function()
+      fs.files["data/gamepad.lua"] = "return { enabled = true }"
+      local handle = service.register_global("gamepad", { enabled = false, trigger_threshold = 30 })
+      assert.are.equal("data/gamepad.lua", handle.path())
+      assert.are.same({ enabled = true, trigger_threshold = 30 }, handle.get())
+    end)
+
+    it("starts from its defaults where there is no file", function()
+      local handle = service.register_global("gamepad", { enabled = false })
+      assert.are.same({ enabled = false }, handle.get())
+    end)
+
+    it("saves with no character scoped", function()
+      local handle = service.register_global("gamepad", { enabled = false })
+      handle.get().enabled = true
+      assert.is_true(handle.save())
+      assert.is_not_nil(fs.files["data/gamepad.lua"]:find("enabled = true", 1, true))
+    end)
+
+    it("is the same file whoever logs in, whichever slot is active", function()
+      local handle = service.register_global("gamepad", { enabled = false })
+      handle.get().enabled = true
+      handle.save()
+      scope("Azureblood", "raid")
+      assert.is_true(handle.get().enabled)
+      scope("Kaleido")
+      assert.is_true(handle.get().enabled)
+      assert.are.equal("data/gamepad.lua", handle.path())
+    end)
+
+    it("answers from a re-read whether the file could be read, absent counting as read", function()
+      local handle = service.register_global("gamepad", { enabled = false })
+      assert.is_true(handle.load(), "absent")
+      fs.files["data/gamepad.lua"] = "return { enabled = true }"
+      assert.is_true(handle.load())
+      assert.is_true(handle.get().enabled, "and takes what it read")
+      fs.files["data/gamepad.lua"] = "return { enabled = "
+      assert.is_false(handle.load())
+      assert.is_false(handle.get().enabled, "the defaults stand in")
+    end)
+  end)
+
   describe("namespaces", function()
     it("gives a component its own directory inside the active slot", function()
       local handle = service.register("parambar", {})

@@ -2847,3 +2847,93 @@ describe("the action bars' tabs in the settings window", function()
     end)
   end)
 end)
+
+--[[ An action with no slot to hold it - a behaviour's - written exactly as
+     `bind` takes one after the address, and read by the same code. ]]
+describe("an action outside a slot", function()
+  it("reads the type and its words as bind does", function()
+    local commands = build()
+    assert.are.same({ type = "open", action = "map" }, commands.parse_action({ "open", "map" }))
+    assert.are.same(
+      { type = "ja", action = "Light Arts", target = "t" },
+      commands.parse_action({ "ja", "Light", "Arts", "<t>" })
+    )
+    assert.are.same({ type = "ra", target = "t" }, commands.parse_action({ "ra", "t" }))
+  end)
+
+  it("takes a quoted run as the client hands it, one word", function()
+    local commands = build()
+    assert.are.same(
+      { type = "ma", action = "Cure IV", target = "t" },
+      commands.parse_action({ "ma", "Cure IV", "<t>" })
+    )
+    assert.are.same(
+      { type = "ct", action = '/p "Hello there"' },
+      commands.parse_action({ "ct", "/p", "Hello there" }),
+      "and a chat line keeps the quoting its words were given"
+    )
+  end)
+
+  it("takes the type in any case", function()
+    local commands = build()
+    assert.are.same({ type = "open", action = "map" }, commands.parse_action({ "OPEN", "map" }))
+  end)
+
+  it("answers what bind refuses, without a bar's name in front", function()
+    local commands = build()
+    local record, why = commands.parse_action({ "open" })
+    assert.is_nil(record)
+    assert.are.equal("open takes one screen name - try //hud crossbar open for the list", why)
+  end)
+
+  it("refuses what nothing could run", function()
+    local commands = build()
+    local record, why = commands.parse_action({ "cast", "Cure" })
+    assert.is_nil(record)
+    assert.are.equal("unknown action type: cast", why)
+    record, why = commands.parse_action({ "open", "mapp" })
+    assert.is_nil(record)
+    assert.are.equal("unknown open target: mapp", why)
+  end)
+
+  it("refuses a label or a layer, which need a slot", function()
+    local commands = build()
+    for _, words in ipairs({
+      { "open", "map", "alias=M" },
+      { "open", "map", "icon=map" },
+      { "ma", "Cure", "context=sub:whm" },
+    }) do
+      local record, why = commands.parse_action(words)
+      assert.is_nil(record, table.concat(words, " "))
+      assert.are.equal("alias=, icon= and context= need a slot - drop them", why, table.concat(words, " "))
+    end
+  end)
+
+  it("advises no alias, which it would refuse", function()
+    local commands = build()
+    local record, why = commands.parse_action({ "mr", "now" })
+    assert.is_nil(record)
+    assert.are.equal("mr takes no action name or target - drop now", why)
+  end)
+
+  it("refuses an empty action", function()
+    local commands = build()
+    for _, words in ipairs({ {}, "open map", 5 }) do
+      local record, why = commands.parse_action(words)
+      assert.is_nil(record, tostring(words))
+      assert.are.equal("an empty action", why)
+    end
+  end)
+
+  it("takes no label from a job change, which only a slot can show", function()
+    local commands = build()
+    assert.are.same({ type = "jc", action = "WAR/BLM" }, commands.parse_action({ "jc", "WAR/BLM" }))
+  end)
+
+  it("describes an action as bind takes it, so a listed one retyped binds the same", function()
+    local commands = build()
+    assert.are.equal("ma Cure IV <t>", commands.describe_action({ type = "ma", action = "Cure IV", target = "t" }))
+    assert.are.equal("open map", commands.describe_action({ type = "open", action = "map" }))
+    assert.are.equal("ra <t>", commands.describe_action({ type = "ra", target = "t" }))
+  end)
+end)

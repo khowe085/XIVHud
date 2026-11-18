@@ -115,6 +115,45 @@ describe("guard", function()
       assert.are.equal(10, healthy, "one bad handler must not silence the others")
     end)
 
+    --[[ The pad's handler holds behaviours and game keys down between frames:
+         switched off without a word, it would never let them go. ]]
+    it("tells the handler's owner, once, that it has been disabled", function()
+      local told = 0
+      local wrapped = guard.wrap(
+        "gamepad",
+        function()
+          error("broken")
+        end,
+        nil,
+        function()
+          told = told + 1
+        end
+      )
+      wrapped()
+      wrapped()
+      assert.are.equal(0, told)
+      wrapped()
+      assert.are.equal(1, told)
+      wrapped()
+      assert.are.equal(1, told)
+    end)
+
+    it("keeps a failure of that telling to itself", function()
+      local wrapped = guard.wrap(
+        "gamepad",
+        function()
+          error("broken")
+        end,
+        "fallback",
+        function()
+          error("worse")
+        end
+      )
+      for _ = 1, 4 do
+        assert.are.equal("fallback", wrapped())
+      end
+    end)
+
     it("reports whether anything has been disabled", function()
       assert.is_false(guard.failed())
       local wrapped = guard.wrap("prerender", function()
