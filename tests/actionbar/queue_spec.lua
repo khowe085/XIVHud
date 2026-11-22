@@ -2905,6 +2905,393 @@ describe("the action queue", function()
     end)
   end)
 
+  --[[ Kevin, 2026-11-22: with GearSwap casting on its own, its packet left a
+       hair ahead of every release, and a mashed weaponskill sat held for 3 to
+       17 seconds behind cast after cast. A held press never reaches GearSwap,
+       which holds its own casts back only for a command it has seen. ]]
+  describe("standing aside for a packet the bar did not send", function()
+    local BLADE = { type = "ws", action = "Savage Blade", target = "t" }
+    local BLADE_COMMAND = 'input /ws "Savage Blade" <t>'
+
+    -- GearSwap's own cast, or a macro's: its packet, its start and its finish.
+    local function outside_cast(queue)
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      finish_cast(queue)
+    end
+
+    -- The bar's own weaponskill leaving the client.
+    local function blade_leaves(queue)
+      queue.on_outgoing(0x01A, outgoing_action(WEAPONSKILL, 42, 12345))
+    end
+
+    it("sends a press made in the last second of the lock after it, as one went before the queue", function()
+      local queue, env = world()
+      outside_cast(queue)
+      env.now = env.now + 1.75
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      assert.is_nil(queue.held())
+    end)
+
+    --[[ Kevin's GearSwap answers a weaponskill by using a buff in its place,
+         sending the weaponskill again 1.1s later and dropping every other
+         weaponskill press for 5s. Sent earlier in the lock than its last
+         second, that second send would land in the lock too. ]]
+    it("holds a press made earlier in that lock, and lets one made in its last second replace it", function()
+      local queue, env = world()
+      outside_cast(queue)
+      env.now = env.now + 1.65
+      assert.is_true(queue.press(spell("Cure"), command("Cure")))
+      assert.are.equal(command("Cure"), queue.held().command)
+      env.now = env.now + 0.35
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      assert.is_nil(queue.held())
+    end)
+
+    --[[ Sent, it could not go when the lock ends either, and past GearSwap's own
+         wait its recast check aborts it unseen, with a line of chat. ]]
+    it("holds a press still on its own recast in that second, as ever", function()
+      local queue, env = world()
+      outside_cast(queue)
+      env.now = env.now + 2
+      env.recast.Cure = 1
+      assert.is_true(queue.press(spell("Cure"), command("Cure")))
+      assert.are.equal(command("Cure"), queue.held().command)
+    end)
+
+    it("holds a cursor's cast still on its own recast at OK in that second, as ever", function()
+      local queue, env = world()
+      queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+      queue.on_text("/ta <stpc>")
+      queue.on_text("/ta 777")
+      outside_cast(queue)
+      env.now = env.now + 2
+      env.recast["Shell V"] = 1
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.is_nil(send)
+      assert.are.equal('input /ma "Shell V" 12345', queue.held().command)
+    end)
+
+    it("sends a press made anywhere in a lock shorter than a second", function()
+      local queue, env = world()
+      queue.on_outgoing(0x01A, outgoing_action(ABILITY, 31))
+      queue.on_action(action(6, 31))
+      env.now = env.now + 0.1
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("stands aside for an item somebody else used, as for a cast", function()
+      local queue, env = world()
+      queue.on_outgoing(0x037, "item use")
+      queue.on_action(action(5, 4112))
+      env.now = env.now + 0.5
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    -- Kevin, 2026-11-22: any packet the bar did not send, whatever became of it.
+    it("stands aside for one the game refused, too", function()
+      local queue, env = world()
+      finish_cast(queue)
+      env.now = env.now + 1
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      queue.on_message(battle_message(ME, 17))
+      env.now = env.now + 1
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("stands aside for no packet that is not an action", function()
+      local queue, env = world()
+      queue.on_outgoing(0x01A, outgoing_action(2))
+      queue.on_outgoing(0x015, outgoing_action(MAGIC))
+      finish_cast(queue)
+      env.now = env.now + 2
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("holds a press made while it is still casting", function()
+      local queue = world()
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      start_cast(queue)
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+      assert.is_not_nil(queue.held())
+    end)
+
+    it("holds a press made before anything has answered it", function()
+      local queue, env = world()
+      finish_cast(queue)
+      env.now = env.now + 2.3
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+      assert.is_not_nil(queue.held())
+    end)
+
+    it("still releases a press held through its cast, when nothing else is pressed", function()
+      local queue, env = world()
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      start_cast(queue)
+      queue.press(spell(), command())
+      queue.on_action(action(4, 1))
+      env.now = env.now + 2.71
+      assert.are.equal(command(), queue.step())
+    end)
+
+    it("replaces what was held with the press it sends", function()
+      local queue, env = world()
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      start_cast(queue)
+      queue.press(spell("Cure"), command("Cure"))
+      queue.on_action(action(4, 1))
+      env.now = env.now + 2
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      assert.is_nil(queue.held())
+      env.now = env.now + 3
+      assert.is_nil(queue.step())
+    end)
+
+    it("swallows a second tap of the press it sent, while that is unanswered", function()
+      local queue, env = world()
+      outside_cast(queue)
+      env.now = env.now + 2
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+      assert.is_nil(queue.held())
+    end)
+
+    it("goes on sending while the lock refuses each one", function()
+      local queue, env = world()
+      outside_cast(queue)
+      env.now = env.now + 2
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      blade_leaves(queue)
+      queue.on_message(battle_message(ME, 90))
+      env.now = env.now + 0.3
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      assert.is_nil(queue.held())
+    end)
+
+    it("sends a cursor's cast at OK in that lock", function()
+      local queue, env = world()
+      queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+      queue.on_text("/ta <stpc>")
+      queue.on_text("/ta 777")
+      outside_cast(queue)
+      env.now = env.now + 2
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.are.equal('input /ma "Shell V" 12345', send)
+      assert.is_nil(queue.held())
+    end)
+
+    it("holds again once one of the bar's own has gone", function()
+      local queue, env = world()
+      outside_cast(queue)
+      env.now = env.now + 2.6
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      blade_leaves(queue)
+      queue.on_action(weaponskill_at(12345))
+      queue.on_action(action(3, 42))
+      env.now = env.now + 1.5
+      assert.is_true(queue.press(spell(), command()))
+    end)
+
+    it("holds again once nothing is busy", function()
+      local queue, env = world()
+      outside_cast(queue)
+      env.now = env.now + 2.71
+      queue.step()
+      finish_cast(queue)
+      env.now = env.now + 2
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("is forgotten on a clear", function()
+      local queue, env = world()
+      outside_cast(queue)
+      queue.clear("zone")
+      finish_cast(queue)
+      env.now = env.now + 2
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("is forgotten while the queue is off", function()
+      local queue, env = world()
+      outside_cast(queue)
+      env.mode = "off"
+      queue.step()
+      env.mode = "on"
+      finish_cast(queue)
+      env.now = env.now + 2
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    --[[ Kevin's GearSwap uses Berserk in a weaponskill's place and sends the
+         weaponskill again after it: 1.08 to 1.12s after the ability left, 69
+         times of 69 in his logs of 2026-11-21. ]]
+    it("takes a packet within two seconds of a press it let through for the bar's own", function()
+      local queue, env = world()
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      queue.on_outgoing(0x01A, outgoing_action(ABILITY, 31))
+      queue.on_action(action(6, 31))
+      env.now = env.now + 1.1
+      blade_leaves(queue)
+      queue.on_action(weaponskill_at(12345))
+      queue.on_action(action(3, 42))
+      env.now = env.now + 1.5
+      assert.is_true(queue.press(spell(), command()))
+    end)
+
+    it("takes one just inside two seconds for the bar's own, and one at two for somebody else's", function()
+      for _, case in ipairs({ { after = 1.99, held = true }, { after = 2, held = false } }) do
+        local queue, env = world()
+        queue.press(BLADE, BLADE_COMMAND)
+        blade_leaves(queue)
+        queue.on_message(battle_message(ME, 90))
+        env.now = env.now + case.after
+        outside_cast(queue)
+        env.now = env.now + 2
+        assert.are.equal(case.held, queue.press(BLADE, BLADE_COMMAND), "after " .. case.after)
+      end
+    end)
+
+    it("takes GearSwap's own cast, sent as the lock of the bar's weaponskill ends, for somebody else's", function()
+      local queue, env = world()
+      queue.press(BLADE, BLADE_COMMAND)
+      blade_leaves(queue)
+      queue.on_action(weaponskill_at(12345))
+      queue.on_action(action(3, 42))
+      env.now = env.now + 2.33
+      outside_cast(queue)
+      env.now = env.now + 2
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("counts a press sent on its recast as a send of the bar's", function()
+      local queue, env = world()
+      finish_cast(queue)
+      env.recast.Stone = 10
+      assert.is_false(queue.press(spell("Stone"), command("Stone")))
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      queue.on_message(battle_message(ME, 17))
+      env.now = env.now + 2
+      assert.is_true(queue.press(spell("Cure"), command("Cure")))
+    end)
+
+    it("counts a press of a kind it never holds as a send of the bar's", function()
+      local queue, env = world()
+      finish_cast(queue)
+      queue.press({ type = "ct", action = 'ma "Stone" <t>' }, 'input /ma "Stone" <t>')
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      queue.on_message(battle_message(ME, 17))
+      env.now = env.now + 2
+      assert.is_true(queue.press(spell("Cure"), command("Cure")))
+    end)
+
+    it("counts a cursor's cast sent on its recast at OK as a send of the bar's", function()
+      local queue, env = world()
+      queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+      queue.on_text("/ta <stpc>")
+      queue.on_text("/ta 777")
+      finish_cast(queue)
+      env.recast["Shell V"] = 10
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.are.equal('input /ma "Shell V" 12345', send)
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      queue.on_message(battle_message(ME, 17))
+      env.now = env.now + 2
+      assert.is_true(queue.press(spell("Cure"), command("Cure")))
+    end)
+
+    it("counts a release as a send of the bar's", function()
+      local queue, env = world()
+      finish_cast(queue)
+      queue.press(spell("Cure"), command("Cure"))
+      env.now = env.now + 2.71
+      assert.are.equal(command("Cure"), queue.step())
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      finish_cast(queue)
+      env.now = env.now + 2
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("counts a cursor's cast sent at OK with nothing busy as a send of the bar's", function()
+      local queue, env = world()
+      queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+      queue.on_text("/ta <stpc>")
+      queue.on_text("/ta 777")
+      env.now = env.now + 3
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.are.equal('input /ma "Shell V" 12345', send)
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      finish_cast(queue)
+      env.now = env.now + 2
+      assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("counts no press it took as a send", function()
+      local queue, env = world()
+      finish_cast(queue)
+      assert.is_true(queue.press(spell("Cure"), command("Cure")))
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      queue.on_message(battle_message(ME, 17))
+      env.now = env.now + 2
+      assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+    end)
+
+    it("says in debug when it starts, each press it lets go and that nothing is busy", function()
+      local queue, env = world({ mode = "debug" })
+      env.names[7] = "Cocoon"
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC, 7))
+      finish_cast(queue)
+      env.now = env.now + 2
+      queue.press(BLADE, BLADE_COMMAND)
+      env.now = env.now + 0.71
+      queue.step()
+      local said = logged(env)
+      assert.is_not_nil(said:find("standing aside for spell Cocoon", 1, true))
+      assert.is_not_nil(said:find("not held: Savage Blade, standing aside", 1, true))
+      assert.is_not_nil(said:find("no longer standing aside: nothing is busy", 1, true))
+    end)
+
+    it("says in debug that the bar's own went", function()
+      local queue, env = world({ mode = "debug" })
+      outside_cast(queue)
+      env.now = env.now + 2.6
+      queue.press(BLADE, BLADE_COMMAND)
+      blade_leaves(queue)
+      queue.on_action(weaponskill_at(12345))
+      assert.is_not_nil(logged(env):find("no longer standing aside: the bar's own went", 1, true))
+    end)
+
+    it("says in debug that a cursor's cast went at OK for it", function()
+      local queue, env = world({ mode = "debug" })
+      queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+      queue.on_text("/ta <stpc>")
+      queue.on_text("/ta 777")
+      outside_cast(queue)
+      env.now = env.now + 2
+      queue.on_text("/ta 12345")
+      assert.is_not_nil(logged(env):find("not held: Shell V, standing aside", 1, true))
+    end)
+
+    it("says it once for one stretch, however many packets leave", function()
+      local queue, env = world({ mode = "debug" })
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      local _, times = logged(env):gsub("standing aside for", "")
+      assert.are.equal(1, times)
+    end)
+
+    it("says nothing of it for a press made with nothing busy", function()
+      local queue, env = world({ mode = "debug" })
+      queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+      env.now = env.now + 2.01
+      queue.press(BLADE, BLADE_COMMAND)
+      assert.is_nil(logged(env):find("not held: Savage Blade, standing aside", 1, true))
+    end)
+  end)
+
   describe("dropping", function()
     it("drops what is held under a config mode or suppression, and keeps the lock", function()
       local queue, env = world()

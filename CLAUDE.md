@@ -663,7 +663,7 @@ saying so in `debug` alone, and that arrow's OK stays its owner's: sent as
 typed, the press was refused the same way, GearSwap kept the `st_flag` it had
 set for the token, and the next cursor's OK reached the game as a bare
 `/ma "Dia III" <id>` - "A command error occurred". A config mode is the
-exception: the queue stands aside there and the press goes as typed. That the
+exception: the queue leaves the press alone there and it goes as typed. That the
 flag is the cause is read off GearSwap's source and the log, **unverified in a
 live client** (row 24 of the plan).
 A cursor whose token raised no arrow is given up after 2s (2026-11-12, from
@@ -769,6 +769,51 @@ answered, and the Sleepga meant for the pack went out 4s late). A monster is an 
 from 0x01000000 up, never a player's, so a held Raise still goes, and an ability is
 released as before. Each was dropped once in a live client, and rightly (Kevin's
 weekend of 2026-11-14, rows 41 and 42).
+
+**It stands aside for a packet the bar did not send** (Kevin, 2026-11-22, row 45 of
+the plan). GearSwap casting on its own - auto-buffs, AutoWS - sends a hair ahead of
+every release: 2.3s after a weaponskill's finish where the lock is 2.4, 2.5 after a
+spell's where it is 2.7, 0.4 after an ability's where it is 0.5 (its `default_aftercast`
+less `latency = .5`, read in Kevin's Sel-Include; +2.32 to +2.35, +2.52 to +2.53 and
++0.36 to +0.37 in the logs). With it on, a held press lost every window: ten
+weaponskills waited 3.4 to 17.6s behind one automatic cast after another over two of the
+runs on `7f166fb` (2026-11-19 and 11-21), and Kevin died with a cure and a Sanguine
+Blade held. GearSwap holds its own casts back for a command it has SEEN
+(`default_precast`: 2.75s for a weaponskill), and a held press is one it never sees. So
+from any action packet the bar did not send, until one of the bar's own is accepted or
+nothing is busy, a press - or a cursor's OK - made in the LAST SECOND of a lock, with no
+cast running and nothing unanswered, is not held: it goes as pressed, as before the
+queue, in place of whatever was held. The lock refuses it, GearSwap sees it, and a mash
+gets in after ONE automatic cast. Everything sooner is held as ever, both Kevin's calls. A
+press made while the other action is casting or unanswered could only be refused, and
+GearSwap takes that refusal for the end of the cast it is in. One made earlier in the
+lock would meet his own WS buff: his GearSwap answers a weaponskill by using Berserk,
+Warcry or Aggressor in its place, sending the weaponskill again 1.1s later and dropping
+every other weaponskill press for 5s (`ws_buff_lock`), so sent early in a lock that
+second send is refused too and the mash goes nowhere for five seconds. A press still on
+its own recast is held as ever too, whenever it is made (from review, 2026-11-22, and
+not yet Kevin's call): sent, it could not go at the lock's end either, and once
+GearSwap's own wait is over its recast check aborts the press unseen, with a line of
+chat. A packet is the bar's own when it leaves within two seconds of the bar sending
+anything - a press it let through, a release, an OK's cast - which is what keeps that
+second send from counting (1.08 to 1.12s after the ability left, 69 of 69). **What it
+costs**, accepted: a SINGLE press made in that second is refused and lost where it was
+held, a cursor's OK included, and after an ability or an item, whose lock is a second
+or less, that second is the whole lock; a macro's packet, or another addon's, stands
+the bar aside as much as GearSwap's, so the last second of the lock after one no longer
+queues; the first automatic cast always gets in, and so does one within two seconds of
+a bar send (0.4s after an ability the bar sent) and GearSwap's retry of a cast of its
+own that was interrupted, which its source puts 1.35s after the interrupt and so ahead
+of that lock's last second; and what the service sends without asking the queue - an
+enchanted item's use, at the press or after its warm-up, a reraise slot's gear, a
+warp's cast - is not counted as the bar's. It is fixed in XIVHud alone, by
+decision: nothing in GearSwap changes for it and no hook is asked of it (Kevin: "We are
+not modifying gearswap for this addon"). `debug` says `standing aside for <kind>
+<name>`, `not held: <name>, standing aside` for each press let go, and `no longer
+standing aside: the bar's own went` or `: nothing is busy`. **Unverified in a live
+client**, all of it: that a mash has a press in that second ahead of GearSwap's cast,
+that the press holds the cast back, and that the WS buff's second send lands after the
+lock.
 
 `debug` is `on` plus a line per edge in `<addon>/debug.log`, appended with raw `io`,
 dated and stamped with the clock, and never in chat (Kevin, 2026-11-01; the client

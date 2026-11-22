@@ -50,7 +50,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      GearSwap would abort it on, or aimed at a target the game has just said fell. A
      cursor slot is judged the same way at OK, when its command is really sent,
      rather than at the press. A held weaponskill or spell whose target has
-     died since is dropped rather than sent at the corpse. ]]
+     died since is dropped rather than sent at the corpse.
+
+     It stands aside for a packet the bar did not send, so that an addon acting
+     on its own cannot take every window from a held press: see on_outgoing. ]]
 
 --[[ The seconds after a finish before the next action goes: too long costs a
      moment and too short loses the press. These are the shipped lengths, and
@@ -129,6 +132,21 @@ local WEAPONSKILL_BEAT = 0.4
      runs longer is sent to be refused, and a held one whose recast is still that
      far off when the lock clears is dropped. ]]
 local RECAST_GRACE = 2
+--[[ How long after the bar sends anything a packet that leaves is still the
+     bar's own. A press's packet follows it inside a frame or two, but GearSwap
+     may put another action in a press's place and send the press itself after
+     it: Kevin's uses Berserk for a weaponskill and sends the weaponskill 1.08
+     to 1.12s after the ability left, 69 times of 69 (2026-11-21). A guess past
+     that. ]]
+local OWN_SECONDS = 2
+--[[ How much of a lock's end a press goes as it is in, while standing aside.
+     GearSwap's own cast comes a tenth or two before the lock's end, so a mash
+     has a press in this second ahead of it. No earlier in the lock: Kevin's
+     GearSwap answers a weaponskill by using a buff in its place, sending the
+     weaponskill again 1.1s later and dropping every other weaponskill press
+     for 5s, and sent sooner than this that second send would land in the lock
+     too (Kevin, 2026-11-22). ]]
+local ASIDE_SECONDS = 1
 
 local MODES = { "off", "on", "debug" }
 local KNOWN_MODES = { off = true, on = true, debug = true }
@@ -316,6 +334,11 @@ local function new(deps)
   local listed = nil
   -- When each target fell, by id, as a 0x029 said.
   local fallen = {}
+  -- Standing aside: a packet the bar did not send has left. See on_outgoing.
+  local aside = false
+  -- When the bar last sent anything, and whether the packet `sent_until`
+  -- waits on an answer to was its own.
+  local bar_sent_at, sent_ours = nil, false
 
   local function now()
     return deps.now()
@@ -389,12 +412,14 @@ local function new(deps)
   --- chunk` fires after one, and a second press inside that gap must not go
   --- straight out too.
   local function leaving(record)
-    sent_until, sent_left, sent_spell, going = now() + LEAVE_BACKSTOP, false, nil, record
+    bar_sent_at = now()
+    sent_until, sent_left, sent_spell, going = bar_sent_at + LEAVE_BACKSTOP, false, nil, record
     sent_target = nil
   end
 
   local function answered()
     sent_until, going, sent_target = nil, nil, nil
+    sent_ours = false
   end
 
   -- A send has been seen leaving the client and nothing has answered it yet.
@@ -569,6 +594,15 @@ local function new(deps)
     return self.busy() or (held ~= nil and deps.recast_left(held.record) > 0)
   end
 
+  -- Standing aside, with the last ASIDE_SECONDS of a lock all that is left of
+  -- what is busy: see on_outgoing.
+  local function yielding()
+    if not aside or acting_until ~= nil or running(sent_until) or not running(lock_until) then
+      return false
+    end
+    return lock_until - now() <= ASIDE_SECONDS
+  end
+
   --[[ Whether a press goes to the game on its recast: one running more than
        RECAST_GRACE past the lock, or any with nothing engaged, which counts for
        nothing as a GearSwap filter may well cancel it. ]]
@@ -582,6 +616,7 @@ local function new(deps)
     answered()
     ended()
     lock_until, finished_at = nil, nil
+    aside, bar_sent_at = false, nil
     -- Not a fresh table each time: this runs every frame while the queue is off.
     if next(fallen) ~= nil then
       fallen = {}
@@ -616,6 +651,25 @@ local function new(deps)
     -- The list was the old zone's, life's, job's or character's: the client's
     -- own answers until the next 0x063.
     listed = nil
+  end
+
+  --[[ Whether a press goes now, as it is, rather than being held: nothing is
+       engaged, or this is standing aside and the press is off its recast. On
+       it, it could not go at the lock's end either, and GearSwap's recast
+       check may abort it unseen. What was held gives way to a press that
+       goes: the lock can run out between two frames, with the release still
+       owed. ]]
+  local function goes_now(name, record)
+    local aside_now = yielding() and deps.recast_left(record) <= 0
+    if not aside_now and engaged() then
+      return false
+    end
+    if aside_now then
+      note("not held: " .. name .. ", standing aside")
+    end
+    self.drop("replaced by " .. name)
+    leaving(record)
+    return true
   end
 
   --[[ A cursor slot is judged at OK, when the command is really sent. Nothing
@@ -653,12 +707,9 @@ local function new(deps)
     return true, "input /ta <" .. record.target .. ">"
   end
 
-  --[[ A bar's press, with the command it resolved to. Answers whether it was
-       taken: false sends it as it always was, which is every press made while
-       nothing is busy or held waiting on its recast, and a second answer is what to send in its place. A
-       press that is not held leaves one that is alone. ]]
-  function self.press(record, command)
-    if not self.enabled() or not HELD_TYPES[record.type] then
+  -- What press answers, for a queue that is on.
+  local function take(record, command)
+    if not HELD_TYPES[record.type] then
       return false
     end
     local name = record.action or record.type
@@ -680,10 +731,7 @@ local function new(deps)
       not_held_on_recast(name, record)
       return false
     end
-    if not engaged() then
-      -- The lock can run out between two frames, with the release still owed.
-      self.drop("replaced by " .. name)
-      leaving(record)
+    if goes_now(name, record) then
       return false
     end
     local blocked = deps.blocked()
@@ -701,6 +749,24 @@ local function new(deps)
     end
     hold(name, record, pinned, target)
     return true
+  end
+
+  --[[ A bar's press, with the command it resolved to. Answers whether it was
+       taken: false sends it as it always was, and a second answer is what to
+       send in its place. A press goes as it was with nothing busy and nothing
+       held waiting on its recast, or while this stands aside (see
+       on_outgoing), and what was held gives way to it. Any other press that
+       is not held leaves one that is alone. ]]
+  function self.press(record, command)
+    if not self.enabled() then
+      return false
+    end
+    local taken, instead = take(record, command)
+    if not taken then
+      -- The caller sends it, whatever its kind.
+      bar_sent_at = now()
+    end
+    return taken, instead
   end
 
   --[[ The outgoing text, for a cursor this opened. The game puts a cursor command
@@ -740,11 +806,10 @@ local function new(deps)
     local aimed = open.command:gsub("<[^<>]*>$", id)
     if on_recast(open.record) then
       not_held_on_recast(open.name, open.record)
+      bar_sent_at = now()
       return true, aimed
     end
-    if not engaged() then
-      self.drop("replaced by " .. open.name)
-      leaving(open.record)
+    if goes_now(open.name, open.record) then
       return true, aimed
     end
     hold(open.name, open.record, aimed, tonumber(id))
@@ -799,6 +864,11 @@ local function new(deps)
         or "naming another spell"
       note("ignored a finish " .. why .. (message ~= nil and ", message " .. message or ""))
       return
+    end
+    -- One of the bar's own was accepted: the turn it stood aside for has come.
+    if aside and sent_ours and unanswered() then
+      aside = false
+      note("no longer standing aside: the bar's own went")
     end
     answered()
     if started ~= nil and act.param ~= INTERRUPT_PARAM then
@@ -936,6 +1006,22 @@ local function new(deps)
       end
     end
     note("out " .. kind .. name .. since_finish())
+    --[[ Standing aside (Kevin, 2026-11-22). GearSwap casting on its own sends
+         a hair ahead of every release, and a mashed weaponskill sat held
+         behind one automatic cast after another. It holds its own casts back
+         for a command it has seen, and a held press is one it never sees. So
+         from a packet the bar did not send until one of the bar's own is
+         accepted, or nothing is busy, a press made in a lock's last second
+         goes as it is: refused, as before the queue, but seen. A press made
+         sooner is held as ever: in the cast, or with a send unanswered, it
+         could only be refused, and GearSwap takes that refusal for the end of
+         the cast it is in. A macro's packet stands the bar aside as much, with
+         nothing gained. UNVERIFIED in a live client. ]]
+    sent_ours = bar_sent_at ~= nil and now() - bar_sent_at < OWN_SECONDS
+    if not sent_ours and not aside then
+      aside = true
+      note("standing aside for " .. kind .. name)
+    end
     --[[ A spell is answered by its start, which lag can lose while its finish
          still comes, so it may go unanswered for as long as it casts. A spell
          the server drops unanswered holds the bar as long, not 2s. ]]
@@ -1035,6 +1121,10 @@ local function new(deps)
       return nil
     end
     expire()
+    if aside and not self.busy() then
+      aside = false
+      note("no longer standing aside: nothing is busy")
+    end
     if held == nil then
       return nil
     end

@@ -730,6 +730,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 42 | OK a Sleepga's cursor on a mob during a lock, and have the mob die before the lock ends | `dropped Sleepga: the target died`, and the next Sleepga goes at once | The held drop for a spell, and that a monster's id is never under 0x01000000. Seen once on `a93e3ec` (weekend of 2026-11-14), a Dia III, dropped rightly |
 | 43 | With the party full, let AutoTrust cast a Trust, and another with enmity held | `refused, system message 298 (param <n>)` for the full party and `300` for the enmity, each right after the `out spell`, and a press held behind it goes at once. `no spell was waiting` after one means it freed nothing. 296 or 297, should either come, reads the same | That these are what the game sends and free the bar, and that 298 and 300 are those two lines, as LandSandBoat's table has them. Not seen on `b6714b3` (2026-11-17): no Trust was refused |
 | 44 | Mash a weaponskill slot on a mob as it dies, and keep mashing until the next one is targeted | `swallowed <name>, the target died (<id> fell <n>s ago)` for each press in the three seconds after that mob's `fell` line, no `out weaponskill` at it then, and the first press on the next target goes | The press at a fallen target (2026-11-16), and that nothing alive is taken for one. Confirmed at two seconds on `b6714b3` (2026-11-17): 52 presses swallowed over 11 deaths and no `out weaponskill` at a corpse the game had reported, the ages 0.00 to 1.76s. Three seconds since (2026-11-18): an `out weaponskill` at a corpse later than that, with `the target died, no answer to come` after it, is one the window missed |
+| 45 | With Auto Buff Mode on and a buff down, mash a weaponskill slot from its own lock on, and again with Berserk, Warcry or Aggressor ready | `out spell <buff>` and `standing aside for spell <buff>`, `hold` lines through that cast and the first of its lock, then in the lock's last second `not held: <name>, standing aside` and an `out`, each `refused` until one `start`s, and `no longer standing aside: the bar's own went`, with no second `out` of GearSwap's before that start. With a buff ready the first `out` is the buff's, and `out weaponskill` follows it by 1.1s and starts | Standing aside (2026-11-22). That a mash has a press in the last second ahead of GearSwap's next cast, that the press holds that cast back, and that the WS buff's second send lands after the lock. Unverified |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -835,7 +836,7 @@ Done 2026-11-11 (Kevin), after Dia III would not go in Al Zahbi:
   whoever opened it. It could do nothing there anyway: the token raises no arrow
   while one is up.
 - Not covered (review, 2026-11-11): suppression and the config modes are checked
-  first, and there the queue stands aside, so a cursor press under any arrow goes as
+  first, and there the queue leaves the press alone, so a cursor press under any arrow goes as
   typed. Covering them means deciding what a press under the queue's own arrow does
   while it holds nothing.
 - Unverified: that GearSwap's flag is what broke the OK. It is read off GearSwap's
@@ -1274,3 +1275,86 @@ three of three.
 - 47 unlisted `0x029` messages with a send unanswered: 4, 5, 204 and 206 again. None is
   a refusal.
 - Two cursors were given up after their 30s (`no OK for` Dia III and Haste II).
+
+## Standing aside (Kevin, 2026-11-22)
+
+Three sessions on `7f166fb`: 2026-11-18 (RDM), 11-19 (BLU) and 11-21 (BLU, then RDM),
+the first two with their chat logs.
+
+**What was wrong.** Kevin: "There were a few instances of me trying to get a WS off and
+it wouldn't go off." With Auto Buff Mode or AutoWS on, GearSwap's own casts took every
+window from a held press.
+
+- Its tick fires a hair ahead of the release: `default_aftercast` less `latency = .5`,
+  plus a tenth (Sel-Include, and Sel-Utility's `add_next_cast_delay`). That is 2.3s after
+  a weaponskill's finish against the lock's 2.4, 2.5 after a spell's against 2.7 and 0.4
+  after an ability's against 0.5. In the logs: +2.32 to +2.35, +2.52 to +2.53 and +0.36
+  to +0.37.
+- 851 presses were held, and 62 had a packet that was not the bar's leave meanwhile. A
+  weaponskill held with nothing else sent went after 0.75s at the median (48 of them, at
+  most 3.73s); one held while something else was sent, after 4.35s (45, at most 17.60s).
+- Ten weaponskills waited 3.4 to 17.6s. On 11-19: 21:38:54 (6.4s, 29 presses), 21:39:21,
+  21:42:08, 21:42:20, 21:55:50, 22:04:19, 22:04:31 and 22:17:31 (13.2s, 73 presses,
+  behind Nat. Meditation, Cocoon, Unbridled Learning and Mighty Guard). On 11-21:
+  20:20:26 and 20:32:04 (17.6s, 30 presses).
+- 11-19 21:42:25, a death. A cure OK'd at 21:42:13 was held 6.5s and the Sanguine Blade
+  that replaced it 5.9s, while Erratic Flutter left 2.34s after the weaponskill's finish,
+  again after its interrupt, and Nat. Meditation after that. Neither press went out.
+- With automation off the queue did little wrong: on the two RDM stretches 282 of 292
+  weaponskills started inside 2s of the first press.
+
+**Why GearSwap wins.** A command that reaches its `default_precast` pushes its tick back:
+2.75s for a weaponskill, `cast_time / 4 + 3` for a spell, .85 for an ability. That is how
+a mash kept its automation off before the queue. A held press never reaches it.
+
+**The rule** (Kevin: "Stand aside", then "Any outside packet", "Hold it" and "Last second
+only").
+
+- It starts on any action packet the bar did not send: one that leaves two seconds or
+  more after the bar last sent anything - a press it let through, a release, an OK's
+  cast.
+- While it stands, a press or a cursor's OK made in the last second of a lock, with no
+  cast running and nothing unanswered, is not held. It goes as pressed, in place of what
+  was held, and `debug` says `not held: <name>, standing aside`.
+- It ends when one of the bar's own is accepted or nothing is busy, and a clear forgets
+  it.
+- A press made sooner is held as ever. Mid-cast it could only be refused, and GearSwap
+  takes that refusal for the end of the cast it is in. Earlier in the lock it would meet
+  Kevin's WS buff (his User-Globals): a weaponskill is answered by Berserk, Warcry or
+  Aggressor in its place, the weaponskill is sent again 1.1s later (1.08 to 1.12s, 69 of
+  69) and every other weaponskill press is dropped for 5s. Sent early in a lock the buff
+  and the second send are both refused - an ability sent 0.5s after a spell's finish was,
+  once of once - and the mash goes nowhere for five seconds.
+- A press still on its own recast is held as ever too (from review, 2026-11-22, and not
+  yet Kevin's call). Sent, it could not go at the lock's end either, and once GearSwap's
+  own wait is over its `check_recast` aborts the press unseen, with a line of chat.
+- The two seconds are what keep that second send from counting as somebody else's.
+
+**What it costs**, accepted.
+
+- A single press made in that second is refused and lost where it was held, a cursor's
+  OK included. After an ability or an item, whose lock is a second or less, that second
+  is the whole lock.
+- A macro's packet, or another addon's, stands the bar aside as GearSwap's does, so the
+  last second of the lock after one no longer queues.
+- The first automatic cast always gets in. So does one within two seconds of a bar send
+  (0.4s after an ability the bar sent), and GearSwap's retry of a cast of its own that
+  was interrupted, which its source puts 1.35s after the interrupt.
+- What the service sends without asking the queue - an enchanted item's use, at the
+  press or after its warm-up, a reraise slot's gear, a warp's cast - is not counted as
+  the bar's. A hook the service calls as it sends would close that (review, 2026-11-22).
+  Not built.
+
+**Not done.** Beating GearSwap by timing alone, its 2.5s after a spell being at the edge
+of what the server accepts. Blocking its packet, which would leave it mid-action in the
+wrong gear. Sending a held press now and again at the lock's end, a retry like the one
+removed on 2026-10-16. And anything in GearSwap itself (Kevin: "We are not modifying
+gearswap for this addon").
+
+**Review.** Two blind rounds, clean on the second. The first found no spec proving that
+a release or an OK's cast counts as the bar's own send - two were added, and shown red
+with that line removed - and that a press on its own recast was being sent in the last
+second. The second's notes that stand: the hook above, and that after an outside
+ability or item every press in the lock goes as pressed, the lock being that short.
+
+**Unverified in a live client** (row 45), all of it.

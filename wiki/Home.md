@@ -364,6 +364,21 @@ off, every press goes at once and the game decides.
 - **Macros and typed commands** are not held, but they do count towards the
   wait, as does anything another addon sends. A press made before the game has
   answered the last one is held too.
+- **When something else acts for you.** An action the bars did not send - a
+  macro, a typed command, another addon, GearSwap casting a buff on its own -
+  makes the queue stand aside. Until one of the bars' own actions has gone, or
+  you are free to act, a press made in the last second of the wait is not
+  held, and neither is a cursor slot's OK: it goes at once, as with the queue
+  off, so the game may refuse it, and it is not sent again. Keep pressing and
+  it goes as the wait ends. After a job ability or an item the whole wait is
+  that last second, being a second or less. A press made sooner, during the
+  cast or earlier in the wait, is held as usual, and so is one whose own
+  recast is still running. This is for addons that act the moment you can:
+  GearSwap's automatic casts leave a hair before a held press would, and a
+  held press could sit behind one automatic cast after another. GearSwap waits
+  when it sees you pressing, and a held press is one it never sees. Anything
+  that leaves within two seconds of a press the bars let through counts as
+  theirs.
 - **What drops a held press:** zoning, dying, changing job or logging out; a
   cutscene that hides the HUD; opening `//hud layout`, `//hud config` or edit
   mode; anything that reloads a bar - a reset, a slot switch, a copy, a login;
