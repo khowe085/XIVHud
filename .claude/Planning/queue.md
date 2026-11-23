@@ -1325,8 +1325,8 @@ only").
   69) and every other weaponskill press is dropped for 5s. Sent early in a lock the buff
   and the second send are both refused - an ability sent 0.5s after a spell's finish was,
   once of once - and the mash goes nowhere for five seconds.
-- A press still on its own recast is held as ever too (from review, 2026-11-22, and not
-  yet Kevin's call). Sent, it could not go at the lock's end either, and once GearSwap's
+- A press still on its own recast is held as ever too (from review, 2026-11-22; Kevin's
+  call, 2026-11-23). Sent, it could not go at the lock's end either, and once GearSwap's
   own wait is over its `check_recast` aborts the press unseen, with a line of chat.
 - The two seconds are what keep that second send from counting as somebody else's.
 

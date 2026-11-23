@@ -791,8 +791,8 @@ lock would meet his own WS buff: his GearSwap answers a weaponskill by using Ber
 Warcry or Aggressor in its place, sending the weaponskill again 1.1s later and dropping
 every other weaponskill press for 5s (`ws_buff_lock`), so sent early in a lock that
 second send is refused too and the mash goes nowhere for five seconds. A press still on
-its own recast is held as ever too, whenever it is made (from review, 2026-11-22, and
-not yet Kevin's call): sent, it could not go at the lock's end either, and once
+its own recast is held as ever too, whenever it is made (from review, 2026-11-22; Kevin,
+2026-11-23: "Yes, hold it"): sent, it could not go at the lock's end either, and once
 GearSwap's own wait is over its recast check aborts the press unseen, with a line of
 chat. A packet is the bar's own when it leaves within two seconds of the bar sending
 anything - a press it let through, a release, an OK's cast - which is what keeps that
