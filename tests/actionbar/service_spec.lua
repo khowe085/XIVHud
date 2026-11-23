@@ -1225,6 +1225,21 @@ describe("the action service", function()
       assert.are.equal("", said(env))
     end)
 
+    it("has the queue say each change of status in its debug log", function()
+      local service, env = queued("debug")
+      service.on_status(0)
+      assert.is_not_nil(logged(env):find("status 0", 1, true))
+    end)
+
+    it("has the queue say a press aimed at <t> with nothing under it, off the client's own target", function()
+      local service, env = queued("debug")
+      service.fire({ type = "ma", action = "Cure", target = "t" }, {})
+      assert.is_nil(logged(env):find(", status ", 1, true))
+      env.target = nil
+      service.fire({ type = "ma", action = "Cure", target = "t" }, {})
+      assert.is_not_nil(logged(env):find("no target for Cure, status 1", 1, true))
+    end)
+
     it("copes with no log, as a spec's ctx has none", function()
       local service, env = world({ no_debug_log = true })
       env.config.queue = "debug"

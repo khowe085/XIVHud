@@ -837,6 +837,23 @@ for its newest command interrupted; the first two rest on that table alone. `deb
 writes `refused, system message <id> (param <n>)`, with `no spell was waiting` after
 it where it freed nothing. **Unverified in a live client** (row 43), the reading of
 all six included.
+**`debug` also says your status and your target** (Kevin, 2026-11-23: "Yes, add them"),
+and nothing acts on either. Through the second of two Dynamis [D] runs (2026-11-22) he
+was left engaged with no battle target again and again, until he targeted a mob and
+attacked it by hand, and neither log could say what the client read: a press under 1000
+TP is swallowed with no line saying what `<t>` held, and nothing wrote a status. So
+`debug` writes `status <n>` at each change of status the client reports,
+`auto-target <id>` for each `0x029` message 234 with you as its actor, in place of the
+`unlisted message 234` one drew while a send was unanswered - ten of ten of those in
+that log came the second the chat log said "Auto-targeting the <mob>." - and, for each
+bar press aimed at `<t>`, `no target for <name>, status <n>` with nothing under it or
+`target <id> fell <n>s ago for <name>, status <n>` with a mob there the game has said
+fell, since the last mob of a pull leaves the target on its corpse. In any status,
+since which status is the question, and ahead of whatever line says what became of the
+press. A press aimed anywhere else says nothing, or every buff cast with nothing
+targeted would write a line, and that extra read of `<t>` is made in `debug` alone.
+**Unverified in a live client** (row 46): that `status change` fires on every change,
+and that `<t>` is empty or on a corpse when it happens.
 **The lock lengths are settings** (`//hud queue lock [<kind> <seconds>]`, 0 to 5 in
 tenths, and a row each on the settings window's `global` panel, Kevin, 2026-10-31).
 `core.lua`'s `queue_locks` holds only the kinds that have been set, deliberately

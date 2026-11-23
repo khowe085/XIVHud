@@ -20,6 +20,9 @@ local function world(opts)
     casts = { spell = {}, item = {} },
     blocked = nil,
     pins = {},
+    -- The id under each target token, and how often the queue asked for one.
+    targets = { t = 12345 },
+    target_asks = 0,
   }
   local queue = new_queue({
     no_packets = opts.no_packets,
@@ -43,7 +46,10 @@ local function world(opts)
         return command
       end
       if target == "t" then
-        local id = env.pinned or 12345
+        local id = env.pinned or env.targets.t
+        if id == nil then
+          return nil
+        end
         return (command:gsub(" <t>$", " " .. id)), id
       end
       return nil
@@ -59,6 +65,10 @@ local function world(opts)
     end,
     arrow_up = function()
       return env.arrow_up == true
+    end,
+    target_id = function(token)
+      env.target_asks = env.target_asks + 1
+      return env.targets[token]
     end,
     -- What the client's mob table would say, which the queue must not ask.
     dead = opts.dead,
@@ -3873,6 +3883,144 @@ describe("the action queue", function()
       queue.press(spell(), command())
       queue.clear("zone")
       assert.is_not_nil(logged(env):find("cleared: zone", 1, true))
+    end)
+
+    describe("of the status and the target, for a player left engaged with nothing to hit", function()
+      local IDLE, ENGAGED = 0, 1
+      local AUTO_TARGET = 234
+      local BLADE = { type = "ws", action = "Savage Blade", target = "t" }
+      local BLADE_COMMAND = 'input /ws "Savage Blade" <t>'
+
+      it("says each change of status", function()
+        local queue, env = world({ mode = "debug" })
+        queue.on_status(ENGAGED)
+        env.now = env.now + 1
+        queue.on_status(IDLE)
+        assert.are.same({ "queue 100.00: status 1", "queue 101.00: status 0" }, env.log)
+      end)
+
+      it("says nothing of one outside debug", function()
+        local queue, env = world()
+        queue.on_status(ENGAGED)
+        assert.are.same({}, env.log)
+      end)
+
+      it("says whom the game auto-targeted, with nothing sent to be answered", function()
+        local queue, env = world({ mode = "debug" })
+        queue.on_message(fall_message(MOB, AUTO_TARGET, ME))
+        assert.are.same({ "queue 100.00: auto-target " .. MOB }, env.log)
+      end)
+
+      it("says nothing of an auto-target that is somebody else's", function()
+        local queue, env = world({ mode = "debug" })
+        queue.on_message(fall_message(MOB, AUTO_TARGET, SOMEONE))
+        assert.are.same({}, env.log)
+      end)
+
+      it("takes an auto-target for no answer to what was sent, and says it once", function()
+        local queue, env = world({ mode = "debug" })
+        queue.on_outgoing(0x01A, outgoing_action(WEAPONSKILL))
+        queue.on_message(fall_message(MOB, AUTO_TARGET, ME))
+        assert.is_true(queue.busy())
+        assert.is_not_nil(logged(env):find("auto-target " .. MOB, 1, true))
+        assert.is_nil(logged(env):find("unlisted message", 1, true))
+      end)
+
+      it("says a press made with no target, and the status it was made in", function()
+        local queue, env = world({ mode = "debug" })
+        env.player.status = ENGAGED
+        env.targets.t = nil
+        queue.press(BLADE, BLADE_COMMAND)
+        assert.are.equal("queue 100.00: no target for Savage Blade, status 1", env.log[1])
+      end)
+
+      it("says it in any status, since which one is the question", function()
+        local queue, env = world({ mode = "debug" })
+        env.player.status = IDLE
+        env.targets.t = nil
+        queue.press(BLADE, BLADE_COMMAND)
+        assert.is_not_nil(logged(env):find("no target for Savage Blade, status 0", 1, true))
+      end)
+
+      it("says it of any kind of press aimed at <t>, however the token is cased", function()
+        local queue, env = world({ mode = "debug" })
+        env.player.status = ENGAGED
+        env.targets.t = nil
+        queue.press(spell("Dia", "T"), 'input /ma "Dia" <T>')
+        assert.is_not_nil(logged(env):find("no target for Dia, status 1", 1, true))
+      end)
+
+      it("says nothing of a press aimed elsewhere, and asks the client nothing for it", function()
+        local queue, env = world({ mode = "debug" })
+        env.player.status = ENGAGED
+        env.targets.t = nil
+        queue.press(spell(), command())
+        queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+        queue.press({ type = "ja", action = "Composure" }, "input /ja Composure")
+        assert.is_nil(logged(env):find("no target", 1, true))
+        assert.are.equal(0, env.target_asks)
+      end)
+
+      it("says it ahead of what became of the press, as of one swallowed under its TP", function()
+        local queue, env = world({ mode = "debug" })
+        env.player.status = ENGAGED
+        env.player.vitals = { tp = 500 }
+        env.targets.t = nil
+        queue.press(BLADE, BLADE_COMMAND)
+        assert.are.same({
+          "queue 100.00: no target for Savage Blade, status 1",
+          "queue 100.00: swallowed Savage Blade, no TP",
+        }, env.log)
+      end)
+
+      it("says a press aimed at a target the game has said fell, and how long ago", function()
+        local queue, env = world({ mode = "debug" })
+        env.player.status = ENGAGED
+        env.player.vitals = { tp = 500 }
+        env.targets.t = MOB
+        falls(queue, MOB)
+        env.now = env.now + 2.1
+        queue.press(BLADE, BLADE_COMMAND)
+        assert.is_not_nil(logged(env):find("target " .. MOB .. " fell 2.10s ago for Savage Blade, status 1", 1, true))
+      end)
+
+      it("forgets that death when the queue does", function()
+        local queue, env = world({ mode = "debug" })
+        env.player.status = ENGAGED
+        env.targets.t = MOB
+        falls(queue, MOB)
+        env.now = env.now + 30
+        env.log = {}
+        queue.press(BLADE, BLADE_COMMAND)
+        assert.is_nil(logged(env):find(", status ", 1, true))
+      end)
+
+      it("says nothing of a press made at a target the game has said nothing of", function()
+        local queue, env = world({ mode = "debug" })
+        env.player.status = ENGAGED
+        queue.press(BLADE, BLADE_COMMAND)
+        assert.is_nil(logged(env):find(", status ", 1, true))
+      end)
+
+      it("copes with a client that names no player or no status", function()
+        local queue, env = world({ mode = "debug" })
+        env.targets.t = nil
+        queue.press(BLADE, BLADE_COMMAND)
+        env.player = nil
+        assert.has_no.errors(function()
+          queue.press(BLADE, BLADE_COMMAND)
+        end)
+        assert.are.equal(2, select(2, logged(env):gsub("no target for Savage Blade, status unknown", "")))
+      end)
+
+      it("asks the client for no target outside debug", function()
+        local queue, env = world()
+        env.player.status = ENGAGED
+        env.targets.t = nil
+        queue.press(BLADE, BLADE_COMMAND)
+        assert.are.equal(0, env.target_asks)
+        assert.are.same({}, env.log)
+      end)
     end)
   end)
 end)

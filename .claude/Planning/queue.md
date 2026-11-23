@@ -731,6 +731,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 43 | With the party full, let AutoTrust cast a Trust, and another with enmity held | `refused, system message 298 (param <n>)` for the full party and `300` for the enmity, each right after the `out spell`, and a press held behind it goes at once. `no spell was waiting` after one means it freed nothing. 296 or 297, should either come, reads the same | That these are what the game sends and free the bar, and that 298 and 300 are those two lines, as LandSandBoat's table has them. Not seen on `b6714b3` (2026-11-17): no Trust was refused |
 | 44 | Mash a weaponskill slot on a mob as it dies, and keep mashing until the next one is targeted | `swallowed <name>, the target died (<id> fell <n>s ago)` for each press in the three seconds after that mob's `fell` line, no `out weaponskill` at it then, and the first press on the next target goes | The press at a fallen target (2026-11-16), and that nothing alive is taken for one. Confirmed at two seconds on `b6714b3` (2026-11-17): 52 presses swallowed over 11 deaths and no `out weaponskill` at a corpse the game had reported, the ages 0.00 to 1.76s. Three seconds since (2026-11-18): an `out weaponskill` at a corpse later than that, with `the target died, no answer to come` after it, is one the window missed |
 | 45 | With Auto Buff Mode on and a buff down, mash a weaponskill slot from its own lock on, and again with Berserk, Warcry or Aggressor ready | `out spell <buff>` and `standing aside for spell <buff>`, `hold` lines through that cast and the first of its lock, then in the lock's last second `not held: <name>, standing aside` and an `out`, each `refused` until one `start`s, and `no longer standing aside: the bar's own went`, with no second `out` of GearSwap's before that start. With a buff ready the first `out` is the buff's, and `out weaponskill` follows it by 1.1s and starts | Standing aside (2026-11-22). That a mash has a press in the last second ahead of GearSwap's next cast, that the press holds that cast back, and that the WS buff's second send lands after the lock. Unverified |
+| 46 | In a crowded fight, when you are left engaged with nothing targeted, press a weaponskill slot before targeting anything | `no target for <name>, status 1` (or `target <id> fell <n>s ago for <name>, status 1`) for each press until a target is back, under the `fell` of the mob you were on, and either no `auto-target` after that `fell` or an `auto-target <id>` whose `<id>` then `fell`; no `status 0` in between | The status and target lines (2026-11-23). Whether the client still reads engaged, whether `<t>` is empty or on a corpse, and whether the game auto-targeted. A `status 0` there means the client was told it disengaged. Unverified |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -1358,3 +1359,68 @@ second. The second's notes that stand: the hook above, and that after an outside
 ability or item every press in the lock goes as pressed, the lock being that short.
 
 **Unverified in a live client** (row 45), all of it.
+
+## Engaged with no battle target (Kevin, 2026-11-23)
+
+One log on `7f166fb`, 2026-11-22 11:40 to 11-23 01:23, with its chat logs: eleven
+visits to Dynamis, two of them Divergence (San d'Oria [D] 18:00 to 18:59 and Jeuno [D]
+23:23 to 01:23), a Walk of Echoes and two Sorties.
+
+**What was wrong.** Kevin, of the second Divergence run: "quite a few times I had
+instances where I was engaged but didn't have a battle target", put right each time by
+targeting a mob and attacking it by hand. His read: "I think it is packets getting lost
+under high load."
+
+**What the logs say.**
+
+- That run was the laggiest in the file. A weaponskill started 1.02s after it left at
+  the median and 2.02s at the worst (334 of them), against 0.72s and 1.55s in the first
+  Divergence run (122) and a median of 0.34 to 0.56s in the old Dynamis zones. 129 of its
+  329 weaponskills had their start and their finish arrive together.
+- It lost packets. Eight of his own spells started and were neither finished nor
+  interrupted, with no death near. The first run had two, both finished late, and no
+  other run had more than two.
+- The game auto-targeted from 87 of the 175 kills that were his own there, against 57 of
+  80 in the first run. Where it did not, the next mob he hit was no statue 56 times
+  against 9.
+- Seven auto-targets there were followed by 9 to 50s with no swing and no range or sight
+  message, where the first run's six ran 7 to 8s. At 00:41:04 the game auto-targeted a
+  Regiment Vandal, which fell four seconds later, and he did not swing for 21s.
+- Nothing ties it to the bar, which never touches the battle target. No cursor's arrow
+  was up at any of those, and a kill with one up was auto-targeted at least as often as
+  one without (16% of the auto-targeted kills there had one up, 5% of the rest).
+- Neither log says his status or his target. A press under 1000 TP is swallowed with no
+  line saying what `<t>` held, so two presses in the file show an empty `<t>` (00:33:56,
+  0.2 and 0.4s after a death, a target back by 0.6s).
+
+**What was built** (Kevin: "Yes, add them"). Three lines in `debug`, each written on an
+event, and nothing acts on any of them:
+
+- `status <n>` at each change of status the client reports, off the service's
+  `on_status`.
+- `auto-target <id>` for each `0x029` message 234 with him as its actor, in place of the
+  `unlisted message 234` a send then unanswered used to draw. Ten of ten of those in
+  this log came the second the chat log said "Auto-targeting the <mob>.".
+- For each bar press aimed at `<t>`: `no target for <name>, status <n>` with nothing
+  under it, or `target <id> fell <n>s ago for <name>, status <n>` with a mob there the
+  game has said fell, for as long as the queue remembers the death. The last mob of a
+  pull leaves the target on its corpse. In any status, since which status is the
+  question, and ahead of the line that says what became of the press. A press aimed
+  anywhere else says nothing, or every buff cast with nothing targeted would write a
+  line. That extra read of `<t>` is made in `debug` alone.
+
+**Seen in the same log, and nothing built.**
+
+- Eight held presses waited 4.5 to 11.6s behind casts the bar did not send: Haste II
+  11.6s behind two Trust summons (18:22), Cure IV 11.5s behind three -ga nukes (22:41),
+  Expiacion 9.5s behind Nat. Meditation and Cocoon (20:02). That is standing aside's
+  case, on a client that did not have it yet.
+- Twice a weaponskill was answered "too far" (message 78) with no start seen:
+  `ignored a finish with no cast running, message 78`, then `no answer to the last send`
+  once its 2s were up. At 23:28:16 a held Dia III was released into that weaponskill's
+  lock and refused.
+
+**Unverified in a live client** (row 46), all of it: that `status change` fires on every
+change, and that `<t>` is empty or on a corpse when it happens. A corpse the game sent
+no death message for draws no line: the client's own mob table is not asked, here as
+everywhere else in the queue.

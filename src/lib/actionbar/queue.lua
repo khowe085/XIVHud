@@ -208,7 +208,7 @@ local PARAM_OFFSET = 13
 local ACTOR_OFFSET = 5
 local MESSAGE_OFFSET = 25
 -- Who a 0x029 is about, at 0x08.
-local FALLEN_OFFSET = 9
+local ABOUT_OFFSET = 9
 -- The order of a 0x063 that lists the buffs on you, and how many it lists.
 local BUFFS_ORDER = 9
 local BUFF_SLOTS = 32
@@ -257,6 +257,10 @@ local FALLEN_SECONDS = FINISH_BACKSTOP
 local CORPSE_SECONDS = 3
 -- An id from here up is a monster's, an NPC's or a pet's, never a player's.
 local FIRST_NPC_ID = 0x01000000
+--[[ The 0x029 message that says the game picked your next target for you. Ten
+     of ten in Kevin's logs came the second the chat log said "Auto-targeting
+     the <mob>." (2026-11-22). ]]
+local AUTO_TARGET = 234
 
 local function u16(data, offset)
   local low, high = data:byte(offset, offset + 1)
@@ -751,6 +755,43 @@ local function new(deps)
     return true
   end
 
+  --[[ Debug's alone, and nothing acts on it: a press aimed at <t> with
+       nothing under it, or with a mob there the game has said fell, and the
+       status it was made in. Kevin was left engaged with no battle target
+       through a Dynamis run, and no log could say whether the client still
+       read engaged (2026-11-22); the last mob of a pull leaves the target on
+       its corpse. on_status and the auto-target line in on_message are for
+       the same question. A press aimed elsewhere says nothing, or every buff
+       cast with nothing targeted would write a line. This read of <t> is
+       debug's alone. ]]
+  local function note_targetless(record)
+    if type(record.target) ~= "string" or record.target:lower() ~= "t" then
+      return
+    end
+    if self.mode() ~= "debug" then
+      return
+    end
+    local id = deps.target_id("t")
+    if id ~= nil and not dead(id) then
+      return
+    end
+    local target = id == nil and "no target" or ("target %d fell %.2fs ago"):format(id, now() - fallen[id])
+    local player = deps.get_player()
+    local status = type(player) == "table" and player.status or nil
+    note(
+      ("%s for %s, status %s"):format(
+        target,
+        record.action or record.type,
+        status ~= nil and tostring(status) or "unknown"
+      )
+    )
+  end
+
+  --- A change of the player's status, as the client reports it.
+  function self.on_status(status)
+    note("status " .. tostring(status))
+  end
+
   --[[ A bar's press, with the command it resolved to. Answers whether it was
        taken: false sends it as it always was, and a second answer is what to
        send in its place. A press goes as it was with nothing busy and nothing
@@ -761,6 +802,7 @@ local function new(deps)
     if not self.enabled() then
       return false
     end
+    note_targetless(record)
     local taken, instead = take(record, command)
     if not taken then
       -- The caller sends it, whatever its kind.
@@ -910,9 +952,16 @@ local function new(deps)
     end
     local message = u16(data, MESSAGE_OFFSET) % 32768
     if DEATHS[message] then
-      local id = u32(data, FALLEN_OFFSET)
+      local id = u32(data, ABOUT_OFFSET)
       fell(id)
       note(("fell %d, message %d"):format(id, message))
+      return
+    end
+    if message == AUTO_TARGET then
+      local player = deps.get_player()
+      if player ~= nil and u32(data, ACTOR_OFFSET) == player.id then
+        note(("auto-target %d"):format(u32(data, ABOUT_OFFSET)))
+      end
       return
     end
     local refusal = REFUSALS[message]

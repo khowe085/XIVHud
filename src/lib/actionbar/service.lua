@@ -682,6 +682,7 @@ local function new(deps)
     arrow_up = function()
       return selected_id("st") ~= nil
     end,
+    target_id = selected_id,
   })
   self.queue = queue
 
@@ -1214,6 +1215,7 @@ local function new(deps)
   end
 
   function self.on_status(status)
+    queue.on_status(status)
     if DEAD_STATUSES[status] then
       self.end_trip("cancelled")
       queue.clear("death")
