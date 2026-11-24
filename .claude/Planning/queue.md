@@ -730,8 +730,8 @@ start bracket the true lock. Every line is in `debug.log`.
 | 42 | OK a Sleepga's cursor on a mob during a lock, and have the mob die before the lock ends | `dropped Sleepga: the target died`, and the next Sleepga goes at once | The held drop for a spell, and that a monster's id is never under 0x01000000. Seen once on `a93e3ec` (weekend of 2026-11-14), a Dia III, dropped rightly |
 | 43 | With the party full, let AutoTrust cast a Trust, and another with enmity held | `refused, system message 298 (param <n>)` for the full party and `300` for the enmity, each right after the `out spell`, and a press held behind it goes at once. `no spell was waiting` after one means it freed nothing. 296 or 297, should either come, reads the same | That these are what the game sends and free the bar, and that 298 and 300 are those two lines, as LandSandBoat's table has them. Not seen on `b6714b3` (2026-11-17): no Trust was refused |
 | 44 | Mash a weaponskill slot on a mob as it dies, and keep mashing until the next one is targeted | `swallowed <name>, the target died (<id> fell <n>s ago)` for each press in the three seconds after that mob's `fell` line, no `out weaponskill` at it then, and the first press on the next target goes | The press at a fallen target (2026-11-16), and that nothing alive is taken for one. Confirmed at two seconds on `b6714b3` (2026-11-17): 52 presses swallowed over 11 deaths and no `out weaponskill` at a corpse the game had reported, the ages 0.00 to 1.76s. Three seconds since (2026-11-18): an `out weaponskill` at a corpse later than that, with `the target died, no answer to come` after it, is one the window missed |
-| 45 | With Auto Buff Mode on and a buff down, mash a weaponskill slot from its own lock on, and again with Berserk, Warcry or Aggressor ready | `out spell <buff>` and `standing aside for spell <buff>`, `hold` lines through that cast and the first of its lock, then in the lock's last second `not held: <name>, standing aside` and an `out`, each `refused` until one `start`s, and `no longer standing aside: the bar's own went`, with no second `out` of GearSwap's before that start. With a buff ready the first `out` is the buff's, and `out weaponskill` follows it by 1.1s and starts | Standing aside (2026-11-22). That a mash has a press in the last second ahead of GearSwap's next cast, that the press holds that cast back, and that the WS buff's second send lands after the lock. Unverified |
-| 46 | In a crowded fight, when you are left engaged with nothing targeted, press a weaponskill slot before targeting anything | `no target for <name>, status 1` (or `target <id> fell <n>s ago for <name>, status 1`) for each press until a target is back, under the `fell` of the mob you were on, and either no `auto-target` after that `fell` or an `auto-target <id>` whose `<id>` then `fell`; no `status 0` in between | The status and target lines (2026-11-23). Whether the client still reads engaged, whether `<t>` is empty or on a corpse, and whether the game auto-targeted. A `status 0` there means the client was told it disengaged. Unverified |
+| 45 | With Auto Buff Mode on and a buff down, mash a weaponskill slot from its own lock on, and again with Berserk, Warcry or Aggressor ready | `out spell <buff>` and `standing aside for spell <buff>`, `hold` lines through that cast and the first of its lock, then in the lock's last second `not held: <name>, standing aside` and an `out`, each `refused` until one `start`s, and `no longer standing aside: the bar's own went`, with no second `out` of GearSwap's before that start. With a buff ready the first `out` is the buff's, and `out weaponskill` follows it by 1.1s and starts | Standing aside (2026-11-22). That a mash has a press in the last second ahead of GearSwap's next cast, that the press holds that cast back, and that the WS buff's second send lands after the lock. Unverified. Not exercised on `524150f` (2026-11-23): it stood aside 11 times, for items used by hand, Erratic Flutter, Cocoon and Unbridled Learning, each ending at `nothing is busy`, and no press came in a last second |
+| 46 | In a crowded fight, when you are left engaged with nothing targeted, press a weaponskill slot before targeting anything | `no target for <name>, status 1` (or `target <id> fell <n>s ago for <name>, status 1`) for each press until a target is back, under the `fell` of the mob you were on, and either no `auto-target` after that `fell` or an `auto-target <id>` whose `<id>` then `fell`; no `status 0` in between | The status and target lines (2026-11-23). Whether the client still reads engaged, whether `<t>` is empty or on a corpse, and whether the game auto-targeted. A `status 0` there means the client was told it disengaged. Seen on `524150f` (2026-11-23, Walk of Echoes): the lines are written, 47 `auto-target` to the chat log's 47. Of 70 deaths of his target 20 went to `status 0` instead, a median 0.87s on, and three kept status 1 with no `auto-target`, each the death of a mob an `auto-target` had named 1.6 to 6.7s before; one press among them read `no target for Savage Blade, status 1`. Whether the server had a target for him then is open |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -1424,3 +1424,88 @@ event, and nothing acts on any of them:
 change, and that `<t>` is empty or on a corpse when it happens. A corpse the game sent
 no death message for draws no line: the client's own mob table is not asked, here as
 everywhere else in the queue.
+
+**A third Divergence run, with its chat log** (Bastok [D], 2026-11-23 18:30 to 19:29, RDM
+with Trusts, still on `7f166fb`). The queue's own figures were ordinary: a weaponskill
+started 0.69s after it left at the median and 1.60s at the worst (122), three spell
+finishes came late and none was lost, and none of the bar's 144 releases was refused.
+
+- The game auto-targeted from 52 of his 74 kills. Of the 22 it did not, 16 had no mob
+  known asleep beside him, most of them the last of a pull. Six had one and still drew
+  none: 18:45:30, 18:46:54, 18:53:57, 19:01:06, 19:18:29 and 19:27:33. After each he
+  picked the next mob with a `<stnpc>` Dia III, Silence or Sleepga, and his next swing
+  came 10 to 23s after the kill (median 13s), against 7s after an auto-target.
+- **It follows the killing blow.** With another mob known asleep at the kill, a plain
+  melee kill of his own was auto-targeted 19 of 19 times here and 10 of 10 in the San
+  d'Oria run; a kill by a weaponskill or a spell 25 of 30 and 34 of 40. That is none
+  missed of 29 against 11 of 70, about 2% likely by chance. A melee kill with a
+  weaponskill or a spell on its way out missed once in three (18:53:57). In the Jeuno
+  run, where nothing was asleep to count by, weaponskill kills missed 80 of 139 and melee
+  kills 7 of 34.
+- **Not sleep and not range.** 40 of the 52 auto-targets picked a mob that was asleep, and
+  40 were answered "out of range" before any swing.
+- **Nothing was lost on the way to him in this run.** The death message came at all six,
+  and the killing weaponskill took the server as long where the auto-target came as
+  where it did not (1.11s against 1.17s from the send to the finish, at the median).
+- **Not the bar, as far as this shows.** At four of the six nothing of the bar's was on
+  its way out and no arrow was up; one had a Savage Blade sent 0.6s before the mob fell
+  and never answered, one a Sleepga arrow up for 3s. Kills with an arrow up were
+  auto-targeted twice in the same hour (18:40:59, 18:56:12).
+- **What others say of it.** Addon authors on FFXIAH, as fetched on 2026-11-23 and not
+  checked line by line (the ATA targeting addon's thread of 2023,
+  `ffxiah.com/forum/topic/57302`, and page 4 of the November 2024 update thread,
+  `ffxiah.com/forum/topic/58073`): the server picks the auto-target and sends it apart
+  from the death ("Hp=0, target defeated, and target change ... are all separate
+  commands"), in a `0x058`; it marks you disengaged the moment the target's HP is 0; the
+  client is never told which mob you are engaged to; and the miss is "a server driven
+  race condition" that is "only a problem when instance performance is dipping". None of
+  them ties it to the killing blow, which is these logs alone.
+
+So the read above moves: lost packets were not needed to explain that run, and the miss
+is the game's own, whatever the bar does.
+
+**The first run on `524150f`** (Walk of Echoes [P1], 2026-11-23 21:58 to 22:26, BLU in a
+party of six, with its chat log; the debug log starts at 19:51). The three lines are
+there: 157 `status`, 47 `auto-target` against the chat log's 47 "Auto-targeting" lines,
+135 presses at a corpse and 14 with nothing under `<t>`.
+
+- **What the game did when his target died**, 70 times while he was engaged. It
+  auto-targeted 47 times, the line 0.00 to 0.77s after the `fell` (median 0.01s). It
+  disengaged him 20 times, `status 0` coming 0.00 to 1.74s after the `fell` (median
+  0.87s) and `<t>` left on the corpse. Three times it did neither.
+- **A disengage is what a missed auto-target looks like**, wherever a mob was left. Seven
+  times he was engaged again within 8s (22:02:32, 22:04:40, 22:04:49, 22:04:57, 22:05:25,
+  22:18:44, 22:20:16), four after his own weaponskill's kill and three after somebody
+  else's. Twelve more took 10 to 80s, most of them the last of a group, and one was the
+  end of the run. His own weaponskill's kills: 27 auto-targeted, 11 disengaged. Somebody
+  else's kills: 18, 9 and the three below.
+- **Engaged with nothing, three times** (22:17:01, 22:18:14, 22:18:29). Each was the
+  death, at somebody else's hand, of a mob the game had auto-targeted 1.6 to 6.7s before.
+  No `auto-target` followed and no `status 0`: he read as engaged for another 15 to 31s.
+  Chat has a battle line of his 2 to 4s on ("Unable to see the Nostos Funguar.", a swing
+  at a Nostos Bat), and his first press came 3.3 to 8.5s after the death. At 22:18:32 it
+  was `no target for Savage Blade, status 1`, in the second a swing of his landed on a
+  bat and the game called that bat out of range. That is the state Kevin described.
+  Whether the server had moved him to that bat without telling the client, which is his
+  lost packet, or he had switched by hand a moment after the press, the chat log's whole
+  seconds cannot say.
+- **An empty `<t>` is mostly nothing.** Four of the six runs of `no target for` lines came
+  0.1 to 0.5s BEFORE a `fell` and the `auto-target` after it, and a fifth before a `fell`
+  and its `status 0`: the client lets go of the target a moment before the death message
+  arrives. Only 22:18:32 is the other kind.
+- **Standing aside was raised 11 times and let no press go**: six items used by hand,
+  Erratic Flutter and Cocoon twice each and Unbridled Learning once, ten over at `nothing
+  is busy` and one at a zone. No press came in a last second, so row 45 is where it was.
+  An item's line names no item, as its `out item` never has.
+- **The rest read as built.** Two `swallowed Expiacion, stun`, two weaponskills answered
+  too far (`finish weaponskill naming no spell, message 78`), two refused "You cannot
+  see" (219), and a Cocoon sent on an 11.9s recast and refused. None of the bar's 32
+  releases was refused by a lock.
+
+**Row 46, as far as this goes.** `status` is written on the changes that matter here: 1
+to 0 on a death the game did not auto-target from, 0 to 1 on engaging, 4 around every
+zone. `<t>` stays on the corpse for the second or so until `status 0`, and is empty only
+in the moment before a death message and at 22:18:32. Still open: whether the server had
+a target for him in those three. By Thorny's account the target update is a `0x058`,
+which nothing here reads; a `debug` line for it, and the target of an "out of range" or
+"unable to see" (messages 4 and 5), would say.
