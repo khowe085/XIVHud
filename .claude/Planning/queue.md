@@ -730,7 +730,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 42 | OK a Sleepga's cursor on a mob during a lock, and have the mob die before the lock ends | `dropped Sleepga: the target died`, and the next Sleepga goes at once | The held drop for a spell, and that a monster's id is never under 0x01000000. Seen once on `a93e3ec` (weekend of 2026-11-14), a Dia III, dropped rightly |
 | 43 | With the party full, let AutoTrust cast a Trust, and another with enmity held | `refused, system message 298 (param <n>)` for the full party and `300` for the enmity, each right after the `out spell`, and a press held behind it goes at once. `no spell was waiting` after one means it freed nothing. 296 or 297, should either come, reads the same | That these are what the game sends and free the bar, and that 298 and 300 are those two lines, as LandSandBoat's table has them. Not seen on `b6714b3` (2026-11-17): no Trust was refused |
 | 44 | Mash a weaponskill slot on a mob as it dies, and keep mashing until the next one is targeted | `swallowed <name>, the target died (<id> fell <n>s ago)` for each press in the three seconds after that mob's `fell` line, no `out weaponskill` at it then, and the first press on the next target goes | The press at a fallen target (2026-11-16), and that nothing alive is taken for one. Confirmed at two seconds on `b6714b3` (2026-11-17): 52 presses swallowed over 11 deaths and no `out weaponskill` at a corpse the game had reported, the ages 0.00 to 1.76s. Three seconds since (2026-11-18): an `out weaponskill` at a corpse later than that, with `the target died, no answer to come` after it, is one the window missed |
-| 45 | With Auto Buff Mode on and a buff down, mash a weaponskill slot from its own lock on, and again with Berserk, Warcry or Aggressor ready | `out spell <buff>` and `standing aside for spell <buff>`, `hold` lines through that cast and the first of its lock, then in the lock's last second `not held: <name>, standing aside` and an `out`, each `refused` until one `start`s, and `no longer standing aside: the bar's own went`, with no second `out` of GearSwap's before that start. With a buff ready the first `out` is the buff's, and `out weaponskill` follows it by 1.1s and starts | Standing aside (2026-11-22). That a mash has a press in the last second ahead of GearSwap's next cast, that the press holds that cast back, and that the WS buff's second send lands after the lock. Unverified. Not exercised on `524150f` (2026-11-23): it stood aside 11 times, for items used by hand, Erratic Flutter, Cocoon and Unbridled Learning, each ending at `nothing is busy`, and no press came in a last second |
+| 45 | With Auto Buff Mode on and a buff down, mash a weaponskill slot from its own lock on, and again with Berserk, Warcry or Aggressor ready | `out spell <buff>` and `standing aside for spell <buff>`, `hold` lines through that cast and the first of its lock, then in the lock's last second `not held: <name>, standing aside` and an `out`, each `refused` until one `start`s, and `no longer standing aside: the bar's own went`, with no second `out` of GearSwap's before that start. With a buff ready the first `out` is the buff's, and `out weaponskill` follows it by 1.1s and starts | Standing aside (2026-11-22). That a mash has a press in the last second ahead of GearSwap's next cast, that the press holds that cast back, and that the WS buff's second send lands after the lock. Unverified. Not exercised on `524150f` (2026-11-23): it stood aside 11 times, for items used by hand, Erratic Flutter, Cocoon and Unbridled Learning, each ending at `nothing is busy`, and no press came in a last second. In a Sortie the same night it let its first press go, a Silence OK'd in the last second of the lock after a Fire Kevin cast from the game's menu: refused, and cast again by hand 3s later, with nothing automatic sending |
 | 46 | In a crowded fight, when you are left engaged with nothing targeted, press a weaponskill slot before targeting anything | `no target for <name>, status 1` (or `target <id> fell <n>s ago for <name>, status 1`) for each press until a target is back, under the `fell` of the mob you were on, and either no `auto-target` after that `fell` or an `auto-target <id>` whose `<id>` then `fell`; no `status 0` in between | The status and target lines (2026-11-23). Whether the client still reads engaged, whether `<t>` is empty or on a corpse, and whether the game auto-targeted. A `status 0` there means the client was told it disengaged. Seen on `524150f` (2026-11-23, Walk of Echoes): the lines are written, 47 `auto-target` to the chat log's 47. Of 70 deaths of his target 20 went to `status 0` instead, a median 0.87s on, and three kept status 1 with no `auto-target`, each the death of a mob an `auto-target` had named 1.6 to 6.7s before; one press among them read `no target for Savage Blade, status 1`. Whether the server had a target for him then is open |
 | 47 | In a crowded fight, let the party kill the mob the game has just auto-targeted for you, and when no target comes back switch to one by hand as you usually do | Under that mob's `fell`, with no `auto-target` after it: either a `swing at <id>, <t> none` (or `out of range of`, `unable to see`) with no `out engage` or `out switch target` before it, or an `out switch target <id>` ahead of the first `swing at`; and a `server target <id>` after every `auto-target` | Who moved the target (2026-11-23). A swing with `<t> none` and no targeting packet of yours before it is the server moving you untold; your own packet first is you. Also when the game sends a `0x058`: with each auto-target, and in answer to your own switch or not. Unverified |
 
@@ -1361,6 +1361,27 @@ ability or item every press in the lock goes as pressed, the lock being that sho
 
 **Unverified in a live client** (row 45), all of it.
 
+**Its first press in a live client was thrown away** (a Sortie, 2026-11-23, on
+`524150f`). Kevin: "On the skeletons in Sortie, I tried to cast silence immediately after
+manually casting fire from the menu, and it never went off. I had to input it a second
+time and then it went off." At 22:52:55 his Fire left, made by the game's own menu, and
+the bar stood aside for it as for any packet it did not send. He OK'd a Silence 2.29s
+after the Fire's finish, in the lock's last second: `not held: Silence, standing aside`,
+out at +2.31s, `refused, message 17`. Held, it would have gone 0.41s later. He cast it
+again three seconds on. At 22:53:41 another Silence missed the same fate by 0.04s. The
+bar stood aside 19 times in that log, for thirteen spells it did not send - the
+skeletons' six Fires among them - and six items used by hand, and nothing automatic was
+racing it at any of them.
+
+**A menu cast can be told from GearSwap's.** GearSwap answers every action that is typed,
+bound or sent by an addon, its own automatic casts among them, by blocking the text and
+injecting the packet itself (`triggers.lua`, `flow.lua`), and it has no handler for an
+outgoing `0x01A` at all: one made from the game's menu leaves as the client built it. So
+the `injected` flag of `outgoing chunk`, which the entry point drops today, is false for
+a menu cast and true for all GearSwap sends. A macro or a typed line is injected too,
+and cannot be told from the automation. Read in GearSwap's source, unverified in a
+client, and not built: Kevin's call.
+
 ## Engaged with no battle target (Kevin, 2026-11-23)
 
 One log on `7f166fb`, 2026-11-22 11:40 to 11-23 01:23, with its chat logs: eleven
@@ -1551,3 +1572,36 @@ with `debug` off forgets nothing, which no log can show.
 
 **Unverified in a live client** (row 47), all of it: when the game sends a `0x058`,
 whether his own switch draws one, and that messages 4 and 5 name their mob at 0x08.
+
+## A Sortie and an Ambuscade on `524150f` (Kevin, 2026-11-23)
+
+One log, 22:29 to 23:52, with its chat log: Outer Ra'Kaznar [U2] on RDM (22:35 to 23:35)
+and an Ambuscade on BLU (23:41 to 23:44). Kevin, of it: "Couple times in here I think we
+lost the 'spell complete' packet. I was still in the spell animation but got the effect
+already. May have caused some issues".
+
+- **One spell finish was lost**, of 152 starts: Erratic Flutter at 23:41:29, eight
+  seconds into the Ambuscade's zone. 149 finished and two were interrupted. Its start's
+  wait ran out 2.4s on (`no finish yet for the last start, lock 2.70s`), and an Unbridled
+  Learning pressed in that lock was released 0.48s later and went. The Walk of Echoes log
+  of the same night had one too (22:12:47), with a Cocoon held 4.32s behind it.
+- **One finish came 0.07s after its start's wait ran out**, a Fire at 22:54:22, 0.98s
+  after its start where the wait was 0.9s, and replaced the lock that wait had begun. The
+  server answers on its 0.4s beat: seven other finishes came a beat later than that
+  spell's usual, and none later than that.
+- **What a lost finish costs** is the gap between the book's cast time and the cast as
+  it ran, plus the 0.4s of slack, since the wait is the book's. Under a second on BLU
+  here. On RDM, where Haste II ran 0.87s, it would be about 2.5s if the book says 3s;
+  none was lost on RDM.
+- A spell started 0.59s after it left at the median and 1.85s at the worst (152), a
+  weaponskill 0.72s and 1.98s (60). None of the bar's 66 releases was refused.
+- **Standing aside threw a press away**, its first in a live client: see that section.
+- **Five Haste II OKs went out on their recast with nothing busy**, as built (22:39:04,
+  23:12:40, 23:12:58, 23:26:16, 23:26:22; 1.08, 1.05, 0.32, 1.60 and 1.72s left), and
+  GearSwap answered four of them `Abort: [Haste II] waiting on recast.` He opened the
+  cursor again each time.
+- 107 Expiacion presses were swallowed under amnesia in the Ambuscade, over 68s, and no
+  `Abort:` for a weaponskill reached chat. The chat log has the amnesia wear off twice
+  (23:43:41, 23:44:26), so it was put back between.
+- Of 15 deaths of his target the game auto-targeted from two and disengaged him after
+  thirteen, with nothing left to fight. None left him engaged.
