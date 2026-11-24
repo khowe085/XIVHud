@@ -300,6 +300,20 @@ describe("commands", function()
       assert_error(parse("reraise", "x"), "takes no arguments")
     end)
 
+    it("reserves assist, and parses it bare as the press", function()
+      assert.is_true(commands.reserved.assist)
+      assert.are.same({ action = "action", verb = "assist" }, parse("Assist"))
+    end)
+
+    it("takes one word after assist as whom to assist, as typed", function()
+      assert.are.same({ action = "action", verb = "assist", target = "Bob" }, parse("assist", "Bob"))
+      assert.are.same({ action = "action", verb = "assist", target = "<P1>" }, parse("ASSIST", "<P1>"))
+    end)
+
+    it("refuses more than one word after assist", function()
+      assert_error(parse("assist", "Bob", "Smith"), "//hud assist [<target>]")
+    end)
+
     it("no longer knows the removed cast retry and weaponskill gate verbs", function()
       for _, verb in ipairs({ "retry", "wsgate" }) do
         assert.is_nil(commands.reserved[verb], verb)

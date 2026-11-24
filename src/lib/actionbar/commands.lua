@@ -167,7 +167,7 @@ end
 -- Types that carry no action name. `ra` still takes a target (`/ra <t>`);
 -- the rest take nothing at all.
 local NO_ACTION_TYPES =
-  { ra = true, draw = true, mr = true, warp = true, sneak = true, invisible = true, reraise = true }
+  { ra = true, draw = true, mr = true, warp = true, sneak = true, invisible = true, reraise = true, assist = true }
 -- Types whose action IS the rest of the line: a chat line or a console
 -- command may end in anything, so no target word is split off it.
 local WHOLE_LINE_TYPES = { ct = true, ex = true }

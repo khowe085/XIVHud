@@ -148,7 +148,7 @@ per character`.
 | `//hud copy <from> <to>` | replace character `<to>`'s configuration with character `<from>`'s |
 | `//hud buffs active` | list every buff on you right now, with ids, in the shipped priority order |
 | `//hud buffs <component> ...` | a component's buff order and filter settings (see below) |
-| `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise` | the bars' built-in actions (see Action commands below) |
+| `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise`, `assist` | the bars' built-in actions (see Action commands below) |
 | `//hud delay [<seconds>]` | the mount and warp countdown, shared by the crossbar and hotbar; without a number it prints the current value (see Action commands below) |
 | `//hud queue [on\|debug\|off]` | hold a bar press made during a cast or the moment after it, and send it when you can act; on by default. Without a word it prints the current setting (see [The action queue](#the-action-queue)) |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action |
@@ -291,6 +291,7 @@ or the console too, and their settings are shared by both bars.
 | `//hud warp [all]` | warp home by the best means you have (a Warp spell, a Warp Ring, an Instant Warp, ...); `all` sends your other characters running XIVHud too |
 | `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage: the spell, then Spectral Jig, then the ninjutsu, then an oil or powder. Silenced or muted, the spells and ninjutsu are passed over |
 | `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
+| `//hud assist [<target>]` | the game's `/assist`: target what another player is targeting. With a target it sets whom - a name (`//hud assist Bob`) or a target in brackets (`//hud assist <p1>`) - and alone it assists them. Set again after restarting the game. See [`assist`](components/crossbar.md#built-ins) on the crossbar page |
 | `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; fractions are fine, there is no upper limit, and `0` switches the countdown off |
 | `//hud queue [on\|debug\|off]` | [the action queue](#the-action-queue); without a word it prints the current setting. `debug` also writes each step to `debug.log` in the addon's folder |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action, 0 to 5 seconds in tenths. Alone it lists them all; with only a kind it prints that one |
@@ -317,8 +318,8 @@ off, every press goes at once and the game decides.
   and ranged attacks. A `sneak`, `invisible` or `reraise` slot picks its best
   way when you press it and holds that, unless the best way is gear to put on,
   which has a wait of its own. Every other kind of slot goes at once: chat and
-  Windower commands, game screens, job changes, mounts, warps, `draw` and
-  enchanted gear.
+  Windower commands, game screens, job changes, mounts, warps, `draw`,
+  `assist` and enchanted gear.
 - **One press.** Only one press is held, across both bars, and a newer one
   replaces it. A held press is sent once, and not again if the game refuses
   it. Nothing is said in chat when a press is held or dropped.

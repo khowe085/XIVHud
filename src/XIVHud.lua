@@ -1527,11 +1527,13 @@ local function check_assets()
     "icons/jobs/smn.png",
     "icons/jobs/bst.png",
     "icons/jobs/dnc.png",
-    -- actions.lua built-ins: mr, warp, and draw's three states.
+    -- actions.lua built-ins: mr, warp, sneak, invisible, assist, and draw's
+    -- three states.
     "icons/mounts/mount-roulette.png",
     "icons/spells/00261.png",
     "icons/spells/00137.png",
     "icons/spells/00136.png",
+    "icons/switchtarget.png",
     -- The first two are also the sword beside the crossbar's set label,
     -- which drew a bare square when its path went wrong and said nothing
     -- about it.

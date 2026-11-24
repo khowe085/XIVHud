@@ -44,7 +44,7 @@ end
 
 -- The shipped built-ins, spelled out. Two specs read it: one proves each
 -- name resolves, the other proves the table holds these and nothing else.
-local SHIPPED_BUILTINS = { "draw", "mr", "warp", "sneak", "invisible", "reraise", "open" }
+local SHIPPED_BUILTINS = { "draw", "mr", "warp", "sneak", "invisible", "reraise", "open", "assist" }
 
 describe("crossbar actions", function()
   describe("game action commands", function()
@@ -474,6 +474,75 @@ describe("crossbar actions", function()
     it("wears the main job's icon", function()
       assert.equal("jobs/war", build().icon_for({ type = "jc", action = "WAR/BLM" }))
       assert.is_nil(build().icon_for({ type = "jc", action = "junk" }))
+    end)
+  end)
+
+  describe("assist", function()
+    local FORM = "assist <target> - one name, or one target like <p1>"
+
+    it("runs the Windower alias, and puts nothing of its own on the line", function()
+      assert.equal("assist", command_of(build(), { type = "assist" }))
+    end)
+
+    it("resolves the command form as the slot form", function()
+      local actions = build()
+      assert.same(actions.resolve({ type = "assist" }), actions.resolve_builtin("Assist"))
+    end)
+
+    it("binds bare, and refuses an action name", function()
+      local actions = build()
+      assert.is_true(actions.validate({ type = "assist" }))
+      local ok, hint = actions.validate({ type = "assist", action = "Bob" })
+      assert.is_nil(ok)
+      assert.equal("assist takes no action name", hint)
+    end)
+
+    it("wears the switch-target art, which ships and is load-checked", function()
+      assert.equal("switchtarget", build().icon_for({ type = "assist" }))
+      local art = io.open("src/assets/icons/switchtarget.png", "rb")
+      assert.is_not_nil(art, "switchtarget.png does not ship")
+      art:close()
+      local source = assert(io.open("src/XIVHud.lua", "r"))
+      local body = source:read("*a")
+      source:close()
+      assert.is_not_nil(body:find('"icons/switchtarget.png"', 1, true), "switchtarget.png is not load-checked")
+    end)
+
+    describe("pointing the alias at a target", function()
+      it("writes the alias over the game's own /assist", function()
+        assert.equal("alias assist input /assist Bob", build().assist_alias("Bob"))
+      end)
+
+      it("keeps a target token as typed, for the game to read at the press", function()
+        local actions = build()
+        for _, token in ipairs({ "<t>", "<p1>", "<stpc>", "<a10>", "<BT>" }) do
+          assert.equal("alias assist input /assist " .. token, actions.assist_alias(token), token)
+        end
+      end)
+
+      it("refuses what is not one name or one token, a second console command among it", function()
+        local actions = build()
+        for _, target in ipairs({
+          "Bob;quit",
+          "Bob Smith",
+          "",
+          "<p1",
+          "p1>",
+          "<>",
+          '"Bob"',
+          "<p1>;quit",
+          "<p 1>",
+          "Bob\nquit",
+          5,
+        }) do
+          local command, hint = actions.assist_alias(target)
+          assert.is_nil(command, tostring(target))
+          assert.equal(FORM, hint, tostring(target))
+        end
+        local command, hint = actions.assist_alias(nil)
+        assert.is_nil(command)
+        assert.equal(FORM, hint)
+      end)
     end)
   end)
 

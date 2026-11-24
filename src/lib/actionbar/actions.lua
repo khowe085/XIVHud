@@ -90,6 +90,7 @@ local BUILTINS = {
   -- The first tier's art, on the same rule: whichever rung fires.
   reraise = { icon = "spells/00135" },
   open = {},
+  assist = { icon = "switchtarget" },
 }
 -- Derived, sorted: the name walk can never drift from the table, so the two
 -- frontends need no edit of their own (the spec's roster still does).
@@ -105,6 +106,16 @@ table.sort(BUILTIN_NAMES)
 -- BUILTINS, so it needs no exception here; its bare-vs-args overload is the
 -- command parser's concern.)
 local COLLISION_EXCEPTIONS = { open = true }
+
+--[[ An `assist` slot runs the Windower alias of that name and holds no target
+     of its own: whom it assists is whatever the alias says, which
+     `//hud assist <target>` writes and anything else may. The target goes
+     into a console command, where a `;` would start another, so it is one
+     name or one target token. ]]
+local ASSIST_ALIAS = "assist"
+local ASSIST_NAME = "^%w+$"
+local ASSIST_TOKEN = "^<%w+>$"
+local ASSIST_FORM = "assist <target> - one name, or one target like <p1>"
 
 local function target_suffix(target)
   if target == nil then
@@ -304,6 +315,9 @@ local function new(deps)
     if kind == "draw" then
       return draw_plan(state)
     end
+    if kind == "assist" then
+      return command_plan(ASSIST_ALIAS)
+    end
     if kind == "mr" then
       -- Mounted, the press dismounts, and getting out is never held up by
       -- the recast that says when you could mount again.
@@ -371,6 +385,15 @@ local function new(deps)
 
   function self.draw()
     return draw_plan_one_way()
+  end
+
+  --- The console command that points the alias an `assist` slot runs at the
+  --- game's /assist of that target, or nil and the form a target takes.
+  function self.assist_alias(target)
+    if type(target) ~= "string" or not (target:match(ASSIST_NAME) or target:match(ASSIST_TOKEN)) then
+      return nil, ASSIST_FORM
+    end
+    return "alias " .. ASSIST_ALIAS .. " input /assist " .. target
   end
 
   -- The command frontend: `//hud crossbar <name> [<arg>]` -> the same record

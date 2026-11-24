@@ -441,6 +441,53 @@ The drop (2026-11-09):
 - core - the keyboard handler offers each key to the keyboard map alone, and
   `wants_keyboard()` no longer counts the bridge.
 
+## Assist (Kevin, 2026-11-24)
+
+"I want to be able to use the in-game /assist feature with a button on my
+controller. There needs to be an 'assist' gesture and hotbar action that will
+invoke the Windower alias `assist`. The command `//hud assist {target}` map
+the Windower alias `assist` tp the in game command `/assist {target}`"
+
+Built as a bind type and a framework verb, with nothing added to the pad's
+own code:
+
+- **`assist`, a built-in type** (`BUILTINS` in `lib/actionbar/actions`): no
+  action name and no target, and the press is the console command `assist`.
+  It is in the binder under General as `Assist`, and wears `switchtarget`
+  (Kevin - the pack's own `assist.png` is the Equipment opener's).
+- **`//hud assist <target>`** writes the alias: `alias assist input /assist
+  <target>`. One word, as typed: a name (letters and digits) or a target token
+  in its brackets, so `<t>` and `<p1>` are read by the game at the press.
+  Anything else is refused, the target going into a console command where a
+  `;` would start another. It needs no character.
+- **Bare, `//hud assist` is the press** (Kevin: "Fire the assist"), with a
+  character, as every action verb.
+- **The session's** (Kevin: "No, session only"): nothing is stored and nothing
+  re-made at load, so an alias of the player's own is never written over.
+- **No gesture ships bound to it** (Kevin: "None, I'll bind it"), and no
+  shipped behaviour is named `assist`: no behaviour is named after a bind type
+  (Commands, above), so a gesture carries the type as an action of its own -
+  `//hud gamepad bind <gesture> assist`. Kevin was told a shipped behaviour
+  would be added, before the spec pinning that rule was read; the command he
+  was promised works as described, and a keyboard map entry is
+  `{ type = "assist" }` where it would have been the name.
+- The queue never holds it. What leaves is `0x01A` category 12, the queue's
+  `out assist <id>` debug line, which nothing waits on or stands aside for.
+- `SHIPPED_BUILTINS` in `tests/actionbar/actions_spec.lua`, a spec from before
+  this branch, gained the name (Kevin: "Yes, extend it").
+
+**Unverified in a live client**: that the console's `alias` takes the line as
+written (Windower's docs give `alias <alias> <command>`), that a
+`send_command` of the alias runs it, that a press with no alias made is only a
+console "unknown command", and whether Windower hands `<t>` to the addon as
+typed or as the target's name. And one that would matter (review, round 1):
+the alias is named after the game command it wraps. The docs call an alias "a
+pseudo console command that can be typed into the console or used in a script
+or key bind", and give `//` and `/console` as the only ways in from chat, so
+the `/assist` that `input` sends should be the game's alone - but if a
+single-slash line were ever resolved against aliases, the alias would call
+itself. The first press in a client settles it.
+
 ## Unverified in a live client
 
 Everything: that `_LuaXInput.dll` loads from the addon's `bin/` (XIPivot's

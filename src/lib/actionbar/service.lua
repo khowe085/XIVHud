@@ -27,7 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
 --[[ The action service: the ONE place a press is executed, shared by every
-     bar and by the framework's own `//hud warp|mr|sneak|invisible|reraise|draw`.
+     bar and by the framework's own
+     `//hud warp|mr|sneak|invisible|reraise|draw|assist`.
 
      It exists because the crossbar's execution glue held process-wide
      invariants - "only one wait of any kind is in flight", the GearSwap hold
@@ -1071,7 +1072,7 @@ local function new(deps)
   end
 
   -- A built-in by name from the console (`draw`, `mr`, `sneak`, `invisible`,
-  -- `reraise`, `open <name>`). Answers a hint for a name or argument it
+  -- `reraise`, `assist`, `open <name>`). Answers a hint for a name or argument it
   -- cannot run, nil when the press went - or was refused in words already
   -- said.
   function self.builtin(name, arg)
@@ -1084,6 +1085,17 @@ local function new(deps)
       execute(plan, hint)
     end
     return nil
+  end
+
+  --- `//hud assist <target>`: points the alias an `assist` slot runs at that
+  --- target. Answers the line to say - whom, or the form a target takes.
+  function self.assist(target)
+    local command, form = actions.assist_alias(target)
+    if command == nil then
+      return form
+    end
+    send_command(command)
+    return "assist: " .. target
   end
 
   -- The sword's click, one way in each direction and no state read -

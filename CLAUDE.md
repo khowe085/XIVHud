@@ -191,6 +191,8 @@ Per-component isolation: every component owns its own configuration file and can
 //hud sneak | //hud invisible  -- the sneak and invisible ladders, the same on every job
 //hud reraise                  -- the best reraise you have: spell, then item, then gear
 //hud draw                     -- toggle the weapon state every bar follows
+//hud assist [<target>]        -- run the Windower alias `assist`; a target points it at
+                                  the game's /assist of that target (below)
 //hud delay [<seconds>]        -- the countdown before a mount or a warp goes (0 = off)
 //hud hidecutscene [on|off]    -- hide the HUD during cutscenes (core.lua's hideCutscene)
 //hud queue [on|debug|off]     -- hold a bar press through a cast and its lock (below)
@@ -1373,6 +1375,40 @@ is refused. In the binder it is General -> Job Change -> main -> sub, the
 submenu step nesting for it: Back climbs out one menu at a time.
 `lib/actionbar/jobchange.lua` is the one list and parser the catalog, the CLI
 and `actions` all read. **Unverified in a live client.**
+
+**Assist** (`assist`, Kevin, 2026-11-24, for /assist from a pad button) binds
+the type and nothing else - `bind 3:7 assist`, a name or a target after it
+refused - and the press sends the console command `assist`: a Windower ALIAS,
+which the addon does not own. `//hud assist <target>` writes it (`alias assist
+input /assist <target>`), and so may anything else - a script, another addon.
+It is the SESSION's: Windower forgets an alias when the client closes, and
+nothing is stored or re-made at load (Kevin), so XIVHud never writes over an
+alias of the player's own. The target is ONE word, passed through as typed - a
+name (letters and digits), or a target token in its brackets (`<p1>`, `<t>`),
+left for the game to read at the press - because it is spliced into a console
+command, where a `;` would start another; `actions.assist_alias` composes it
+and refuses the rest. It needs no character, the alias being the client's.
+Bare, `//hud assist` IS the press (Kevin), and needs a character as every
+action verb does. It is a built-in (`BUILTINS` in `actions.lua`), with an
+entry of its own in the binder's curated General list (`Assist`), and it
+wears `icons/switchtarget.png` (Kevin - the pack's own `assist.png` is the
+Equipment opener's). A pad gesture carries it as an action
+of its own (`//hud gamepad bind lb+y assist`): there is NO shipped behaviour
+of that name, since a gesture's bind reads a behaviour's name before a bind
+type and so no behaviour is named after one, and no gesture ships bound to it
+(Kevin). The queue never holds it: what leaves is a targeting packet (`0x01A`
+category 12, `out assist <id>` in the debug log) and no action, so nothing
+waits on it and nothing stands aside for it. The press does stamp the bar's
+last send, as every unheld press does, so an action packet from elsewhere in
+the next two seconds reads as the bar's own. **Unverified in a live client**:
+all of it - that `alias` takes the line as written (`alias <alias> <command>`
+in Windower's docs), that a `send_command` of the alias runs it, that a press
+with no alias made is only a console "unknown command" (the `jc` slot's
+posture), whether Windower hands the addon `<t>` as typed or as the target's
+name, and that the `/assist` the alias sends is the game's alone: the docs
+call an alias a console pseudo-command, but were a single-slash line ever
+resolved against aliases, one named after the command it wraps would call
+itself.
 
 Quotes now do exactly one thing in the parser: a value that arrives wrapped in
 a MATCHED pair is unwrapped and trimmed (commands.lua's file-local

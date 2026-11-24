@@ -54,7 +54,7 @@ the [gamepad bridge](../gamepad.md) - so **a controller is optional**.
 - **Bind anything**: spells, job abilities, weaponskills, items, enchanted
   gear, pet commands, mounts, ranged attack, chat lines, Windower commands,
   game screens, job changes, and built-ins for drawing your weapon, mount
-  roulette, warping home, sneak, invisible and reraise.
+  roulette, warping home, sneak, invisible, reraise and assist.
 - **A mouse binder** (`//hud crossbar edit`): click a slot, pick a layer, pick
   an action from what your character actually knows.
 - **Layers**: a job's own base bindings, overrides for a particular subjob,
@@ -203,6 +203,7 @@ rest of the line means:
 | `sneak` | *nothing* - the sneak ladder (see Built-in actions) | `bind 6L2 sneak` |
 | `invisible` | *nothing* - the invisible ladder | `bind 6L3 invisible` |
 | `reraise` | *nothing* - the reraise ladder | `bind 6L4 reraise` |
+| `assist` | *nothing* - assists whoever `//hud assist` names (see Built-in actions) | `bind 6L5 assist` |
 
 **`<target>`** is optional and takes the game's own target tokens. These are
 the ones that work:
@@ -436,6 +437,7 @@ does, rung by rung, is under [Built-ins](#built-ins).
 | `//hud warp [all]` | warp home by the best means you have, after the same countdown; `all` sends your other characters running XIVHud home too |
 | `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage right now |
 | `//hud reraise` | the best reraise you can get right now; no countdown |
+| `//hud assist [<target>]` | with a target, set whom to assist; alone, assist them |
 | `//hud crossbar open <name>` | open a game screen (`map`, `equipment`, ...) |
 
 ---
@@ -974,6 +976,7 @@ These are the same actions as the `//hud` commands under
 | `warp` | the best warp you have, from the ladder below |
 | `sneak` / `invisible` | the sneak and invisible ladders below. Both take the White Magic icon whichever rung fires, so the slot's face does not change with your subjob. |
 | `reraise` | the reraise ladder below, with the Reraise icon whichever rung fires |
+| `assist` | the game's `/assist` of the player `//hud assist <target>` named (below). In the binder it is **General > Assist**. |
 | `open <name>` | opens a game screen |
 | `jc <MAIN>/<SUB>` | changes job to that pair through the Windower **JobChange** addon (`//jc war/blm`), which must be loaded - without it the press does nothing but print "unknown command" in the console. You still have to stand near a Moogle (or a Nomad Moogle), as JobChange requires. The slot shows the main job's icon and the subjob as its label. In the binder it is **General > Job Change**, then a main job, then a subjob. All 22 jobs are listed whether you have unlocked them or not; JobChange refuses a locked one when you press it. A pair naming one job twice is refused. |
 
@@ -1016,6 +1019,22 @@ waited out for you the way an enchanted item is (the gear's warm-ups have not
 been watched in a live client). It is refused while Reraise is already on
 (`Reraise is already active`), since the game cannot say which tier you have,
 and it takes no countdown.
+
+**`assist`** is the game's `/assist` on a slot: it moves your target to
+whatever another player is targeting. The slot does not hold that player.
+Name them once with `//hud assist <target>` - a name (`//hud assist Bob`), or
+a target in its brackets (`//hud assist <p1>` for the first party member
+after you, `//hud assist <t>` for whoever you have targeted when you
+press) - and every `assist` slot, a bare `//hud assist` and a pad button bound
+to `assist` (`//hud gamepad bind lb+y assist`) use it from then on. The target
+is one word: a name with a space in it is refused.
+
+It is kept as a Windower alias called `assist`, so `//assist` does the same
+thing, and a Windower script can set it for you with
+`alias assist input /assist Bob`. Windower forgets an alias when the game
+closes, so name them again after a restart; until then a press does nothing
+but print "unknown command" in the Windower console. The action queue never
+holds an assist. None of this has been watched in a live client yet.
 
 `mr` and `warp` count down before they go, and so does the `mount` type
 above - see **Travel counts down** under Extras.

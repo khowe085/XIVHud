@@ -107,6 +107,8 @@ local HELP = {
   "  //hud invisible            the invisible ladder, likewise",
   "  //hud reraise              the best reraise you have: spell, item, then gear",
   "  //hud draw                 toggle the weapon state every bar follows",
+  "  //hud assist [<target>]    run the Windower alias assist, or with a target",
+  "                            point it at /assist <target> until the game closes",
   "  //hud delay [<seconds>]    the countdown before a mount or a warp goes",
   "  //hud hidecutscene [on|off]",
   "                            hide the HUD during cutscenes",
@@ -1546,7 +1548,7 @@ local function new(deps)
        `//hud warp|mr|sneak|invisible|draw` are the framework's since the
        service took execution off the crossbar (2026-09-06): a warp is nobody's
        bar's in particular, and the weapon state is the player's. `reraise`
-       joined them on 2026-10-09. ]]
+       joined them on 2026-10-09, and `assist` on 2026-11-24. ]]
 
   local function require_service()
     if deps.actions ~= nil then
@@ -1557,6 +1559,14 @@ local function new(deps)
   end
 
   local function run_action(action)
+    -- Pointing the assist alias is no press, and the alias is the client's
+    -- rather than a character's, so it needs none scoped.
+    if action.verb == "assist" and action.target ~= nil then
+      if require_service() then
+        say(deps.actions.assist(action.target))
+      end
+      return
+    end
     if not require_character() or not require_service() then
       return
     end

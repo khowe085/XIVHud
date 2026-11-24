@@ -2956,6 +2956,51 @@ describe("core", function()
       assert.are.same({ { "builtin", "reraise" } }, calls)
     end)
 
+    describe("assist", function()
+      -- The service's answer to a target, as it would say it.
+      local function answers_assist()
+        service.assist = function(target)
+          calls[#calls + 1] = { "assist", target }
+          return "assist: " .. target
+        end
+      end
+
+      it("is listed in help", function()
+        service_core()
+        core.on_command({ "help" })
+        assert.is_not_nil(env.said():find("//hud assist [<target>]", 1, true))
+      end)
+
+      it("is a press when bare, which needs a character", function()
+        service_core()
+        core.on_command({ "assist" })
+        assert.is_not_nil(env.said():lower():find("log in"))
+        assert.are.same({}, calls)
+        login()
+        core.on_command({ "assist" })
+        assert.are.same({ { "builtin", "assist" } }, calls)
+      end)
+
+      it("hands a target to the service and says its answer, with no character", function()
+        service_core()
+        answers_assist()
+        core.on_command({ "assist", "Bob" })
+        assert.are.same({ { "assist", "Bob" } }, calls)
+        assert.is_not_nil(env.said():find("assist: Bob", 1, true))
+      end)
+
+      it("says so when the service did not load, target or none", function()
+        deps, env = fakes.core_deps()
+        core = new_core(deps)
+        core.on_command({ "assist", "Bob" })
+        assert.is_not_nil(env.said():lower():find("action service"))
+        env.forget()
+        login()
+        core.on_command({ "assist" })
+        assert.is_not_nil(env.said():lower():find("action service"))
+      end)
+    end)
+
     it("says so when the service did not load", function()
       deps, env = fakes.core_deps()
       core = new_core(deps)

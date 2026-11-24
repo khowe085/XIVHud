@@ -181,7 +181,9 @@ without a word.
 **An action.** Anything a crossbar or hotbar slot can hold, in the same words
 as a slot's `bind` - see the crossbar's
 [binding commands](components/crossbar.md#binding) and
-[what you can bind](components/crossbar.md#what-you-can-bind). It fires once,
+[what you can bind](components/crossbar.md#what-you-can-bind):
+`//hud gamepad bind lb+y assist` puts
+[`assist`](components/crossbar.md#built-ins) on Y with LB held. It fires once,
 when the gesture is pressed, exactly as a slot holding it would: the
 [action queue](Home.md#the-action-queue) holds it through a cast, and a mount
 or a warp counts down first. `alias=`, `icon=` and `context=` belong to slots

@@ -58,6 +58,7 @@ local RESERVED = {
   invisible = true,
   reraise = true,
   draw = true,
+  assist = true,
   delay = true,
   hidecutscene = true,
   queue = true,
@@ -299,6 +300,13 @@ local function new(deps)
         return fail("'//hud warp [all]' - all sends every instance home")
       end
       return { action = "action", verb = "warp", all = all }
+    elseif verb == "assist" then
+      -- Bare, it is the press; a word after it is whom the alias assists,
+      -- kept as typed for the action service to judge.
+      if #words > 2 then
+        return fail("'//hud assist [<target>]' takes one name, or one target like <p1>")
+      end
+      return { action = "action", verb = "assist", target = words[2] }
     elseif ACTION_VERBS[verb] then
       return no_extra(words, verb) or { action = "action", verb = verb }
     elseif TUNING_VERBS[verb] then

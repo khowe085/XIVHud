@@ -39,7 +39,10 @@ describe("gamepad commands", function()
     CROSSBAR[#CROSSBAR + 1] = "crossbar.slot" .. slot
   end
 
-  local function build(overrides)
+  -- `service_actions` is the action service's real typed half, for the specs
+  -- that bind what the narrowed answers above do not cover.
+  local function build(overrides, service_actions)
+    local validates = service_actions ~= nil and service_actions.validate or validate
     local pad = new_gamepad({
       read = function()
         return nil
@@ -56,19 +59,19 @@ describe("gamepad commands", function()
     })
     behaviors = new_behaviors({
       send_key = function() end,
-      validate = validate,
+      validate = validates,
       fire_action = function() end,
       components = function()
         return CROSSBAR
       end,
       deliver = function() end,
     })
-    local parser = new_bar_commands({ validate = validate })
+    local parser = new_bar_commands({ validate = validates })
     local deps = {
       gamepad = pad,
       behaviors = behaviors,
       parse_action = parser.parse_action,
-      is_action_type = function(kind)
+      is_action_type = service_actions ~= nil and service_actions.is_type or function(kind)
         return ACTION_TYPES[kind] == true
       end,
       describe_action = parser.describe_action,
@@ -197,6 +200,17 @@ describe("gamepad commands", function()
       assert.are.same({ type = "ma", action = "Cure IV", target = "t" }, config.map["lt+r3"])
       assert.are.same({ "gamepad: bound back to open map" }, commands.handle({ "bind", "back", "open", "map" }))
       assert.are.same({ type = "open", action = "map" }, config.map.back)
+    end)
+
+    it("binds one to assist, a type the action service has and no behaviour's name", function()
+      build(nil, require("lib/actionbar/actions")({}))
+      assert.are.same({ "gamepad: bound lb+y to assist" }, commands.handle({ "bind", "lb+y", "Assist" }))
+      assert.are.same({ type = "assist" }, config.map["lb+y"])
+      assert.is_not_nil(table.concat(commands.handle({ "list" }), "\n"):find("\n  lb+y assist", 1, true))
+      assert.are.same(
+        { "gamepad: assist takes no action name or target - drop Bob" },
+        commands.handle({ "bind", "lb+y", "assist", "Bob" })
+      )
     end)
 
     it("says what bind's parser refuses", function()
