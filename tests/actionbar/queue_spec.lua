@@ -72,6 +72,8 @@ local function world(opts)
     end,
     -- What the client's mob table would say, which the queue must not ask.
     dead = opts.dead,
+    -- AutoSpellTier's walk, where a spec stands one in.
+    lower = opts.lower,
   })
   return queue, env
 end
@@ -3320,6 +3322,185 @@ describe("the action queue", function()
       env.now = env.now + 2.01
       queue.press(BLADE, BLADE_COMMAND)
       assert.is_nil(logged(env):find("not held: Savage Blade, standing aside", 1, true))
+    end)
+  end)
+
+  --[[ AutoSpellTier's walk is the action service's, and a dep here: asked at
+       the two moments a command is settled after its press. ]]
+  describe("a lower tier standing in for a spell that cannot go", function()
+    -- A walk that knows one step, Sleep II to Sleep, and says what it was asked.
+    local function sleep_steps_down(asked)
+      return function(record, line, pinned)
+        asked[#asked + 1] = { record.action, line, pinned }
+        if record.action ~= "Sleep II" then
+          return record, line
+        end
+        local lowered = { type = "ma", action = "Sleep", target = record.target }
+        if pinned ~= nil then
+          return lowered, 'input /ma "Sleep" ' .. pinned
+        end
+        return lowered, 'input /ma "Sleep" <' .. record.target .. ">"
+      end
+    end
+
+    describe("at OK", function()
+      local SLEEP = spell("Sleep II", "stnpc")
+      local SLEEP_COMMAND = 'input /ma "Sleep II" <stnpc>'
+
+      local function ok(queue)
+        queue.press(SLEEP, SLEEP_COMMAND)
+        queue.on_text("/ta <stnpc>")
+        queue.on_text("/ta 777")
+        return queue.on_text("/ta 12345")
+      end
+
+      it("is asked with the cursor's own command, and goes at the target OK chose", function()
+        local asked = {}
+        local queue = world({ lower = sleep_steps_down(asked) })
+        local swallowed, send = ok(queue)
+        assert.is_true(swallowed)
+        assert.are.equal('input /ma "Sleep" 12345', send)
+        assert.are.same({ { "Sleep II", SLEEP_COMMAND } }, asked)
+      end)
+
+      it("is held under its own name when OK comes in a lock", function()
+        local queue = world({ lower = sleep_steps_down({}) })
+        finish_cast(queue)
+        local swallowed, send = ok(queue)
+        assert.is_true(swallowed)
+        assert.is_nil(send)
+        assert.are.equal('input /ma "Sleep" 12345', queue.held().command)
+        assert.are.equal("Sleep", queue.held().name)
+        assert.are.equal("Sleep", queue.held().record.action)
+      end)
+
+      it("is judged on its own recast, not the pressed spell's", function()
+        local queue, env = world({ lower = sleep_steps_down({}) })
+        env.recast["Sleep II"] = 20
+        local swallowed, send = ok(queue)
+        assert.is_true(swallowed)
+        assert.are.equal('input /ma "Sleep" 12345', send)
+        assert.is_true(queue.busy(), "it left as a press of the bar's")
+      end)
+
+      it("is not asked at the press, where nothing is known of the cast yet", function()
+        local asked = {}
+        local queue = world({ lower = sleep_steps_down(asked) })
+        queue.press(SLEEP, SLEEP_COMMAND)
+        assert.are.same({}, asked)
+      end)
+    end)
+
+    describe("at the release", function()
+      local SLEEP = spell("Sleep II", "t")
+      local SLEEP_COMMAND = 'input /ma "Sleep II" <t>'
+
+      -- Sleep II pressed in a cast, its own recast running as the lock clears.
+      local function held_on_recast(lower)
+        local queue, env = world({ lower = lower, mode = "debug" })
+        start_cast(queue)
+        queue.press(SLEEP, SLEEP_COMMAND)
+        finish_cast(queue)
+        env.recast["Sleep II"] = 20
+        env.now = env.now + 3.01
+        return queue, env
+      end
+
+      it("takes the place of what is held, at the target that was pinned to", function()
+        local asked = {}
+        local queue = held_on_recast(sleep_steps_down(asked))
+        assert.are.equal('input /ma "Sleep" 12345', queue.step())
+        assert.is_nil(queue.held())
+        assert.are.same({ { "Sleep II", 'input /ma "Sleep II" 12345', 12345 } }, asked)
+      end)
+
+      it("waits on its own recast where that is nearly over, and goes when it is", function()
+        local queue, env = held_on_recast(sleep_steps_down({}))
+        env.recast.Sleep = 1.5
+        assert.is_nil(queue.step())
+        assert.are.equal("Sleep", queue.held().name)
+        assert.is_not_nil(logged(env):find("Sleep waits 1.50s on its recast", 1, true))
+        env.recast.Sleep = 0
+        assert.are.equal('input /ma "Sleep" 12345', queue.step())
+      end)
+
+      it("is dropped with what is held where its own recast is as far off", function()
+        local queue, env = held_on_recast(sleep_steps_down({}))
+        env.recast.Sleep = 5
+        assert.is_nil(queue.step())
+        assert.is_nil(queue.held())
+        assert.is_not_nil(logged(env):find("dropped Sleep: on recast 5.00s", 1, true))
+      end)
+
+      it("leaves what is held to be dropped, as ever, where the walk has no tier", function()
+        local queue = held_on_recast(function(record, line)
+          return record, line
+        end)
+        assert.is_nil(queue.step())
+        assert.is_nil(queue.held())
+      end)
+
+      it("is not asked for a held press that can go, or one inside its grace", function()
+        local asked = {}
+        local queue, env = held_on_recast(sleep_steps_down(asked))
+        env.recast["Sleep II"] = 1.5
+        assert.is_nil(queue.step())
+        env.recast["Sleep II"] = 0
+        assert.are.equal('input /ma "Sleep II" 12345', queue.step())
+        assert.are.same({}, asked)
+      end)
+    end)
+
+    describe("what the walk asks of the queue", function()
+      it("says a recast running with nothing busy is one the game would refuse", function()
+        local queue, env = world()
+        env.recast.Cure = 0.5
+        assert.is_true(queue.refused_on_recast(spell("Cure")))
+        env.recast.Cure = 0
+        assert.is_false(queue.refused_on_recast(spell("Cure")))
+      end)
+
+      it("says one that ends within two seconds of the lock is not", function()
+        local queue, env = world()
+        finish_cast(queue)
+        env.recast.Cure = ((env.now + 2.7) - env.now) + 2
+        assert.is_false(queue.refused_on_recast(spell("Cure")))
+        env.recast.Cure = 4.8
+        assert.is_true(queue.refused_on_recast(spell("Cure")))
+      end)
+
+      it("says a recast is far off only past the two seconds it would wait out", function()
+        local queue, env = world()
+        env.recast.Cure = 2
+        assert.is_false(queue.far_off(spell("Cure")), "nothing busy, and nearly ready")
+        env.recast.Cure = 2.01
+        assert.is_true(queue.far_off(spell("Cure")))
+        finish_cast(queue)
+        env.recast.Cure = ((env.now + 2.7) - env.now) + 2
+        assert.is_false(queue.far_off(spell("Cure")), "two seconds past the lock")
+        env.recast.Cure = 4.8
+        assert.is_true(queue.far_off(spell("Cure")))
+      end)
+
+      it("says a cursor slot is judged at OK while the queue is on, and nothing else is", function()
+        local queue, env = world()
+        assert.is_true(queue.judged_at_ok(spell("Sleep II", "stnpc")))
+        assert.is_true(queue.judged_at_ok(spell("Sleep II", "STPC")))
+        assert.is_false(queue.judged_at_ok(spell("Cure", "t")))
+        assert.is_false(queue.judged_at_ok({ type = "ma", action = "Cure" }))
+        assert.is_false(queue.judged_at_ok({ type = "ex", action = "exec x.txt", target = "stnpc" }))
+        env.mode = "off"
+        assert.is_false(queue.judged_at_ok(spell("Sleep II", "stnpc")))
+      end)
+
+      it("writes a collaborator's line to the debug log as its own, in debug alone", function()
+        local queue, env = world({ mode = "debug" })
+        queue.note("Fire V on recast, down to Fire IV")
+        assert.are.same({ "queue 100.00: Fire V on recast, down to Fire IV" }, env.log)
+        env.mode = "on"
+        queue.note("again")
+        assert.are.equal(1, #env.log)
+      end)
     end)
   end)
 

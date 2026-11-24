@@ -152,6 +152,7 @@ per character`.
 | `//hud delay [<seconds>]` | the mount and warp countdown, shared by the crossbar and hotbar; without a number it prints the current value (see Action commands below) |
 | `//hud queue [on\|debug\|off]` | hold a bar press made during a cast or the moment after it, and send it when you can act; on by default. Without a word it prints the current setting (see [The action queue](#the-action-queue)) |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action |
+| `//hud autospelltier [on\|off]` | cast the next tier down when a tiered spell is on cooldown or out of reach; off by default. Without a word it prints the current setting (see [Auto spell tier](#auto-spell-tier)) |
 | `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default, and a change applies at once. Without a word it prints the current setting |
 | `//hud gamepad [on\|off]` | the [gamepad bridge](gamepad.md): which pad it reads, or switch it on or off; on by default |
 | `//hud gamepad list`, `bind`, `unbind` | what each button and chord of the pad does, changed in game (see [Gamepad](gamepad.md#commands)) |
@@ -246,8 +247,9 @@ set, with the same limits, so anything you change here you can also type. A
 control at its limit does nothing, and a press that slides off a control
 before release does nothing either.
 
-`global` holds the travel delay, the action queue and its waits (see
-[Action commands](#action-commands)), whether the HUD hides during cutscenes,
+`global` holds the travel delay, the action queue and its waits and the auto
+spell tier switch (see [Action commands](#action-commands)), whether the HUD
+hides during cutscenes,
 the [gamepad bridge](gamepad.md)'s switch, unless `//hud gamepad` says the
 bridge is unavailable, and the [keyboard map](keyboard.md)'s switch. The components with a page of their own are the parameter bar,
 target bar, party list, status bar, equipment viewer, inventory tracker,
@@ -295,6 +297,7 @@ or the console too, and their settings are shared by both bars.
 | `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; fractions are fine, there is no upper limit, and `0` switches the countdown off |
 | `//hud queue [on\|debug\|off]` | [the action queue](#the-action-queue); without a word it prints the current setting. `debug` also writes each step to `debug.log` in the addon's folder |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action, 0 to 5 seconds in tenths. Alone it lists them all; with only a kind it prints that one |
+| `//hud autospelltier [on\|off]` | [auto spell tier](#auto-spell-tier): Fire V on cooldown casts Fire IV. Off by default; without a word it prints the current setting |
 
 `mr`, `warp` and a bound mount count down in chat before they act, so a
 mis-press costs a few seconds rather than a trip home. A warp that first has to
@@ -432,6 +435,48 @@ A wait you set yourself is kept in `core.lua` (below), and stays yours even if
 it equals the shipped one. To follow the shipped wait again, remove that kind's
 entry from `queue_locks` with the game closed.
 
+### Auto spell tier
+
+`//hud autospelltier on` makes a tiered spell fall back when it cannot be
+cast: press Fire V while it is on cooldown and Fire IV goes instead, then Fire
+III, and so on down. It is off by default.
+
+- **What counts as tiered:** a spell whose name ends in a Roman numeral, down
+  to the plain name (Fire V, IV, III, II, Fire; Sleep II, Sleep; a song's
+  numeral too), and ninjutsu's San, Ni and Ichi. Trusts are never stepped:
+  Shantotto II is not a tier of Shantotto.
+- **When it steps down:** the spell's cooldown runs more than two seconds past
+  the moment you can next act - the end of the wait after your last action, or
+  now if you are not in one - or you have not learned it, or neither of your
+  jobs can cast it at your level right now: under a level sync, say, or a
+  Scholar without the Addendum it needs. Your MP is not checked.
+- **A spell that is nearly ready is never replaced.** Inside those two
+  seconds, a spell pressed during the wait after an action is waited for, as
+  the queue always did, and one pressed while you are free is sent and
+  refused, as it always was. Shell V does not become Shell IV for being a
+  second early. The one exception is a press made while another spell is
+  still casting: nothing says when a cast will end, so the two seconds are
+  counted from the press, and a spell that would have come ready by your turn
+  can still be stepped down.
+- **Which tier goes:** the highest one below the spell you pressed that you
+  know, can cast and the game would not refuse. It only ever goes down, never
+  up. If none qualifies, the spell you pressed is sent and the game refuses
+  it, as it would have - or, if the queue was holding it, it is dropped, as it
+  would have been.
+- **With the action queue:** a slot that asks you to pick a target (`<stnpc>`)
+  decides when you confirm the target. And if a spell you pressed during its
+  own cast is still on cooldown when its turn comes, the next tier down goes
+  in its place, at the same target.
+- **Where it applies:** crossbar and hotbar slots, and actions bound to a pad
+  button or a key. Macros, the game's menus and typed commands are untouched.
+  A slot's icon and cooldown still show the spell it is bound to.
+- **A lower tier that cannot be aimed where the spell you pressed can** never
+  goes in its place: Warp is never cast for Warp II, nor Phalanx for Phalanx
+  II.
+
+Nothing is said in chat; with `//hud queue debug`, each step down is written
+to `debug.log`. None of this has been watched in a live client yet.
+
 ## Layout slots
 
 A slot is a complete, named arrangement: every component's position, scale,
@@ -510,6 +555,7 @@ the broken file (see [Troubleshooting](#troubleshooting)).
 | `delay` | `5` | seconds a mount or warp counts down before it goes |
 | `queue` | `"on"` | the action queue: `"off"`, `"on"` or `"debug"` (`//hud queue`) |
 | `queue_locks` | none | your own queue waits, by kind (`//hud queue lock`); a kind not listed uses the shipped length |
+| `autospelltier` | `false` | [auto spell tier](#auto-spell-tier): cast the next tier down when a tiered spell cannot go (`//hud autospelltier on\|off`) |
 
 ## Auto-hide
 

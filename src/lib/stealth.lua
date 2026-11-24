@@ -67,6 +67,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      equip -> wait -> use scheduler, so the ladder stays testable without a
      client. ]]
 
+local castable = require("lib/actionbar/castable")
 local counters = require("lib/actionbar/counters")
 
 -- Resource ids, verified against Windower's own resource data rather than
@@ -76,8 +77,8 @@ local SNEAK, INVISIBLE = 137, 136
 local MONOMI_ICHI, TONKO_ICHI, TONKO_NI = 318, 353, 354
 local SPECTRAL_JIG = 196
 local RERAISE, RERAISE_II, RERAISE_III, RERAISE_IV = 135, 141, 142, 848
--- Buff ids, off lib/buff_order: Reraise is one buff whatever the tier.
-local RERAISE_BUFF, ADDENDUM_WHITE, ENLIGHTENMENT = 113, 401, 416
+-- The buff id, off lib/buff_order: Reraise is one buff whatever the tier.
+local RERAISE_BUFF = 113
 -- What stops every spell, ninjutsu included.
 local SILENCE, MUTE = 6, 29
 
@@ -130,24 +131,9 @@ local REFUSED_UNDER = {
   reraise = { buff = RERAISE_BUFF, hint = "Reraise is already active" },
 }
 
--- FFXI's own cap, the same constant catalog.lua gates the merit exception
--- on: a requirement above it is a merit or job point, which only a main job
--- can have spent.
-local LEVEL_CAP = 99
-
 -- The `targets` bitfield's Party bit. A rung without it is self-only -
 -- both ninjutsu and the jig are - and can never carry <t>.
 local PARTY_BIT = 4
-
---[[ A spell's `requirements` bit that SCH must open with an Addendum. It
-     sits on exactly the Addendum spells - the -na family, Erase, Raise II
-     and III, Reraise I to III, and the tier IV/V nukes, Sleep, Break and
-     Dispel on the black side - and binds SCH alone: a WHM casts Reraise
-     without one. Enlightenment opens both addenda at once. Only the white
-     side is mapped, no ladder casting black magic. ]]
-local SCH = 20
-local ADDENDUM_BIT = 4
-local ADDENDUM_FOR = { WhiteMagic = ADDENDUM_WHITE }
 
 local function call(accessor, ...)
   if type(accessor) ~= "function" then
@@ -158,44 +144,6 @@ end
 
 local function table_or_empty(value)
   return type(value) == "table" and value or {}
-end
-
---- The main/sub pair, exactly as catalog.lua reads it: the sub only when the
---- client has named one, and `main` carried through for the merit exception.
-local function job_pair(player)
-  if type(player) ~= "table" then
-    return {}
-  end
-  local jobs = {}
-  if type(player.main_job_id) == "number" then
-    jobs[#jobs + 1] = { id = player.main_job_id, level = player.main_job_level or 0, main = true }
-  end
-  if type(player.sub_job_id) == "number" then
-    jobs[#jobs + 1] = { id = player.sub_job_id, level = player.sub_job_level or 0, main = false }
-  end
-  return jobs
-end
-
-local function has_buff(player, id)
-  local buffs = type(player) == "table" and player.buffs or nil
-  if type(buffs) ~= "table" then
-    return false
-  end
-  for _, buff in ipairs(buffs) do
-    if buff == id then
-      return true
-    end
-  end
-  return false
-end
-
---- The Addendum buff a SCH must have up to cast this spell, or nil.
-local function addendum_for(record)
-  local requirements = tonumber(record.requirements)
-  if requirements == nil or math.floor(requirements / ADDENDUM_BIT) % 2 ~= 1 then
-    return nil
-  end
-  return ADDENDUM_FOR[record.type]
 end
 
 --[[ Can the main job wear this piece? Gear is the main job's alone, and
@@ -233,34 +181,6 @@ local function wearable(item, player)
     return false
   end
   return true
-end
-
---- Can one of these jobs supply this action? A resource with no `levels`
---- table is included - the client already vouched for it by listing it as
---- known, and the job abilities carry no levels at all.
-local function available(record, jobs, player)
-  local levels = type(record) == "table" and record.levels or nil
-  if type(levels) ~= "table" then
-    return true
-  end
-  local addendum = addendum_for(record)
-  for _, job in ipairs(jobs) do
-    local required = levels[job.id]
-    local opened = job.id ~= SCH or addendum == nil or has_buff(player, addendum) or has_buff(player, ENLIGHTENMENT)
-    local level = type(job.level) == "number" and job.level or 0
-    if type(required) == "number" and opened then
-      if required <= level then
-        return true
-      end
-      --[[ A merit or job-point gift, which a main job spends - and only at
-           the cap: a gift is off while synced below it. catalog.lua offers
-           it regardless, a binding being for later; this ladder fires now. ]]
-      if required > LEVEL_CAP and job.main and level >= LEVEL_CAP then
-        return true
-      end
-    end
-  end
-  return false
 end
 
 local function new(deps)
@@ -316,10 +236,10 @@ local function new(deps)
     if type(entry) ~= "table" or type(entry.en) ~= "string" then
       return nil
     end
-    if not available(entry, jobs, player) or not has_tool(rung.id, player) then
+    if not castable.available(entry, jobs, player) or not has_tool(rung.id, player) then
       return nil
     end
-    if has_buff(player, SILENCE) or has_buff(player, MUTE) then
+    if castable.has_buff(player, SILENCE) or castable.has_buff(player, MUTE) then
       return nil
     end
     return line(entry.prefix or "/magic", entry.en, entry)
@@ -341,7 +261,7 @@ local function new(deps)
     if type(entry) ~= "table" or type(entry.en) ~= "string" then
       return nil
     end
-    if not available(entry, jobs) then
+    if not castable.available(entry, jobs) then
       return nil
     end
     return line(entry.prefix or "/jobability", entry.en, entry)
@@ -395,10 +315,10 @@ local function new(deps)
     end
     local player = call(deps.get_player)
     local refused = REFUSED_UNDER[name]
-    if refused ~= nil and has_buff(player, refused.buff) then
+    if refused ~= nil and castable.has_buff(player, refused.buff) then
       return nil, refused.hint
     end
-    local jobs = job_pair(player)
+    local jobs = castable.job_pair(player)
     for _, rung in ipairs(ladder) do
       local command
       if rung.kind == "spell" then

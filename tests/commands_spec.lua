@@ -338,6 +338,12 @@ describe("commands", function()
       assert.are.same({ action = "tune", verb = "queue", words = { "debug" } }, parse("Queue", "debug"))
     end)
 
+    it("passes autospelltier through the same way, and reserves it", function()
+      assert.is_true(commands.reserved.autospelltier)
+      assert.are.same({ action = "tune", verb = "autospelltier", words = {} }, parse("autospelltier"))
+      assert.are.same({ action = "tune", verb = "autospelltier", words = { "on" } }, parse("AutoSpellTier", "on"))
+    end)
+
     it("passes gamepad through the same way, and reserves it", function()
       assert.is_true(commands.reserved.gamepad)
       assert.are.same({ action = "tune", verb = "gamepad", words = {} }, parse("gamepad"))

@@ -1768,6 +1768,223 @@ describe("the action service", function()
       assert.are.same({ CURE_COMMAND }, env.commands)
     end)
 
+    describe("AutoSpellTier", function()
+      local FIRE_V = { type = "ma", action = "Fire V", target = "t" }
+      local SECONDS = 60
+
+      -- A black mage who knows Fire I to V and both Sleeps, with the setting on.
+      local function tiered(mode)
+        local service, env = queued(mode or "off")
+        env.config.autospelltier = true
+        for id, spell in pairs({
+          [144] = { en = "Fire", levels = { [4] = 13 } },
+          [145] = { en = "Fire II", levels = { [4] = 38 } },
+          [146] = { en = "Fire III", levels = { [4] = 62 } },
+          [147] = { en = "Fire IV", levels = { [4] = 73 } },
+          [148] = { en = "Fire V", levels = { [4] = 86 } },
+          [253] = { en = "Sleep", levels = { [4] = 20 } },
+          [259] = { en = "Sleep II", levels = { [4] = 41 } },
+        }) do
+          spell.id, spell.type, spell.recast_id = id, "BlackMagic", id
+          env.res.spells[id] = spell
+          env.known_spells[id] = true
+        end
+        return service, env
+      end
+
+      it("ships off, as a setting core seeds beside the queue's", function()
+        local service = world()
+        assert.is_false(service.config_defaults().autospelltier)
+        assert.is_false(service.spell_tier.enabled())
+      end)
+
+      it("leaves a spell on its recast to the game while it is off", function()
+        local service, env = tiered()
+        env.config.autospelltier = false
+        env.spell_recasts[148] = 10 * SECONDS
+        service.fire(FIRE_V, {})
+        assert.are.same({ 'input /ma "Fire V" <t>' }, env.commands)
+      end)
+
+      it("sends a spell that can go as it was pressed", function()
+        local service, env = tiered()
+        service.fire(FIRE_V, {})
+        assert.are.same({ 'input /ma "Fire V" <t>' }, env.commands)
+      end)
+
+      it("sends the next tier down for a spell on its recast", function()
+        local service, env = tiered()
+        env.spell_recasts[148] = 10 * SECONDS
+        service.fire(FIRE_V, {})
+        assert.are.same({ 'input /ma "Fire IV" <t>' }, env.commands)
+      end)
+
+      it("sends a spell two seconds or less from ready as it was pressed, for the game to refuse", function()
+        for _, mode in ipairs({ "off", "on" }) do
+          local service, env = tiered(mode)
+          env.spell_recasts[148] = 2 * SECONDS
+          service.fire(FIRE_V, {})
+          assert.are.same({ 'input /ma "Fire V" <t>' }, env.commands, mode)
+        end
+      end)
+
+      it("walks past a tier on its own recast, and one not learned", function()
+        local service, env = tiered()
+        env.spell_recasts[148], env.spell_recasts[147] = 10 * SECONDS, 3 * SECONDS
+        env.known_spells[146] = nil
+        service.fire(FIRE_V, {})
+        assert.are.same({ 'input /ma "Fire II" <t>' }, env.commands)
+      end)
+
+      it("steps down from a spell the job has not reached, as under a level sync", function()
+        local service, env = tiered()
+        env.player.main_job_level = 70
+        service.fire(FIRE_V, {})
+        assert.are.same({ 'input /ma "Fire III" <t>' }, env.commands)
+      end)
+
+      it("sends the spell as pressed when no tier under it can go", function()
+        local service, env = tiered()
+        for id = 144, 148 do
+          env.spell_recasts[id] = 10 * SECONDS
+        end
+        service.fire(FIRE_V, {})
+        assert.are.same({ 'input /ma "Fire V" <t>' }, env.commands)
+      end)
+
+      it("never steps up from a lower tier", function()
+        local service, env = tiered()
+        env.spell_recasts[144] = 10 * SECONDS
+        service.fire({ type = "ma", action = "Fire", target = "t" }, {})
+        assert.are.same({ 'input /ma "Fire" <t>' }, env.commands)
+      end)
+
+      it("says each step down in the debug log", function()
+        local service, env = tiered("debug")
+        env.spell_recasts[148] = 10 * SECONDS
+        service.fire(FIRE_V, {})
+        assert.is_not_nil(logged(env):find("Fire V on recast, down to Fire IV", 1, true))
+      end)
+
+      describe("with the queue on", function()
+        it("holds the lower tier through a lock, pinned to the target of the press", function()
+          local service, env = tiered("on")
+          finish_cast(service)
+          env.spell_recasts[148] = 10 * SECONDS
+          service.fire(FIRE_V, {})
+          assert.are.same({}, env.commands)
+          assert.are.equal('input /ma "Fire IV" 99', service.queue.held().command)
+          past_the_lock(service, env)
+          assert.are.same({ 'input /ma "Fire IV" 99' }, env.commands)
+        end)
+
+        it("waits for the spell that was pressed where its recast ends within the grace", function()
+          local service, env = tiered("on")
+          finish_cast(service)
+          env.spell_recasts[148] = 4 * SECONDS
+          service.fire(FIRE_V, {})
+          assert.are.equal('input /ma "Fire V" 99', service.queue.held().command)
+        end)
+
+        it("puts a lower tier in the place of a held spell whose recast runs as the lock clears", function()
+          local service, env = tiered("on")
+          start_cast(service)
+          service.fire(FIRE_V, {})
+          assert.are.equal('input /ma "Fire V" 99', service.queue.held().command)
+          service.on_chunk(ACTION, "raw", act(4, 1))
+          env.spell_recasts[148] = 8 * SECONDS
+          past_the_lock(service, env)
+          assert.are.same({ 'input /ma "Fire IV" 99' }, env.commands)
+        end)
+
+        it("waits at the release for a lower tier that is nearly ready, rather than pass it by", function()
+          local service, env = tiered("on")
+          start_cast(service)
+          service.fire(FIRE_V, {})
+          service.on_chunk(ACTION, "raw", act(4, 1))
+          env.spell_recasts[148], env.spell_recasts[147] = 8 * SECONDS, 1.5 * SECONDS
+          past_the_lock(service, env)
+          assert.are.same({}, env.commands)
+          assert.are.equal('input /ma "Fire IV" 99', service.queue.held().command)
+          env.spell_recasts[147] = 0
+          service.tick()
+          assert.are.same({ 'input /ma "Fire IV" 99' }, env.commands)
+        end)
+
+        it("judges a cursor slot at OK, when its recast is known", function()
+          local service, env = tiered("on")
+          service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
+          assert.are.same({ "input /ta <stnpc>" }, env.commands)
+          env.spell_recasts[259] = 20 * SECONDS
+          service.on_text("/ta <stnpc>")
+          service.on_text("/ta 777")
+          assert.is_true(service.on_text("/ta 12345"))
+          assert.are.same({ "input /ta <stnpc>", 'input /ma "Sleep" 12345' }, env.commands)
+        end)
+      end)
+
+      it("leaves a cursor slot alone at the press, whatever its recast is then", function()
+        local service, env = tiered("debug")
+        env.spell_recasts[259] = 20 * SECONDS
+        service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
+        assert.are.same({ "input /ta <stnpc>" }, env.commands)
+        env.spell_recasts[259] = 0
+        service.on_text("/ta <stnpc>")
+        service.on_text("/ta 777")
+        service.on_text("/ta 12345")
+        assert.are.same({ "input /ta <stnpc>", 'input /ma "Sleep II" 12345' }, env.commands)
+        assert.is_nil(logged(env):find("down to", 1, true))
+      end)
+
+      it("sends a cursor's spell as pressed when OK comes just short of its recast, with nothing busy", function()
+        local service, env = tiered("on")
+        service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
+        env.spell_recasts[259] = 1 * SECONDS
+        service.on_text("/ta <stnpc>")
+        service.on_text("/ta 777")
+        service.on_text("/ta 12345")
+        assert.are.same({ "input /ta <stnpc>", 'input /ma "Sleep II" 12345' }, env.commands)
+      end)
+
+      it("keeps the target OK chose when a lower tier stands in at the release", function()
+        local service, env = tiered("on")
+        start_cast(service)
+        service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
+        service.on_text("/ta <stnpc>")
+        service.on_text("/ta 777")
+        service.on_text("/ta 12345")
+        assert.are.equal('input /ma "Sleep II" 12345', service.queue.held().command)
+        service.on_chunk(ACTION, "raw", act(4, 1))
+        env.spell_recasts[259] = 20 * SECONDS
+        env.commands = {}
+        past_the_lock(service, env)
+        assert.are.same({ 'input /ma "Sleep" 12345' }, env.commands)
+      end)
+
+      it("walks a ladder's pick down as it would a slot bound to that spell", function()
+        local service, env = tiered()
+        env.player.main_job_id = 3
+        for id, spell in pairs({
+          [135] = { en = "Reraise", levels = { [3] = 25 } },
+          [141] = { en = "Reraise II", levels = { [3] = 56 } },
+        }) do
+          spell.id, spell.type, spell.prefix, spell.targets, spell.recast_id = id, "WhiteMagic", "/magic", 1, id
+          env.res.spells[id] = spell
+          env.known_spells[id] = true
+        end
+        env.spell_recasts[141] = 30 * SECONDS
+        service.fire({ type = "reraise" }, {})
+        assert.are.same({ 'input /ma "Reraise" <me>' }, env.commands)
+      end)
+
+      it("judges a cursor slot at the press with the queue off, where no OK comes back", function()
+        local service, env = tiered()
+        env.spell_recasts[259] = 20 * SECONDS
+        service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
+        assert.are.same({ 'input /ma "Sleep" <stnpc>' }, env.commands)
+      end)
+    end)
+
     it("sends an assist pressed in a lock at once, and leaves what is held alone", function()
       local service, env = queued()
       finish_cast(service)

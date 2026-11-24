@@ -52,6 +52,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      rather than at the press. A held weaponskill or spell whose target has
      died since is dropped rather than sent at the corpse.
 
+     Where the action service's spell tier walk has a lower tier to offer
+     (`deps.lower`), that tier takes the place of a cursor's spell at OK, and
+     of a held one that would otherwise be dropped on its recast.
+
      It stands aside for a packet the bar did not send, so that an addon acting
      on its own cannot take every window from a held press: see on_outgoing. ]]
 
@@ -130,7 +134,8 @@ local WEAPONSKILL_BEAT = 0.4
      press was refused (Kevin, 2026-11-07). Without haste that was 1.28 to 1.31s
      after, eleven times of eleven, so 2 (Kevin, 2026-11-08). A press whose recast
      runs longer is sent to be refused, and a held one whose recast is still that
-     far off when the lock clears is dropped. ]]
+     far off when the lock clears is dropped - unless the spell tier walk has a
+     lower tier to stand in for either. ]]
 local RECAST_GRACE = 2
 --[[ How long after the bar sends anything a packet that leaves is still the
      bar's own. A press's packet follows it inside a frame or two, but GearSwap
@@ -404,6 +409,10 @@ local function new(deps)
     end
   end
 
+  --- A line for the debug log from the action service's side of a press,
+  --- said as this says its own.
+  self.note = note
+
   -- How long after the last finish this happened: printed on what went out,
   -- what started and what was refused, which together bracket the real lock.
   -- Signed, since a finish a death is taken for can lie a beat ahead.
@@ -632,6 +641,30 @@ local function new(deps)
     return outlasts_lock(recast) or (recast > 0 and not engaged())
   end
 
+  --- The same, for the spell tier walk: a tier it would be refused on is one
+  --- to walk past. Off, nothing is engaged and any recast running refuses.
+  self.refused_on_recast = on_recast
+
+  --- Whether a recast runs further past the lock than this waits one out,
+  --- which is the walk's cue to step down. A spell nearer ready than that is
+  --- never traded for a lower tier: it is waited for in a lock, and sent to
+  --- be refused with nothing busy, as it was before the walk.
+  function self.far_off(record)
+    return outlasts_lock(deps.recast_left(record))
+  end
+
+  --[[ The spell tier walk, the action service's: the record and command to
+       settle on in place of these, which are themselves where no lower tier
+       stands in. Asked where a command is settled after its press - a
+       cursor's at OK, a held one's at the release - with the id a held one
+       was pinned to. ]]
+  local function lower(record, command, pinned)
+    if deps.lower == nil then
+      return record, command
+    end
+    return deps.lower(record, command, pinned)
+  end
+
   local function forget()
     held, cursor = nil, nil
     answered()
@@ -729,13 +762,22 @@ local function new(deps)
     return true, "input /ta <" .. record.target .. ">"
   end
 
+  --- Whether a press of this opens a cursor here, to be judged at OK rather
+  --- than now.
+  function self.judged_at_ok(record)
+    return self.enabled()
+      and HELD_TYPES[record.type] == true
+      and type(record.target) == "string"
+      and CURSOR_TARGETS[record.target:lower()] == true
+  end
+
   -- What press answers, for a queue that is on.
   local function take(record, command)
     if not HELD_TYPES[record.type] then
       return false
     end
     local name = record.action or record.type
-    if type(record.target) == "string" and CURSOR_TARGETS[record.target:lower()] then
+    if self.judged_at_ok(record) then
       return open_cursor(record, command, name)
     end
     local pinned, target = command, nil
@@ -920,21 +962,23 @@ local function new(deps)
     local open = cursor
     cursor = nil
     note("OK " .. open.name .. " at " .. id)
-    local stop = what_stops(open.record) or at_the_fallen(open.record, tonumber(id))
+    local record, command = lower(open.record, open.command)
+    local name = record.action or record.type
+    local stop = what_stops(record) or at_the_fallen(record, tonumber(id))
     if stop ~= nil then
-      note("swallowed " .. open.name .. ", " .. stop)
+      note("swallowed " .. name .. ", " .. stop)
       return true
     end
-    local aimed = open.command:gsub("<[^<>]*>$", id)
-    if on_recast(open.record) then
-      not_held_on_recast(open.name, open.record)
+    local aimed = command:gsub("<[^<>]*>$", id)
+    if on_recast(record) then
+      not_held_on_recast(name, record)
       bar_sent_at = now()
       return true, aimed
     end
-    if goes_now(open.name, open.record) then
+    if goes_now(name, record) then
       return true, aimed
     end
-    hold(open.name, open.record, aimed, tonumber(id))
+    hold(name, record, aimed, tonumber(id))
     return true
   end
 
@@ -1290,6 +1334,15 @@ local function new(deps)
       return nil
     end
     local recast = deps.recast_left(held.record)
+    if recast > RECAST_GRACE then
+      -- A lower tier stands in where the walk has one, and waits out its own
+      -- recast below as any held press does.
+      local record, command = lower(held.record, held.command, held.target)
+      if record ~= held.record then
+        held.record, held.command, held.name, held.waiting = record, command, record.action or record.type, nil
+        recast = deps.recast_left(record)
+      end
+    end
     if recast > RECAST_GRACE then
       self.drop(("on recast %.2fs"):format(recast))
       return nil

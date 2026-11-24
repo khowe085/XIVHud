@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local new_actions = require("lib/actionbar/actions")
 local new_queue = require("lib/actionbar/queue")
+local new_spell_tier = require("lib/actionbar/spell_tier")
 local new_travel = require("lib/actionbar/travel")
 local new_enchanteditem = require("lib/actionbar/enchanteditem")
 local enchanted = require("lib/actionbar/enchanted")
@@ -599,6 +600,16 @@ local function new(deps)
     return mob ~= nil and mob.id or nil
   end
 
+  -- A command with the `<token>` it ends in replaced by an id, or nil for one
+  -- that does not end in it.
+  local function aimed_at(command, target, id)
+    local suffix = " <" .. target .. ">"
+    if command:sub(-#suffix):lower() ~= suffix then
+      return nil
+    end
+    return command:sub(1, #command - #suffix) .. " " .. tostring(id)
+  end
+
   --[[ The command a deferred use SENDS for a press, or nil for one whose
        target cannot be pinned. A pinned token becomes the id it stood for
        at the press; the suffix is matched literally over a tail of the
@@ -621,11 +632,11 @@ local function new(deps)
     if id == nil then
       return nil
     end
-    local suffix = " <" .. target .. ">"
-    if command:sub(-#suffix):lower() ~= suffix then
+    local aimed = aimed_at(command, target, id)
+    if aimed == nil then
       return nil
     end
-    return command:sub(1, #command - #suffix) .. " " .. tostring(id), id
+    return aimed, id
   end
   self.pinned_command = pinned_command
 
@@ -652,7 +663,54 @@ local function new(deps)
     return (recasts[entry.recast_id] or 0) / per_second
   end
 
-  local queue = new_queue({
+  --[[ AutoSpellTier (lib/actionbar/spell_tier): a spell that cannot go gives
+       way to a lower tier that can. It is walked wherever a spell's command
+       is settled - at a press, here, and by the queue at a cursor's OK and
+       at a held press's release - and what the queue would refuse a tier's
+       recast on is the queue's to say, so each is built over the other. ]]
+  local queue
+  local tiers = new_spell_tier({
+    config = config,
+    find_spell = function(name)
+      return self.find_resource("spells", name)
+    end,
+    get_spells = deps.get_spells,
+    get_player = get_player,
+    far_off = function(record)
+      return queue.far_off(record)
+    end,
+    refused = function(record)
+      return queue.refused_on_recast(record)
+    end,
+    note = function(line)
+      queue.note(line)
+    end,
+  })
+  self.spell_tier = tiers
+
+  --- The record and command to settle on in place of these: themselves,
+  --- unless a lower tier stands in. `pinned` is the id the command was aimed
+  --- at, where it was, and the lower tier's is aimed at the same.
+  local function lower_tier(record, command, pinned)
+    local lowered = tiers.lower(record)
+    if lowered == record then
+      return record, command
+    end
+    local plan = actions.resolve(lowered)
+    if plan == nil or plan.kind ~= "command" then
+      return record, command
+    end
+    if pinned == nil then
+      return lowered, plan.command
+    end
+    local aimed = aimed_at(plan.command, tostring(lowered.target):lower(), pinned)
+    if aimed == nil then
+      return record, command
+    end
+    return lowered, aimed
+  end
+
+  queue = new_queue({
     no_packets = deps.no_packets,
     now = frame_now,
     config = config,
@@ -663,6 +721,7 @@ local function new(deps)
       end
     end,
     recast_left = recast_left,
+    lower = lower_tier,
     pin = pinned_command,
     blocked = function()
       if deps.suppressed ~= nil and deps.suppressed() then
@@ -1058,13 +1117,19 @@ local function new(deps)
     end
     local plan, hint = actions.resolve(record, self.draw_state())
     if plan ~= nil and plan.kind == "command" then
-      local taken, instead = queue.press(plan.held_as or record, plan.command)
+      local pressed, command = plan.held_as or record, plan.command
+      -- A cursor the queue opens is walked at OK, where its recast is known.
+      if not queue.judged_at_ok(pressed) then
+        pressed, command = lower_tier(pressed, command)
+      end
+      local taken, instead = queue.press(pressed, command)
       if instead ~= nil then
         send_command(instead)
       end
       if taken then
         return
       end
+      plan.command = command
     end
     if not delay_travel(record, plan) then
       execute(plan, hint)
@@ -1285,7 +1350,11 @@ local function new(deps)
   -- What core seeds its own config with, so the tuning has a home and a
   -- name before anyone types a verb.
   function self.config_defaults()
-    return { delay = travel.defaults().delay, queue = queue.defaults().queue }
+    return {
+      delay = travel.defaults().delay,
+      queue = queue.defaults().queue,
+      autospelltier = tiers.defaults().autospelltier,
+    }
   end
 
   return self

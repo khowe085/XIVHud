@@ -117,6 +117,10 @@ src/
       defaults.lua        --   the slot cosmetics and set flags every bar ships
       queue.lua           --   the action queue: a press held through a cast and
                                its lock, released off packets (below)
+      spell_tier.lua      --   AutoSpellTier: a tiered spell that cannot go steps
+                               down to the highest tier under it that can (below)
+      castable.lua        --   whether the jobs a character is on can cast a spell
+                               now: the ladders' test and the tier walk's
       bindings.lua binder.lua catalog.lua commands.lua contexts.lua counters.lua
       enchanted.lua enchanteditem.lua kebab.lua openers.lua travel.lua weapon.lua
                           --   the crossbar's former modules, moved whole
@@ -164,7 +168,7 @@ native/
 
 Per-component isolation: every component owns its own configuration file and can never reach another's.
 
-- **Storage:** every component owns the directory `data/<Character>/<slot>/<component>/`, relative to the addon root, holding two files core writes — `config.lua` (the component's own settings) and `layout.lua` (its placement, which core alone writes) — plus whatever else the component adds beside them. Framework options live in `data/<Character>/core.lua` (`snap`, `slot`, `hideCutscene`, `config_pos` - where the settings window was dragged to - and since 2026-09-06 the action service's tuning - `delay`, `queue` and `queue_locks` - which was never meant to vary by slot (`retry` and `wsgate` sat beside it until 2026-10-16, when the cast retry and the weaponskill gate were removed outright, Kevin; a `core.lua` still carrying either block carries dead weight the settings merge preserves - nothing migrates) and would otherwise need a settings handle for something that is not a component; a slot switch therefore does not switch them and no `//hud reset` reaches them), **outside every slot**: it holds the active-slot pointer, which cannot live in the thing it names. Two files sit outside every character, through `lib/settings`' machine-wide `register_global`: `data/gamepad.lua`, the gamepad bridge's map and switch (Kevin, 2026-10-20 - a pad belongs to the machine, and must work at the character screen, where no character is scoped), and `data/keyboard.lua`, the keyboard map and its switch (2026-11-09, the same reasoning for a keyboard). Each is a FILE, so nothing that enumerates `data/`'s directories as characters ever offers it, and `//hud copy` and `//hud reset` never reach it. The extra files are the **store**: a component setting `wants_store = true` is handed `store` as `attach`'s third argument, `load(name)` / `save(name, table)` over `<component>/<name>.lua`, same sandboxed read and serialized write as the two core files. A name must be a plain word (`^[%w_]+$`) — it becomes a path segment, so anything else is refused rather than composed — and `config`/`layout` are reserved, case-insensitively, because they are core's and sit in the same directory. Found files are cached until the config is re-read; a *missing* one is re-read from disk on every call, so callers load on their own events (an attach, a job change) and never per frame. `//hud reset <component>` empties that directory (non-recursively — it is flat by construction) **in the active slot only**, and every re-read drops the cache, so `//hud copy`'s reload cannot leave copied bindings stale in memory. `crossbar` and `hotbar` use the store (per-job bindings, `<MAIN>.lua` plus `SHARED.lua`, each in its own directory: a crossbar set and a hotbar set are different things, sixteen slots against ten, and "shared" means shared across jobs, never across bars).
+- **Storage:** every component owns the directory `data/<Character>/<slot>/<component>/`, relative to the addon root, holding two files core writes — `config.lua` (the component's own settings) and `layout.lua` (its placement, which core alone writes) — plus whatever else the component adds beside them. Framework options live in `data/<Character>/core.lua` (`snap`, `slot`, `hideCutscene`, `config_pos` - where the settings window was dragged to - and since 2026-09-06 the action service's tuning - `delay`, `queue`, `queue_locks` and `autospelltier` - which was never meant to vary by slot (`retry` and `wsgate` sat beside it until 2026-10-16, when the cast retry and the weaponskill gate were removed outright, Kevin; a `core.lua` still carrying either block carries dead weight the settings merge preserves - nothing migrates) and would otherwise need a settings handle for something that is not a component; a slot switch therefore does not switch them and no `//hud reset` reaches them), **outside every slot**: it holds the active-slot pointer, which cannot live in the thing it names. Two files sit outside every character, through `lib/settings`' machine-wide `register_global`: `data/gamepad.lua`, the gamepad bridge's map and switch (Kevin, 2026-10-20 - a pad belongs to the machine, and must work at the character screen, where no character is scoped), and `data/keyboard.lua`, the keyboard map and its switch (2026-11-09, the same reasoning for a keyboard). Each is a FILE, so nothing that enumerates `data/`'s directories as characters ever offers it, and `//hud copy` and `//hud reset` never reach it. The extra files are the **store**: a component setting `wants_store = true` is handed `store` as `attach`'s third argument, `load(name)` / `save(name, table)` over `<component>/<name>.lua`, same sandboxed read and serialized write as the two core files. A name must be a plain word (`^[%w_]+$`) — it becomes a path segment, so anything else is refused rather than composed — and `config`/`layout` are reserved, case-insensitively, because they are core's and sit in the same directory. Found files are cached until the config is re-read; a *missing* one is re-read from disk on every call, so callers load on their own events (an attach, a job change) and never per frame. `//hud reset <component>` empties that directory (non-recursively — it is flat by construction) **in the active slot only**, and every re-read drops the cache, so `//hud copy`'s reload cannot leave copied bindings stale in memory. `crossbar` and `hotbar` use the store (per-job bindings, `<MAIN>.lua` plus `SHARED.lua`, each in its own directory: a crossbar set and a hotbar set are different things, sixteen slots against ten, and "shared" means shared across jobs, never across bars).
 - **Format: Lua, not XML.** Windower's `config` lib can only serialize XML and the bundled `json` lib has no encoder, so `lib/settings` owns persistence itself: files are read with `loadstring` in an **empty environment** behind a `pcall` (config files are code — a broken or hostile one degrades to defaults plus a warning), and written by `lib/serialize` with stable key order for clean diffs.
 - **Defaults merge:** user values win; default keys the user has never seen are added; keys the defaults do not mention are preserved. A component's `defaults.layout` is split off at registration to seed `layout.lua`, and is kept out of what seeds `config.lua` — so a component never sees its own placement in the table it is handed.
 - **Character scoping:** the character name is unknown until login, so components are attached on login and detached on logout, and nothing renders while logged out. Core scopes on the **name alone** — anything else a component needs from the client it waits for itself, because the client fills the player in field by field and no single field vouches for the rest (see `parambar` below). The `login` event is a one-shot that can fire before `get_player()` can name the player, so `on_prerender` keeps looking: every 0.05s while the client says we are logged in, every 1s at character select, re-armed by each login event. A login that cannot be resolved leaves the character already scoped alone — dropping one is the logout's job — and keeps the search running, so logging in as someone else without a logout event still switches.
@@ -198,6 +202,7 @@ Per-component isolation: every component owns its own configuration file and can
 //hud queue [on|debug|off]     -- hold a bar press through a cast and its lock (below)
 //hud queue lock [<kind> <seconds>] -- how long it waits: spell, weaponskill, ability,
                                   item, ranged, interrupted
+//hud autospelltier [on|off]   -- cast the next tier down when a tiered spell cannot go (below)
 //hud gamepad [on|off]         -- the gamepad bridge: which pad it reads and what is wrong
                                   with its map, or switch it
 //hud gamepad list             -- every gesture on the pad and what it does
@@ -242,8 +247,8 @@ command }` plus `min`/`max`/`step` for a stepper, `options` (and optional
 that follow the value) and an optional `route`. The component builds it fresh
 on every call, so the values are always current, and builds it in its pure
 `logic` module, where its command parser already lives - the widget only
-delegates. `global` is core's own: `delay`, `queue` and a row per queue lock (only
-where the action service loaded), `hidecutscene`, `gamepad` (only where the
+delegates. `global` is core's own: `delay`, `queue`, a row per queue lock and
+`autospelltier` (only where the action service loaded), `hidecutscene`, `gamepad` (only where the
 bridge has a reader) and `keyboard` (only where the keyboard map was built -
 not in safe mode).
 
@@ -901,6 +906,67 @@ to a second. Mash
 an in-game macro through a lock in `debug` - bar presses are held and never test
 the edge - and the last refusal and the first start bracket the real one. The
 in-client rows are in the plan.
+
+AutoSpellTier. `//hud autospelltier [on|off]` (Kevin, 2026-11-24), `core.lua`'s
+`autospelltier`, shipping OFF and on only as an explicit `true`, since it
+changes which spell a press casts: a tiered spell that cannot go gives way to
+the highest tier UNDER it that can - Fire V to Fire IV, Sleep II to Sleep - and
+never to one above it. With no tier that can go, the spell goes as pressed and
+the game refuses it - or, where the queue was holding it, is dropped as it
+always was. It is `lib/actionbar/spell_tier`, and it applies to
+whatever the action service fires - a crossbar or hotbar slot, a pad or
+keyboard action, the spell a `reraise` or `invisible` ladder picks - and never
+to a macro, a menu cast or a typed command, none of which the addon sends.
+
+A tier is read off the spell's own name in the resources: a Roman numeral on
+the end, the first tier carrying none (a song's numeral too), or ninjutsu's
+Ichi, Ni and San (Kevin). A Trust is never tiered, `Shantotto II` being no tier
+of `Shantotto`. "Cannot go" is two questions. **Unavailable** is the ladders'
+own test, moved into `lib/actionbar/castable` so the two cannot disagree:
+learned (`get_spells`), and within reach of the main or sub job at its level
+NOW, so a level sync steps down. A Scholar's Addendum is asked on both sides
+there - only the white was mapped while the ladders alone read it, none of
+them casting black magic - so Fire IV without Addendum: Black steps to Fire
+III. MP is NOT asked (Kevin), for the reason the ladders do not ask it.
+**On cooldown** is the queue's to judge, in two answers. What sends the walk
+DOWN is a recast FAR OFF (`queue.far_off`): one running more than two seconds
+past the lock - past now, with nothing locked or the queue off - which is the
+grace the queue waits a recast out for. A cast still in progress counts as
+nothing locked, the queue's own rule (nothing says when a cast will end), so a
+spell pressed inside another's cast is measured from the press and can be
+stepped down though it would have come ready by its turn. A spell nearer ready than that is
+never traded for a lower tier (Kevin, 2026-11-24, asked twice): in a lock it
+is held and WAITED for, as before - it is his Shell V on target after target -
+and with nothing busy it goes as pressed and the game refuses it, as before.
+What the walk PASSES BY is a tier the game would refuse if it were settled on
+now (`queue.refused_on_recast`): any recast running with nothing engaged, and
+otherwise one that outlasts the grace, so a lower tier may be waited for as
+the pressed spell would be - in a lock, and at a release, where the held
+press it stands in for still counts as engaged.
+
+The walk is made wherever a spell's command is settled. At the press, in the
+service. At a cursor slot's OK, in the queue (`deps.lower`), nothing being
+known of a cursor's cast at its press - Kevin's second Sleep II is this case;
+with the queue off there is no OK to catch, and the press decides. And at a
+held press's release, where the spell that was held is too far off its recast
+and would have been dropped (Kevin, 2026-11-24, asked after it was built): the
+mash, since a spell pressed inside its own cast may have no recast running
+yet. The tier that stands in keeps the target
+the press was pinned to, and one that cannot be AIMED at every kind of target
+the pressed spell can is never the one to stand in, wherever the press was
+aimed - Warp for Warp II, Phalanx for Phalanx II (from review: an id-pinned
+`/ma "Warp"` at a party member is most likely refused, and the other outcome
+is a trip home). That is the resource's `targets`, which is a SET OF NAMES from
+Windower's resources library (`S{'Self', 'Party'}`, read in its `resources.lua`)
+and a bitfield in the raw data; the walk compares either shape, and where the
+two cannot be compared the game has the last word. Nothing is said in
+chat; `debug` writes `Fire V on recast, down to Fire IV`, `Fire V unavailable,
+down to Fire IV`, or `... no tier under it can go`. A slot's icon, recast
+sweep and dimming still follow the spell it is bound to. **Unverified in a
+live client**: all of it - in particular whether a spell's recast runs from
+its cast's start or its finish (the press covers the one and the release the
+other), and that `requirements` bit 4 marks the black-side Addendum spells as
+it does the white.
 
 Buffs. The order and filter verbs of every component that draws buff icons
 sit behind ONE framework word (2026-09-05), so the grammar is the same on each

@@ -62,6 +62,7 @@ local RESERVED = {
   delay = true,
   hidecutscene = true,
   queue = true,
+  autospelltier = true,
   gamepad = true,
   keyboard = true,
 }
@@ -75,7 +76,8 @@ local ACTION_VERBS = { mr = true, sneak = true, invisible = true, reraise = true
 -- the gamepad bridge's in data/gamepad.lua, the keyboard map's in
 -- data/keyboard.lua: the words after the verb go through untouched, and core
 -- answers them over the file that holds them.
-local TUNING_VERBS = { delay = true, hidecutscene = true, queue = true, gamepad = true, keyboard = true }
+local TUNING_VERBS =
+  { delay = true, hidecutscene = true, queue = true, autospelltier = true, gamepad = true, keyboard = true }
 
 local SLOT_OPS = { list = true, create = true, delete = true }
 
