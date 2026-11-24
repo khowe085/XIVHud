@@ -356,6 +356,55 @@ describe("the action service", function()
       assert.are.equal("assist <target> - one name, or one target like <p1>", service.assist("Bob;quit"))
       assert.are.same({}, env.commands)
     end)
+
+    --[[ A press whose alias was never made leaves no packet for the queue to
+         write, so the press is written itself. ]]
+    describe("in the queue's debug log", function()
+      local function debugging()
+        local service, env = world()
+        env.config.queue = "debug"
+        return service, env
+      end
+
+      it("writes each press, and where it came from when it is told", function()
+        local service, env = debugging()
+        service.fire({ type = "assist" }, { from = "hotbar 3:7" })
+        service.fire({ type = "assist" }, {})
+        service.builtin("assist")
+        assert.are.same({
+          "queue 0.00: assist pressed, hotbar 3:7",
+          "queue 0.00: assist pressed",
+          "queue 0.00: assist pressed, //hud assist",
+        }, env.debug_log)
+      end)
+
+      it("writes the target the alias is pointed at", function()
+        local service, env = debugging()
+        service.assist("<p1>")
+        assert.are.same({ "queue 0.00: assist alias set: /assist <p1>" }, env.debug_log)
+      end)
+
+      it("writes nothing of a target it refused", function()
+        local service, env = debugging()
+        service.assist("Bob;quit")
+        assert.are.same({}, env.debug_log)
+      end)
+
+      it("writes no press of any other action", function()
+        local service, env = debugging()
+        service.fire({ type = "ex", action = "exec x.txt" }, { from = "hotbar 3:7" })
+        service.builtin("draw")
+        assert.are.same({}, env.debug_log)
+      end)
+
+      it("writes nothing outside debug", function()
+        local service, env = world()
+        env.config.queue = "on"
+        service.fire({ type = "assist" }, { from = "hotbar 3:7" })
+        service.assist("Bob")
+        assert.are.same({}, env.debug_log)
+      end)
+    end)
   end)
 
   describe("a warp", function()
@@ -1859,11 +1908,83 @@ describe("the action service", function()
         assert.are.same({ 'input /ma "Fire" <t>' }, env.commands)
       end)
 
-      it("says each step down in the debug log", function()
-        local service, env = tiered("debug")
-        env.spell_recasts[148] = 10 * SECONDS
-        service.fire(FIRE_V, {})
-        assert.is_not_nil(logged(env):find("Fire V on recast, down to Fire IV", 1, true))
+      describe("in the debug log", function()
+        local function wrote(env, line)
+          assert.is_not_nil(logged(env):find(line, 1, true), "logged: " .. logged(env))
+        end
+
+        it("says a step down made at the press, with what the recast had left", function()
+          local service, env = tiered("debug")
+          env.spell_recasts[148] = 10 * SECONDS
+          service.fire(FIRE_V, {})
+          wrote(env, "at the press: Fire V on recast 10.00s, free; down to Fire IV")
+        end)
+
+        it("says what the lock had left when the press came in one", function()
+          local service, env = tiered("debug")
+          finish_cast(service)
+          env.now = env.now + 1
+          env.spell_recasts[148] = 10 * SECONDS
+          service.fire(FIRE_V, {})
+          wrote(env, "at the press: Fire V on recast 10.00s, lock 1.70s; down to Fire IV")
+        end)
+
+        it("says a press made while another spell is still casting", function()
+          local service, env = tiered("debug")
+          start_cast(service)
+          env.spell_recasts[148] = 10 * SECONDS
+          service.fire(FIRE_V, {})
+          wrote(env, "at the press: Fire V on recast 10.00s, casting; down to Fire IV")
+        end)
+
+        it("says each tier it passed by, and why", function()
+          local service, env = tiered("debug")
+          env.spell_recasts[148], env.spell_recasts[147] = 10 * SECONDS, 3 * SECONDS
+          env.known_spells[146] = nil
+          service.fire(FIRE_V, {})
+          wrote(
+            env,
+            "at the press: Fire V on recast 10.00s, free; Fire IV on recast 3.00s; "
+              .. "Fire III not learned; down to Fire II"
+          )
+        end)
+
+        it("says why a spell out of the job's reach could not go", function()
+          local service, env = tiered("debug")
+          env.player.main_job_level, env.player.sub_job_id = 70, nil
+          service.fire(FIRE_V, {})
+          wrote(
+            env,
+            "at the press: Fire V needs BLM 86 (on BLM 70); Fire IV needs BLM 73 (on BLM 70); down to Fire III"
+          )
+        end)
+
+        it("says a step down made at a cursor's OK", function()
+          local service, env = tiered("debug")
+          service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
+          env.spell_recasts[259] = 20 * SECONDS
+          service.on_text("/ta <stnpc>")
+          service.on_text("/ta 777")
+          service.on_text("/ta 12345")
+          wrote(env, "at OK: Sleep II on recast 20.00s, free; down to Sleep")
+        end)
+
+        it("says a step down made at a held press's release", function()
+          local service, env = tiered("debug")
+          start_cast(service)
+          service.fire(FIRE_V, {})
+          service.on_chunk(ACTION, "raw", act(4, 1))
+          env.spell_recasts[148] = 8 * SECONDS
+          past_the_lock(service, env)
+          wrote(env, "at the release: Fire V on recast 8.00s, free; down to Fire IV")
+        end)
+
+        it("says a spell it kept, being near enough ready", function()
+          local service, env = tiered("debug")
+          env.spell_recasts[148] = 2 * SECONDS
+          service.fire(FIRE_V, {})
+          wrote(env, "at the press: Fire V on recast 2.00s, free; near enough ready, kept")
+        end)
       end)
 
       describe("with the queue on", function()

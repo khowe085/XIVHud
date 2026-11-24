@@ -682,6 +682,10 @@ local function new(deps)
     refused = function(record)
       return queue.refused_on_recast(record)
     end,
+    recast_left = recast_left,
+    doing = function()
+      return queue.doing()
+    end,
     note = function(line)
       queue.note(line)
     end,
@@ -690,9 +694,10 @@ local function new(deps)
 
   --- The record and command to settle on in place of these: themselves,
   --- unless a lower tier stands in. `pinned` is the id the command was aimed
-  --- at, where it was, and the lower tier's is aimed at the same.
-  local function lower_tier(record, command, pinned)
-    local lowered = tiers.lower(record)
+  --- at, where it was, and the lower tier's is aimed at the same. `where` is
+  --- the moment it is asked, for the walk's debug line.
+  local function lower_tier(record, command, pinned, where)
+    local lowered = tiers.lower(record, where)
     if lowered == record then
       return record, command
     end
@@ -1101,9 +1106,19 @@ local function new(deps)
     return true
   end
 
+  --[[ Debug's alone: an assist press, and what it came from where the caller
+       said. The queue sees an assist only as the targeting packet the game
+       sends for it, and a press whose alias was never made sends none. ]]
+  local function note_assist(record, from)
+    if record.type == "assist" then
+      queue.note("assist pressed" .. (from ~= nil and (", " .. from) or ""))
+    end
+  end
+
   --[[ A bar's press, whatever pointed at it - a key or a click. `record` is
        the bar's resolved binding (nil for an empty slot, which is silent);
-       `opts.flash` is called before the send.
+       `opts.flash` is called before the send, and `opts.from` names what
+       pressed it, for the debug log.
 
        Everything after the resolve - the flash and the travel countdown -
        is the same for every way in, deliberately. ]]
@@ -1115,12 +1130,13 @@ local function new(deps)
     if opts.flash ~= nil then
       opts.flash()
     end
+    note_assist(record, opts.from)
     local plan, hint = actions.resolve(record, self.draw_state())
     if plan ~= nil and plan.kind == "command" then
       local pressed, command = plan.held_as or record, plan.command
       -- A cursor the queue opens is walked at OK, where its recast is known.
       if not queue.judged_at_ok(pressed) then
-        pressed, command = lower_tier(pressed, command)
+        pressed, command = lower_tier(pressed, command, nil, "at the press")
       end
       local taken, instead = queue.press(pressed, command)
       if instead ~= nil then
@@ -1146,6 +1162,7 @@ local function new(deps)
       return hint
     end
     local record = { type = type(name) == "string" and name:lower() or name, action = arg }
+    note_assist(record, "//hud assist")
     if not delay_travel(record, plan) then
       execute(plan, hint)
     end
@@ -1153,13 +1170,15 @@ local function new(deps)
   end
 
   --- `//hud assist <target>`: points the alias an `assist` slot runs at that
-  --- target. Answers the line to say - whom, or the form a target takes.
+  --- target. Answers the line to say - whom, or the form a target takes. The
+  --- debug log keeps the target, which no later press of the alias names.
   function self.assist(target)
     local command, form = actions.assist_alias(target)
     if command == nil then
       return form
     end
     send_command(command)
+    queue.note("assist alias set: /assist " .. target)
     return "assist: " .. target
   end
 

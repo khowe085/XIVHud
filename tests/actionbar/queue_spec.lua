@@ -3389,6 +3389,18 @@ describe("the action queue", function()
         queue.press(SLEEP, SLEEP_COMMAND)
         assert.are.same({}, asked)
       end)
+
+      it("is told it is asked at OK, for the walk's debug line", function()
+        local where
+        local queue = world({
+          lower = function(record, line, _, asked_at)
+            where = asked_at
+            return record, line
+          end,
+        })
+        ok(queue)
+        assert.are.equal("at OK", where)
+      end)
     end)
 
     describe("at the release", function()
@@ -3449,6 +3461,16 @@ describe("the action queue", function()
         assert.are.equal('input /ma "Sleep II" 12345', queue.step())
         assert.are.same({}, asked)
       end)
+
+      it("is told it is asked at the release, for the walk's debug line", function()
+        local where
+        local queue = held_on_recast(function(record, line, _, asked_at)
+          where = asked_at
+          return record, line
+        end)
+        queue.step()
+        assert.are.equal("at the release", where)
+      end)
     end)
 
     describe("what the walk asks of the queue", function()
@@ -3480,6 +3502,20 @@ describe("the action queue", function()
         assert.is_false(queue.far_off(spell("Cure")), "two seconds past the lock")
         env.recast.Cure = 4.8
         assert.is_true(queue.far_off(spell("Cure")))
+      end)
+
+      it("says what it is busy with, in a debug line's words", function()
+        local queue, env = world()
+        assert.are.equal("free", queue.doing())
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+        assert.are.equal("unanswered", queue.doing(), "a send nothing has answered")
+        start_cast(queue)
+        assert.are.equal("casting", queue.doing(), "a cast in progress is no lock")
+        queue.on_action(action(4, 1))
+        env.now = env.now + 1
+        assert.are.equal("lock 1.70s", queue.doing())
+        env.now = env.now + 2
+        assert.are.equal("free", queue.doing(), "and nothing once it is over")
       end)
 
       it("says a cursor slot is judged at OK while the queue is on, and nothing else is", function()

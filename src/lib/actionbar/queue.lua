@@ -604,6 +604,20 @@ local function new(deps)
     return running(lock_until) and lock_until - now() or 0
   end
 
+  --[[ What this is busy with, in the words of a debug line, for the spell
+       tier walk's: the lock and what it has left, a cast still running (no
+       lock yet, so a recast is measured from now), a send nothing has
+       answered, or nothing. ]]
+  function self.doing()
+    if running(lock_until) then
+      return ("lock %.2fs"):format(lock_left())
+    end
+    if acting_until ~= nil then
+      return "casting"
+    end
+    return running(sent_until) and "unanswered" or "free"
+  end
+
   --[[ Whether the recast runs more than RECAST_GRACE past the lock. Only a lock
        counts: nothing says when a cast will end, though its lock is still to
        come. All 16 presses of Cure IV in its own lock went out on a recast that
@@ -657,12 +671,13 @@ local function new(deps)
        settle on in place of these, which are themselves where no lower tier
        stands in. Asked where a command is settled after its press - a
        cursor's at OK, a held one's at the release - with the id a held one
-       was pinned to. ]]
-  local function lower(record, command, pinned)
+       was pinned to, and which of the two moments it is, for the walk's
+       debug line. ]]
+  local function lower(record, command, pinned, where)
     if deps.lower == nil then
       return record, command
     end
-    return deps.lower(record, command, pinned)
+    return deps.lower(record, command, pinned, where)
   end
 
   local function forget()
@@ -962,7 +977,7 @@ local function new(deps)
     local open = cursor
     cursor = nil
     note("OK " .. open.name .. " at " .. id)
-    local record, command = lower(open.record, open.command)
+    local record, command = lower(open.record, open.command, nil, "at OK")
     local name = record.action or record.type
     local stop = what_stops(record) or at_the_fallen(record, tonumber(id))
     if stop ~= nil then
@@ -1337,7 +1352,7 @@ local function new(deps)
     if recast > RECAST_GRACE then
       -- A lower tier stands in where the walk has one, and waits out its own
       -- recast below as any held press does.
-      local record, command = lower(held.record, held.command, held.target)
+      local record, command = lower(held.record, held.command, held.target, "at the release")
       if record ~= held.record then
         held.record, held.command, held.name, held.waiting = record, command, record.action or record.type, nil
         recast = deps.recast_left(record)

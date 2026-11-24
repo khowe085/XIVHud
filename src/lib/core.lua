@@ -269,7 +269,8 @@ local function new(deps)
         if deps.actions.edit_owner ~= nil and deps.actions.edit_owner() ~= nil then
           return
         end
-        deps.actions.fire(record)
+        -- `from` is for the service's debug log: no slot was pressed.
+        deps.actions.fire(record, { from = "a gesture or a key" })
       end,
       components = component_behaviors,
       deliver = deliver_behavior,

@@ -67,6 +67,14 @@ describe("the spell tier walk", function()
       refused = function(record)
         return env.on_recast[record.action] == true or env.nearly_ready[record.action] == true
       end,
+      -- What a debug line quotes, which decides nothing: a recast's seconds,
+      -- and what the queue is busy with in its own words.
+      recast_left = function(record)
+        return env.recasts[record.action] or 0
+      end,
+      doing = function()
+        return env.doing
+      end,
       note = function(line)
         env.notes[#env.notes + 1] = line
       end,
@@ -92,6 +100,8 @@ describe("the spell tier walk", function()
       known = {},
       on_recast = {},
       nearly_ready = {},
+      recasts = {},
+      doing = "free",
       notes = {},
       player = { main_job_id = BLM, main_job_level = 99, buffs = {} },
     }
@@ -290,7 +300,6 @@ describe("the spell tier walk", function()
       env.on_recast["Warp II"] = true
       local pressed = fire("Warp II", "stpc")
       assert.are.equal(pressed, tier.lower(pressed))
-      assert.are.same({ "Warp II on recast, no tier under it can go" }, env.notes)
     end)
 
     it("never stands in, by the bitfield the raw data gives", function()
@@ -334,24 +343,102 @@ describe("the spell tier walk", function()
   end)
 
   describe("what it says for the debug log", function()
-    it("names the spell, why it could not go and what stands in", function()
+    -- Fire V ten seconds from ready, with 1.2s of a lock still to run.
+    local function fire_v_far_off()
       env.on_recast["Fire V"] = true
-      tier.lower(fire("Fire V"))
-      assert.are.same({ "Fire V on recast, down to Fire IV" }, env.notes)
+      env.recasts["Fire V"], env.doing = 10, "lock 1.20s"
+    end
+
+    it("says where it was asked, what the recast had left and the queue was busy with, and what stands in", function()
+      fire_v_far_off()
+      tier.lower(fire("Fire V"), "at the press")
+      assert.are.same({ "at the press: Fire V on recast 10.00s, lock 1.20s; down to Fire IV" }, env.notes)
     end)
 
-    it("says unavailable for one the jobs cannot cast or that is not learned", function()
+    it("says each tier it passed by, and why", function()
+      fire_v_far_off()
+      env.on_recast["Fire IV"], env.recasts["Fire IV"] = true, 4.5
+      env.known[146] = nil
+      tier.lower(fire("Fire V"), "at the release")
+      assert.are.same({
+        "at the release: Fire V on recast 10.00s, lock 1.20s; Fire IV on recast 4.50s; "
+          .. "Fire III not learned; down to Fire II",
+      }, env.notes)
+    end)
+
+    it("says a spell that has not been learned", function()
       env.known[148] = nil
-      tier.lower(fire("Fire V"))
-      assert.are.same({ "Fire V unavailable, down to Fire IV" }, env.notes)
+      tier.lower(fire("Fire V"), "at OK")
+      assert.are.same({ "at OK: Fire V not learned; down to Fire IV" }, env.notes)
+    end)
+
+    it("says the level a job still needs, as under a level sync", function()
+      env.player.main_job, env.player.main_job_level = "BLM", 70
+      tier.lower(fire("Fire V"), "at the press")
+      assert.are.same({
+        "at the press: Fire V needs BLM 86 (on BLM 70); Fire IV needs BLM 73 (on BLM 70); down to Fire III",
+      }, env.notes)
+    end)
+
+    it("says the Addendum a scholar has not got up", function()
+      env.player.main_job_id, env.player.main_job = SCH, "SCH"
+      tier.lower(fire("Fire IV"), "at the press")
+      assert.are.same({ "at the press: Fire IV needs Addendum: Black (on SCH 99); down to Fire III" }, env.notes)
+    end)
+
+    it("says a tier that cannot be aimed as the pressed spell can", function()
+      env.on_recast["Warp II"], env.recasts["Warp II"] = true, 20
+      tier.lower(fire("Warp II", "stpc"), "at the press")
+      assert.are.same({
+        "at the press: Warp II on recast 20.00s, free; Warp cannot be aimed as Warp II; no tier under it can go",
+      }, env.notes)
+    end)
+
+    it("says a press made while another spell is still casting, where no lock counts yet", function()
+      env.on_recast["Fire V"] = true
+      env.recasts["Fire V"], env.doing = 10, "casting"
+      tier.lower(fire("Fire V"), "at the press")
+      assert.are.same({ "at the press: Fire V on recast 10.00s, casting; down to Fire IV" }, env.notes)
+    end)
+
+    it("says a tier the name lookup has no spell for", function()
+      env.on_recast["Gap III"], env.recasts["Gap III"] = true, 6
+      tier.lower(fire("Gap III"), "at the press")
+      assert.are.same({
+        "at the press: Gap III on recast 6.00s, free; Gap II no such spell; down to Gap",
+      }, env.notes)
     end)
 
     it("says when no tier under it can go", function()
       for _, name in ipairs({ "Fire V", "Fire IV", "Fire III", "Fire II", "Fire" }) do
-        env.on_recast[name] = true
+        env.on_recast[name], env.recasts[name] = true, 9
       end
+      tier.lower(fire("Fire V"), "at the press")
+      assert.are.same({
+        "at the press: Fire V on recast 9.00s, free; Fire IV on recast 9.00s; Fire III on recast 9.00s; "
+          .. "Fire II on recast 9.00s; Fire on recast 9.00s; no tier under it can go",
+      }, env.notes)
+    end)
+
+    it("says a spell it kept though its recast runs, being near enough ready", function()
+      env.nearly_ready["Fire V"] = true
+      env.recasts["Fire V"], env.doing = 3.5, "lock 2.00s"
+      local pressed = fire("Fire V")
+      assert.are.equal(pressed, tier.lower(pressed, "at the press"))
+      assert.are.same({ "at the press: Fire V on recast 3.50s, lock 2.00s; near enough ready, kept" }, env.notes)
+    end)
+
+    it("leaves out where it was asked when no one says", function()
+      fire_v_far_off()
       tier.lower(fire("Fire V"))
-      assert.are.same({ "Fire V on recast, no tier under it can go" }, env.notes)
+      assert.are.same({ "Fire V on recast 10.00s, lock 1.20s; down to Fire IV" }, env.notes)
+    end)
+
+    it("leaves out the seconds and the queue's state where nothing answers for them", function()
+      tier = build({ recast_left = false, doing = false })
+      env.on_recast["Fire V"], env.on_recast["Fire IV"] = true, true
+      tier.lower(fire("Fire V"), "at the press")
+      assert.are.same({ "at the press: Fire V on recast; Fire IV on recast; down to Fire III" }, env.notes)
     end)
 
     it("says nothing of a first tier, which has no walk to make", function()

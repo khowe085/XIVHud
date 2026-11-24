@@ -1034,7 +1034,16 @@ thing, and a Windower script can set it for you with
 `alias assist input /assist Bob`. Windower forgets an alias when the game
 closes, so name them again after a restart; until then a press does nothing
 but print "unknown command" in the Windower console. The action queue never
-holds an assist. None of this has been watched in a live client yet.
+holds an assist.
+
+With `//hud queue debug`, `debug.log` keeps a line for each press and what
+pressed it - `assist pressed, hotbar 3:7` for a slot, `assist pressed, a
+gesture or a key` for a pad button or a key bound to it, `assist pressed,
+//hud assist` for the command - and one for each target you set (`assist alias
+set: /assist Bob`). An `out assist <id>` line after a press is the game acting
+on it. A press with none after it sent the game nothing: the alias was not
+made, or the game could not find that player. None of this has been watched in
+a live client yet.
 
 `mr` and `warp` count down before they go, and so does the `mount` type
 above - see **Travel counts down** under Extras.

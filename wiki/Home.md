@@ -297,7 +297,7 @@ or the console too, and their settings are shared by both bars.
 | `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; fractions are fine, there is no upper limit, and `0` switches the countdown off |
 | `//hud queue [on\|debug\|off]` | [the action queue](#the-action-queue); without a word it prints the current setting. `debug` also writes each step to `debug.log` in the addon's folder |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action, 0 to 5 seconds in tenths. Alone it lists them all; with only a kind it prints that one |
-| `//hud autospelltier [on\|off]` | [auto spell tier](#auto-spell-tier): Fire V on cooldown casts Fire IV. Off by default; without a word it prints the current setting |
+| `//hud autospelltier [on\|off]` | [auto spell tier](#auto-spell-tier): Fire V on cooldown casts Fire IV. Off by default; without a word it prints the current setting. Every ladder is on the [Auto spell tier](autospelltier.md) page |
 
 `mr`, `warp` and a bound mount count down in chat before they act, so a
 mis-press costs a few seconds rather than a trip home. A warp that first has to
@@ -474,8 +474,11 @@ III, and so on down. It is off by default.
   goes in its place: Warp is never cast for Warp II, nor Phalanx for Phalanx
   II.
 
-Nothing is said in chat; with `//hud queue debug`, each step down is written
-to `debug.log`. None of this has been watched in a live client yet.
+Nothing is said in chat. With `//hud queue debug`, each decision is one line
+in `debug.log`: when it was made, why the spell you pressed could not go, each
+tier that was passed by and why, and what went. The
+[Auto spell tier](autospelltier.md) page says how to read that line, and lists
+every ladder, job by job. None of this has been watched in a live client yet.
 
 ## Layout slots
 

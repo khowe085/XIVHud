@@ -47,7 +47,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      what the resource says.
 
      Pure: the setting, the spell lookup, the client reads and the queue's
-     two answers arrive as deps, with `note` for the queue's debug log. ]]
+     two answers arrive as deps, with `note` for the queue's debug log and
+     what a line there quotes: a recast's seconds (`recast_left`) and what
+     the queue is busy with (`doing`). ]]
 
 local castable = require("lib/actionbar/castable")
 
@@ -135,9 +137,34 @@ local function new(deps)
     return deps.refused ~= nil and deps.refused(record) == true
   end
 
-  --- The record to press in this one's place: a lower tier's where this spell
-  --- cannot go and one under it can, and otherwise the record itself.
-  function self.lower(record)
+  -- What a spell's recast has left, where something answers for it. The debug
+  -- line's alone: far_off and refused are what decide.
+  local function recast_left(record)
+    local left = deps.recast_left ~= nil and deps.recast_left(record) or nil
+    return type(left) == "number" and left or nil
+  end
+
+  local function on_recast(record)
+    local left = recast_left(record)
+    return left ~= nil and ("on recast %.2fs"):format(left) or "on recast"
+  end
+
+  -- With what the queue was busy with, in its own words: a recast is far
+  -- off against a lock's end, and against now under anything else.
+  local function with_doing(words)
+    local doing = deps.doing ~= nil and deps.doing() or nil
+    return type(doing) == "string" and (words .. ", " .. doing) or words
+  end
+
+  --[[ The record to press in this one's place: a lower tier's where this spell
+       cannot go and one under it can, and otherwise the record itself.
+
+       `where` is the moment it is asked - at the press, at OK, at the
+       release - for the one debug line a walk writes: the spell and why it
+       could not go, each tier passed by and why, and what was settled on. A
+       spell kept though its recast runs says so too, so a log shows the walk
+       was asked. ]]
+  function self.lower(record, where)
     if not self.enabled() or type(record) ~= "table" or record.type ~= "ma" or type(record.action) ~= "string" then
       return record
     end
@@ -157,29 +184,55 @@ local function new(deps)
     end
     local jobs = castable.job_pair(player)
 
-    local function castable_now(entry)
-      return known[entry.id] == true and castable.available(entry, jobs, player)
+    -- Why the character cannot cast it at all, or nil for one it can.
+    local function uncastable(entry)
+      if known[entry.id] ~= true then
+        return "not learned"
+      end
+      return castable.why_not(entry, jobs, player)
     end
 
-    local why
-    if not castable_now(spell) then
-      why = "unavailable"
-    elseif far_off(record) then
-      why = "on recast"
-    else
-      return record
+    local said = {}
+    local function settle(outcome)
+      said[#said + 1] = outcome
+      note((where ~= nil and (where .. ": ") or "") .. table.concat(said, "; "))
     end
+
+    local why = uncastable(spell)
+    if why == nil then
+      if not far_off(record) then
+        if (recast_left(record) or 0) > 0 then
+          said[1] = spell.en .. " " .. with_doing(on_recast(record))
+          settle("near enough ready, kept")
+        end
+        return record
+      end
+      why = with_doing(on_recast(record))
+    end
+    said[1] = spell.en .. " " .. why
     for _, name in ipairs(under) do
       local entry = deps.find_spell(name)
-      if type(entry) == "table" and type(entry.en) == "string" and castable_now(entry) and aims_as(entry, spell) then
+      if type(entry) ~= "table" or type(entry.en) ~= "string" then
+        -- Not in the resources, or in them and no spell a player can cast,
+        -- which the name lookup leaves out.
+        said[#said + 1] = name .. " no such spell"
+      else
         local lowered = { type = "ma", action = entry.en, target = record.target }
-        if not refused(lowered) then
-          note(("%s %s, down to %s"):format(spell.en, why, entry.en))
+        local passed = uncastable(entry)
+        if passed == nil and not aims_as(entry, spell) then
+          passed = "cannot be aimed as " .. spell.en
+        end
+        if passed == nil and refused(lowered) then
+          passed = on_recast(lowered)
+        end
+        if passed == nil then
+          settle("down to " .. entry.en)
           return lowered
         end
+        said[#said + 1] = entry.en .. " " .. passed
       end
     end
-    note(("%s %s, no tier under it can go"):format(spell.en, why))
+    settle("no tier under it can go")
     return record
   end
 

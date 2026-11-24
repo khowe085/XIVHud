@@ -37,6 +37,13 @@ describe("castable", function()
     it("is empty with no player to read", function()
       assert.are.same({}, castable.job_pair(nil))
     end)
+
+    it("carries the names the client gives its jobs", function()
+      assert.are.same({
+        { id = BLM, name = "BLM", level = 99, main = true },
+        { id = WHM, name = "WHM", level = 49, main = false },
+      }, castable.job_pair(someone({ main_job = "BLM", sub_job = "WHM" })))
+    end)
   end)
 
   describe("a buff", function()
@@ -108,6 +115,106 @@ describe("castable", function()
         local player = someone({ main_job_id = WHM, sub_job_id = SCH, sub_job_level = 49 })
         assert.is_true(available(RAISE_II, player), "a white mage needs no Addendum")
       end)
+    end)
+  end)
+
+  describe("why no job can supply a spell", function()
+    local FIRE_V = { en = "Fire V", type = "BlackMagic", levels = { [BLM] = 86 } }
+    local FIRE_IV = { en = "Fire IV", type = "BlackMagic", levels = { [SCH] = 73 }, requirements = 4 }
+    local RAISE_II = { en = "Raise II", type = "WhiteMagic", levels = { [SCH] = 70 }, requirements = 4 }
+
+    -- A black mage with a white mage under it, as the client names them.
+    local function named(overrides)
+      local player = someone({ main_job = "BLM", sub_job = "WHM" })
+      for key, value in pairs(overrides or {}) do
+        player[key] = value
+      end
+      return player
+    end
+
+    local function scholar(buffs)
+      return named({ main_job_id = SCH, main_job = "SCH", sub_job_id = false, buffs = buffs or {} })
+    end
+
+    local function scholar_at(level, buffs)
+      local player = scholar(buffs)
+      player.main_job_level = level
+      return player
+    end
+
+    local function why_not(spell, player)
+      return castable.why_not(spell, castable.job_pair(player), player)
+    end
+
+    it("has nothing to say of one that can be cast", function()
+      assert.is_nil(why_not(FIRE_V, named()))
+      assert.is_nil(why_not({ en = "Fire V" }, named()))
+      assert.is_nil(why_not(nil, named()))
+    end)
+
+    it("names the level a job still needs, and the jobs it was asked of", function()
+      assert.are.equal("needs BLM 86 (on BLM 70/WHM 49)", why_not(FIRE_V, named({ main_job_level = 70 })))
+    end)
+
+    it("names each job of the pair that could reach it", function()
+      local both = { levels = { [BLM] = 86, [WHM] = 60 } }
+      assert.are.equal("needs BLM 86 or WHM 60 (on BLM 70/WHM 49)", why_not(both, named({ main_job_level = 70 })))
+    end)
+
+    it("says when it is a spell of neither job", function()
+      assert.are.equal("no spell of BLM 99/WHM 49", why_not({ levels = { [SCH] = 10 } }, named()))
+      assert.are.equal("no spell of BLM 99", why_not({ levels = { [SCH] = 10 } }, named({ sub_job_id = false })))
+    end)
+
+    it("names the Addendum a scholar has not got up", function()
+      assert.are.equal("needs Addendum: Black (on SCH 99)", why_not(FIRE_IV, scholar()))
+      assert.are.equal("needs Addendum: White (on SCH 99)", why_not(RAISE_II, scholar({ ADDENDUM_BLACK })))
+      assert.is_nil(why_not(FIRE_IV, scholar({ ENLIGHTENMENT })))
+    end)
+
+    it("names the level too where the Addendum alone would not be enough", function()
+      local synced = scholar()
+      synced.main_job_level = 60
+      assert.are.equal("needs Addendum: Black and SCH 73 (on SCH 60)", why_not(FIRE_IV, synced))
+      assert.are.equal("needs SCH 73 (on SCH 60)", why_not(FIRE_IV, scholar_at(60, { ADDENDUM_BLACK })))
+      local gift = { type = "BlackMagic", levels = { [SCH] = 100 }, requirements = 4 }
+      assert.are.equal("needs Addendum: Black and SCH 99 as the main job (on SCH 60)", why_not(gift, synced))
+    end)
+
+    it("says a gift wants its job as the main one, at the cap", function()
+      assert.are.equal(
+        "needs BLM 99 as the main job (on BLM 98/WHM 49)",
+        why_not({ levels = { [BLM] = 100 } }, named({ main_job_level = 98 }))
+      )
+      assert.are.equal(
+        "needs WHM 99 as the main job (on BLM 99/WHM 49)",
+        why_not({ levels = { [WHM] = 100 } }, named())
+      )
+    end)
+
+    it("falls back on a job's number where the client gave it no name", function()
+      assert.are.equal("needs job4 86 (on job4 70/job3 49)", why_not(FIRE_V, someone({ main_job_level = 70 })))
+    end)
+
+    it("says there is no job where the client named none", function()
+      assert.are.equal("no job to cast it", castable.why_not(FIRE_V, {}, nil))
+    end)
+
+    it("never disagrees with whether one can", function()
+      local spells =
+        { FIRE_V, FIRE_IV, RAISE_II, { levels = { [BLM] = 100, [WHM] = 100 } }, { levels = { [WHM] = 50 } } }
+      local players = {
+        named(),
+        named({ main_job_level = 70 }),
+        scholar(),
+        scholar({ ADDENDUM_BLACK }),
+        named({ main_job_id = SCH }),
+      }
+      for _, spell in ipairs(spells) do
+        for _, player in ipairs(players) do
+          assert.are.equal(available(spell, player), why_not(spell, player) == nil)
+        end
+      end
     end)
   end)
 end)

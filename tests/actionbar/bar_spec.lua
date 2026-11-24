@@ -307,6 +307,21 @@ describe("one bar's state", function()
       assert.are.same({}, env.commands)
     end)
 
+    it("tells the service which slot it came from, in the bar's own address", function()
+      local presses = { hotbar = { 1, "row", 3, "hotbar 1:3" }, crossbar = { 2, "left", 5, "crossbar 2L5" } }
+      for name, press in pairs(presses) do
+        local bar, _, ctx, store = world({ name = name })
+        bar.attach(store)
+        bar.try_scope()
+        local from
+        ctx.actions.fire = function(_, opts)
+          from = opts.from
+        end
+        bar.fire(press[1], press[2], press[3], function() end)
+        assert.are.equal(press[4], from)
+      end
+    end)
+
     it("mirrors the service's weapon state into the rotation and repaints", function()
       local bar, env, ctx, store = world()
       bar.attach(store)

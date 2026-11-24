@@ -713,9 +713,13 @@ local function new(deps)
 
   --[[ Fire one slot of one (set, side), whatever pointed at it. Everything
        after the resolve - the flash and the travel countdown - is the
-       service's, so two ways in cannot become two behaviours. ]]
+       service's, so two ways in cannot become two behaviours. `from` names
+       the slot as a command would address it, for the service's debug log. ]]
   function self.fire(set, side, slot, flash)
-    service.fire(bindings.resolve(set, side, slot), { flash = flash })
+    service.fire(
+      bindings.resolve(set, side, slot),
+      { flash = flash, from = name .. " " .. grammar.label(set, side, slot) }
+    )
     self.sync_weapon()
   end
 

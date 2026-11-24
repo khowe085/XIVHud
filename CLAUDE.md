@@ -960,9 +960,33 @@ is a trip home). That is the resource's `targets`, which is a SET OF NAMES from
 Windower's resources library (`S{'Self', 'Party'}`, read in its `resources.lua`)
 and a bitfield in the raw data; the walk compares either shape, and where the
 two cannot be compared the game has the last word. Nothing is said in
-chat; `debug` writes `Fire V on recast, down to Fire IV`, `Fire V unavailable,
-down to Fire IV`, or `... no tier under it can go`. A slot's icon, recast
-sweep and dimming still follow the spell it is bound to. **Unverified in a
+chat. **`debug` writes one line for each decision** (Kevin, 2026-11-24: enough
+to tell when it was decided to go down a tier and why the spell asked for
+could not go), `at the press: Fire V on recast 9.87s, lock 1.20s; Fire IV on
+recast 4.10s; down to Fire III`: the moment it was asked (`at the press`, `at
+OK`, `at the release`, which the queue hands the walk with its other two
+answers); the spell and why it could not go - `on recast <n>s` and what the
+queue was busy with in its own words (`queue.doing()`: `lock <n>s`, `casting`
+for an action still in progress, where no lock counts yet and the recast is
+measured from now, `unanswered`, or `free`), `not learned`, or
+`castable.why_not`'s words, `needs BLM 86 (on BLM 70/WHM 49)`, `needs
+Addendum: Black (on SCH 99)` (`... and SCH 73` where the level is short too),
+`needs BLM 99 as the main job (...)` for a gift, `no spell of NIN 99` - with
+the job names the client gives (`main_job`, `sub_job`); each tier passed by
+and why, those words again or `cannot be aimed as <spell>` or `no such spell`
+(the name lookup has none: not in the resources, or in them and unlearnable);
+and what was settled on, `down to <tier>` or `no tier under it can go`. A
+spell KEPT though its recast runs says so too (`near enough ready, kept`), so
+a log shows the walk was asked - that line is the author's own addition, not
+asked for, and Kevin's to keep or drop; one that was ready writes nothing.
+`why_not` answers nil exactly where `available` answers true, and builds its
+words only where it does not.
+The ladders, job by job, are tabled in `wiki/autospelltier.md`: 167 rows over
+ten jobs, produced by driving `spell_tier` itself over Windower's `spells.lua`
+of the 10 November 2026 update for each job as a main job at 99, and checked
+against an independent read of the same file's text (no difference). A slot's
+icon, recast sweep and dimming still follow the spell it is bound to.
+**Unverified in a
 live client**: all of it - in particular whether a spell's recast runs from
 its cast's start or its finish (the press covers the one and the release the
 other), and that `requirements` bit 4 marks the black-side Addendum spells as
@@ -1466,7 +1490,14 @@ type and so no behaviour is named after one, and no gesture ships bound to it
 category 12, `out assist <id>` in the debug log) and no action, so nothing
 waits on it and nothing stands aside for it. The press does stamp the bar's
 last send, as every unheld press does, so an action packet from elsewhere in
-the next two seconds reads as the bar's own. **Unverified in a live client**:
+the next two seconds reads as the bar's own. **`debug` writes each press**
+(Kevin, 2026-11-24), since one whose alias was never made leaves no packet for
+the queue to write: `assist pressed, hotbar 3:7` for a slot (the bar's name and
+the slot as a command addresses it, which `bar.fire` hands the service as
+`opts.from`), `assist pressed, a gesture or a key` for a pad or keyboard map
+action (core's `fire_action`), `assist pressed, //hud assist` for the bare
+verb, and `assist alias set: /assist <target>` for each target set, which no
+later press names. **Unverified in a live client**:
 all of it - that `alias` takes the line as written (`alias <alias> <command>`
 in Windower's docs), that a `send_command` of the alias runs it, that a press
 with no alias made is only a console "unknown command" (the `jc` slot's

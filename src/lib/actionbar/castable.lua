@@ -48,19 +48,22 @@ local SCH = 20
 local ADDENDUM_BIT = 4
 local ENLIGHTENMENT = 416
 local ADDENDUM_FOR = { WhiteMagic = 401, BlackMagic = 402 }
+local ADDENDUM_NAMES = { [401] = "Addendum: White", [402] = "Addendum: Black" }
 
 --- The main/sub pair, as catalog.lua reads it: the sub only when the client
---- has named one, and `main` carried through for the gift exception.
+--- has named one, and `main` carried through for the gift exception. `name`
+--- is the client's own word for the job, which only `why_not` reads.
 function M.job_pair(player)
   if type(player) ~= "table" then
     return {}
   end
   local jobs = {}
   if type(player.main_job_id) == "number" then
-    jobs[#jobs + 1] = { id = player.main_job_id, level = player.main_job_level or 0, main = true }
+    jobs[#jobs + 1] =
+      { id = player.main_job_id, name = player.main_job, level = player.main_job_level or 0, main = true }
   end
   if type(player.sub_job_id) == "number" then
-    jobs[#jobs + 1] = { id = player.sub_job_id, level = player.sub_job_level or 0, main = false }
+    jobs[#jobs + 1] = { id = player.sub_job_id, name = player.sub_job, level = player.sub_job_level or 0, main = false }
   end
   return jobs
 end
@@ -87,6 +90,15 @@ local function addendum_for(record)
   return ADDENDUM_FOR[record.type]
 end
 
+-- Whether a SCH has the Addendum this spell wants up; any other job needs none.
+local function opened(job, addendum, player)
+  return job.id ~= SCH or addendum == nil or M.has_buff(player, addendum) or M.has_buff(player, ENLIGHTENMENT)
+end
+
+local function level_of(job)
+  return type(job.level) == "number" and job.level or 0
+end
+
 --- Can one of these jobs supply this action? A resource with no `levels`
 --- table is included - the client already vouched for it by listing it as
 --- known, and the job abilities carry no levels at all.
@@ -98,9 +110,8 @@ function M.available(record, jobs, player)
   local addendum = addendum_for(record)
   for _, job in ipairs(jobs) do
     local required = levels[job.id]
-    local opened = job.id ~= SCH or addendum == nil or M.has_buff(player, addendum) or M.has_buff(player, ENLIGHTENMENT)
-    local level = type(job.level) == "number" and job.level or 0
-    if type(required) == "number" and opened then
+    local level = level_of(job)
+    if type(required) == "number" and opened(job, addendum, player) then
       if required <= level then
         return true
       end
@@ -112,6 +123,55 @@ function M.available(record, jobs, player)
     end
   end
   return false
+end
+
+local function job_name(job)
+  return type(job.name) == "string" and job.name or ("job" .. tostring(job.id))
+end
+
+-- The level a job is short of for this requirement, in words, or nil where it
+-- is not short: a gift wants the job as the main one, at the cap.
+local function short_of(job, required)
+  local level = level_of(job)
+  if required > LEVEL_CAP then
+    if job.main and level >= LEVEL_CAP then
+      return nil
+    end
+    return ("%s %d as the main job"):format(job_name(job), LEVEL_CAP)
+  end
+  return required > level and (job_name(job) .. " " .. required) or nil
+end
+
+--[[ Why none of these jobs can supply this action, in words for a debug
+     line, or nil for one `available` takes: everything each job of the pair
+     that has the action still needs - its Addendum, its level, or to be the
+     main job at the cap for a gift - and the jobs and levels that were
+     asked. ]]
+function M.why_not(record, jobs, player)
+  if M.available(record, jobs, player) then
+    return nil
+  end
+  if #jobs == 0 then
+    return "no job to cast it"
+  end
+  local addendum = addendum_for(record)
+  local needs, on = {}, {}
+  for _, job in ipairs(jobs) do
+    on[#on + 1] = job_name(job) .. " " .. level_of(job)
+    local required = record.levels[job.id]
+    if type(required) == "number" then
+      local wants = {}
+      if not opened(job, addendum, player) then
+        wants[#wants + 1] = ADDENDUM_NAMES[addendum]
+      end
+      wants[#wants + 1] = short_of(job, required)
+      needs[#needs + 1] = table.concat(wants, " and ")
+    end
+  end
+  if #needs == 0 then
+    return "no spell of " .. table.concat(on, "/")
+  end
+  return ("needs %s (on %s)"):format(table.concat(needs, " or "), table.concat(on, "/"))
 end
 
 return M

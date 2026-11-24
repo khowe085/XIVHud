@@ -681,6 +681,19 @@ describe("core", function()
       assert.are.same({ { type = "open", action = "map" } }, fired)
     end)
 
+    it("tells the action service the press came from a gesture or a key", function()
+      local service = firing_service()
+      local from
+      function service.fire(_, opts)
+        from = opts ~= nil and opts.from or nil
+      end
+      pad_core(nil, { actions = service, behavior_actions = sound_actions() })
+      login()
+      pad.queued = { { behavior = "open_map", down = true } }
+      core.pump_gamepad()
+      assert.are.equal("a gesture or a key", from)
+    end)
+
     it("runs no action where a slot's press would not: suppressed, laying out, or in a config window", function()
       local service = firing_service()
       local editing = false

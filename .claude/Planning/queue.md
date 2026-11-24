@@ -733,7 +733,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 45 | With Auto Buff Mode on and a buff down, mash a weaponskill slot from its own lock on, and again with Berserk, Warcry or Aggressor ready | `out spell <buff>` and `standing aside for spell <buff>`, `hold` lines through that cast and the first of its lock, then in the lock's last second `not held: <name>, standing aside` and an `out`, each `refused` until one `start`s, and `no longer standing aside: the bar's own went`, with no second `out` of GearSwap's before that start. With a buff ready the first `out` is the buff's, and `out weaponskill` follows it by 1.1s and starts | Standing aside (2026-11-22). That a mash has a press in the last second ahead of GearSwap's next cast, that the press holds that cast back, and that the WS buff's second send lands after the lock. Unverified. Not exercised on `524150f` (2026-11-23): it stood aside 11 times, for items used by hand, Erratic Flutter, Cocoon and Unbridled Learning, each ending at `nothing is busy`, and no press came in a last second. In a Sortie the same night it let its first press go, a Silence OK'd in the last second of the lock after a Fire Kevin cast from the game's menu: refused, and cast again by hand 3s later, with nothing automatic sending |
 | 46 | In a crowded fight, when you are left engaged with nothing targeted, press a weaponskill slot before targeting anything | `no target for <name>, status 1` (or `target <id> fell <n>s ago for <name>, status 1`) for each press until a target is back, under the `fell` of the mob you were on, and either no `auto-target` after that `fell` or an `auto-target <id>` whose `<id>` then `fell`; no `status 0` in between | The status and target lines (2026-11-23). Whether the client still reads engaged, whether `<t>` is empty or on a corpse, and whether the game auto-targeted. A `status 0` there means the client was told it disengaged. Seen on `524150f` (2026-11-23, Walk of Echoes): the lines are written, 47 `auto-target` to the chat log's 47. Of 70 deaths of his target 20 went to `status 0` instead, a median 0.87s on, and three kept status 1 with no `auto-target`, each the death of a mob an `auto-target` had named 1.6 to 6.7s before; one press among them read `no target for Savage Blade, status 1`. Whether the server had a target for him then is open |
 | 47 | In a crowded fight, let the party kill the mob the game has just auto-targeted for you, and when no target comes back switch to one by hand as you usually do | Under that mob's `fell`, with no `auto-target` after it: either a `swing at <id>, <t> none` (or `out of range of`, `unable to see`) with no `out engage` or `out switch target` before it, or an `out switch target <id>` ahead of the first `swing at`; and a `server target <id>` after every `auto-target` | Who moved the target (2026-11-23). A swing with `<t> none` and no targeting packet of yours before it is the server moving you untold; your own packet first is you. Also when the game sends a `0x058`: with each auto-target, and in answer to your own switch or not. Unverified |
-| 48 | With `//hud autospelltier on` and the queue in `debug`: mash one tier V nuke slot through three casts; sleep one mob with a Sleep II `<stnpc>` slot and press it again for a second mob; press Shell V on target after target; and as a Scholar press a tier IV nuke without Addendum: Black | `<spell> on recast, down to <tier>` before each cast after the first, each lower tier's `start` following and none `refused` for its recast; after the second Sleep II's `OK`, `Sleep II on recast, down to Sleep`; for Shell V no `down to` at all: `Shell V waits <n>s on its recast` where its OK came in the lock, `not held: Shell V on recast` and a `refused` where it came after; `Fire IV unavailable, down to Fire III` | AutoSpellTier (2026-11-24). That a step down lands at each of the three places it is made, and which of them catches a mash: the press if a spell's recast runs from its cast's start, the release if it runs from the finish. That the two-second grace still waits. Unverified |
+| 48 | With `//hud autospelltier on` and the queue in `debug`: mash one tier V nuke slot through three casts; sleep one mob with a Sleep II `<stnpc>` slot and press it again for a second mob; press Shell V on target after target; and as a Scholar press a tier IV nuke without Addendum: Black | `at the press: <spell> on recast <n>s, casting; down to <tier>` (or `at the release: ... <n>s, free; ...`) before each cast after the first, each lower tier's `start` following and none `refused` for its recast; after the second Sleep II's `OK`, `at OK: Sleep II on recast <n>s, lock <n>s; down to Sleep` (`free` in place of the lock if the OK came after it); for Shell V no `down to` at all: `Shell V on recast <n>s, lock <n>s; near enough ready, kept`, then `Shell V waits <n>s on its recast` where its OK came in the lock, `not held: Shell V on recast` and a `refused` where it came after; `at the press: Fire IV needs Addendum: Black (on SCH 99...); down to Fire III` | AutoSpellTier (2026-11-24). That a step down lands at each of the three places it is made, and which of them catches a mash - the line says which: `at the press` if a spell's recast runs from its cast's start, `at the release` if it runs from the finish. That the two-second grace still waits. Unverified |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -1642,7 +1642,7 @@ window's global panel.
 
 **As built:**
 
-- `lib/actionbar/spell_tier` (new, pure): `lower(record, refused)` answers the record to
+- `lib/actionbar/spell_tier` (new, pure): `lower(record, where)` answers the record to
   press in its place, the same table where nothing changes. It reads the tier off the
   resource's own spelling of the name.
 - `lib/actionbar/castable` (new): the ladders' level and Addendum test, moved out of
@@ -1686,6 +1686,49 @@ window's global panel.
   `tonumber`, so with the library's set it always answers `<me>`, and a sneak or
   invisible ladder would never land on a targeted party member in a client. Flagged to
   Kevin as a task of its own.
+
+**The debug line and the ladder table (Kevin, 2026-11-24, after the push):** "Make sure
+that there is enough debug lines that you can accurately determine when it was decided to
+go down a tier and why the requested spell wasn't available ... include a table that lists
+the ladders for each spell that AutoSpellTier effects, sorted by job > spell type > spell
+name. Double check the spell lists against the Windower resources file."
+
+- **One line for each decision**, where there were three bare ones (`Fire V on recast,
+  down to Fire IV`, `Fire V unavailable, ...`, `... no tier under it can go`), which said
+  neither which of the three places decided nor what "unavailable" meant:
+  `at the press: Fire V on recast 9.87s, lock 1.20s; Fire IV on recast 4.10s; down to
+  Fire III`. The moment is the caller's word (`at the press` from `service.fire`, `at OK`
+  and `at the release` from the queue, a fourth argument of `deps.lower`); the seconds
+  are the service's `recast_left`, and after them comes what the queue was busy with in
+  its own words (`queue.doing()`: `lock <n>s`, `casting`, `unanswered`, `free`) - both
+  new deps of the walk that decide nothing; the reason a spell cannot be cast is `not
+  learned` or `castable.why_not`'s words, which name the level, the Addendum or the gift
+  a job of the pair still wants and the pair it was asked of.
+- **A spell kept says so** (`near enough ready, kept`), mine and not asked for: without
+  it a spell on its recast that was not stepped down reads the same as the setting being
+  off.
+- **Each tier passed by is in the line**, with its reason: the same words, or `cannot be
+  aimed as <spell>`, or `no such spell`.
+- **From the review's notes, taken after its clean verdict and not reviewed again:**
+  `casting` in place of `lock 0.00s` for a press made inside another action, which read
+  the same as a press made free and is the very case row 48 mashes; the level named
+  beside the Addendum where a Scholar is short of both (`needs Addendum: Black and SCH
+  73`); and `no such spell` for `not in the resources`, since the name lookup also
+  leaves out an entry that is in them and unlearnable.
+- **The table** is `wiki/autospelltier.md`: 167 rows over ten jobs (BLM 23, BRD 23, DRK
+  12, GEO 14, NIN 10, PLD 6, RDM 32, RUN 3, SCH 30, WHM 14), jobs in alphabetical order.
+  Produced by driving `lib/actionbar/spell_tier` itself for each job as a main job at 99
+  that knows every spell, Enlightenment up, over Windower's `resources_data/spells.lua`
+  as fetched on 2026-11-24 (commit `c82df42`, "November 10, 2026 FFXI Update"), with the
+  service's own name lookup (`learnable.usable`, the lower id winning). A second read of
+  the file as text, sharing no code with the first, gave the same 167 rows. Both name
+  the same two families the target guard keeps out: Warp II (BLM) and Phalanx II (RDM).
+  No job's tiers have a gap, and no two usable entries share a name.
+- **Found on the way, not fixed here:** that update marks **Impact** (503)
+  `unlearnable`, where the copy of 2026-10-21 did not. `lib/actionbar/learnable` leaves
+  every such entry out of the name lookups and the binder's catalog bar Dispelga, so on
+  current resources a slot bound to Impact reads no recast and the binder does not offer
+  it. Impact is cast off a cloak, as Dispelga is off a club. Flagged to Kevin.
 
 **Review.** Round 1 found the walk stepping down a spell nearly ready with nothing
 busy, against the wiki and row 48, and Kevin chose to send it as pressed. Round 2 found

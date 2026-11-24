@@ -473,6 +473,15 @@ own code:
   `{ type = "assist" }` where it would have been the name.
 - The queue never holds it. What leaves is `0x01A` category 12, the queue's
   `out assist <id>` debug line, which nothing waits on or stands aside for.
+- **The press is written in the debug log** (Kevin, 2026-11-24: "make sure
+  that you are recoding when the assist action / gesture is invoked"). A press
+  whose alias was never made sends no packet, so `out assist` alone could not
+  say a button was pressed: `assist pressed, hotbar 3:7` for a slot (the bar
+  hands the service `opts.from`), `assist pressed, a gesture or a key` for an
+  action the pad or the keyboard map carries (which of the two, and which
+  gesture, is not known where the action fires), `assist pressed, //hud
+  assist` for the bare verb, and `assist alias set: /assist <target>` for
+  each target set. In `//hud queue debug` alone, as every line there.
 - `SHIPPED_BUILTINS` in `tests/actionbar/actions_spec.lua`, a spec from before
   this branch, gained the name (Kevin: "Yes, extend it").
 
