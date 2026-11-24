@@ -1373,14 +1373,23 @@ bar stood aside 19 times in that log, for thirteen spells it did not send - the
 skeletons' six Fires among them - and six items used by hand, and nothing automatic was
 racing it at any of them.
 
-**A menu cast can be told from GearSwap's.** GearSwap answers every action that is typed,
-bound or sent by an addon, its own automatic casts among them, by blocking the text and
-injecting the packet itself (`triggers.lua`, `flow.lua`), and it has no handler for an
-outgoing `0x01A` at all: one made from the game's menu leaves as the client built it. So
-the `injected` flag of `outgoing chunk`, which the entry point drops today, is false for
-a menu cast and true for all GearSwap sends. A macro or a typed line is injected too,
-and cannot be told from the automation. Read in GearSwap's source, unverified in a
-client, and not built: Kevin's call.
+**A menu cast cannot be told from GearSwap's by its packet.** It was first written here
+that the `injected` flag of `outgoing chunk` would split them, a menu cast leaving as the
+client built it. Kevin: "Even if I cast from the menu, gearswap will still cancel it, do
+the swaps and then send it correct?" It does. GearSwap's one way in for a player's own
+action is its `outgoing text` handler, which blocks the text and injects the packet
+itself (`triggers.lua`, `flow.lua`); it has no handler for an outgoing `0x01A`, and its
+incoming one makes an entry for a pet alone. It swaps gear for a menu cast all the same,
+so a menu choice must reach it as text, as a macro does, and every action packet is
+injected while GearSwap is loaded, the menu's included. Read in its source, unverified
+in a client.
+
+**What does differ in the log is when the packet left.** GearSwap's automatic casts
+leave 2.3s after a weaponskill's finish, 2.5 after a spell's and 0.4 after an ability's:
+inside the lock, which is how they beat a release. The thirteen outside spells of this
+log left 3.86 to 18.56s after the last finish, with no lock running and nothing held. A
+bar that stood aside only for a packet leaving while it was busy would have stood aside
+for none of those thirteen, and still for the automatic ones. Not built: Kevin's call.
 
 ## Engaged with no battle target (Kevin, 2026-11-23)
 
