@@ -261,6 +261,21 @@ local FIRST_NPC_ID = 0x01000000
      of ten in Kevin's logs came the second the chat log said "Auto-targeting
      the <mob>." (2026-11-22). ]]
 local AUTO_TARGET = 234
+--[[ The 0x029 messages the game answers a melee round with when its mob is
+     too far or out of sight. Four of four and six of six in Kevin's log came
+     the second the chat log said "is out of range." and "Unable to see"
+     (2026-11-23). UNVERIFIED: that each names the mob the server has you on
+     at 0x08, as a death and an auto-target name theirs; no log has printed
+     it. ]]
+local FIGHTING_MESSAGES = { [4] = "out of range of", [5] = "unable to see" }
+local MELEE_ROUND = 1
+-- The outgoing 0x01A categories that move your target or your stance, as
+-- Windower's packets library names them (fields.lua, enums.action).
+local TARGETING_OUT = { [2] = "engage", [4] = "disengage", [12] = "assist", [15] = "switch target" }
+-- An incoming 0x058 by the same library: whose target it sets at 0x04, and
+-- the target at 0x08.
+local SET_FOR_OFFSET = 5
+local SET_TARGET_OFFSET = 9
 
 local function u16(data, offset)
   local low, high = data:byte(offset, offset + 1)
@@ -343,6 +358,8 @@ local function new(deps)
   -- When the bar last sent anything, and whether the packet `sent_until`
   -- waits on an answer to was its own.
   local bar_sent_at, sent_ours = nil, false
+  -- The last thing debug said of the mob the server has you fighting.
+  local fighting = nil
 
   local function now()
     return deps.now()
@@ -621,6 +638,7 @@ local function new(deps)
     ended()
     lock_until, finished_at = nil, nil
     aside, bar_sent_at = false, nil
+    fighting = nil
     -- Not a fresh table each time: this runs every frame while the queue is off.
     if next(fallen) ~= nil then
       fallen = {}
@@ -787,9 +805,71 @@ local function new(deps)
     )
   end
 
-  --- A change of the player's status, as the client reports it.
+  --[[ Debug's alone, and nothing acts on it: the mob the server has you
+       fighting - the one a melee round of yours lands on, or the game calls
+       out of range or out of sight - said each time it changes, with what
+       the client holds under <t> beside it. Three times in one run Kevin
+       was left engaged with no auto-target, and at one a press of his found
+       <t> empty in the second his swing landed on a mob (2026-11-23).
+       Whether the server had moved him there untold or he had switched by
+       hand a moment later took three things no log had: this, the server's
+       own target packet (on_target), and the targeting packets he sends
+       himself (on_outgoing). One that comes `waiting`, with a send
+       unanswered, may be that send's answer - nobody has watched a ranged
+       attack refused - so it is said every time and says so, as the unlisted
+       message it used to draw did. What was last said is forgotten wherever
+       the target may have moved - a change of status, a targeting packet of
+       his own, an auto-target, the server's target packet - and with debug
+       off, so the first of these after any of them is always said: a swing
+       back on the mob last named would otherwise read as no swing at all. ]]
+  local function note_fighting(what, actor, id, waiting)
+    if self.mode() ~= "debug" then
+      fighting = nil
+      return
+    end
+    if id == nil then
+      return
+    end
+    local player = deps.get_player()
+    if player == nil or actor ~= player.id then
+      return
+    end
+    local line = what .. " " .. id
+    if line == fighting and not waiting then
+      return
+    end
+    fighting = line
+    local under = deps.target_id("t")
+    note(
+      ("%s, <t> %s%s"):format(
+        line,
+        under ~= nil and tostring(under) or "none",
+        waiting and " with the last send unanswered" .. since_finish() or ""
+      )
+    )
+  end
+
+  --- A change of the player's status, as the client reports it. What the
+  --- server has you fighting is said afresh after one.
   function self.on_status(status)
+    fighting = nil
     note("status " .. tostring(status))
+  end
+
+  --[[ A raw 0x058, the server setting a target: what an auto-target sends
+       beside its message, by those who have read it (Shiva.Thorny, FFXIAH).
+       Debug's alone, and nothing acts on it. Whose it is follows the target
+       where that is not known to be yours. UNVERIFIED in a live client: when
+       the game sends one. ]]
+  function self.on_target(data)
+    if self.mode() ~= "debug" or type(data) ~= "string" or #data < SET_TARGET_OFFSET + 3 then
+      return
+    end
+    fighting = nil
+    local whose = u32(data, SET_FOR_OFFSET)
+    local player = deps.get_player()
+    local yours = player ~= nil and whose == player.id
+    note(("server target %d%s"):format(u32(data, SET_TARGET_OFFSET), yours and "" or " for " .. whose))
   end
 
   --[[ A bar's press, with the command it resolved to. Answers whether it was
@@ -867,6 +947,9 @@ local function new(deps)
     -- is no act: dying cuts one short.
     if act.actor_id ~= nil and act.param ~= INTERRUPT_PARAM then
       fallen[act.actor_id] = nil
+    end
+    if act.category == MELEE_ROUND then
+      note_fighting("swing at", act.actor_id, first_target(act))
     end
     local started, finished = START_KINDS[act.category], FINISH_KINDS[act.category]
     if started == nil and finished == nil then
@@ -960,8 +1043,14 @@ local function new(deps)
     if message == AUTO_TARGET then
       local player = deps.get_player()
       if player ~= nil and u32(data, ACTOR_OFFSET) == player.id then
+        fighting = nil
         note(("auto-target %d"):format(u32(data, ABOUT_OFFSET)))
       end
+      return
+    end
+    local fighting_word = FIGHTING_MESSAGES[message]
+    if fighting_word ~= nil then
+      note_fighting(fighting_word, u32(data, ACTOR_OFFSET), u32(data, ABOUT_OFFSET), unanswered())
       return
     end
     local refusal = REFUSALS[message]
@@ -1045,7 +1134,18 @@ local function new(deps)
       if type(data) ~= "string" or #data < CATEGORY_OFFSET + 1 then
         return
       end
-      kind = OUTGOING_KINDS[u16(data, CATEGORY_OFFSET)]
+      local category = u16(data, CATEGORY_OFFSET)
+      local targeting = TARGETING_OUT[category]
+      if targeting ~= nil then
+        -- No action, so nothing waits on it and nothing stands aside for it:
+        -- said for debug to tell a target the player moved from one the
+        -- server did (see note_fighting).
+        local whom = u32(data, TARGET_OFFSET)
+        fighting = nil
+        note("out " .. targeting .. (whom ~= 0 and " " .. whom or ""))
+        return
+      end
+      kind = OUTGOING_KINDS[category]
       if kind == nil then
         return
       end

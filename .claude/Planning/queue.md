@@ -732,6 +732,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 44 | Mash a weaponskill slot on a mob as it dies, and keep mashing until the next one is targeted | `swallowed <name>, the target died (<id> fell <n>s ago)` for each press in the three seconds after that mob's `fell` line, no `out weaponskill` at it then, and the first press on the next target goes | The press at a fallen target (2026-11-16), and that nothing alive is taken for one. Confirmed at two seconds on `b6714b3` (2026-11-17): 52 presses swallowed over 11 deaths and no `out weaponskill` at a corpse the game had reported, the ages 0.00 to 1.76s. Three seconds since (2026-11-18): an `out weaponskill` at a corpse later than that, with `the target died, no answer to come` after it, is one the window missed |
 | 45 | With Auto Buff Mode on and a buff down, mash a weaponskill slot from its own lock on, and again with Berserk, Warcry or Aggressor ready | `out spell <buff>` and `standing aside for spell <buff>`, `hold` lines through that cast and the first of its lock, then in the lock's last second `not held: <name>, standing aside` and an `out`, each `refused` until one `start`s, and `no longer standing aside: the bar's own went`, with no second `out` of GearSwap's before that start. With a buff ready the first `out` is the buff's, and `out weaponskill` follows it by 1.1s and starts | Standing aside (2026-11-22). That a mash has a press in the last second ahead of GearSwap's next cast, that the press holds that cast back, and that the WS buff's second send lands after the lock. Unverified. Not exercised on `524150f` (2026-11-23): it stood aside 11 times, for items used by hand, Erratic Flutter, Cocoon and Unbridled Learning, each ending at `nothing is busy`, and no press came in a last second |
 | 46 | In a crowded fight, when you are left engaged with nothing targeted, press a weaponskill slot before targeting anything | `no target for <name>, status 1` (or `target <id> fell <n>s ago for <name>, status 1`) for each press until a target is back, under the `fell` of the mob you were on, and either no `auto-target` after that `fell` or an `auto-target <id>` whose `<id>` then `fell`; no `status 0` in between | The status and target lines (2026-11-23). Whether the client still reads engaged, whether `<t>` is empty or on a corpse, and whether the game auto-targeted. A `status 0` there means the client was told it disengaged. Seen on `524150f` (2026-11-23, Walk of Echoes): the lines are written, 47 `auto-target` to the chat log's 47. Of 70 deaths of his target 20 went to `status 0` instead, a median 0.87s on, and three kept status 1 with no `auto-target`, each the death of a mob an `auto-target` had named 1.6 to 6.7s before; one press among them read `no target for Savage Blade, status 1`. Whether the server had a target for him then is open |
+| 47 | In a crowded fight, let the party kill the mob the game has just auto-targeted for you, and when no target comes back switch to one by hand as you usually do | Under that mob's `fell`, with no `auto-target` after it: either a `swing at <id>, <t> none` (or `out of range of`, `unable to see`) with no `out engage` or `out switch target` before it, or an `out switch target <id>` ahead of the first `swing at`; and a `server target <id>` after every `auto-target` | Who moved the target (2026-11-23). A swing with `<t> none` and no targeting packet of yours before it is the server moving you untold; your own packet first is you. Also when the game sends a `0x058`: with each auto-target, and in answer to your own switch or not. Unverified |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -1509,3 +1510,44 @@ in the moment before a death message and at 22:18:32. Still open: whether the se
 a target for him in those three. By Thorny's account the target update is a `0x058`,
 which nothing here reads; a `debug` line for it, and the target of an "out of range" or
 "unable to see" (messages 4 and 5), would say.
+
+**What was built for that** (Kevin: "Yes, add it", and both lines offered beside it).
+Three more things in `debug`, and nothing acts on any of them:
+
+- `server target <id>` for each incoming `0x058`, with ` for <player>` after it where the
+  packet's player is not known to be him. Windower's packets library has it as an assist
+  response: the player at 0x04, the target at 0x08.
+- `out engage <id>`, `out switch target <id>`, `out assist <id>` and `out disengage <id>`,
+  the id left off where the packet names none, for the outgoing `0x01A` categories 2, 15,
+  12 and 4, as that library names them. They are no actions: nothing waits on one, and
+  nothing stands aside for one. Without them a `server target` could not be told from the
+  answer to his own switch.
+- The mob the server has him fighting, each time it changes, with what the client holds
+  under `<t>` beside it: `swing at <id>, <t> <id>` off his own melee round (`0x028`
+  category 1), and `out of range of <id>, <t> <id>` and `unable to see <id>, <t> <id>` off
+  `0x029` messages 4 and 5, which no longer draw `unlisted message`: one that comes with a
+  send unanswered is said every time and ends `with the last send unanswered`, as that
+  line did, since nobody has watched a ranged attack refused and it may be the answer. In
+  the log above those two came the second the chat log said so, four times of four and
+  six of six. It is said afresh after anything that may have moved his target - a change
+  of status, a targeting packet of his own, an auto-target, the server's target packet -
+  so a swing back on the mob last named is never taken for none, and `<t>` reads `none`
+  for nothing. This is the only sight of a target the server holds and the client was
+  never told of.
+
+**Reading it** (row 47). After the `fell` of his target with no `auto-target`: a `swing at
+<id>, <t> none`, or one of the other two, with no `out engage` or `out switch target` of
+his before it is the server moving him untold. His own `out switch target` ahead of the
+first `swing at` is him. A `server target` there with no packet of his before it is an
+auto-target whose message was lost.
+
+**Review.** Three blind rounds, each clean. The first asked that a message 4 or 5 coming
+with a send unanswered keep saying so, every time, since it may be that send's answer,
+and for specs on a round naming no mob and a client naming no player. The second found
+that a swing back on the mob last named, after a switch of target, read as no swing at
+all: what was last said is now forgotten at every targeting packet, auto-target and
+target packet, and with `debug` off. Left as it is, from the third: a `0x058` arriving
+with `debug` off forgets nothing, which no log can show.
+
+**Unverified in a live client** (row 47), all of it: when the game sends a `0x058`,
+whether his own switch draws one, and that messages 4 and 5 name their mob at 0x08.

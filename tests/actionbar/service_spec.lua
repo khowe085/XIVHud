@@ -1240,6 +1240,13 @@ describe("the action service", function()
       assert.is_not_nil(logged(env):find("no target for Cure, status 1", 1, true))
     end)
 
+    it("hands the queue the server's target packet, for its debug log to say whom it names", function()
+      local service, env = queued("debug")
+      -- A raw 0x058: nobody the client knows at 0x04, and the target, 513, at 0x08.
+      service.on_chunk(0x058, string.rep("\0", 8) .. string.char(1, 2, 0, 0) .. string.rep("\0", 4), nil)
+      assert.is_not_nil(logged(env):find("server target 513", 1, true))
+    end)
+
     it("copes with no log, as a spec's ctx has none", function()
       local service, env = world({ no_debug_log = true })
       env.config.queue = "debug"

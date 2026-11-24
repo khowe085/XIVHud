@@ -202,6 +202,27 @@ local function system_message(message, param)
     .. string.rep("\0", 2)
 end
 
+-- A raw incoming 0x058: whose target it sets at 0x04 and the target at 0x08,
+-- with the two indexes after them.
+local function target_packet(player, target)
+  local function u32(value)
+    return string.char(
+      value % 256,
+      math.floor(value / 256) % 256,
+      math.floor(value / 65536) % 256,
+      math.floor(value / 16777216)
+    )
+  end
+  return string.rep("\0", 4) .. u32(player) .. u32(target) .. string.rep("\0", 4)
+end
+
+-- A melee round of `actor`'s, landing on `target`.
+local function round_at(target, actor)
+  local round = action(1, 0, actor)
+  round.targets = { { id = target, actions = { { message = 1 } } } }
+  return round
+end
+
 describe("the action queue", function()
   describe("its mode", function()
     it("ships on, and reads a broken value as off", function()
@@ -4020,6 +4041,231 @@ describe("the action queue", function()
         queue.press(BLADE, BLADE_COMMAND)
         assert.are.equal(0, env.target_asks)
         assert.are.same({}, env.log)
+      end)
+    end)
+
+    describe("of who moved the target, the server or the player", function()
+      local ENGAGE, DISENGAGE, ASSIST, SWITCH_TARGET = 2, 4, 12, 15
+      local OUT_OF_RANGE, UNABLE_TO_SEE = 4, 5
+
+      -- A raw 0x029 with you as its actor, about `target`.
+      local function message_about(target, message)
+        return fall_message(target, message, ME)
+      end
+
+      describe("the server's target packet", function()
+        it("is said with the target it sets", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_target(target_packet(ME, MOB))
+          assert.are.same({ "queue 100.00: server target " .. MOB }, env.log)
+        end)
+
+        it("is said with whose it is where that is not known to be yours", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_target(target_packet(SOMEONE, MOB))
+          env.player = nil
+          queue.on_target(target_packet(ME, MOB))
+          assert.are.same({
+            "queue 100.00: server target " .. MOB .. " for " .. SOMEONE,
+            "queue 100.00: server target " .. MOB .. " for " .. ME,
+          }, env.log)
+        end)
+
+        it("is not said outside debug", function()
+          local queue, env = world()
+          queue.on_target(target_packet(ME, MOB))
+          assert.are.same({}, env.log)
+        end)
+
+        it("is passed by when it is cut short or is no packet at all", function()
+          local queue, env = world({ mode = "debug" })
+          assert.has_no.errors(function()
+            queue.on_target(target_packet(ME, MOB):sub(1, 11))
+            queue.on_target(nil)
+          end)
+          assert.are.same({}, env.log)
+        end)
+      end)
+
+      describe("a targeting packet of the player's own", function()
+        it("is said with the mob it names: an engage, a switch of target, an assist", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_outgoing(0x01A, outgoing_action(ENGAGE, 0, MOB))
+          queue.on_outgoing(0x01A, outgoing_action(SWITCH_TARGET, 0, MOB + 1))
+          queue.on_outgoing(0x01A, outgoing_action(ASSIST, 0, SOMEONE))
+          assert.are.same({
+            "queue 100.00: out engage " .. MOB,
+            "queue 100.00: out switch target " .. (MOB + 1),
+            "queue 100.00: out assist " .. SOMEONE,
+          }, env.log)
+        end)
+
+        it("is said bare where it names nobody, as a disengage may", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_outgoing(0x01A, outgoing_action(DISENGAGE))
+          assert.are.same({ "queue 100.00: out disengage" }, env.log)
+        end)
+
+        it("is no action: nothing is busy for it and nothing stands aside", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_outgoing(0x01A, outgoing_action(ENGAGE, 0, MOB))
+          queue.on_outgoing(0x01A, outgoing_action(SWITCH_TARGET, 0, MOB))
+          assert.is_false(queue.busy())
+          assert.is_nil(logged(env):find("standing aside", 1, true))
+          assert.is_false(queue.press(spell(), command()))
+        end)
+
+        it("is not said outside debug", function()
+          local queue, env = world()
+          queue.on_outgoing(0x01A, outgoing_action(ENGAGE, 0, MOB))
+          assert.are.same({}, env.log)
+        end)
+      end)
+
+      describe("the mob the server has the player fighting", function()
+        it("is said when a melee round of his lands, with what the client has under <t>", function()
+          local queue, env = world({ mode = "debug" })
+          env.targets.t = MOB
+          queue.on_action(round_at(MOB))
+          assert.are.same({ ("queue 100.00: swing at %d, <t> %d"):format(MOB, MOB) }, env.log)
+        end)
+
+        it("is said once for as long as the rounds land on the same mob", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_action(round_at(MOB))
+          env.now = env.now + 2
+          queue.on_action(round_at(MOB))
+          assert.are.equal(1, #env.log)
+        end)
+
+        it("is said again for the next mob, and of a client with nothing under <t>", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_action(round_at(MOB))
+          env.targets.t = nil
+          queue.on_action(round_at(MOB + 1))
+          assert.are.equal(("queue 100.00: swing at %d, <t> none"):format(MOB + 1), env.log[2])
+        end)
+
+        it("is not said of somebody else's round", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_action(round_at(MOB, SOMEONE))
+          assert.are.same({}, env.log)
+        end)
+
+        it("is said when the game calls a mob out of his range, or one he cannot see", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_message(message_about(MOB, OUT_OF_RANGE))
+          queue.on_message(message_about(MOB, UNABLE_TO_SEE))
+          assert.are.same({
+            ("queue 100.00: out of range of %d, <t> 12345"):format(MOB),
+            ("queue 100.00: unable to see %d, <t> 12345"):format(MOB),
+          }, env.log)
+        end)
+
+        it("is not said of a message that has somebody else for its actor", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_message(fall_message(MOB, OUT_OF_RANGE, SOMEONE))
+          assert.are.same({}, env.log)
+        end)
+
+        it("is said once for a message that repeats", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_message(message_about(MOB, OUT_OF_RANGE))
+          queue.on_message(message_about(MOB, OUT_OF_RANGE))
+          assert.are.equal(1, #env.log)
+        end)
+
+        it("is said every time with a send unanswered, as what may be its answer, and never as unlisted", function()
+          local queue, env = world({ mode = "debug" })
+          finish_cast(queue)
+          env.now = env.now + 3
+          queue.on_outgoing(0x01A, outgoing_action(WEAPONSKILL))
+          env.log = {}
+          queue.on_message(message_about(MOB, OUT_OF_RANGE))
+          queue.on_message(message_about(MOB, OUT_OF_RANGE))
+          local line = ("queue 103.00: out of range of %d, <t> 12345"):format(MOB)
+            .. " with the last send unanswered +3.00s after finish"
+          assert.are.same({ line, line }, env.log)
+          assert.is_true(queue.busy())
+        end)
+
+        it("copes with a round that names no mob, and with a client that names no player", function()
+          local queue, env = world({ mode = "debug" })
+          assert.has_no.errors(function()
+            queue.on_action(action(1))
+            env.player = nil
+            queue.on_action(round_at(MOB))
+            queue.on_message(message_about(MOB, OUT_OF_RANGE))
+          end)
+          assert.are.same({}, env.log)
+        end)
+
+        it("is said again when a round lands on a mob that was out of range", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_message(message_about(MOB, OUT_OF_RANGE))
+          queue.on_action(round_at(MOB))
+          queue.on_message(message_about(MOB, OUT_OF_RANGE))
+          assert.are.equal(3, #env.log)
+        end)
+
+        it("is said afresh after a change of status", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_action(round_at(MOB))
+          queue.on_status(0)
+          queue.on_status(1)
+          queue.on_action(round_at(MOB))
+          assert.are.equal(2, select(2, logged(env):gsub("swing at " .. MOB, "")))
+        end)
+
+        it("is said afresh after anything that may have moved his target, back onto the same mob or not", function()
+          local AUTO_TARGET = 234
+          for _, moved in ipairs({
+            function(queue)
+              queue.on_outgoing(0x01A, outgoing_action(SWITCH_TARGET, 0, MOB + 1))
+            end,
+            function(queue)
+              queue.on_message(fall_message(MOB + 1, AUTO_TARGET, ME))
+            end,
+            function(queue)
+              queue.on_target(target_packet(ME, MOB + 1))
+            end,
+          }) do
+            local queue, env = world({ mode = "debug" })
+            queue.on_action(round_at(MOB))
+            moved(queue)
+            queue.on_action(round_at(MOB))
+            assert.are.equal(2, select(2, logged(env):gsub("swing at " .. MOB .. ",", "")), logged(env))
+          end
+        end)
+
+        it("is said afresh after debug was switched away and back", function()
+          local queue, env = world({ mode = "debug" })
+          queue.on_action(round_at(MOB))
+          env.mode = "on"
+          queue.on_action(round_at(MOB))
+          env.mode = "debug"
+          queue.on_action(round_at(MOB))
+          env.mode = "off"
+          queue.step()
+          env.mode = "debug"
+          queue.on_action(round_at(MOB))
+          assert.are.equal(3, #env.log)
+        end)
+
+        it("asks the client nothing outside debug", function()
+          local queue, env = world()
+          queue.on_action(round_at(MOB))
+          queue.on_message(message_about(MOB, OUT_OF_RANGE))
+          assert.are.equal(0, env.target_asks)
+          assert.are.same({}, env.log)
+        end)
+
+        it("leaves a round no action of the queue's: nothing is busy for one", function()
+          local queue = world({ mode = "debug" })
+          queue.on_action(round_at(MOB))
+          assert.is_false(queue.busy())
+          assert.is_false(queue.press(spell(), command()))
+        end)
       end)
     end)
   end)

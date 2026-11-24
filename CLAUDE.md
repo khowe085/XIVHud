@@ -852,8 +852,31 @@ fell, since the last mob of a pull leaves the target on its corpse. In any statu
 since which status is the question, and ahead of whatever line says what became of the
 press. A press aimed anywhere else says nothing, or every buff cast with nothing
 targeted would write a line, and that extra read of `<t>` is made in `debug` alone.
-**Unverified in a live client** (row 46): that `status change` fires on every change,
-and that `<t>` is empty or on a corpse when it happens.
+**Seen in a live client** (Kevin's first run on it, 2026-11-23, row 46): 47 `auto-target`
+lines to the chat log's 47; of 70 deaths of his target, a `status 0` a median 0.87s after
+20, with `<t>` left on the corpse until then, and neither line after three.
+**It says who moved your target too** (Kevin, 2026-11-23: "Yes, add it", and both lines
+offered beside it), and nothing acts on any of it. After those three deaths he read as
+engaged for 15 to 31s more, and at one a press said `no target for Savage Blade, status
+1` in the second his swing landed on a mob. Whether the server had moved him there
+untold - his lost packet - or he had switched by hand a moment later, a chat log's whole
+seconds could not say. So `debug` writes `server target <id>` for each incoming `0x058`,
+which an auto-target is said to set the client's target with (Shiva.Thorny, FFXIAH;
+Windower's packets library calls it an assist response), followed by ` for <player>`
+where the packet's player is not known to be you; `out engage <id>`, `out switch target
+<id>`, `out assist <id>` and `out disengage <id>`, the id left off where the packet names
+none, for the outgoing `0x01A` categories 2, 15, 12 and 4, which are no actions, so
+nothing waits on one and nothing stands aside for one; and the mob the server has you
+fighting, each time it changes and afresh after anything that may have moved your target -
+a targeting packet of your own, an auto-target, the server's target packet, a change of
+status: `swing at <id>, <t> <id>` off a melee round of your own (`0x028` category 1), and
+`out of range of <id>, <t> <id>` and `unable to see <id>, <t> <id>` off `0x029` messages 4
+and 5, which draw no `unlisted message` any more: one that comes with a send unanswered
+is said every time and ends `with the last send unanswered`, as that line did, since it
+may be the send's answer. `<t>` is what the client holds then, `none` for nothing, and
+that read is made in `debug` alone. **Unverified in a live client** (row 47): when the
+game sends a `0x058` and whether your own switch draws one, and that messages 4 and 5
+name their mob at 0x08.
 **The lock lengths are settings** (`//hud queue lock [<kind> <seconds>]`, 0 to 5 in
 tenths, and a row each on the settings window's `global` panel, Kevin, 2026-10-31).
 `core.lua`'s `queue_locks` holds only the kinds that have been set, deliberately

@@ -118,6 +118,8 @@ local MESSAGE_CHUNK = 0x029
 local ZONE_OUT_CHUNK = 0x0B
 local CHARACTER_UPDATE_CHUNK = 0x063
 local SYSTEM_MESSAGE_CHUNK = 0x053
+-- The server setting your target, for the queue's debug log alone.
+local TARGET_CHUNK = 0x058
 local SC_CHUNKS = { [MESSAGE_CHUNK] = true, [CHARACTER_UPDATE_CHUNK] = true, [ZONE_OUT_CHUNK] = true }
 local DEAD_STATUSES = { [2] = true, [3] = true }
 
@@ -1198,6 +1200,8 @@ local function new(deps)
       queue.on_update(parsed)
     elseif id == SYSTEM_MESSAGE_CHUNK then
       queue.on_system_message(data)
+    elseif id == TARGET_CHUNK then
+      queue.on_target(data)
     end
   end
 
