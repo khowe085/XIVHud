@@ -485,11 +485,16 @@ own code:
 - `SHIPPED_BUILTINS` in `tests/actionbar/actions_spec.lua`, a spec from before
   this branch, gained the name (Kevin: "Yes, extend it").
 
-**Unverified in a live client**: that the console's `alias` takes the line as
-written (Windower's docs give `alias <alias> <command>`), that a
-`send_command` of the alias runs it, that a press with no alias made is only a
+**Seen in a live client** (Kevin's run of 2026-11-24 on `3c91c54`, in the queue
+plan): `//hud gamepad bind y assist` and `//hud assist zaon`, then 24 presses,
+one `out assist` packet each, 15 of the 22 at that player answered with a
+target a median 0.36s on. So the console's `alias` takes the line as written,
+a `send_command` of the alias runs it, and the alias does not call itself (the
+worry below).
+
+**Unverified in a live client**: that a press with no alias made is only a
 console "unknown command", and whether Windower hands `<t>` to the addon as
-typed or as the target's name. And one that would matter (review, round 1):
+typed or as the target's name. And one that would have mattered (review, round 1):
 the alias is named after the game command it wraps. The docs call an alias "a
 pseudo console command that can be typed into the console or used in a script
 or key bind", and give `//` and `/console` as the only ways in from chat, so

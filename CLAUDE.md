@@ -672,7 +672,8 @@ set for the token, and the next cursor's OK reached the game as a bare
 `/ma "Dia III" <id>` - "A command error occurred". A config mode is the
 exception: the queue leaves the press alone there and it goes as typed. That the
 flag is the cause is read off GearSwap's source and the log, **unverified in a
-live client** (row 24 of the plan).
+live client** (row 24 of the plan); the swallow itself was seen twice (2026-11-24),
+each slot's next press and OK casting with neither chat line.
 A cursor whose token raised no arrow is given up after 2s (2026-11-12, from
 review). The arrow's number comes back within a frame or two of the token, so
 one that has not come never will; kept for its 30s, such a cursor took the arrow
@@ -817,10 +818,14 @@ warp's cast - is not counted as the bar's. It is fixed in XIVHud alone, by
 decision: nothing in GearSwap changes for it and no hook is asked of it (Kevin: "We are
 not modifying gearswap for this addon"). `debug` says `standing aside for <kind>
 <name>`, `not held: <name>, standing aside` for each press let go, and `no longer
-standing aside: the bar's own went` or `: nothing is busy`. **Unverified in a live
-client**, all of it: that a mash has a press in that second ahead of GearSwap's cast,
-that the press holds the cast back, and that the WS buff's second send lands after the
-lock.
+standing aside: the bar's own went` or `: nothing is busy`. **Exercised in a live
+client** (Kevin's run of 2026-11-24, row 45): 13 presses let go in a lock's last second.
+Nine went - two spells sent at +2.56 and +2.66, weaponskills sent 1.82 to 1.86s after a
+spell's finish three times of three, and the WS buff's second send landing after the lock
+twice. Three were refused (a weaponskill 1.73s after a spell's finish, by the lock; one for
+sight; one behind a job ability GearSwap sent 0.18s before it) and one lost its target. No
+single press was thrown away for it. **Unverified**: that the press holds GearSwap's next
+cast back.
 
 `debug` is `on` plus a line per edge in `<addon>/debug.log`, appended with raw `io`,
 dated and stamped with the clock, and never in chat (Kevin, 2026-11-01; the client
@@ -881,9 +886,14 @@ status: `swing at <id>, <t> <id>` off a melee round of your own (`0x028` categor
 and 5, which draw no `unlisted message` any more: one that comes with a send unanswered
 is said every time and ends `with the last send unanswered`, as that line did, since it
 may be the send's answer. `<t>` is what the client holds then, `none` for nothing, and
-that read is made in `debug` alone. **Unverified in a live client** (row 47): when the
-game sends a `0x058` and whether your own switch draws one, and that messages 4 and 5
-name their mob at 0x08.
+that read is made in `debug` alone. **Seen in a live client** (Kevin's run of 2026-11-24, row 47): a `0x058` came
+with 118 of 120 auto-targets, in the same frame and a line ahead of the message, and in
+answer to his own engage (87 of 101), switch (34 of 46) and assist (15 of 24). Of 177
+deaths of the mob he was swinging at while engaged, 110 drew an auto-target, 2 a `0x058`
+with no message, 60 a `status 0` and 5 nothing: in four of those the server sent nothing
+until he switched by hand 3.0 to 6.6s on, and in one it had him on a new mob it never
+named to the client (`unable to see 17981445, <t> 17981442`, 0.40s after the death, the
+client still on the corpse for 7s more). Messages 4 and 5 named the mob he was on.
 **The lock lengths are settings** (`//hud queue lock [<kind> <seconds>]`, 0 to 5 in
 tenths, and a row each on the settings window's `global` panel, Kevin, 2026-10-31).
 `core.lua`'s `queue_locks` holds only the kinds that have been set, deliberately
@@ -986,11 +996,17 @@ ten jobs, produced by driving `spell_tier` itself over Windower's `spells.lua`
 of the 10 November 2026 update for each job as a main job at 99, and checked
 against an independent read of the same file's text (no difference). A slot's
 icon, recast sweep and dimming still follow the spell it is bound to.
-**Unverified in a
-live client**: all of it - in particular whether a spell's recast runs from
-its cast's start or its finish (the press covers the one and the release the
-other), and that `requirements` bit 4 marks the black-side Addendum spells as
-it does the white.
+**Seen in a live client** (Kevin's run of 2026-11-24 on `3c91c54`, in the first
+debug wording; row 48): four step-downs, each lower tier cast - Haste II to
+Haste at an OK in a lock, Fire V to Fire IV twice at an OK with nothing busy,
+and Gravity II to Gravity at a held press's release. That last was OK'd 1.3s
+into its own cast with no recast far off yet, so the client counts a spell's
+recast from its FINISH and the release is what catches a mash (one sample).
+18 sends two seconds or less from ready, with nothing busy, went as pressed:
+16 started and none was refused for its recast. **Unverified**: a step-down at
+a plain press, a spell unavailable rather than on its recast, the one-line
+wording above, and that `requirements` bit 4 marks the black-side Addendum
+spells as it does the white.
 
 Buffs. The order and filter verbs of every component that draws buff icons
 sit behind ONE framework word (2026-09-05), so the grammar is the same on each
@@ -1497,15 +1513,16 @@ the slot as a command addresses it, which `bar.fire` hands the service as
 `opts.from`), `assist pressed, a gesture or a key` for a pad or keyboard map
 action (core's `fire_action`), `assist pressed, //hud assist` for the bare
 verb, and `assist alias set: /assist <target>` for each target set, which no
-later press names. **Unverified in a live client**:
-all of it - that `alias` takes the line as written (`alias <alias> <command>`
-in Windower's docs), that a `send_command` of the alias runs it, that a press
-with no alias made is only a console "unknown command" (the `jc` slot's
-posture), whether Windower hands the addon `<t>` as typed or as the target's
-name, and that the `/assist` the alias sends is the game's alone: the docs
-call an alias a console pseudo-command, but were a single-slash line ever
-resolved against aliases, one named after the command it wraps would call
-itself.
+later press names. **Seen in a live client** (Kevin's run of 2026-11-24 on
+`3c91c54`): `//hud gamepad bind y assist`, `//hud assist zaon`, and 24
+presses, each one `out assist` packet - so the console's `alias` takes the
+line as written, a `send_command` of the alias runs it, and an alias named
+after the command it wraps does not call itself. The game answered 15 of the
+22 that named that player with a target (a `0x058`, a median 0.36s on).
+**Unverified**: that a press with no alias made is only a console "unknown
+command" (the `jc` slot's posture), whether Windower hands the addon `<t>` as
+typed or as the target's name, and the press lines above, which that build did
+not write.
 
 Quotes now do exactly one thing in the parser: a value that arrives wrapped in
 a MATCHED pair is unwrapped and trimmed (commands.lua's file-local

@@ -708,7 +708,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 20 | Double-tap a `<stpc>` slot during a lock, then OK | `cursor up, OK takes ...`, one `OK`, cast at who you picked, target unchanged | FAILED before the fix, as predicted. A second press raised no arrow, OK read as one and the `/ta` ran |
 | 22 | Press a `<stpc>` slot while free, let a weaponskill go, press OK in its lock | `hold`, then `release` at the lock's end | The refused Sleep II |
 | 23 | Keep the cursor up and press a different cursor slot, then OK | The newer spell casts | The press only changes what OK casts |
-| 24 | Press a cursor slot during a macro's own `<st>` cursor and OK it, then press and OK the slot | `swallowed ..., another arrow is up` and no "You cannot perform that action on the selected sub-target", the macro's spell on its OK, then `cursor`, `arrow`, `OK` and the slot's spell, with no "A command error occurred" | An arrow this did not open is left alone, and GearSwap is never sent a token the game refuses (2026-11-10) |
+| 24 | Press a cursor slot during a macro's own `<st>` cursor and OK it, then press and OK the slot | `swallowed ..., another arrow is up` and no "You cannot perform that action on the selected sub-target", the macro's spell on its OK, then `cursor`, `arrow`, `OK` and the slot's spell, with no "A command error occurred" | An arrow this did not open is left alone, and GearSwap is never sent a token the game refuses (2026-11-10). Seen on `3c91c54` (2026-11-24): swallowed twice, each slot's next press and OK cast, and neither chat line came |
 | 21 | ESC a cursor, then run a `/ta <stnpc>` macro | The macro's cursor works, and nothing casts | A closed cursor must not take another's line as its OK |
 | 25 | Mash a weaponskill through its own lock, then press a spell as the lock ends | `swallowed ... no TP` or `dropped ... no TP`, no `nothing went out`, and the spell goes at about +2.43 | The TP check |
 | 26 | Hold a `<stpc>` arrow on a Trust as your target dies, opening it during a lock. Repeat with `//hud queue off` | Which run leaves you on the Trust | Whether a `/ta` arrow is what strands you |
@@ -730,10 +730,10 @@ start bracket the true lock. Every line is in `debug.log`.
 | 42 | OK a Sleepga's cursor on a mob during a lock, and have the mob die before the lock ends | `dropped Sleepga: the target died`, and the next Sleepga goes at once | The held drop for a spell, and that a monster's id is never under 0x01000000. Seen once on `a93e3ec` (weekend of 2026-11-14), a Dia III, dropped rightly |
 | 43 | With the party full, let AutoTrust cast a Trust, and another with enmity held | `refused, system message 298 (param <n>)` for the full party and `300` for the enmity, each right after the `out spell`, and a press held behind it goes at once. `no spell was waiting` after one means it freed nothing. 296 or 297, should either come, reads the same | That these are what the game sends and free the bar, and that 298 and 300 are those two lines, as LandSandBoat's table has them. Not seen on `b6714b3` (2026-11-17): no Trust was refused |
 | 44 | Mash a weaponskill slot on a mob as it dies, and keep mashing until the next one is targeted | `swallowed <name>, the target died (<id> fell <n>s ago)` for each press in the three seconds after that mob's `fell` line, no `out weaponskill` at it then, and the first press on the next target goes | The press at a fallen target (2026-11-16), and that nothing alive is taken for one. Confirmed at two seconds on `b6714b3` (2026-11-17): 52 presses swallowed over 11 deaths and no `out weaponskill` at a corpse the game had reported, the ages 0.00 to 1.76s. Three seconds since (2026-11-18): an `out weaponskill` at a corpse later than that, with `the target died, no answer to come` after it, is one the window missed |
-| 45 | With Auto Buff Mode on and a buff down, mash a weaponskill slot from its own lock on, and again with Berserk, Warcry or Aggressor ready | `out spell <buff>` and `standing aside for spell <buff>`, `hold` lines through that cast and the first of its lock, then in the lock's last second `not held: <name>, standing aside` and an `out`, each `refused` until one `start`s, and `no longer standing aside: the bar's own went`, with no second `out` of GearSwap's before that start. With a buff ready the first `out` is the buff's, and `out weaponskill` follows it by 1.1s and starts | Standing aside (2026-11-22). That a mash has a press in the last second ahead of GearSwap's next cast, that the press holds that cast back, and that the WS buff's second send lands after the lock. Unverified. Not exercised on `524150f` (2026-11-23): it stood aside 11 times, for items used by hand, Erratic Flutter, Cocoon and Unbridled Learning, each ending at `nothing is busy`, and no press came in a last second. In a Sortie the same night it let its first press go, a Silence OK'd in the last second of the lock after a Fire Kevin cast from the game's menu: refused, and cast again by hand 3s later, with nothing automatic sending |
+| 45 | With Auto Buff Mode on and a buff down, mash a weaponskill slot from its own lock on, and again with Berserk, Warcry or Aggressor ready | `out spell <buff>` and `standing aside for spell <buff>`, `hold` lines through that cast and the first of its lock, then in the lock's last second `not held: <name>, standing aside` and an `out`, each `refused` until one `start`s, and `no longer standing aside: the bar's own went`, with no second `out` of GearSwap's before that start. With a buff ready the first `out` is the buff's, and `out weaponskill` follows it by 1.1s and starts | Standing aside (2026-11-22). That a mash has a press in the last second ahead of GearSwap's next cast, that the press holds that cast back, and that the WS buff's second send lands after the lock. Unverified. Not exercised on `524150f` (2026-11-23): it stood aside 11 times, for items used by hand, Erratic Flutter, Cocoon and Unbridled Learning, each ending at `nothing is busy`, and no press came in a last second. In a Sortie the same night it let its first press go, a Silence OK'd in the last second of the lock after a Fire Kevin cast from the game's menu: refused, and cast again by hand 3s later, with nothing automatic sending. Exercised on `3c91c54` (2026-11-24): 13 presses let go, nine went, three refused (one by the lock, a weaponskill 1.73s after a spell's finish) and one lost its target; the WS buff's second send landed after the lock and started twice. That the press holds GearSwap's next cast back is not shown either way |
 | 46 | In a crowded fight, when you are left engaged with nothing targeted, press a weaponskill slot before targeting anything | `no target for <name>, status 1` (or `target <id> fell <n>s ago for <name>, status 1`) for each press until a target is back, under the `fell` of the mob you were on, and either no `auto-target` after that `fell` or an `auto-target <id>` whose `<id>` then `fell`; no `status 0` in between | The status and target lines (2026-11-23). Whether the client still reads engaged, whether `<t>` is empty or on a corpse, and whether the game auto-targeted. A `status 0` there means the client was told it disengaged. Seen on `524150f` (2026-11-23, Walk of Echoes): the lines are written, 47 `auto-target` to the chat log's 47. Of 70 deaths of his target 20 went to `status 0` instead, a median 0.87s on, and three kept status 1 with no `auto-target`, each the death of a mob an `auto-target` had named 1.6 to 6.7s before; one press among them read `no target for Savage Blade, status 1`. Whether the server had a target for him then is open |
-| 47 | In a crowded fight, let the party kill the mob the game has just auto-targeted for you, and when no target comes back switch to one by hand as you usually do | Under that mob's `fell`, with no `auto-target` after it: either a `swing at <id>, <t> none` (or `out of range of`, `unable to see`) with no `out engage` or `out switch target` before it, or an `out switch target <id>` ahead of the first `swing at`; and a `server target <id>` after every `auto-target` | Who moved the target (2026-11-23). A swing with `<t> none` and no targeting packet of yours before it is the server moving you untold; your own packet first is you. Also when the game sends a `0x058`: with each auto-target, and in answer to your own switch or not. Unverified |
-| 48 | With `//hud autospelltier on` and the queue in `debug`: mash one tier V nuke slot through three casts; sleep one mob with a Sleep II `<stnpc>` slot and press it again for a second mob; press Shell V on target after target; and as a Scholar press a tier IV nuke without Addendum: Black | `at the press: <spell> on recast <n>s, casting; down to <tier>` (or `at the release: ... <n>s, free; ...`) before each cast after the first, each lower tier's `start` following and none `refused` for its recast; after the second Sleep II's `OK`, `at OK: Sleep II on recast <n>s, lock <n>s; down to Sleep` (`free` in place of the lock if the OK came after it); for Shell V no `down to` at all: `Shell V on recast <n>s, lock <n>s; near enough ready, kept`, then `Shell V waits <n>s on its recast` where its OK came in the lock, `not held: Shell V on recast` and a `refused` where it came after; `at the press: Fire IV needs Addendum: Black (on SCH 99...); down to Fire III` | AutoSpellTier (2026-11-24). That a step down lands at each of the three places it is made, and which of them catches a mash - the line says which: `at the press` if a spell's recast runs from its cast's start, `at the release` if it runs from the finish. That the two-second grace still waits. Unverified |
+| 47 | In a crowded fight, let the party kill the mob the game has just auto-targeted for you, and when no target comes back switch to one by hand as you usually do | Under that mob's `fell`, with no `auto-target` after it: either a `swing at <id>, <t> none` (or `out of range of`, `unable to see`) with no `out engage` or `out switch target` before it, or an `out switch target <id>` ahead of the first `swing at`; and a `server target <id>` after every `auto-target` | Who moved the target (2026-11-23). A swing with `<t> none` and no targeting packet of yours before it is the server moving you untold; your own packet first is you. Also when the game sends a `0x058`: with each auto-target, and in answer to your own switch or not. Answered on `3c91c54` (2026-11-24): a `0x058` came with 118 of 120 auto-targets, in the same frame, and in answer to his own engage, switch and assist. Of 177 deaths of the mob he was on, five drew nothing: in four the server sent nothing until he switched by hand 3.0 to 6.6s on, and in one it had him on a new mob it never named to the client (`unable to see 17981445, <t> 17981442`) |
+| 48 | With `//hud autospelltier on` and the queue in `debug`: mash one tier V nuke slot through three casts; sleep one mob with a Sleep II `<stnpc>` slot and press it again for a second mob; press Shell V on target after target; and as a Scholar press a tier IV nuke without Addendum: Black | `at the press: <spell> on recast <n>s, casting; down to <tier>` (or `at the release: ... <n>s, free; ...`) before each cast after the first, each lower tier's `start` following and none `refused` for its recast; after the second Sleep II's `OK`, `at OK: Sleep II on recast <n>s, lock <n>s; down to Sleep` (`free` in place of the lock if the OK came after it); for Shell V no `down to` at all: `Shell V on recast <n>s, lock <n>s; near enough ready, kept`, then `Shell V waits <n>s on its recast` where its OK came in the lock, `not held: Shell V on recast` and a `refused` where it came after; `at the press: Fire IV needs Addendum: Black (on SCH 99...); down to Fire III` | AutoSpellTier (2026-11-24). That a step down lands at each of the three places it is made, and which of them catches a mash - the line says which: `at the press` if a spell's recast runs from its cast's start, `at the release` if it runs from the finish. That the two-second grace still waits. Partly seen on `3c91c54` (2026-11-24), in its first wording: four step-downs, each lower tier cast - at an OK in a lock, at an OK with nothing busy twice, and at a release, the last OK'd 1.3s into its own cast with no recast far off, so the client counts the recast from the finish. 18 sends two seconds or less from ready went as pressed and none was refused. Not seen: a plain press, an unavailable spell, and this row's wording, which is `a8b5b5d`'s |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -1738,3 +1738,90 @@ question renamed `refused_on_recast` (every other `on_` member of the queue is a
 event), and the Warp wording were taken, and not reviewed again.
 
 **Unverified in a live client:** all of it. Row 48.
+
+## A run on `3c91c54` (Kevin, 2026-11-24, 17:50 to 21:04)
+
+One session, 14,897 lines of `debug.log` with the chat log beside it: Dynamis [D], then an
+instanced event. The first run with AutoSpellTier (in its first debug wording), with assist
+and with the lines of row 47, and the first to exercise standing aside.
+
+- **AutoSpellTier stepped down four times, and each lower tier was cast** (row 48).
+  - At an OK in a lock, 20:08:53: Haste II cast on one player and OK'd on the next 0.02s
+    before its lock ended. `Haste II on recast, down to Haste`, held, released at +2.73,
+    started.
+  - At an OK with nothing busy, 20:30:14 and 20:30:53: `Fire V on recast, down to Fire
+    IV`, sent at once, started both times.
+  - At a held press's release, 20:51:13: Gravity II OK'd again 1.30s into its own cast was
+    held as Gravity II, and `Gravity II on recast, down to Gravity` came as its lock
+    cleared; Gravity went at +2.73 and started.
+- **The client counts a spell's recast from its finish** (one sample, that Gravity II): 1.3s
+  into the cast the walk at OK saw no recast far off, and at the release it did. So the
+  release is what catches a mash, and the press or OK what catches a spell cast a moment
+  ago.
+- **A spell two seconds or less from ready went as pressed, and the game took it.** 18
+  sends with nothing busy and 0.08 to 1.97s of recast left (Haste II 14, Sleepga 3,
+  Dispel 1) went as pressed: 16 started and two drew no answer within 3s. None was refused for
+  its recast, so the client's figure runs behind the server's there.
+- **Nothing tiered was dropped or refused on a recast** with a tier under it to go. What
+  was dropped on a recast had none: Stun, Sleepga, Cocoon, Mighty Guard, Nat. Meditation.
+  When the setting was switched on is not in the log: `3c91c54` writes nothing of a spell
+  it keeps, and the settings window answers on its own status line.
+- **Not exercised:** a step-down at a plain press (no cursor), and a spell that was
+  unavailable rather than on its recast.
+- **Assist works** (gamepad plan). `//hud gamepad bind y assist` at 19:47:17 and `//hud
+  assist zaon` at 19:53:42, by the chat log. 24 presses, one `out assist` packet each: the
+  alias takes the line, a press runs it, and one named after the command it wraps does
+  not call itself. 22 named that player, and the game answered 15 of them with a target
+  (`server target`, a median 0.36s on), which he then cast at or engaged. Seven drew none,
+  four of them in a row at 20:21:46 to 20:21:54 before a fifth did. The first two, at
+  20:09:46, named another entity (21001010), two seconds before an event began.
+- **Who moved the target** (row 47).
+  - A `0x058` comes with an auto-target: 118 of 120 `auto-target` lines have a `server
+    target` naming the same mob in the same frame, a line ahead of the message.
+  - It also answers his own engage (87 of 101, the same id, a median 0.78s on), his own
+    switch (34 of 46) and an assist (15 of 24, naming the mob). Five of 283 followed none
+    of those.
+  - Of 177 deaths of the mob he was swinging at while engaged: 110 drew an auto-target and
+    its message, 2 a `server target` with no message (the client's `<t>` followed), 60 a
+    `status 0`, and 5 nothing.
+  - In four of those five nothing came from the server until his own `out switch target`
+    3.0 to 6.6s later, once with `no target for Expiacion, status 1` in between: engaged,
+    with `<t>` empty.
+  - **In one the server had him on a new mob and never said so.** At 18:05:10 his
+    weaponskill killed 17981442, and 0.40s later the game answered `unable to see
+    17981445, <t> 17981442`: a mob no packet had named, with the client still on the
+    corpse. He switched to it by hand 7.5s after the death. That is the server moving him
+    untold, once in 177.
+- **Standing aside let 13 presses go** (row 45), each in a lock's last second.
+  - Nine went. Two spells OK'd at +2.56 and +2.66 of a spell's lock started. Weaponskills
+    sent 1.82, 1.85 and 1.86s after a spell's finish (the second after an interrupt) went,
+    three of three, and one 2.26s after an interrupted item. One went 0.11s after an
+    ability's finish. And twice GearSwap sent its WS buff in the press's place (Berserk)
+    and the weaponskill 1.1s on, after the lock, where it started.
+  - Three were refused: a weaponskill sent 1.73s after a spell's finish, by the lock
+    ("Unable to use weapon skill."); one behind Aggressor for sight ("You cannot see");
+    and one sent 0.18s after a Diffusion GearSwap had put between the buff and it.
+  - One lost its target before an answer.
+  - No single press was thrown away for it in this run: the two OKs both started.
+  - Not shown either way: that the press holds GearSwap's next cast back.
+- **The game takes a weaponskill sooner after a spell than it takes a spell.** Those three
+  at +1.82 to +1.86 went where a spell is refused up to about +2.6, and +1.73 was refused.
+  The queue's lock after a spell is 2.7 for whatever is held, and nothing was changed.
+- **The locks held.** Of 292 releases 272 started. Seven were refused, none by a lock:
+  sight twice, range, a job ability the game would not use, "unable to cast spells", "cannot
+  perform that action", and a weaponskill GearSwap sent behind its own job ability. Twelve
+  presses never left the client (`nothing went out`: Sleep II, Poisona and others GearSwap
+  cancels), each freeing the bar after its 0.6s.
+- **The rest read as built.** 4,010 presses swallowed for TP and 101 for amnesia; 37
+  weaponskills swallowed at a corpse and four held presses dropped at one; nine
+  weaponskills whose target died unanswered, and one that had started (19:21:50, lock 2.40s
+  from the death, nothing sent inside it, so no new sample for row 36). No cursor was left
+  without its arrow (row 38), and no Trust was refused by a system message (row 43): one
+  Trust cast was refused with message 17, "Unable to cast spells at this time", 2.43s
+  after another.
+- **A press under another's arrow was swallowed twice** (row 24): Cure IV at 18:19:03 and
+  Silence at 18:25:27, `swallowed <name>, another arrow is up`. Each was pressed again
+  within 2.5s, opened its own cursor, was OK'd and cast, and the chat log has no "A
+  command error occurred" and no sub-target refusal at either. Its one sub-target refusal
+  (20:12:13) and two command errors (19:22:55, a spell pressed with nothing targeted, and
+  19:31:14) came with nothing of the bar's under an arrow.

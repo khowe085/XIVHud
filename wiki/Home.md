@@ -478,7 +478,9 @@ Nothing is said in chat. With `//hud queue debug`, each decision is one line
 in `debug.log`: when it was made, why the spell you pressed could not go, each
 tier that was passed by and why, and what went. The
 [Auto spell tier](autospelltier.md) page says how to read that line, and lists
-every ladder, job by job. None of this has been watched in a live client yet.
+every ladder, job by job. In a live client it has stepped a spell down when a
+target was confirmed and when a held press had its turn; a plain press, and a
+spell out of your level's reach, have not been watched yet.
 
 ## Layout slots
 
