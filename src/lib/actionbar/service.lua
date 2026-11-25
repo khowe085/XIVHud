@@ -128,10 +128,41 @@ local DEAD_STATUSES = { [2] = true, [3] = true }
 --[[ A deferred use's target pinning. A command's target is resolved by the
      GAME when the command is sent, so one sent late would otherwise land
      wherever the token points THEN. PINNED tokens are resolved to a mob id
-     at the press and sent as the id; FIXED ones (yourself, your pet) need
-     no pin; anything else cannot be pinned and the press is refused. ]]
+     at the press, which the command is aimed by when it goes (see
+     aimed_command); FIXED ones (yourself, your pet) need no pin; anything
+     else cannot be pinned and the press is refused. ]]
 local FIXED_TARGETS = { me = true, pet = true }
 local PINNED_TARGETS = { t = true, bt = true }
+--[[ The game's own words a pinned mob can go under where the one it was
+     typed with has moved on, in the order they are asked: the steadiest
+     first. <bt> and <ht> are not among them: Windower's reading of each is
+     "not guaranteed to return the same mob" as the game's (the wiki's FFXI
+     Functions page), so only a slot typed with <bt> ever goes under it.
+     UNVERIFIED in a live client: that <lastst> takes a cursor's pick whose
+     line the queue kept from the game. ]]
+local NAMING_TARGETS = {
+  "me",
+  "lastst",
+  "t",
+  "pet",
+  "p1",
+  "p2",
+  "p3",
+  "p4",
+  "p5",
+  "a10",
+  "a11",
+  "a12",
+  "a13",
+  "a14",
+  "a15",
+  "a20",
+  "a21",
+  "a22",
+  "a23",
+  "a24",
+  "a25",
+}
 
 --[[ The ability recasts a family with charges shares: stratagems, Quick Draw
      and the two of Ready. The timer running there says a charge was spent, not
@@ -351,6 +382,10 @@ local function new(deps)
     end,
   })
 
+  -- What an `assist` press sends: the command `//hud assist <target>` last
+  -- left here. The session's, so it is nil again once the addon reloads.
+  local assist_command = nil
+
   local actions = new_actions({
     roulette = roulette or {
       ride = function()
@@ -360,6 +395,9 @@ local function new(deps)
     warp = warp,
     enchanteditem = enchanteditem,
     stealth = stealth,
+    assist = function()
+      return assist_command
+    end,
   })
   self.actions = actions
 
@@ -595,50 +633,78 @@ local function new(deps)
   end
   self.mode = config_mode
 
+  --[[ The id under a target word, or nil. A read that throws names nothing:
+       this is asked under the frame tick's guard and the text handler's,
+       where five errors switch the handler off, and of words no live client
+       has been asked for yet (<lastst>, the party's and the alliance's). ]]
   local function selected_id(token)
-    local mob = deps.get_mob_by_target ~= nil and deps.get_mob_by_target(token) or nil
-    return mob ~= nil and mob.id or nil
-  end
-
-  -- A command with the `<token>` it ends in replaced by an id, or nil for one
-  -- that does not end in it.
-  local function aimed_at(command, target, id)
-    local suffix = " <" .. target .. ">"
-    if command:sub(-#suffix):lower() ~= suffix then
+    if deps.get_mob_by_target == nil then
       return nil
     end
-    return command:sub(1, #command - #suffix) .. " " .. tostring(id)
+    local read, mob = pcall(deps.get_mob_by_target, token)
+    return read and type(mob) == "table" and mob.id or nil
   end
 
-  --[[ The command a deferred use SENDS for a press, or nil for one whose
-       target cannot be pinned. A pinned token becomes the id it stood for
-       at the press; the suffix is matched literally over a tail of the
-       command's own length, and a command that does not end in the
-       expected `<token>` is refused - a substitution this cannot prove
-       correct is worse than no press. The id it pinned is answered beside
-       the command. ]]
-  local function pinned_command(command, target)
+  -- Whether a command ends in that `<token>`, matched literally over a tail
+  -- of the command's own length.
+  local function ends_in(command, target)
+    local suffix = " <" .. target .. ">"
+    return command:sub(-#suffix):lower() == suffix
+  end
+
+  --[[ Whether a command can be sent later than its press, and the id it is
+       pinned to: what a token that moves stood for at the press. A fixed one
+       pins nothing and goes as written. Refused - false - for a token that
+       cannot be pinned, one with nothing under it, and a command that does
+       not end in the expected `<token>`: an aim this cannot prove correct is
+       worse than no press. ]]
+  local function pin_target(command, target)
     if type(command) ~= "string" then
-      return nil
+      return false
     end
     target = type(target) == "string" and target:lower() or target
     if FIXED_TARGETS[target] then
-      return command
+      return true
     end
-    if not PINNED_TARGETS[target] then
-      return nil
+    if not PINNED_TARGETS[target] or not ends_in(command, target) then
+      return false
     end
     local id = selected_id(target)
-    if id == nil then
-      return nil
-    end
-    local aimed = aimed_at(command, target, id)
-    if aimed == nil then
-      return nil
-    end
-    return aimed, id
+    return id ~= nil, id
   end
-  self.pinned_command = pinned_command
+  self.pin_target = pin_target
+
+  --[[ What a pinned command is SENT as: itself, while the token it was typed
+       with still names the mob it was pinned to, and otherwise with that
+       token replaced by another of the game's own words that names the mob
+       now. The word goes beside it. Nil where none does, which is a press
+       with nowhere to go.
+
+       Never the id: only GearSwap reads one, sending the packet itself, and
+       where it does not the game answers the line "A command error occurred"
+       - four held weaponskills of four on a job whose GearSwap file had not
+       loaded (Kevin, 2026-11-25). A word is read by the game and by GearSwap
+       alike, as a macro's is. ]]
+  local function aimed_command(command, id)
+    if type(command) ~= "string" or id == nil then
+      return nil
+    end
+    local head, typed = command:match("^(.*) <([^<>]*)>$")
+    if head == nil then
+      return nil
+    end
+    typed = typed:lower()
+    if PINNED_TARGETS[typed] and selected_id(typed) == id then
+      return command, typed
+    end
+    for _, word in ipairs(NAMING_TARGETS) do
+      if selected_id(word) == id then
+        return head .. " <" .. word .. ">", word
+      end
+    end
+    return nil
+  end
+  self.aimed_command = aimed_command
 
   -- What the action's own recast has left, in seconds: a spell's comes in
   -- sixtieths, as render reads it, and an ability's as it is. Anything
@@ -693,9 +759,10 @@ local function new(deps)
   self.spell_tier = tiers
 
   --- The record and command to settle on in place of these: themselves,
-  --- unless a lower tier stands in. `pinned` is the id the command was aimed
-  --- at, where it was, and the lower tier's is aimed at the same. `where` is
-  --- the moment it is asked, for the walk's debug line.
+  --- unless a lower tier stands in. `pinned` is the id the command is to be
+  --- aimed at, where it is pinned to one, and a lower tier whose own command
+  --- could not be aimed the same way does not stand in. `where` is the moment
+  --- it is asked, for the walk's debug line.
   local function lower_tier(record, command, pinned, where)
     local lowered = tiers.lower(record, where)
     if lowered == record then
@@ -705,14 +772,10 @@ local function new(deps)
     if plan == nil or plan.kind ~= "command" then
       return record, command
     end
-    if pinned == nil then
-      return lowered, plan.command
-    end
-    local aimed = aimed_at(plan.command, tostring(lowered.target):lower(), pinned)
-    if aimed == nil then
+    if pinned ~= nil and not ends_in(plan.command, tostring(lowered.target):lower()) then
       return record, command
     end
-    return lowered, aimed
+    return lowered, plan.command
   end
 
   queue = new_queue({
@@ -727,7 +790,8 @@ local function new(deps)
     end,
     recast_left = recast_left,
     lower = lower_tier,
-    pin = pinned_command,
+    pin = pin_target,
+    aim = aimed_command,
     blocked = function()
       if deps.suppressed ~= nil and deps.suppressed() then
         return "suppressed"
@@ -850,13 +914,15 @@ local function new(deps)
       --[[ The target is resolved HERE, at the press, or the press does not
            happen: the command goes when the enchantment comes up, as much
            as a minute later, and a token carried that far would land on
-           whatever had been tabbed to since. Refused before anything is
-           held, so a press that will not happen leaves no GearSwap slot
-           disabled behind it. ]]
-      local deferred = plan.command
+           whatever had been tabbed to since. So the use is aimed by the id
+           pinned here (tick_pending). Refused before anything is held, so a
+           press that will not happen leaves no GearSwap slot disabled
+           behind it. ]]
+      local pinned = nil
       if plan.target ~= nil then
-        deferred = pinned_command(plan.command, plan.target)
-        if deferred == nil then
+        local sendable
+        sendable, pinned = pin_target(plan.command, plan.target)
+        if not sendable then
           local token = type(plan.target) == "string" and plan.target:lower() or plan.target
           if PINNED_TARGETS[token] then
             say(noun .. " pressed with nothing targeted - " .. tostring(plan.name))
@@ -897,7 +963,8 @@ local function new(deps)
         noun = noun,
         equipped = plan.equipped == true,
         name = plan.name,
-        command = deferred,
+        command = plan.command,
+        target = pinned,
         item_id = plan.id,
         bag = plan.bag,
         bag_slot = plan.bag_slot,
@@ -1032,8 +1099,16 @@ local function new(deps)
       end
     end
     if step == "use" and hold <= 0 then
+      local command = pending_item.command
+      if pending_item.target ~= nil then
+        command = aimed_command(command, pending_item.target)
+        if command == nil then
+          abandon("lost its target")
+          return
+        end
+      end
       local broadcast = pending_item.broadcast
-      send_command(pending_item.command)
+      send_command(command)
       abort_pending(nil)
       if broadcast ~= nil then
         broadcast()
@@ -1108,7 +1183,7 @@ local function new(deps)
 
   --[[ Debug's alone: an assist press, and what it came from where the caller
        said. The queue sees an assist only as the targeting packet the game
-       sends for it, and a press whose alias was never made sends none. ]]
+       sends for it, and a press with no target to go at sends none. ]]
   local function note_assist(record, from)
     if record.type == "assist" then
       queue.note("assist pressed" .. (from ~= nil and (", " .. from) or ""))
@@ -1157,28 +1232,30 @@ local function new(deps)
   -- cannot run, nil when the press went - or was refused in words already
   -- said.
   function self.builtin(name, arg)
+    local record = { type = type(name) == "string" and name:lower() or name, action = arg }
+    -- Before the plan: a press with no target to go at is a press all the same.
+    note_assist(record, "//hud assist")
     local plan, hint = actions.resolve_builtin(name, arg, self.draw_state())
     if plan == nil then
       return hint
     end
-    local record = { type = type(name) == "string" and name:lower() or name, action = arg }
-    note_assist(record, "//hud assist")
     if not delay_travel(record, plan) then
       execute(plan, hint)
     end
     return nil
   end
 
-  --- `//hud assist <target>`: points the alias an `assist` slot runs at that
-  --- target. Answers the line to say - whom, or the form a target takes. The
-  --- debug log keeps the target, which no later press of the alias names.
+  --- `//hud assist <target>`: whom an `assist` press assists from here on.
+  --- Nothing is sent until one is pressed. Answers the line to say - whom, or
+  --- the form a target takes. The debug log keeps the target, which no later
+  --- press names.
   function self.assist(target)
-    local command, form = actions.assist_alias(target)
+    local command, form = actions.assist_command(target)
     if command == nil then
       return form
     end
-    send_command(command)
-    queue.note("assist alias set: /assist " .. target)
+    assist_command = command
+    queue.note("assist target set: /assist " .. target)
     return "assist: " .. target
   end
 

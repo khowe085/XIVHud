@@ -478,8 +478,8 @@ describe("crossbar commands", function()
     end)
 
     it("binds assist bare and refuses a name after it", function()
-      -- Whom it assists is the alias's to say (`//hud assist <target>`), so a
-      -- name here is refused rather than stored on a record that never sends it.
+      -- Whom it assists is `//hud assist <target>`'s to say, so a name here is
+      -- refused rather than stored on a record that never sends it.
       local commands, world = build()
       commands.command({ "bind", "1L2", "assist" })
       assert.are.same({ type = "assist" }, stored(world, "SCH", 1, "left", 2))

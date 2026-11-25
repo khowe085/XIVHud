@@ -734,7 +734,10 @@ start bracket the true lock. Every line is in `debug.log`.
 | 46 | In a crowded fight, when you are left engaged with nothing targeted, press a weaponskill slot before targeting anything | `no target for <name>, status 1` (or `target <id> fell <n>s ago for <name>, status 1`) for each press until a target is back, under the `fell` of the mob you were on, and either no `auto-target` after that `fell` or an `auto-target <id>` whose `<id>` then `fell`; no `status 0` in between | The status and target lines (2026-11-23). Whether the client still reads engaged, whether `<t>` is empty or on a corpse, and whether the game auto-targeted. A `status 0` there means the client was told it disengaged. Seen on `524150f` (2026-11-23, Walk of Echoes): the lines are written, 47 `auto-target` to the chat log's 47. Of 70 deaths of his target 20 went to `status 0` instead, a median 0.87s on, and three kept status 1 with no `auto-target`, each the death of a mob an `auto-target` had named 1.6 to 6.7s before; one press among them read `no target for Savage Blade, status 1`. Whether the server had a target for him then is open |
 | 47 | In a crowded fight, let the party kill the mob the game has just auto-targeted for you, and when no target comes back switch to one by hand as you usually do | Under that mob's `fell`, with no `auto-target` after it: either a `swing at <id>, <t> none` (or `out of range of`, `unable to see`) with no `out engage` or `out switch target` before it, or an `out switch target <id>` ahead of the first `swing at`; and a `server target <id>` after every `auto-target` | Who moved the target (2026-11-23). A swing with `<t> none` and no targeting packet of yours before it is the server moving you untold; your own packet first is you. Also when the game sends a `0x058`: with each auto-target, and in answer to your own switch or not. Answered on `3c91c54` (2026-11-24): a `0x058` came with 118 of 120 auto-targets, in the same frame, and in answer to his own engage, switch and assist. Of 177 deaths of the mob he was on, five drew nothing: in four the server sent nothing until he switched by hand 3.0 to 6.6s on, and in one it had him on a new mob it never named to the client (`unable to see 17981445, <t> 17981442`). Later that night: 129 of 129 auto-targets with a `0x058`, and of 215 deaths of the mob he was on, 129 drew an auto-target and 86 a `status 0`, none nothing |
 | 48 | With `//hud autospelltier on` and the queue in `debug`: mash one tier V nuke slot through three casts; sleep one mob with a Sleep II `<stnpc>` slot and press it again for a second mob; press Shell V on target after target; and as a Scholar press a tier IV nuke without Addendum: Black | `at the press: <spell> on recast <n>s, casting; down to <tier>` (or `at the release: ... <n>s, free; ...`) before each cast after the first, each lower tier's `start` following and none `refused` for its recast; after the second Sleep II's `OK`, `at OK: Sleep II on recast <n>s, lock <n>s; down to Sleep` (`free` in place of the lock if the OK came after it); for Shell V no `down to` at all: `Shell V on recast <n>s, lock <n>s; near enough ready, kept`, then `Shell V waits <n>s on its recast` where its OK came in the lock, `not held: Shell V on recast` and a `refused` where it came after; `at the press: Fire IV needs Addendum: Black (on SCH 99...); down to Fire III` | AutoSpellTier (2026-11-24). That a step down lands at each of the three places it is made, and which of them catches a mash - the line says which: `at the press` if a spell's recast runs from its cast's start, `at the release` if it runs from the finish. That the two-second grace still waits. Partly seen on `3c91c54` (2026-11-24), in its first wording: four step-downs, each lower tier cast - at an OK in a lock, at an OK with nothing busy twice, and at a release, the last OK'd 1.3s into its own cast with no recast far off, so the client counts the recast from the finish. 18 sends two seconds or less from ready went as pressed and none was refused. Not seen: a plain press, an unavailable spell, and this row's wording, which is `a8b5b5d`'s |
-| 49 | With GearSwap's user file off (a bare `gs disable`), press a `<t>` weaponskill slot in the half second after a job ability | As it stands: `hold`, `release`, then `>> /ws "<name>" <id>` and "...A command error occurred." in chat, `nothing went out for the last press` 0.6s on, and the next press going as typed | A pinned id is GearSwap's to read and the game cannot (2026-11-25). Seen four times of four on `3c91c54`, on a DRK whose gear file was missing, GearSwap handling nothing of the bar's. A cursor's OK is sent the same way. Open: whether a held press should go as typed while its target is unchanged |
+| 49 | With GearSwap's user file off (a bare `gs disable`), press a `<t>` weaponskill slot in the half second after a job ability | As it stands: `hold`, `release`, then `>> /ws "<name>" <id>` and "...A command error occurred." in chat, `nothing went out for the last press` 0.6s on, and the next press going as typed | A pinned id is GearSwap's to read and the game cannot (2026-11-25). Seen four times of four on `3c91c54`, on a DRK whose gear file was missing, GearSwap handling nothing of the bar's. A cursor's OK is sent the same way. Closed the same day: no id is sent any more, a pinned press going under a word of the game's own (rows 50 and 51) |
+| 50 | With GearSwap off (a bare `gs disable`, or not loaded) and the queue in `debug`: press a `<t>` weaponskill slot in the half second after a job ability; press a `<t>` spell in a lock and tab to another mob before it goes, once at a monster and once at a party member; then all of it again with GearSwap on | `hold`, `release`, and the weaponskill starting: no id in the `>>` line and no "A command error occurred". For the press tabbed away from a monster, `dropped <name>: nothing names <id> (<t> <the new id>, <lastst> ...)` and nothing cast; from a party member, `<name> aimed at <p1>` (their own word) and the cast landing on them. With GearSwap on, the same lines, the release's packet within 0.04s and its precast gear on | A word in place of the id (2026-11-25). That the game reads a release for itself, that nothing regressed where GearSwap reads the word instead of the id (its `pretarget` now runs for a held press), and what moving off a target costs |
+| 51 | The same on cursor slots, with GearSwap off and then on: OK a `<stnpc>` spell at a mob that is NOT your target, once free and once in a lock; OK a `<stpc>` spell on a party member, on yourself, and on a player outside the party | After `OK <name> at <id>`: `<name> aimed at <lastst>` and the cast landing on the pick, your own target unmoved. Or `nothing names <id> yet` first and the `aimed at` line a frame later. Or `dropped <name>: nothing names <id> (<t> ..., <lastst> ...)` and no cast. `aimed at <p1>`-`<p5>` for a party member and `<me>` for yourself, whatever `<lastst>` does | The open one (2026-11-25): whether the game takes a pick for `<lastst>` from a `/ta` line the queue kept from it, and whether before or after the line comes through. If it is the drop line, a cursor cast at anyone outside the party cannot go without an id, and that needs another way: Kevin chose the drop knowing it |
+| 52 | After a `//lua reload hud`, press an `assist` slot or pad button; then `//hud assist <name>` and press again, and check `//alias` for one called `assist` | First `assist pressed, ...` in the log, `assist has no target yet - //hud assist <target>` in chat and no packet. Then `assist target set: /assist <name>`, and per press `assist pressed, ...` and `out assist <id>`, your target moving to theirs. No alias called `assist` unless you made one | Assist without the alias (2026-11-25): `input /assist <name>` sent straight from `send_command`, where the alias ran that same line (seen 24 times of 24 on `3c91c54`) |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -1893,3 +1896,81 @@ instances where the game refused a WS and the target ID was in the log not the n
 - **Not in this run:** `a8b5b5d`'s lines. With the build still `3c91c54` there is no
   `assist pressed` line and no tier line in the new wording, and nothing tiered was cast
   from the bar.
+
+## A word in place of the id (Kevin, 2026-11-25)
+
+Kevin, on the run above: "I want to remove the dependence on GearSwap for target ids. I
+should be able use XIVHud both with and without gs disabled". Row 49 closed.
+
+**The rule.** Nothing the bar sends names a target by its id. A press is still pinned to
+the id under its token at the press (`service.pin_target`), since the dead-target rules
+and the tier walk judge by it, but what is held is the command AS TYPED, and at the send
+`service.aimed_command` puts it under a word of the game's own that names that mob now.
+A word is read by the game and by GearSwap alike, as a macro's is, so nothing has to
+know whether GearSwap is up.
+
+- **Which word.** The one it was typed with while that still names the mob (`<t>`,
+  `<bt>`). Otherwise the first of `<me>`, `<lastst>`, `<t>`, `<pet>`, `<p1>`-`<p5>`,
+  `<a10>`-`<a15>`, `<a20>`-`<a25>` that does, steadiest first.
+- **Never `<bt>` or `<ht>` as a stand-in.** The wiki's FFXI Functions page says
+  Windower's reading of each is "not guaranteed to return the same mob" as the game's. A
+  slot typed with `<bt>` still goes under it.
+- **No word, no press** (Kevin's pick of three). The others were the id as a last
+  resort, which only GearSwap reads, and following the token to whatever it names at the
+  send, FFXIV's way, by which a held Cure can land on a mob tabbed to. He chose the drop
+  knowing what it costs if `<lastst>` does not hold a pick (below).
+- **Where it applies.** A held `<t>` or `<bt>` press at its release; a cursor's pick at
+  OK or at its release; an enchanted item's deferred use (`<item> lost its target`, its
+  GearSwap hold released). A press that goes at once was always sent as typed.
+
+**A cursor's pick.** The game hands the pick back as an id on a `/ta` line the queue
+keeps from it, and the cast then needs a word for that id. `<lastst>` is the game's own
+for the last sub-target; a party member has their own, and yourself `<me>`.
+
+- **Nothing says when the game takes a pick for `<lastst>`**, or whether it does at all
+  from a line it never gets: before the line comes through `outgoing text`, once the
+  handler has answered, or only as it runs the command. So a pick no word names at OK is
+  judged on the next frame's `step` instead (`nothing names <id> yet`), which covers the
+  second case, and is dropped there if none names it still.
+- **If it is the third**, every cursor cast at a mob that is neither your target, your
+  pet nor in your party or alliance goes nowhere, with GearSwap or without. `debug` says
+  which it was (row 51), and that would need another way to aim.
+
+**What changes with GearSwap up.** It reads `<t>` where it read an id, so its
+`pretarget` runs for a held press and for a cursor's cast, as it does for a macro. A
+press whose target was moved off and that no word names is dropped where it used to land.
+
+**Every read of a word is behind a `pcall`.** They are asked under the frame tick's guard
+and the text handler's, where five errors switch the handler off, and of words no live
+client had been asked for (`lastst`, `me`, `pet`, the party's and the alliance's). The
+wiki lists each as valid for `get_mob_by_target` and says nothing of what a wrong one
+does.
+
+**Specs that predate the branch.** Kevin's go-ahead covered the id assertions in
+`queue_spec` and `service_spec`. One more was found by the full run, in `crossbar_spec`
+("pins a target token at the press, so a deferred use cannot wander"): it asserted the id
+form of the deferred item use, and now asserts that nothing is used at the new mob. It
+was changed on the same go-ahead and is flagged to him, being outside the two files named.
+
+**Unverified in a live client:** all of it (rows 50 and 51).
+
+## Assist without the alias (Kevin, 2026-11-25)
+
+Kevin: "instead of creating and binding to a WIndower alias, send the command directly
+via the windower API. there is no need to remember the target between sessions.
+Essentially, store the string that was the alias, and send that every time `assist` is
+invoked."
+
+- `//hud assist <target>` keeps `input /assist <target>` with the action service and
+  sends nothing. A press sends that line. No alias is written, so one of the player's own
+  called `assist` is left alone, and `//assist` is no longer XIVHud's.
+- The target is the session's: a reload or a restart forgets it.
+- **A press with no target given** sends nothing and says `assist has no target yet -
+  //hud assist <target>`. The author's pick with Kevin away, his to change: it is how
+  every other refused press answers, where the alias gave a console "unknown command".
+- The debug line for a target is `assist target set: /assist <target>` (it was `assist
+  alias set`), and a bare `//hud assist` with no target now writes its `assist pressed`
+  line as a slot's press does.
+
+**Unverified in a live client** (row 52): the direct send. The alias ran the same line,
+24 times of 24.

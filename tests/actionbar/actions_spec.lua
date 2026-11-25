@@ -32,6 +32,10 @@ local function build(state)
         return state.stealth_command or 'input /magic "Sneak" <me>'
       end,
     },
+    -- What `//hud assist <target>` last left with the action service.
+    assist = function()
+      return state.assist
+    end,
   })
   return actions, state
 end
@@ -479,14 +483,28 @@ describe("crossbar actions", function()
 
   describe("assist", function()
     local FORM = "assist <target> - one name, or one target like <p1>"
+    local UNSET = "assist has no target yet - //hud assist <target>"
 
-    it("runs the Windower alias, and puts nothing of its own on the line", function()
-      assert.equal("assist", command_of(build(), { type = "assist" }))
+    it("sends the command the service was left with, and nothing of its own", function()
+      assert.equal("input /assist Bob", command_of(build({ assist = "input /assist Bob" }), { type = "assist" }))
+    end)
+
+    it("goes nowhere while no target has been given, and says how to give one", function()
+      local plan, hint = build().resolve({ type = "assist" })
+      assert.is_nil(plan)
+      assert.equal(UNSET, hint)
+    end)
+
+    it("goes nowhere where no service keeps a target", function()
+      local plan, hint = new_actions({}).resolve({ type = "assist" })
+      assert.is_nil(plan)
+      assert.equal(UNSET, hint)
     end)
 
     it("resolves the command form as the slot form", function()
-      local actions = build()
+      local actions = build({ assist = "input /assist Bob" })
       assert.same(actions.resolve({ type = "assist" }), actions.resolve_builtin("Assist"))
+      assert.equal("input /assist Bob", actions.resolve_builtin("Assist").command)
     end)
 
     it("binds bare, and refuses an action name", function()
@@ -508,15 +526,15 @@ describe("crossbar actions", function()
       assert.is_not_nil(body:find('"icons/switchtarget.png"', 1, true), "switchtarget.png is not load-checked")
     end)
 
-    describe("pointing the alias at a target", function()
-      it("writes the alias over the game's own /assist", function()
-        assert.equal("alias assist input /assist Bob", build().assist_alias("Bob"))
+    describe("the command for a target", function()
+      it("is the game's own /assist of it, with no Windower alias between", function()
+        assert.equal("input /assist Bob", build().assist_command("Bob"))
       end)
 
       it("keeps a target token as typed, for the game to read at the press", function()
         local actions = build()
         for _, token in ipairs({ "<t>", "<p1>", "<stpc>", "<a10>", "<BT>" }) do
-          assert.equal("alias assist input /assist " .. token, actions.assist_alias(token), token)
+          assert.equal("input /assist " .. token, actions.assist_command(token), token)
         end
       end)
 
@@ -535,11 +553,11 @@ describe("crossbar actions", function()
           "Bob\nquit",
           5,
         }) do
-          local command, hint = actions.assist_alias(target)
+          local command, hint = actions.assist_command(target)
           assert.is_nil(command, tostring(target))
           assert.equal(FORM, hint, tostring(target))
         end
-        local command, hint = actions.assist_alias(nil)
+        local command, hint = actions.assist_command(nil)
         assert.is_nil(command)
         assert.equal(FORM, hint)
       end)

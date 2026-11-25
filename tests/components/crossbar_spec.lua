@@ -3442,7 +3442,10 @@ describe("crossbar live widget", function()
       --[[ The command is sent when the enchantment goes live, which can be
            forty seconds after the press. Carrying `<t>` that far means
            landing on whatever has been tabbed to since. The warp ladder
-           never met it because every rung of that is hardcoded <me>. ]]
+           never met it because every rung of that is hardcoded <me>. The
+           mob from the press goes under a word that still names it, never
+           under its id, which only GearSwap reads (Kevin, 2026-11-25); with
+           none, the use is abandoned rather than sent at the new mob. ]]
       local files = war_bindings()
       files.WAR.sets[1].left[1] = { type = "enchanteditem", action = "Vocation Ring", target = "t" }
       build_world({ store_files = files })
@@ -3460,7 +3463,7 @@ describe("crossbar live widget", function()
       env.ext.usable = true
       env.now = 1.5
       push(widget)
-      assert.are.equal('input /item "Vocation Ring" 4242', env.commands[2], "the mob from the press, not the new one")
+      assert.are.same({ "gs disable ring1", "gs enable ring1" }, env.commands, "nothing is used at the new mob")
     end)
 
     it("refuses a deferred press whose target cannot be pinned at the press", function()

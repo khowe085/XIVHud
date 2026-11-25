@@ -935,9 +935,13 @@ countdown: the warmup already is the wait.
 
 **Its target is settled when you press it**, not when it fires. Gear is
 normally worn by you and needs no target at all, but if you do bind one -
-`enchanteditem "X" t` - the press pins whatever you had targeted and sends
-that, so a wait of half a minute cannot land the item on something you
-tabbed to since. A target the press cannot settle is refused outright
+`enchanteditem "X" t` - the press pins whatever you had targeted, so a wait of
+half a minute cannot land the item on something you tabbed to since. When the
+enchantment is ready the item is used on that target if it is still the one
+under `<t>`, or under another of the game's target words that names it
+(`<lastst>`, a party member's `<p1>`-`<p5>`); if you have moved off it and
+nothing names it, the item is not used and chat says
+`enchanted item abandoned - X lost its target`. A target the press cannot settle is refused outright
 rather than left to resolve later: pressing with nothing targeted says so.
 A bind aimed at anything but `t`, `bt`, `me` or `pet` - a pick-a-target
 cursor, a party member - is accepted, but a press that has to equip the piece
@@ -1029,22 +1033,23 @@ press) - and every `assist` slot, a bare `//hud assist` and a pad button bound
 to `assist` (`//hud gamepad bind lb+y assist`) use it from then on. The target
 is one word: a name with a space in it is refused.
 
-It is kept as a Windower alias called `assist`, so `//assist` does the same
-thing, and a Windower script can set it for you with
-`alias assist input /assist Bob`. Windower forgets an alias when the game
-closes, so name them again after a restart; until then a press does nothing
-but print "unknown command" in the Windower console. The action queue never
-holds an assist.
+XIVHud keeps the target itself and sends the game's `/assist <target>` at each
+press. It is kept only while the addon is loaded, so name them again after
+restarting the game or reloading XIVHud; until then a press does nothing but
+say `assist has no target yet - //hud assist <target>`. No Windower alias is
+made for it: `//assist` is not XIVHud's, and an alias of your own by that name
+is left alone. The action queue never holds an assist.
 
 With `//hud queue debug`, `debug.log` keeps a line for each press and what
 pressed it - `assist pressed, hotbar 3:7` for a slot, `assist pressed, a
 gesture or a key` for a pad button or a key bound to it, `assist pressed,
-//hud assist` for the command - and one for each target you set (`assist alias
-set: /assist Bob`). An `out assist <id>` line after a press is the game acting
-on it. A press with none after it sent the game nothing: the alias was not
-made, or the game could not find that player. A pad button bound to `assist`
-and `//hud assist <name>` have both worked in a live client; the `assist
-pressed` lines have not been watched there yet.
+//hud assist` for the command - and one for each target you set (`assist
+target set: /assist Bob`). An `out assist <id>` line after a press is the game
+acting on it. A press with none after it sent the game nothing: no target was
+set, or the game could not find that player. A pad button bound to `assist`
+and `//hud assist <name>` both worked in a live client while the target was
+kept as a Windower alias; sending `/assist` directly, and the `assist pressed`
+lines, have not been watched there yet.
 
 `mr` and `warp` count down before they go, and so does the `mount` type
 above - see **Travel counts down** under Extras.

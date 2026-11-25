@@ -52,6 +52,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      rather than at the press. A held weaponskill or spell whose target has
      died since is dropped rather than sent at the corpse.
 
+     What is sent for a target names it by a word of the game's own - <t>,
+     <lastst>, <p1> - and never by its id, which only GearSwap reads: see
+     aimed. A press no word names the target of goes nowhere.
+
      Where the action service's spell tier walk has a lower tier to offer
      (`deps.lower`), that tier takes the place of a cursor's spell at OK, and
      of a held one that would otherwise be dropped on its recast.
@@ -339,6 +343,8 @@ local function new(deps)
   local going = nil
   -- A cursor this opened, waiting for OK.
   local cursor = nil
+  -- A cursor's pick that no word named at OK, waiting a frame for one.
+  local picked = nil
   -- Each nil until its packet sets it, and the moment it stops counting after.
   local sent_until, acting_until, lock_until = nil, nil, nil
   -- Until when a finish still answers the last start, which outlasts `acting_until`.
@@ -670,9 +676,9 @@ local function new(deps)
   --[[ The spell tier walk, the action service's: the record and command to
        settle on in place of these, which are themselves where no lower tier
        stands in. Asked where a command is settled after its press - a
-       cursor's at OK, a held one's at the release - with the id a held one
-       was pinned to, and which of the two moments it is, for the walk's
-       debug line. ]]
+       cursor's at OK, a held one's at the release - with the id it is to be
+       aimed at, and which of the two moments it is, for the walk's debug
+       line. ]]
   local function lower(record, command, pinned, where)
     if deps.lower == nil then
       return record, command
@@ -681,7 +687,7 @@ local function new(deps)
   end
 
   local function forget()
-    held, cursor = nil, nil
+    held, cursor, picked = nil, nil, nil
     answered()
     ended()
     lock_until, finished_at = nil, nil
@@ -693,7 +699,8 @@ local function new(deps)
     end
   end
 
-  -- `target` is the id the press was pinned to, where it was pinned to one.
+  -- `command` is the press as it was typed, and `target` the id it was pinned
+  -- to, where it was pinned to one: see aimed.
   local function hold(name, record, command, target)
     note("hold " .. name .. (held ~= nil and ", replacing " .. held.name or ""))
     held = { name = name, record = record, command = command, target = target, at = now() }
@@ -726,12 +733,19 @@ local function new(deps)
   --[[ Whether a press goes now, as it is, rather than being held: nothing is
        engaged, or this is standing aside and the press is off its recast. On
        it, it could not go at the lock's end either, and GearSwap's recast
-       check may abort it unseen. What was held gives way to a press that
-       goes: the lock can run out between two frames, with the release still
-       owed. ]]
-  local function goes_now(name, record)
+       check may abort it unseen. The second answer is whether it is the
+       standing aside that lets it. ]]
+  local function free_to_go(record)
     local aside_now = yielding() and deps.recast_left(record) <= 0
-    if not aside_now and engaged() then
+    return aside_now or not engaged(), aside_now
+  end
+
+  --[[ Sends a press on its way where it is free to go, and answers whether
+       it was. What was held gives way to a press that goes: the lock can run
+       out between two frames, with the release still owed. ]]
+  local function goes_now(name, record)
+    local free, aside_now = free_to_go(record)
+    if not free then
       return false
     end
     if aside_now then
@@ -740,6 +754,39 @@ local function new(deps)
     self.drop("replaced by " .. name)
     leaving(record)
     return true
+  end
+
+  --[[ Why a press went nowhere for want of a word for its target, with what
+       <t> and <lastst> read: the two a cursor's pick is most often under.
+       Those reads are debug's alone. ]]
+  local function unnamed(target)
+    if self.mode() ~= "debug" then
+      return "nothing names its target"
+    end
+    local function under(word)
+      local id = deps.target_id(word)
+      return id ~= nil and tostring(id) or "none"
+    end
+    return ("nothing names %d (<t> %s, <lastst> %s)"):format(target, under("t"), under("lastst"))
+  end
+
+  --[[ What a press is sent as: its command as it stands where it was pinned
+       to nothing, and otherwise under a word of the game's own that names its
+       target now - the one it was typed with while that still does, another
+       once it has moved on. Nil where no word names the target, which is a
+       press with nowhere to go: an id in the word's place is GearSwap's alone
+       to read, and without it the game answers one "A command error
+       occurred" (Kevin, 2026-11-25). Debug says a word that is not the one
+       typed. ]]
+  local function aimed(name, record, command, target)
+    if target == nil then
+      return command
+    end
+    local sent, word = deps.aim(command, target)
+    if sent ~= nil and word ~= tostring(record.target):lower() then
+      note(("%s aimed at <%s>"):format(name, word))
+    end
+    return sent
   end
 
   --[[ A cursor slot is judged at OK, when the command is really sent. Nothing
@@ -795,9 +842,9 @@ local function new(deps)
     if self.judged_at_ok(record) then
       return open_cursor(record, command, name)
     end
-    local pinned, target = command, nil
+    local holdable, target = true, nil
     if record.target ~= nil then
-      pinned, target = deps.pin(command, record.target)
+      holdable, target = deps.pin(command, record.target)
     end
     local stop = what_stops(record) or at_the_fallen(record, target)
     if stop ~= nil then
@@ -822,11 +869,11 @@ local function new(deps)
       note("swallowed " .. name .. ", already going")
       return true
     end
-    if record.target ~= nil and pinned == nil then
+    if not holdable then
       note("not held: " .. name .. ", <" .. record.target .. "> cannot be pinned")
       return false
     end
-    hold(name, record, pinned, target)
+    hold(name, record, command, target)
     return true
   end
 
@@ -948,12 +995,49 @@ local function new(deps)
     return taken, instead
   end
 
+  --[[ A cursor's pick, judged as the press it stands for would be, now that
+       its command is really sent. Answers what to send at once, or nil for
+       one that was swallowed, held, or dropped for want of a word. ]]
+  local function settle(open, target)
+    local record, command = lower(open.record, open.command, target, "at OK")
+    local name = record.action or record.type
+    local stop = what_stops(record) or at_the_fallen(record, target)
+    if stop ~= nil then
+      note("swallowed " .. name .. ", " .. stop)
+      return nil
+    end
+    local refused = on_recast(record)
+    if not refused and not free_to_go(record) then
+      hold(name, record, command, target)
+      return nil
+    end
+    local sent = aimed(name, record, command, target)
+    if sent == nil then
+      note("dropped " .. name .. ": " .. unnamed(target))
+      return nil
+    end
+    if refused then
+      not_held_on_recast(name, record)
+      bar_sent_at = now()
+    else
+      goes_now(name, record)
+    end
+    return sent
+  end
+
   --[[ The outgoing text, for a cursor this opened. The game puts a cursor command
        back through here with a number for the token: the arrow's first id at once,
        which raises the arrow and must reach the game, then the chosen id on OK
        (Byrth; GearSwap's st_flag skips the first the same way). Answers true to
        keep the line from the game, so a /ta never moves your target, and a
-       second answer is what to send now. ]]
+       second answer is what to send now.
+
+       The id is never sent on: only GearSwap reads one. The cast goes under a
+       word that names the pick (see aimed), and nothing says when the game
+       takes a pick for <lastst> - before its line comes through here, or once
+       this has answered - so a pick no word names yet is judged on the next
+       frame instead. UNVERIFIED in a live client: that it takes one at all
+       from a line this keeps from it. ]]
   function self.on_text(text)
     if cursor == nil or type(text) ~= "string" then
       return false
@@ -977,24 +1061,13 @@ local function new(deps)
     local open = cursor
     cursor = nil
     note("OK " .. open.name .. " at " .. id)
-    local record, command = lower(open.record, open.command, nil, "at OK")
-    local name = record.action or record.type
-    local stop = what_stops(record) or at_the_fallen(record, tonumber(id))
-    if stop ~= nil then
-      note("swallowed " .. name .. ", " .. stop)
+    local target = tonumber(id)
+    if deps.aim(open.command, target) == nil then
+      note(("nothing names %d yet"):format(target))
+      picked = { open = open, target = target }
       return true
     end
-    local aimed = command:gsub("<[^<>]*>$", id)
-    if on_recast(record) then
-      not_held_on_recast(name, record)
-      bar_sent_at = now()
-      return true, aimed
-    end
-    if goes_now(name, record) then
-      return true, aimed
-    end
-    hold(name, record, aimed, tonumber(id))
-    return true
+    return true, settle(open, target)
   end
 
   --- A parsed 0x028.
@@ -1333,6 +1406,14 @@ local function new(deps)
       aside = false
       note("no longer standing aside: nothing is busy")
     end
+    if picked ~= nil then
+      local pick = picked
+      picked = nil
+      local sent = settle(pick.open, pick.target)
+      if sent ~= nil then
+        return sent
+      end
+    end
     if held == nil then
       return nil
     end
@@ -1378,11 +1459,16 @@ local function new(deps)
       self.drop("the target died")
       return nil
     end
+    local sent = aimed(held.name, held.record, held.command, held.target)
+    if sent == nil then
+      self.drop(unnamed(held.target))
+      return nil
+    end
     local release = held
     held = nil
     note(("release %s after %.2fs"):format(release.name, now() - release.at))
     leaving(release.record)
-    return release.command
+    return sent
   end
 
   return self

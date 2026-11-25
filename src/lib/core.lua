@@ -107,8 +107,8 @@ local HELP = {
   "  //hud invisible            the invisible ladder, likewise",
   "  //hud reraise              the best reraise you have: spell, item, then gear",
   "  //hud draw                 toggle the weapon state every bar follows",
-  "  //hud assist [<target>]    run the Windower alias assist, or with a target",
-  "                            point it at /assist <target> until the game closes",
+  "  //hud assist [<target>]    /assist whoever it was last given, or with a",
+  "                            target, say whom until the addon unloads",
   "  //hud delay [<seconds>]    the countdown before a mount or a warp goes",
   "  //hud hidecutscene [on|off]",
   "                            hide the HUD during cutscenes",
@@ -1563,7 +1563,7 @@ local function new(deps)
   end
 
   local function run_action(action)
-    -- Pointing the assist alias is no press, and the alias is the client's
+    -- Saying whom to assist is no press, and the target is the session's
     -- rather than a character's, so it needs none scoped.
     if action.verb == "assist" and action.target ~= nil then
       if require_service() then

@@ -293,7 +293,7 @@ or the console too, and their settings are shared by both bars.
 | `//hud warp [all]` | warp home by the best means you have (a Warp spell, a Warp Ring, an Instant Warp, ...); `all` sends your other characters running XIVHud too |
 | `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage: the spell, then Spectral Jig, then the ninjutsu, then an oil or powder. Silenced or muted, the spells and ninjutsu are passed over |
 | `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
-| `//hud assist [<target>]` | the game's `/assist`: target what another player is targeting. With a target it sets whom - a name (`//hud assist Bob`) or a target in brackets (`//hud assist <p1>`) - and alone it assists them. Set again after restarting the game. See [`assist`](components/crossbar.md#built-ins) on the crossbar page |
+| `//hud assist [<target>]` | the game's `/assist`: target what another player is targeting. With a target it sets whom - a name (`//hud assist Bob`) or a target in brackets (`//hud assist <p1>`) - and alone it assists them. Set again after restarting the game or reloading the addon. See [`assist`](components/crossbar.md#built-ins) on the crossbar page |
 | `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; fractions are fine, there is no upper limit, and `0` switches the countdown off |
 | `//hud queue [on\|debug\|off]` | [the action queue](#the-action-queue); without a word it prints the current setting. `debug` also writes each step to `debug.log` in the addon's folder |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action, 0 to 5 seconds in tenths. Alone it lists them all; with only a kind it prints that one |
@@ -348,11 +348,16 @@ off, every press goes at once and the game decides.
   corpse, where the slot is aimed at `<t>`, `<bt>` or a cursor. Range is not
   checked: a weaponskill pressed out of range still goes, and the game answers
   it.
-- **Targets.** A held press aimed at `<t>` or `<bt>` stays on the target you
-  had when you pressed, and with nothing targeted it is not held. A slot bound
-  with no target takes whatever the game gives it when it goes, and `<me>` and
-  `<pet>` are held as they are. `<ft>`, party targets and the other tokens are
-  not held and go at once.
+- **Targets.** A held press aimed at `<t>` or `<bt>` is for the target you
+  had when you pressed, and with nothing targeted it is not held. It goes as
+  you bound it while that target is still the one under `<t>` (or `<bt>`). If
+  you have moved off it, it goes under another of the game's own target words
+  that names it now - `<me>`, `<lastst>`, `<t>`, `<pet>`, a party member's
+  `<p1>`-`<p5>` or an alliance member's - and if none does, the press is
+  dropped rather than sent at something else. No target id is ever sent, so
+  none of this needs GearSwap. A slot bound with no target takes whatever the
+  game gives it when it goes, and `<me>` and `<pet>` are held as they are.
+  `<ft>`, party targets and the other tokens are not held and go at once.
 - **Cursor slots.** A slot that opens a cursor (`<st>`, `<stpc>` and the like)
   is decided when you press OK rather than when you press the slot, so you can
   pick your target during a cast and press OK whenever you like. OK is then
@@ -364,7 +369,15 @@ off, every press goes at once and the game decides.
   up sends nothing and only changes what OK will cast. Under an arrow XIVHud
   did not raise (a macro's), a cursor slot does nothing at all, and OK still
   casts the macro's spell. A press that raises no arrow at all is forgotten
-  after two seconds. GearSwap's `pretarget` does not run for such a slot.
+  after two seconds. The cast goes at your pick under one of the game's own
+  target words: `<me>` for yourself, `<lastst>` (the last sub-target picked),
+  `<t>` if it is your target, `<pet>`, or a party or alliance member's. A pick
+  none of them names is dropped: a frame after OK where the cast would have
+  gone at once, and when its wait ends where it was held. That
+  `<lastst>` holds a pick made this way has not been watched in a live client
+  yet, so until it has, a cast at a monster that is not your target may not
+  go: `//hud queue debug` writes `aimed at <lastst>` when it does and
+  `nothing names <id>` when it does not.
 - **Macros and typed commands** are not held, but they do count towards the
   wait, as does anything another addon sends. A press made before the game has
   answered the last one is held too.

@@ -23,7 +23,15 @@ local function world(opts)
     -- The id under each target token, and how often the queue asked for one.
     targets = { t = 12345 },
     target_asks = 0,
+    -- The word of the game's own that names a mob now, beside <t> for what
+    -- is under it, and how often the queue asked for one.
+    words = { [ME] = "me" },
+    aims = 0,
   }
+  -- `pinned` stands for what <t> holds where a spec sets it.
+  local function under_t()
+    return env.pinned or env.targets.t
+  end
   local queue = new_queue({
     no_packets = opts.no_packets,
     now = function()
@@ -41,18 +49,23 @@ local function world(opts)
     recast_left = function(record)
       return env.recast[record.action] or 0
     end,
-    pin = function(command, target)
+    pin = function(_, target)
       if target == "me" then
-        return command
+        return true
       end
       if target == "t" then
-        local id = env.pinned or env.targets.t
-        if id == nil then
-          return nil
-        end
-        return (command:gsub(" <t>$", " " .. id)), id
+        local id = under_t()
+        return id ~= nil, id
       end
-      return nil
+      return false
+    end,
+    aim = function(command, id)
+      env.aims = env.aims + 1
+      local word = env.words[id] or (id == under_t() and "t") or nil
+      if word == nil then
+        return nil
+      end
+      return (command:gsub("<[^<>]*>$", "<" .. word .. ">")), word
     end,
     blocked = function()
       return env.blocked
@@ -731,11 +744,12 @@ describe("the action queue", function()
       end)
     end)
 
-    it("pins the target at the press", function()
+    it("holds a press as it was typed, beside the id its target stood for", function()
       local queue = world()
       start_cast(queue)
       queue.press(spell("Stone", "t"), 'input /ma "Stone" <t>')
-      assert.are.equal('input /ma "Stone" 12345', queue.held().command)
+      assert.are.equal('input /ma "Stone" <t>', queue.held().command)
+      assert.are.equal(12345, queue.held().target)
     end)
 
     it("does not hold a target it cannot pin", function()
@@ -768,7 +782,8 @@ describe("the action queue", function()
   describe("a cursor slot", function()
     local SHELL = spell("Shell V", "stpc")
     local SHELL_COMMAND = 'input /ma "Shell V" <stpc>'
-    local AIMED = 'input /ma "Shell V" 12345'
+    -- 12345 is what <t> holds in these, so that is the word its pick goes under.
+    local AIMED = 'input /ma "Shell V" <t>'
 
     -- The press and the arrow, leaving the cursor waiting for OK.
     local function cursor_up(queue)
@@ -801,7 +816,7 @@ describe("the action queue", function()
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
       assert.is_nil(send)
-      assert.are.equal(AIMED, queue.held().command)
+      assert.are.equal(SHELL_COMMAND, queue.held().command)
     end)
 
     --[[ Kevin's Dia III and Sleep II: a second press raised no arrow, so OK was
@@ -825,7 +840,7 @@ describe("the action queue", function()
       queue.press(SHELL, SHELL_COMMAND)
       queue.press(SHELL, SHELL_COMMAND)
       assert.is_true((queue.on_text("/ta 12345")))
-      assert.are.equal(AIMED, queue.held().command)
+      assert.are.equal(SHELL_COMMAND, queue.held().command)
     end)
 
     it("casts the newest press at OK when another slot is pressed with the arrow up", function()
@@ -835,7 +850,7 @@ describe("the action queue", function()
       env.arrow_up = true
       queue.press(spell("Protect V", "stpc"), 'input /ma "Protect V" <stpc>')
       queue.on_text("/ta 12345")
-      assert.are.equal('input /ma "Protect V" 12345', queue.held().command)
+      assert.are.equal('input /ma "Protect V" <stpc>', queue.held().command)
     end)
 
     it("gives a mashed cursor its full wait for OK", function()
@@ -912,14 +927,15 @@ describe("the action queue", function()
       assert.is_false(queue.on_text("/ta 777"))
     end)
 
-    it("takes OK, so the /ta never changes your target, and holds the action at the chosen id", function()
+    it("takes OK, so the /ta never changes your target, and holds the action for the chosen id", function()
       local queue = world()
       finish_cast(queue)
       cursor_up(queue)
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
       assert.is_nil(send)
-      assert.are.equal(AIMED, queue.held().command)
+      assert.are.equal(SHELL_COMMAND, queue.held().command)
+      assert.are.equal(12345, queue.held().target)
     end)
 
     it("reads the long form of the command too", function()
@@ -934,7 +950,7 @@ describe("the action queue", function()
       finish_cast(queue)
       cursor_up(queue)
       assert.is_true((queue.on_text("/ta 777")))
-      assert.are.equal('input /ma "Shell V" 777', queue.held().command)
+      assert.are.equal(ME, queue.held().target)
     end)
 
     it("releases what OK held the tick the lock clears", function()
@@ -980,7 +996,7 @@ describe("the action queue", function()
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
       assert.is_nil(send)
-      assert.are.equal(AIMED, queue.held().command)
+      assert.are.equal(SHELL_COMMAND, queue.held().command)
     end)
 
     it("holds at OK a spell whose recast ends within two seconds of the lock", function()
@@ -992,7 +1008,7 @@ describe("the action queue", function()
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
       assert.is_nil(send)
-      assert.are.equal(AIMED, queue.held().command)
+      assert.are.equal(SHELL_COMMAND, queue.held().command)
     end)
 
     it("sends OK at once on a recast with nothing busy, and the queue stays free", function()
@@ -1017,7 +1033,7 @@ describe("the action queue", function()
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
       assert.is_nil(send)
-      assert.are.equal(AIMED, queue.held().command)
+      assert.are.equal(SHELL_COMMAND, queue.held().command)
     end)
 
     it("replaces what was held at OK, not at the press: the newest command wins", function()
@@ -1027,7 +1043,7 @@ describe("the action queue", function()
       cursor_up(queue)
       assert.are.equal(command("Cure"), queue.held().command)
       queue.on_text("/ta 12345")
-      assert.are.equal(AIMED, queue.held().command)
+      assert.are.equal(SHELL_COMMAND, queue.held().command)
     end)
 
     it("starts over for a press once the arrow has gone", function()
@@ -1038,7 +1054,7 @@ describe("the action queue", function()
       assert.are.equal("input /ta <stpc>", instead)
       assert.is_false(queue.on_text("/ta 777"), "the new cursor's arrow")
       queue.on_text("/ta 12345")
-      assert.are.equal('input /ma "Protect V" 12345', queue.held().command)
+      assert.are.equal('input /ma "Protect V" <stpc>', queue.held().command)
     end)
 
     it("takes one OK and goes back to leaving /ta alone", function()
@@ -1195,6 +1211,269 @@ describe("the action queue", function()
       local taken, instead = queue.press(SHELL, SHELL_COMMAND)
       assert.is_false(taken)
       assert.is_nil(instead)
+    end)
+
+    --[[ The pick comes back as an id, which only GearSwap reads (Kevin,
+         2026-11-25), so the cast goes under a word of the game's own that
+         names the pick. Which word does is the action service's to say. ]]
+    describe("the word its pick goes under", function()
+      -- Neither yourself nor what <t> holds.
+      local PICK = 23456
+      local OK = "/ta " .. PICK
+
+      it("sends at OK under a word that names the pick", function()
+        local queue, env = world()
+        cursor_up(queue)
+        env.words[PICK] = "lastst"
+        local swallowed, send = queue.on_text(OK)
+        assert.is_true(swallowed)
+        assert.are.equal('input /ma "Shell V" <lastst>', send)
+      end)
+
+      it("goes under <me> for yourself", function()
+        local queue = world()
+        cursor_up(queue)
+        local _, send = queue.on_text("/ta " .. ME)
+        assert.are.equal('input /ma "Shell V" <me>', send)
+      end)
+
+      --[[ Nothing says when the game takes its pick for <lastst>: before the
+           line comes through here, or once this has answered. ]]
+      it("waits a frame where nothing names the pick yet, keeping the /ta from the game", function()
+        local queue, env = world()
+        cursor_up(queue)
+        local swallowed, send = queue.on_text(OK)
+        assert.is_true(swallowed)
+        assert.is_nil(send)
+        env.words[PICK] = "lastst"
+        assert.are.equal('input /ma "Shell V" <lastst>', queue.step())
+        assert.is_true(queue.busy(), "and waits for its answer")
+      end)
+
+      it("sends a pick it waited a frame for once", function()
+        local queue, env = world()
+        cursor_up(queue)
+        queue.on_text(OK)
+        env.words[PICK] = "lastst"
+        queue.step()
+        assert.is_nil(queue.step())
+        assert.is_nil(queue.held(), "and is not judged a second time, which would hold it")
+      end)
+
+      it("sends a pick on its recast under its word, to be refused as any press on recast is", function()
+        local queue, env = world()
+        cursor_up(queue)
+        env.words[PICK] = "lastst"
+        env.recast["Shell V"] = 5
+        local _, send = queue.on_text(OK)
+        assert.are.equal('input /ma "Shell V" <lastst>', send)
+      end)
+
+      it("drops a pick on its recast that nothing names, and counts no send for it", function()
+        local queue, env = world({ mode = "debug" })
+        cursor_up(queue)
+        env.recast["Shell V"] = 5
+        queue.on_text(OK)
+        assert.is_nil(queue.step())
+        assert.is_not_nil(logged(env):find("dropped Shell V: nothing names 23456", 1, true), logged(env))
+        assert.is_nil(logged(env):find("not held: Shell V on recast", 1, true), logged(env))
+      end)
+
+      it("goes nowhere when nothing names the pick a frame later", function()
+        local queue, env = world()
+        cursor_up(queue)
+        queue.on_text(OK)
+        assert.is_nil(queue.step())
+        assert.is_nil(queue.held())
+        assert.is_false(queue.busy())
+        env.words[PICK] = "lastst"
+        assert.is_nil(queue.step(), "and is not tried again")
+      end)
+
+      it("leaves what was held alone for a pick that went nowhere", function()
+        local queue, env = world()
+        finish_cast(queue)
+        queue.press(spell("Cure"), command("Cure"))
+        cursor_up(queue)
+        env.now = env.now + 3.01
+        queue.on_text(OK)
+        assert.are.equal(command("Cure"), queue.step())
+      end)
+
+      it("holds a pick it waited a frame for, where a lock is running", function()
+        local queue = world()
+        finish_cast(queue)
+        cursor_up(queue)
+        queue.on_text(OK)
+        assert.is_nil(queue.held())
+        assert.is_nil(queue.step())
+        assert.are.equal(SHELL_COMMAND, queue.held().command)
+        assert.are.equal(PICK, queue.held().target)
+      end)
+
+      it("holds a pick nothing names, since a word may name it by the release", function()
+        local queue, env = world()
+        finish_cast(queue)
+        cursor_up(queue)
+        queue.on_text(OK)
+        queue.step()
+        env.words[PICK] = "t"
+        env.now = env.now + 2.71
+        assert.are.equal(AIMED, queue.step())
+      end)
+
+      it("names a held pick at the release, not at OK", function()
+        local queue, env = world()
+        finish_cast(queue)
+        cursor_up(queue)
+        env.words[PICK] = "lastst"
+        queue.on_text(OK)
+        env.words[PICK] = "p2"
+        env.now = env.now + 2.71
+        assert.are.equal('input /ma "Shell V" <p2>', queue.step())
+      end)
+
+      it("drops a held pick nothing names at the release", function()
+        local queue, env = world()
+        finish_cast(queue)
+        cursor_up(queue)
+        env.words[PICK] = "lastst"
+        queue.on_text(OK)
+        env.words[PICK] = nil
+        env.now = env.now + 2.71
+        assert.is_nil(queue.step())
+        assert.is_nil(queue.held())
+        assert.is_false(queue.busy())
+      end)
+
+      it("forgets a pick waiting its frame on a clear", function()
+        local queue, env = world()
+        cursor_up(queue)
+        queue.on_text(OK)
+        queue.clear("zone")
+        env.words[PICK] = "lastst"
+        assert.is_nil(queue.step())
+      end)
+
+      it("forgets one with the queue switched off", function()
+        local queue, env = world()
+        cursor_up(queue)
+        queue.on_text(OK)
+        env.mode = "off"
+        queue.step()
+        env.mode = "on"
+        env.words[PICK] = "lastst"
+        assert.is_nil(queue.step())
+      end)
+
+      it("says in debug the word the pick went under", function()
+        local queue, env = world({ mode = "debug" })
+        cursor_up(queue)
+        env.words[PICK] = "lastst"
+        queue.on_text(OK)
+        assert.is_not_nil(logged(env):find("Shell V aimed at <lastst>", 1, true), logged(env))
+      end)
+
+      it("says in debug that a pick waits a frame for a word", function()
+        local queue, env = world({ mode = "debug" })
+        cursor_up(queue)
+        queue.on_text(OK)
+        assert.is_not_nil(logged(env):find("nothing names 23456 yet", 1, true), logged(env))
+      end)
+
+      it("says in debug what <t> and <lastst> read for a pick that went nowhere", function()
+        local queue, env = world({ mode = "debug" })
+        cursor_up(queue)
+        env.targets.lastst = 777
+        queue.on_text(OK)
+        queue.step()
+        assert.is_not_nil(
+          logged(env):find("dropped Shell V: nothing names 23456 (<t> 12345, <lastst> 777)", 1, true),
+          logged(env)
+        )
+      end)
+    end)
+  end)
+
+  --[[ Kevin, 2026-11-25: on a job whose GearSwap file had not loaded, four held
+       weaponskills reached the game as `/ws "Slice" 17555873` and each drew "A
+       command error occurred". Only GearSwap reads an id, so a held press goes
+       under a word the game reads itself, and nowhere with none. ]]
+  describe("a held press aimed at a target", function()
+    local STONE = spell("Stone", "t")
+    local STONE_COMMAND = 'input /ma "Stone" <t>'
+
+    -- Pressed in a cast at 12345, with that cast's lock just over.
+    local function held_through_a_lock(opts)
+      local queue, env = world(opts)
+      start_cast(queue)
+      queue.press(STONE, STONE_COMMAND)
+      queue.on_action(action(4, 1))
+      env.now = env.now + 2.71
+      return queue, env
+    end
+
+    it("goes as it was typed while that word still names its target", function()
+      local queue = held_through_a_lock()
+      assert.are.equal(STONE_COMMAND, queue.step())
+    end)
+
+    it("goes under another word once the one it was typed with has moved on", function()
+      local queue, env = held_through_a_lock()
+      env.targets.t = 5
+      env.words[12345] = "p1"
+      assert.are.equal('input /ma "Stone" <p1>', queue.step())
+      assert.is_true(queue.busy(), "and waits for its answer")
+    end)
+
+    it("is dropped when no word names its target any more", function()
+      local queue, env = held_through_a_lock()
+      env.targets.t = 5
+      assert.is_nil(queue.step())
+      assert.is_nil(queue.held())
+      assert.is_false(queue.busy())
+    end)
+
+    it("asks no word for a press pinned to nothing", function()
+      local queue, env = world()
+      start_cast(queue)
+      queue.press(spell(), command())
+      queue.on_action(action(4, 1))
+      env.now = env.now + 2.71
+      assert.are.equal(command(), queue.step())
+      assert.are.equal(0, env.aims)
+    end)
+
+    it("says in debug the word it went under where that is not the one typed", function()
+      local queue, env = held_through_a_lock({ mode = "debug" })
+      env.targets.t = 5
+      env.words[12345] = "p1"
+      queue.step()
+      assert.is_not_nil(logged(env):find("Stone aimed at <p1>", 1, true), logged(env))
+    end)
+
+    it("says nothing of the word for a press that went as typed", function()
+      local queue, env = held_through_a_lock({ mode = "debug" })
+      queue.step()
+      assert.is_nil(logged(env):find("aimed at", 1, true), logged(env))
+    end)
+
+    it("says in debug what <t> and <lastst> read when nothing names its target", function()
+      local queue, env = held_through_a_lock({ mode = "debug" })
+      env.targets.t = 5
+      queue.step()
+      assert.is_not_nil(
+        logged(env):find("dropped Stone: nothing names 12345 (<t> 5, <lastst> none)", 1, true),
+        logged(env)
+      )
+    end)
+
+    it("reads neither word with debug off", function()
+      local queue, env = held_through_a_lock()
+      env.targets.t = 5
+      local asked = env.target_asks
+      queue.step()
+      assert.are.equal(asked, env.target_asks)
     end)
   end)
 
@@ -2372,7 +2651,7 @@ describe("the action queue", function()
     it("releases a weaponskill whose target lives", function()
       local queue, env = held_at(MONSTER, BLADE, BLADE_COMMAND)
       falls(queue, MONSTER + 1)
-      assert.are.equal('input /ws "Savage Blade" 17000001', release(queue, env))
+      assert.are.equal(BLADE_COMMAND, release(queue, env))
     end)
 
     it("drops a spell pinned to a dead monster", function()
@@ -2385,13 +2664,13 @@ describe("the action queue", function()
     it("releases a spell pinned to a dead player: a Raise is aimed at one", function()
       local queue, env = held_at(PLAYER, { type = "ma", action = "Raise", target = "t" }, 'input /ma "Raise" <t>')
       falls(queue, PLAYER)
-      assert.are.equal('input /ma "Raise" 71391', release(queue, env))
+      assert.are.equal('input /ma "Raise" <t>', release(queue, env))
     end)
 
     it("releases an ability pinned to a dead monster, which is the game's to refuse", function()
       local queue, env = held_at(MONSTER, PROVOKE, PROVOKE_COMMAND)
       falls(queue, MONSTER)
-      assert.are.equal('input /ja "Provoke" 17000001', release(queue, env))
+      assert.are.equal(PROVOKE_COMMAND, release(queue, env))
     end)
 
     it("releases what was pinned to nothing", function()
@@ -2405,12 +2684,14 @@ describe("the action queue", function()
       falls(queue, MONSTER)
       env.pinned = MONSTER + 1
       queue.press(BLADE, BLADE_COMMAND)
-      assert.are.equal('input /ws "Savage Blade" 17000002', release(queue, env))
+      assert.are.equal(MONSTER + 1, queue.held().target)
+      assert.are.equal(BLADE_COMMAND, release(queue, env))
     end)
 
     it("drops a cursor's weaponskill whose target died after OK", function()
       local queue, env = world()
       env.player.vitals = { tp = 3000, hp = 1500 }
+      env.words[MONSTER] = "lastst"
       start_cast(queue)
       queue.press({ type = "ws", action = "Savage Blade", target = "stnpc" }, 'input /ws "Savage Blade" <stnpc>')
       queue.on_text("/ta <stnpc>")
@@ -2534,7 +2815,7 @@ describe("the action queue", function()
         queue.on_text("/ta 17000001")
         local kept, instead = queue.on_text("/ta 17000001")
         assert.is_true(kept)
-        assert.are.equal('input /ws "Savage Blade" 17000001', instead)
+        assert.are.equal('input /ws "Savage Blade" <t>', instead)
       end)
 
       it("is held from three seconds on, and dropped at the release while the death is remembered", function()
@@ -2597,7 +2878,7 @@ describe("the action queue", function()
       env.player.vitals = { tp = 1000 }
       start_cast(queue)
       assert.is_true(queue.press(BLADE, BLADE_COMMAND))
-      assert.are.equal('input /ws "Savage Blade" 12345', queue.held().command)
+      assert.are.equal(BLADE_COMMAND, queue.held().command)
     end)
 
     it("is left to the game while the client reports no TP", function()
@@ -2643,7 +2924,7 @@ describe("the action queue", function()
       queue.press(BLADE, BLADE_COMMAND)
       env.player.vitals.tp = 1000
       env.now = env.now + 2.41
-      assert.are.equal('input /ws "Savage Blade" 12345', queue.step())
+      assert.are.equal(BLADE_COMMAND, queue.step())
     end)
 
     describe("on a cursor", function()
@@ -2674,7 +2955,7 @@ describe("the action queue", function()
         env.player.vitals.tp = 1000
         local swallowed, send = queue.on_text("/ta 12345")
         assert.is_true(swallowed)
-        assert.are.equal('input /ws "Savage Blade" 12345', send)
+        assert.are.equal('input /ws "Savage Blade" <t>', send)
       end)
     end)
   end)
@@ -2933,7 +3214,7 @@ describe("the action queue", function()
         env.player.buffs = { HASTE }
         local swallowed, send = queue.on_text("/ta 12345")
         assert.is_true(swallowed)
-        assert.are.equal('input /ws "Savage Blade" 12345', send)
+        assert.are.equal('input /ws "Savage Blade" <t>', send)
       end)
     end)
   end)
@@ -3002,7 +3283,7 @@ describe("the action queue", function()
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
       assert.is_nil(send)
-      assert.are.equal('input /ma "Shell V" 12345', queue.held().command)
+      assert.are.equal('input /ma "Shell V" <stpc>', queue.held().command)
     end)
 
     it("sends a press made anywhere in a lock shorter than a second", function()
@@ -3111,7 +3392,7 @@ describe("the action queue", function()
       env.now = env.now + 2
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
-      assert.are.equal('input /ma "Shell V" 12345', send)
+      assert.are.equal('input /ma "Shell V" <t>', send)
       assert.is_nil(queue.held())
     end)
 
@@ -3228,7 +3509,7 @@ describe("the action queue", function()
       env.recast["Shell V"] = 10
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
-      assert.are.equal('input /ma "Shell V" 12345', send)
+      assert.are.equal('input /ma "Shell V" <t>', send)
       queue.on_outgoing(0x01A, outgoing_action(MAGIC))
       queue.on_message(battle_message(ME, 17))
       env.now = env.now + 2
@@ -3255,7 +3536,7 @@ describe("the action queue", function()
       env.now = env.now + 3
       local swallowed, send = queue.on_text("/ta 12345")
       assert.is_true(swallowed)
-      assert.are.equal('input /ma "Shell V" 12345', send)
+      assert.are.equal('input /ma "Shell V" <t>', send)
       queue.on_outgoing(0x01A, outgoing_action(MAGIC))
       finish_cast(queue)
       env.now = env.now + 2
@@ -3336,9 +3617,6 @@ describe("the action queue", function()
           return record, line
         end
         local lowered = { type = "ma", action = "Sleep", target = record.target }
-        if pinned ~= nil then
-          return lowered, 'input /ma "Sleep" ' .. pinned
-        end
         return lowered, 'input /ma "Sleep" <' .. record.target .. ">"
       end
     end
@@ -3354,13 +3632,13 @@ describe("the action queue", function()
         return queue.on_text("/ta 12345")
       end
 
-      it("is asked with the cursor's own command, and goes at the target OK chose", function()
+      it("is asked with the cursor's own command and the id OK chose, and goes at that target", function()
         local asked = {}
         local queue = world({ lower = sleep_steps_down(asked) })
         local swallowed, send = ok(queue)
         assert.is_true(swallowed)
-        assert.are.equal('input /ma "Sleep" 12345', send)
-        assert.are.same({ { "Sleep II", SLEEP_COMMAND } }, asked)
+        assert.are.equal('input /ma "Sleep" <t>', send)
+        assert.are.same({ { "Sleep II", SLEEP_COMMAND, 12345 } }, asked)
       end)
 
       it("is held under its own name when OK comes in a lock", function()
@@ -3369,7 +3647,8 @@ describe("the action queue", function()
         local swallowed, send = ok(queue)
         assert.is_true(swallowed)
         assert.is_nil(send)
-        assert.are.equal('input /ma "Sleep" 12345', queue.held().command)
+        assert.are.equal('input /ma "Sleep" <stnpc>', queue.held().command)
+        assert.are.equal(12345, queue.held().target)
         assert.are.equal("Sleep", queue.held().name)
         assert.are.equal("Sleep", queue.held().record.action)
       end)
@@ -3379,7 +3658,7 @@ describe("the action queue", function()
         env.recast["Sleep II"] = 20
         local swallowed, send = ok(queue)
         assert.is_true(swallowed)
-        assert.are.equal('input /ma "Sleep" 12345', send)
+        assert.are.equal('input /ma "Sleep" <t>', send)
         assert.is_true(queue.busy(), "it left as a press of the bar's")
       end)
 
@@ -3421,9 +3700,9 @@ describe("the action queue", function()
       it("takes the place of what is held, at the target that was pinned to", function()
         local asked = {}
         local queue = held_on_recast(sleep_steps_down(asked))
-        assert.are.equal('input /ma "Sleep" 12345', queue.step())
+        assert.are.equal('input /ma "Sleep" <t>', queue.step())
         assert.is_nil(queue.held())
-        assert.are.same({ { "Sleep II", 'input /ma "Sleep II" 12345', 12345 } }, asked)
+        assert.are.same({ { "Sleep II", SLEEP_COMMAND, 12345 } }, asked)
       end)
 
       it("waits on its own recast where that is nearly over, and goes when it is", function()
@@ -3433,7 +3712,7 @@ describe("the action queue", function()
         assert.are.equal("Sleep", queue.held().name)
         assert.is_not_nil(logged(env):find("Sleep waits 1.50s on its recast", 1, true))
         env.recast.Sleep = 0
-        assert.are.equal('input /ma "Sleep" 12345', queue.step())
+        assert.are.equal('input /ma "Sleep" <t>', queue.step())
       end)
 
       it("is dropped with what is held where its own recast is as far off", function()
@@ -3458,7 +3737,7 @@ describe("the action queue", function()
         env.recast["Sleep II"] = 1.5
         assert.is_nil(queue.step())
         env.recast["Sleep II"] = 0
-        assert.are.equal('input /ma "Sleep II" 12345', queue.step())
+        assert.are.equal(SLEEP_COMMAND, queue.step())
         assert.are.same({}, asked)
       end)
 
@@ -3880,6 +4159,7 @@ describe("the action queue", function()
     it("says the same of one judged at a cursor's OK", function()
       local queue, env = world({ mode = "debug" })
       env.player.vitals = { tp = 3000, hp = 1500 }
+      env.words[MOB] = "lastst"
       falls(queue, MOB)
       env.now = env.now + 0.25
       queue.press({ type = "ws", action = "Savage Blade", target = "stnpc" }, 'input /ws "Savage Blade" <stnpc>')

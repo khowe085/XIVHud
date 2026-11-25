@@ -100,6 +100,7 @@ local function world(opts)
     items = { [0] = {} },
     ext = nil,
     target = { id = 99 },
+    named = {},
     config = {
       delay = 5,
     },
@@ -127,12 +128,23 @@ local function world(opts)
     get_player = function()
       return env.player
     end,
+    -- `target` is what <t> and <bt> hold; `named` gives any word its own mob,
+    -- or `false` for nothing under it; a word in `throwing` cannot be read.
     get_mob_by_target = function(token)
       if token == "st" then
         return env.subtarget
       end
-      env.asked_token = token
-      return env.target
+      if env.throwing == token then
+        error("no such target")
+      end
+      if env.named[token] ~= nil then
+        return env.named[token] or nil
+      end
+      if token == "t" or token == "bt" then
+        env.asked_token = token
+        return env.target
+      end
+      return nil
     end,
     get_mob_by_id = function(id)
       return env.mobs ~= nil and env.mobs[id] or nil
@@ -270,43 +282,189 @@ describe("the action service", function()
     end)
   end)
 
-  --[[ What a command sent late is sent as: a pinned token becomes the id it
-       stood for at the press, a fixed one goes as written, and anything
-       else cannot be pinned. ]]
+  --[[ Whether a command can be sent later than its press, and what it is
+       pinned to: the id a word that moves stood for at the press, and nothing
+       for a word that cannot move. Anything else cannot be pinned. ]]
   describe("the target pin", function()
-    it("pins the battle target to its id", function()
+    it("pins the battle target to the id under it", function()
       local service, env = world()
-      assert.are.equal('input /item "Ring" 99', service.pinned_command('input /item "Ring" <bt>', "bt"))
+      local pinned, id = service.pin_target('input /item "Ring" <bt>', "bt")
+      assert.is_true(pinned)
+      assert.are.equal(99, id)
       assert.are.equal("bt", env.asked_token)
     end)
 
-    it("answers the id it pinned beside the command, and none for a token it left as written", function()
+    it("pins a word that cannot move to no id", function()
       local service = world()
-      local _, id = service.pinned_command('input /item "Ring" <bt>', "bt")
-      assert.are.equal(99, id)
-      local _, none = service.pinned_command('input /item "Ring" <me>', "me")
-      assert.is_nil(none)
+      for _, word in ipairs({ "me", "pet" }) do
+        local pinned, id = service.pin_target('input /item "Ring" <' .. word .. ">", word)
+        assert.is_true(pinned, word)
+        assert.is_nil(id, word)
+      end
     end)
 
     it("folds a hand-edited upper-case token before pinning it", function()
       local service = world()
-      assert.are.equal('input /item "Ring" 99', service.pinned_command('input /item "Ring" <T>', "T"))
-    end)
-
-    it("sends a fixed token as written", function()
-      local service = world()
-      assert.are.equal('input /item "Ring" <pet>', service.pinned_command('input /item "Ring" <pet>', "pet"))
-      assert.are.equal('input /item "Ring" <me>', service.pinned_command('input /item "Ring" <me>', "me"))
+      local pinned, id = service.pin_target('input /item "Ring" <T>', "T")
+      assert.is_true(pinned)
+      assert.are.equal(99, id)
     end)
 
     it("refuses a token it cannot pin", function()
       local service = world()
-      assert.is_nil(service.pinned_command('input /item "Ring" <st>', "st"))
+      assert.is_false(service.pin_target('input /item "Ring" <st>', "st"))
+    end)
+
+    it("refuses a word with nothing under it", function()
+      local service, env = world()
+      env.target = nil
+      assert.is_false(service.pin_target('input /item "Ring" <t>', "t"))
     end)
 
     it("refuses a command that does not end in the token it names", function()
       local service = world()
-      assert.is_nil(service.pinned_command('input /item "Ring" <me>', "t"))
+      assert.is_false(service.pin_target('input /item "Ring" <me>', "t"))
+    end)
+
+    it("refuses what is no command", function()
+      local service = world()
+      assert.is_false(service.pin_target(nil, "t"))
+    end)
+  end)
+
+  --[[ What a pinned command is sent as. The game reads no id: `/ws "Slice"
+       17555873` drew "A command error occurred" four times of four on a job
+       GearSwap was not handling (Kevin, 2026-11-25), since it is GearSwap
+       that reads one. So the mob goes under a word of the game's own. ]]
+  describe("the aim", function()
+    local RING = 'input /item "Ring" <t>'
+    local PICKED = 'input /ma "Cure" <stpc>'
+    local MOB = 4242
+
+    it("leaves a command as it was typed while that word still names the mob", function()
+      local service = world()
+      local command, word = service.aimed_command(RING, 99)
+      assert.are.equal(RING, command)
+      assert.are.equal("t", word)
+    end)
+
+    it("leaves <bt> as typed while it still names the mob", function()
+      local service, env = world()
+      env.named.t = false
+      local command, word = service.aimed_command('input /item "Ring" <bt>', 99)
+      assert.are.equal('input /item "Ring" <bt>', command)
+      assert.are.equal("bt", word)
+    end)
+
+    it("leaves a hand-edited upper-case token as it was typed", function()
+      local service = world()
+      local command, word = service.aimed_command('input /item "Ring" <T>', 99)
+      assert.are.equal('input /item "Ring" <T>', command)
+      assert.are.equal("t", word)
+    end)
+
+    it("goes under another word once the one typed has moved on", function()
+      local service, env = world()
+      env.target = { id = 5 }
+      env.named.p2 = { id = 99 }
+      local command, word = service.aimed_command(RING, 99)
+      assert.are.equal('input /item "Ring" <p2>', command)
+      assert.are.equal("p2", word)
+    end)
+
+    it("names a cursor's pick, whose own token names nothing once it is made", function()
+      local service, env = world()
+      env.named.lastst = { id = MOB }
+      assert.are.equal('input /ma "Cure" <lastst>', (service.aimed_command(PICKED, MOB)))
+    end)
+
+    for _, word in ipairs({
+      "me",
+      "lastst",
+      "t",
+      "pet",
+      "p1",
+      "p2",
+      "p3",
+      "p4",
+      "p5",
+      "a10",
+      "a11",
+      "a12",
+      "a13",
+      "a14",
+      "a15",
+      "a20",
+      "a21",
+      "a22",
+      "a23",
+      "a24",
+      "a25",
+    }) do
+      it("can name a mob by <" .. word .. ">", function()
+        local service, env = world()
+        env.target = nil
+        env.named[word] = { id = MOB }
+        local command, named = service.aimed_command(PICKED, MOB)
+        assert.are.equal('input /ma "Cure" <' .. word .. ">", command)
+        assert.are.equal(word, named)
+      end)
+    end
+
+    it("takes <me> ahead of <lastst>, and <lastst> ahead of <t>", function()
+      local service, env = world()
+      env.target = { id = MOB }
+      env.named.lastst = { id = MOB }
+      env.named.me = { id = MOB }
+      assert.are.equal('input /ma "Cure" <me>', (service.aimed_command(PICKED, MOB)))
+      env.named.me = nil
+      assert.are.equal('input /ma "Cure" <lastst>', (service.aimed_command(PICKED, MOB)))
+      env.named.lastst = nil
+      assert.are.equal('input /ma "Cure" <t>', (service.aimed_command(PICKED, MOB)))
+    end)
+
+    -- Windower's is "not guaranteed to return the same mob as <bt>" (the
+    -- wiki's FFXI Functions page), so only a slot typed with it goes under it.
+    it("never puts a mob under <bt> that was not typed with it", function()
+      local service, env = world()
+      env.named.t = false
+      env.named.bt = { id = MOB }
+      assert.is_nil(service.aimed_command(PICKED, MOB))
+      assert.is_nil(service.aimed_command(RING, MOB))
+    end)
+
+    it("answers nothing where no word names the mob", function()
+      local service = world()
+      assert.is_nil(service.aimed_command(RING, MOB))
+    end)
+
+    it("takes a word with a mob of no id under it for one that names nothing", function()
+      local service, env = world()
+      env.named.lastst = {}
+      env.named.p1 = { id = MOB }
+      assert.are.equal('input /ma "Cure" <p1>', (service.aimed_command(PICKED, MOB)))
+    end)
+
+    --[[ Asked under the frame tick's guard and the text handler's, where
+         five errors switch the handler off, and of words no live client has
+         been asked for. ]]
+    it("takes a word that cannot be read for one that names nothing", function()
+      local service, env = world()
+      env.throwing = "lastst"
+      env.named.p1 = { id = MOB }
+      assert.are.equal('input /ma "Cure" <p1>', (service.aimed_command(PICKED, MOB)))
+    end)
+
+    it("answers nothing for a command that ends in no token", function()
+      local service, env = world()
+      env.named.lastst = { id = MOB }
+      assert.is_nil(service.aimed_command('input /ma "Cure"', MOB))
+    end)
+
+    it("answers nothing for no id, or for what is no command", function()
+      local service = world()
+      assert.is_nil(service.aimed_command(RING, nil))
+      assert.is_nil(service.aimed_command(nil, 99))
     end)
   end)
 
@@ -331,24 +489,55 @@ describe("the action service", function()
     end)
   end)
 
+  --[[ Whom a press assists is the session's: `//hud assist <target>` leaves
+       the game's own /assist of that target with the service, which sends it
+       at every press. No Windower alias is made for it (Kevin, 2026-11-25). ]]
   describe("assist", function()
-    it("runs the Windower alias from a slot", function()
+    local SLOT = { type = "assist" }
+    local UNSET = "assist has no target yet - //hud assist <target>"
+
+    it("takes a target and answers whom, sending nothing yet and making no alias", function()
       local service, env = world()
-      service.fire({ type = "assist" }, {})
-      assert.are.same({ "assist" }, env.commands)
+      assert.are.equal("assist: Bob", service.assist("Bob"))
+      assert.are.same({}, env.commands)
     end)
 
-    it("runs it from the console too, with nothing to say", function()
+    it("sends the game's /assist of that target from a slot", function()
       local service, env = world()
+      service.assist("Bob")
+      service.fire(SLOT, {})
+      assert.are.same({ "input /assist Bob" }, env.commands)
+    end)
+
+    it("sends it from the console too, with nothing to say", function()
+      local service, env = world()
+      service.assist("Bob")
       assert.is_nil(service.builtin("assist"))
-      assert.are.same({ "assist" }, env.commands)
+      assert.are.same({ "input /assist Bob" }, env.commands)
       assert.are.equal("", said(env))
     end)
 
-    it("points the alias at a target and answers whom", function()
+    it("sends it at every press, and the newest target's once another is given", function()
       local service, env = world()
-      assert.are.equal("assist: Bob", service.assist("Bob"))
-      assert.are.same({ "alias assist input /assist Bob" }, env.commands)
+      service.assist("Bob")
+      service.fire(SLOT, {})
+      service.fire(SLOT, {})
+      service.assist("<p1>")
+      service.fire(SLOT, {})
+      assert.are.same({ "input /assist Bob", "input /assist Bob", "input /assist <p1>" }, env.commands)
+    end)
+
+    it("sends nothing for a slot pressed before any target was given, and says how to give one", function()
+      local service, env = world()
+      service.fire(SLOT, {})
+      assert.are.same({}, env.commands)
+      assert.are.equal(UNSET, said(env))
+    end)
+
+    it("answers the same to the console's press", function()
+      local service, env = world()
+      assert.are.equal(UNSET, service.builtin("assist"))
+      assert.are.same({}, env.commands)
     end)
 
     it("sends nothing for a target it refuses, and answers the form", function()
@@ -357,7 +546,23 @@ describe("the action service", function()
       assert.are.same({}, env.commands)
     end)
 
-    --[[ A press whose alias was never made leaves no packet for the queue to
+    it("keeps the target it had through one it refuses", function()
+      local service, env = world()
+      service.assist("Bob")
+      service.assist("Bob;quit")
+      service.fire(SLOT, {})
+      assert.are.same({ "input /assist Bob" }, env.commands)
+    end)
+
+    it("keeps a target to itself: another service has none", function()
+      local service = world()
+      service.assist("Bob")
+      local other, env = world()
+      other.fire(SLOT, {})
+      assert.are.same({}, env.commands)
+    end)
+
+    --[[ A press with no target to go at leaves no packet for the queue to
          write, so the press is written itself. ]]
     describe("in the queue's debug log", function()
       local function debugging()
@@ -370,18 +575,30 @@ describe("the action service", function()
         local service, env = debugging()
         service.fire({ type = "assist" }, { from = "hotbar 3:7" })
         service.fire({ type = "assist" }, {})
+        service.assist("Bob")
         service.builtin("assist")
         assert.are.same({
           "queue 0.00: assist pressed, hotbar 3:7",
           "queue 0.00: assist pressed",
+          "queue 0.00: assist target set: /assist Bob",
           "queue 0.00: assist pressed, //hud assist",
         }, env.debug_log)
       end)
 
-      it("writes the target the alias is pointed at", function()
+      it("writes a press that had no target to go at, whatever pressed it", function()
+        local service, env = debugging()
+        service.fire({ type = "assist" }, { from = "hotbar 3:7" })
+        service.builtin("assist")
+        assert.are.same({
+          "queue 0.00: assist pressed, hotbar 3:7",
+          "queue 0.00: assist pressed, //hud assist",
+        }, env.debug_log)
+      end)
+
+      it("writes the target it was given", function()
         local service, env = debugging()
         service.assist("<p1>")
-        assert.are.same({ "queue 0.00: assist alias set: /assist <p1>" }, env.debug_log)
+        assert.are.same({ "queue 0.00: assist target set: /assist <p1>" }, env.debug_log)
       end)
 
       it("writes nothing of a target it refused", function()
@@ -705,6 +922,52 @@ describe("the action service", function()
         env.now = 1
         service.tick()
         assert.are.equal('input /item "Tavnazian Ring" <me>', env.commands[2])
+      end)
+
+      --[[ The use goes when the enchantment comes up, as much as a minute
+           after the press, and only GearSwap reads an id (Kevin, 2026-11-25):
+           it goes under a word that names the mob it was pressed at. ]]
+      describe("an enchanted item aimed at a target", function()
+        local AIMED_RING = { type = "enchanteditem", action = "Tavnazian Ring", target = "t" }
+
+        -- Pressed at 99, with the ring on and still warming.
+        local function pressed_at_99()
+          local service, env = world()
+          quick_ring(env)
+          service.fire(AIMED_RING)
+          return service, env
+        end
+
+        local function warmed_up(service, env)
+          env.ext.usable = true
+          env.now = 1
+          service.tick()
+        end
+
+        it("is used as it was typed while its target stands", function()
+          local service, env = pressed_at_99()
+          warmed_up(service, env)
+          assert.are.equal('input /item "Tavnazian Ring" <t>', env.commands[2])
+        end)
+
+        it("is used under another word that names its target once <t> has moved on", function()
+          local service, env = pressed_at_99()
+          env.target = { id = 5 }
+          env.named.p1 = { id = 99 }
+          warmed_up(service, env)
+          assert.are.equal('input /item "Tavnazian Ring" <p1>', env.commands[2])
+        end)
+
+        it("is abandoned, releasing its hold, once no word names its target", function()
+          local service, env = pressed_at_99()
+          env.target = { id = 5 }
+          warmed_up(service, env)
+          assert.are.same({ "gs disable ring1", "gs enable ring1" }, env.commands)
+          assert.is_not_nil(
+            said(env):find("enchanted item abandoned - Tavnazian Ring lost its target", 1, true),
+            said(env)
+          )
+        end)
       end)
     end)
 
@@ -1368,15 +1631,42 @@ describe("the action service", function()
       assert.is_true(flashed)
     end)
 
-    it("pins a target at the press", function()
-      local service, env = queued()
-      env.target = { id = 99 }
-      start_cast(service)
-      service.fire({ type = "ma", action = "Cure", target = "t" }, {})
-      env.target = { id = 5 }
-      finish_cast(service)
-      past_the_lock(service, env)
-      assert.are.same({ 'input /ma "Cure" 99' }, env.commands)
+    --[[ An id in <t>'s place is GearSwap's alone to read (Kevin, 2026-11-25),
+         so what is held goes under a word the game reads itself. ]]
+    describe("a press held for a target", function()
+      local AT_TARGET = { type = "ma", action = "Cure", target = "t" }
+
+      -- Pressed at 99 in a cast, with that cast finished since.
+      local function held_at_99()
+        local service, env = queued()
+        env.target = { id = 99 }
+        start_cast(service)
+        service.fire(AT_TARGET, {})
+        finish_cast(service)
+        return service, env
+      end
+
+      it("goes as it was typed while its target stands", function()
+        local service, env = held_at_99()
+        past_the_lock(service, env)
+        assert.are.same({ 'input /ma "Cure" <t>' }, env.commands)
+      end)
+
+      it("goes under another word that names its target once <t> has moved on", function()
+        local service, env = held_at_99()
+        env.target = { id = 5 }
+        env.named.p1 = { id = 99 }
+        past_the_lock(service, env)
+        assert.are.same({ 'input /ma "Cure" <p1>' }, env.commands)
+      end)
+
+      it("goes nowhere once no word names its target", function()
+        local service, env = held_at_99()
+        env.target = { id = 5 }
+        past_the_lock(service, env)
+        assert.are.same({}, env.commands)
+        assert.is_nil(service.queue.held())
+      end)
     end)
 
     it("holds a slot with no target and sends it verbatim", function()
@@ -1420,6 +1710,7 @@ describe("the action service", function()
 
       it("opens over /ta while busy, holds at OK and casts when the lock clears", function()
         local service, env = queued()
+        env.named.lastst = { id = 12345 }
         finish_cast(service)
         service.fire(SHELL, {})
         assert.are.same({ "input /ta <stpc>" }, env.commands)
@@ -1428,17 +1719,48 @@ describe("the action service", function()
         assert.is_true(service.on_text("/ta 12345"), "OK never reaches the game")
         assert.are.same({ "input /ta <stpc>" }, env.commands, "held")
         past_the_lock(service, env)
-        assert.are.same({ "input /ta <stpc>", 'input /ma "Cure" 12345' }, env.commands)
+        assert.are.same({ "input /ta <stpc>", 'input /ma "Cure" <lastst>' }, env.commands)
       end)
 
       it("sends at OK when the lock cleared first", function()
         local service, env = queued()
+        env.named.lastst = { id = 12345 }
         finish_cast(service)
         service.fire(SHELL, {})
         service.on_text("/ta 777")
         past_the_lock(service, env)
         assert.is_true(service.on_text("/ta 12345"))
-        assert.are.same({ "input /ta <stpc>", 'input /ma "Cure" 12345' }, env.commands)
+        assert.are.same({ "input /ta <stpc>", 'input /ma "Cure" <lastst>' }, env.commands)
+      end)
+
+      it("casts on a party member under their own word", function()
+        local service, env = queued()
+        env.named.p3 = { id = 12345 }
+        service.fire(SHELL, {})
+        service.on_text("/ta 777")
+        service.on_text("/ta 12345")
+        assert.are.same({ "input /ta <stpc>", 'input /ma "Cure" <p3>' }, env.commands)
+      end)
+
+      it("casts a frame after OK where a word names the pick only by then", function()
+        local service, env = queued()
+        service.fire(SHELL, {})
+        service.on_text("/ta 777")
+        assert.is_true(service.on_text("/ta 12345"), "OK never reaches the game")
+        assert.are.same({ "input /ta <stpc>" }, env.commands)
+        env.named.lastst = { id = 12345 }
+        service.tick()
+        assert.are.same({ "input /ta <stpc>", 'input /ma "Cure" <lastst>' }, env.commands)
+      end)
+
+      it("casts nothing at a pick no word names", function()
+        local service, env = queued()
+        service.fire(SHELL, {})
+        service.on_text("/ta 777")
+        assert.is_true(service.on_text("/ta 12345"), "OK never reaches the game")
+        service.tick()
+        service.tick()
+        assert.are.same({ "input /ta <stpc>" }, env.commands)
       end)
 
       it("still flashes, the only sign the press was taken", function()
@@ -1685,8 +2007,9 @@ describe("the action service", function()
         env.target = { id = 99, in_party = true }
         finish_cast(service)
         service.fire(INVISIBLE)
+        assert.are.equal(99, service.queue.held().target)
         past_the_lock(service, env)
-        assert.are.same({ 'input /magic "Invisible" 99' }, env.commands)
+        assert.are.same({ 'input /magic "Invisible" <t>' }, env.commands)
       end)
 
       it("holds a consumable the ladder fell through to", function()
@@ -1961,6 +2284,7 @@ describe("the action service", function()
 
         it("says a step down made at a cursor's OK", function()
           local service, env = tiered("debug")
+          env.named.lastst = { id = 12345 }
           service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
           env.spell_recasts[259] = 20 * SECONDS
           service.on_text("/ta <stnpc>")
@@ -1994,9 +2318,10 @@ describe("the action service", function()
           env.spell_recasts[148] = 10 * SECONDS
           service.fire(FIRE_V, {})
           assert.are.same({}, env.commands)
-          assert.are.equal('input /ma "Fire IV" 99', service.queue.held().command)
+          assert.are.equal('input /ma "Fire IV" <t>', service.queue.held().command)
+          assert.are.equal(99, service.queue.held().target)
           past_the_lock(service, env)
-          assert.are.same({ 'input /ma "Fire IV" 99' }, env.commands)
+          assert.are.same({ 'input /ma "Fire IV" <t>' }, env.commands)
         end)
 
         it("waits for the spell that was pressed where its recast ends within the grace", function()
@@ -2004,18 +2329,18 @@ describe("the action service", function()
           finish_cast(service)
           env.spell_recasts[148] = 4 * SECONDS
           service.fire(FIRE_V, {})
-          assert.are.equal('input /ma "Fire V" 99', service.queue.held().command)
+          assert.are.equal('input /ma "Fire V" <t>', service.queue.held().command)
         end)
 
         it("puts a lower tier in the place of a held spell whose recast runs as the lock clears", function()
           local service, env = tiered("on")
           start_cast(service)
           service.fire(FIRE_V, {})
-          assert.are.equal('input /ma "Fire V" 99', service.queue.held().command)
+          assert.are.equal('input /ma "Fire V" <t>', service.queue.held().command)
           service.on_chunk(ACTION, "raw", act(4, 1))
           env.spell_recasts[148] = 8 * SECONDS
           past_the_lock(service, env)
-          assert.are.same({ 'input /ma "Fire IV" 99' }, env.commands)
+          assert.are.same({ 'input /ma "Fire IV" <t>' }, env.commands)
         end)
 
         it("waits at the release for a lower tier that is nearly ready, rather than pass it by", function()
@@ -2026,26 +2351,28 @@ describe("the action service", function()
           env.spell_recasts[148], env.spell_recasts[147] = 8 * SECONDS, 1.5 * SECONDS
           past_the_lock(service, env)
           assert.are.same({}, env.commands)
-          assert.are.equal('input /ma "Fire IV" 99', service.queue.held().command)
+          assert.are.equal('input /ma "Fire IV" <t>', service.queue.held().command)
           env.spell_recasts[147] = 0
           service.tick()
-          assert.are.same({ 'input /ma "Fire IV" 99' }, env.commands)
+          assert.are.same({ 'input /ma "Fire IV" <t>' }, env.commands)
         end)
 
         it("judges a cursor slot at OK, when its recast is known", function()
           local service, env = tiered("on")
+          env.named.lastst = { id = 12345 }
           service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
           assert.are.same({ "input /ta <stnpc>" }, env.commands)
           env.spell_recasts[259] = 20 * SECONDS
           service.on_text("/ta <stnpc>")
           service.on_text("/ta 777")
           assert.is_true(service.on_text("/ta 12345"))
-          assert.are.same({ "input /ta <stnpc>", 'input /ma "Sleep" 12345' }, env.commands)
+          assert.are.same({ "input /ta <stnpc>", 'input /ma "Sleep" <lastst>' }, env.commands)
         end)
       end)
 
       it("leaves a cursor slot alone at the press, whatever its recast is then", function()
         local service, env = tiered("debug")
+        env.named.lastst = { id = 12345 }
         env.spell_recasts[259] = 20 * SECONDS
         service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
         assert.are.same({ "input /ta <stnpc>" }, env.commands)
@@ -2053,33 +2380,36 @@ describe("the action service", function()
         service.on_text("/ta <stnpc>")
         service.on_text("/ta 777")
         service.on_text("/ta 12345")
-        assert.are.same({ "input /ta <stnpc>", 'input /ma "Sleep II" 12345' }, env.commands)
+        assert.are.same({ "input /ta <stnpc>", 'input /ma "Sleep II" <lastst>' }, env.commands)
         assert.is_nil(logged(env):find("down to", 1, true))
       end)
 
       it("sends a cursor's spell as pressed when OK comes just short of its recast, with nothing busy", function()
         local service, env = tiered("on")
+        env.named.lastst = { id = 12345 }
         service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
         env.spell_recasts[259] = 1 * SECONDS
         service.on_text("/ta <stnpc>")
         service.on_text("/ta 777")
         service.on_text("/ta 12345")
-        assert.are.same({ "input /ta <stnpc>", 'input /ma "Sleep II" 12345' }, env.commands)
+        assert.are.same({ "input /ta <stnpc>", 'input /ma "Sleep II" <lastst>' }, env.commands)
       end)
 
       it("keeps the target OK chose when a lower tier stands in at the release", function()
         local service, env = tiered("on")
+        env.named.lastst = { id = 12345 }
         start_cast(service)
         service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
         service.on_text("/ta <stnpc>")
         service.on_text("/ta 777")
         service.on_text("/ta 12345")
-        assert.are.equal('input /ma "Sleep II" 12345', service.queue.held().command)
+        assert.are.equal('input /ma "Sleep II" <stnpc>', service.queue.held().command)
+        assert.are.equal(12345, service.queue.held().target)
         service.on_chunk(ACTION, "raw", act(4, 1))
         env.spell_recasts[259] = 20 * SECONDS
         env.commands = {}
         past_the_lock(service, env)
-        assert.are.same({ 'input /ma "Sleep" 12345' }, env.commands)
+        assert.are.same({ 'input /ma "Sleep" <lastst>' }, env.commands)
       end)
 
       it("walks a ladder's pick down as it would a slot bound to that spell", function()
@@ -2108,10 +2438,11 @@ describe("the action service", function()
 
     it("sends an assist pressed in a lock at once, and leaves what is held alone", function()
       local service, env = queued()
+      service.assist("Bob")
       finish_cast(service)
       service.fire(CURE, {})
       service.fire({ type = "assist" }, {})
-      assert.are.same({ "assist" }, env.commands)
+      assert.are.same({ "input /assist Bob" }, env.commands)
       assert.are.equal(CURE_COMMAND, service.queue.held().command)
     end)
 

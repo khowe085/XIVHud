@@ -303,8 +303,8 @@ local function new(deps)
       end
       return { action = "action", verb = "warp", all = all }
     elseif verb == "assist" then
-      -- Bare, it is the press; a word after it is whom the alias assists,
-      -- kept as typed for the action service to judge.
+      -- Bare, it is the press; a word after it is whom a press assists from
+      -- then on, kept as typed for the action service to judge.
       if #words > 2 then
         return fail("'//hud assist [<target>]' takes one name, or one target like <p1>")
       end

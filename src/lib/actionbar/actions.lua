@@ -107,15 +107,16 @@ table.sort(BUILTIN_NAMES)
 -- command parser's concern.)
 local COLLISION_EXCEPTIONS = { open = true }
 
---[[ An `assist` slot runs the Windower alias of that name and holds no target
-     of its own: whom it assists is whatever the alias says, which
-     `//hud assist <target>` writes and anything else may. The target goes
-     into a console command, where a `;` would start another, so it is one
-     name or one target token. ]]
-local ASSIST_ALIAS = "assist"
+--[[ An `assist` slot holds no target of its own: whom it assists is what
+     `//hud assist <target>` last said, which the action service keeps while
+     the addon is loaded and answers through `deps.assist`, as the command
+     the press sends. No Windower alias stands between (Kevin, 2026-11-25).
+     The target goes into a console command, where a `;` would start
+     another, so it is one name or one target token. ]]
 local ASSIST_NAME = "^%w+$"
 local ASSIST_TOKEN = "^<%w+>$"
 local ASSIST_FORM = "assist <target> - one name, or one target like <p1>"
+local ASSIST_UNSET = "assist has no target yet - //hud assist <target>"
 
 local function target_suffix(target)
   if target == nil then
@@ -316,7 +317,11 @@ local function new(deps)
       return draw_plan(state)
     end
     if kind == "assist" then
-      return command_plan(ASSIST_ALIAS)
+      local command = deps.assist ~= nil and deps.assist() or nil
+      if command == nil then
+        return nil, ASSIST_UNSET
+      end
+      return command_plan(command)
     end
     if kind == "mr" then
       -- Mounted, the press dismounts, and getting out is never held up by
@@ -387,13 +392,13 @@ local function new(deps)
     return draw_plan_one_way()
   end
 
-  --- The console command that points the alias an `assist` slot runs at the
-  --- game's /assist of that target, or nil and the form a target takes.
-  function self.assist_alias(target)
+  --- The console command an `assist` press sends for that target, the game's
+  --- own /assist of it, or nil and the form a target takes.
+  function self.assist_command(target)
     if type(target) ~= "string" or not (target:match(ASSIST_NAME) or target:match(ASSIST_TOKEN)) then
       return nil, ASSIST_FORM
     end
-    return "alias " .. ASSIST_ALIAS .. " input /assist " .. target
+    return "input /assist " .. target
   end
 
   -- The command frontend: `//hud crossbar <name> [<arg>]` -> the same record
