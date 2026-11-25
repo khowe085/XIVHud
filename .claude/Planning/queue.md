@@ -1950,7 +1950,8 @@ does.
 `queue_spec` and `service_spec`. One more was found by the full run, in `crossbar_spec`
 ("pins a target token at the press, so a deferred use cannot wander"): it asserted the id
 form of the deferred item use, and now asserts that nothing is used at the new mob. It
-was changed on the same go-ahead and is flagged to him, being outside the two files named.
+was changed on the same go-ahead, being outside the two files named, and Kevin kept it
+when asked (2026-11-25: "Keep it").
 
 **Unverified in a live client:** all of it (rows 50 and 51).
 
