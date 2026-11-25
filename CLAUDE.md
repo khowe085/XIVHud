@@ -633,7 +633,16 @@ point's `no_packets`): it would see no cast and no lock, and a cursor slot's OK
 would reach the game as a `/ta`. Macros and typed commands are never held, but their
 packets count towards the lock. `<t>` and `<bt>` are pinned at the press with
 `pinned_command`; `<me>`, `<pet>` and a slot with no target are sent verbatim;
-what cannot be pinned (`<ft>`, `<pN>`) is not held. A `sneak`, `invisible` or
+what cannot be pinned (`<ft>`, `<pN>`) is not held. **A pinned id is GearSwap's to
+read, not the game's** (Kevin's run of 2026-11-25, row 49 of the plan): GearSwap takes
+a command naming a bare id off `outgoing text` and sends the packet itself, and where
+it does not the game answers the line "A command error occurred". His DRK had no gear
+file, so GearSwap handled nothing of the bar's, and the four weaponskills the queue
+released there were all lost that way; a cursor's OK is sent the same way. In `debug`
+the sign is how soon a release's packet leaves: within 0.04s where GearSwap sends it
+(284 of 286 that night), spread over the client's own 0.4s beat where the game reads
+the line (0.01 to 0.40s, all 32 on DRK). Whether a held press should go as typed while
+its target is unchanged is open, Kevin's call. A `sneak`, `invisible` or
 `reraise` slot walks its ladder at the press and the rung it picks is held exactly
 as a slot bound to that action would be (Kevin, 2026-10-31: an Invisible pressed in
 Sneak's lock was refused), so a rung gone stale by the release is the game's to
@@ -847,8 +856,10 @@ already out (299), enmity held (300) and a caster neither solo nor the party lea
 (301) - both lines of that run among them. GearSwap's own handler takes the last four
 for its newest command interrupted; the first two rest on that table alone. `debug`
 writes `refused, system message <id> (param <n>)`, with `no spell was waiting` after
-it where it freed nothing. **Unverified in a live client** (row 43), the reading of
-all six included.
+it where it freed nothing. **298 seen once in a live client** (Kevin's run of
+2026-11-24, row 43): a Trust cast with five out drew it 0.23s after it left, beside
+"You have called forth your maximum number of alter egos." in chat, and the wait
+ended there. The other five are unverified, their reading included.
 **`debug` also says your status and your target** (Kevin, 2026-11-23: "Yes, add them"),
 and nothing acts on either. Through the second of two Dynamis [D] runs (2026-11-22) he
 was left engaged with no battle target again and again, until he targeted a mob and
