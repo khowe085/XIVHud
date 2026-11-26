@@ -914,10 +914,10 @@ already out (299), enmity held (300) and a caster neither solo nor the party lea
 (301) - both lines of that run among them. GearSwap's own handler takes the last four
 for its newest command interrupted; the first two rest on that table alone. `debug`
 writes `refused, system message <id> (param <n>)`, with `no spell was waiting` after
-it where it freed nothing. **298 seen once in a live client** (Kevin's run of
-2026-11-24, row 43): a Trust cast with five out drew it 0.23s after it left, beside
-"You have called forth your maximum number of alter egos." in chat, and the wait
-ended there. The other five are unverified, their reading included.
+it where it freed nothing. **298 seen three times in a live client** (Kevin's runs of
+2026-11-24 and 2026-11-25, row 43): a Trust cast with five out drew it 0.23 to 0.59s
+after it left, beside "You have called forth your maximum number of alter egos." in
+chat, and the wait ended there. The other five are unverified, their reading included.
 **`debug` also says your status and your target** (Kevin, 2026-11-23: "Yes, add them"),
 and nothing acts on either. Through the second of two Dynamis [D] runs (2026-11-22) he
 was left engaged with no battle target again and again, until he targeted a mob and
