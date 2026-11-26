@@ -2198,8 +2198,8 @@ six with GearSwap on: buffs in Kamihr Drifts, then a Sortie (Outer Ra'Kaznar [U2
     one after another, two of them settled `at the release` of a tier held in a cast.
   - **Haste II to Haste, twice, both on Llara** (21:00:28 and 21:22:25): a round of Haste
     II on the party, the next one OK'd inside the last one's lock, its recast 4.43 and
-    4.57s off. The first gave her Haste; the second had "No effect", and he cast Haste II
-    on her 10s later.
+    4.57s off. The first cast gave Haste; the second had "No effect", and he cast Haste II
+    on Llara 10s later.
   - Gravity II to Gravity once (15.83s off, nothing busy), which landed.
   - Kevin, the same evening, of Refresh III on the run before: "I don't want Refresh III
     being downgraded to Refresh II, but I also don't want to build in a bunch of
