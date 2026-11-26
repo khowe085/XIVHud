@@ -990,7 +990,12 @@ if not safe_mode then
   -- bridge that would not load must not take them with it.
   local built, why = pcall(function()
     local service_actions = action_service ~= nil and action_service.actions or nil
-    local parser = require("lib/actionbar/commands")({ validate = service_actions and service_actions.validate })
+    local tiers = action_service ~= nil and action_service.spell_tier or nil
+    local parser = require("lib/actionbar/commands")({
+      validate = service_actions and service_actions.validate,
+      -- What a gesture's tier=auto is judged by: the tier walk's own answer.
+      tiered = tiers and tiers.has_lower,
+    })
     behavior_actions = { describe = parser.describe_action }
     if service_actions ~= nil then
       behavior_actions.parse = parser.parse_action

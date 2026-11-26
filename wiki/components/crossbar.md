@@ -173,10 +173,11 @@ right-hand cross is slots 1-4 and the left-hand cross 5-8.
 
 | Command | What it does |
 | --- | --- |
-| `//hud crossbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>]` | bind a slot, labelling it in the same command if you want |
+| `//hud crossbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>] [tier=auto]` | bind a slot, labelling it in the same command if you want |
 | `//hud crossbar unbind <address> [context=<layer>]` | clear a slot in one layer - the one `context=` names, or the job base without it |
 | `//hud crossbar alias <address> [<name>] [context=<layer>]` | change the label under a slot - omit `<name>` to clear it |
 | `//hud crossbar icon <address> [<icon>] [context=<layer>]` | change a slot's icon - omit `<icon>` to clear it |
+| `//hud crossbar tier <address> [auto\|off] [context=<layer>]` | let a slot's spell step down a tier when it cannot be cast, or stop it - see [Auto spell tier](../Home.md#auto-spell-tier). Without a word it says how the slot stands |
 | `//hud crossbar swap <address> <address>` | swap two slots, everything about them - every layer at once, so it takes no `context=`. Between a shared set and a job set, the base binding moves into or out of the shared store |
 | `//hud crossbar copy <JOB>` | replace this job's bindings with another job's |
 
@@ -296,7 +297,7 @@ from that:
   the line keeps every word up to it: `ct p pulling alias=Pull` says
   `/p pulling` under the label "Pull". (A `ct` line is written without its
   leading slash - the addon adds it.) A line that needs a literal `alias=`,
-  `icon=` or `context=` in it must be quoted as a whole: `ct "p alias=x"` says
+  `icon=`, `context=` or `tier=` in it must be quoted as a whole: `ct "p alias=x"` says
   `/p alias=x`, where the unquoted `ct p alias=x` says `/p` under the label "x".
 - **A quoted phrase inside a `ct` or `ex` line is kept**: `ct ma "Cure IV" <t>`
   says `/ma "Cure IV" <t>`, and `ex gs c "set TP"` runs with its grouping
@@ -324,6 +325,15 @@ marker (`alias 1L3 alias=AW` would store the label `alias=AW`). Both need
 something in the slot to act on - on an empty one they report an error rather
 than doing nothing quietly, and `icon` says so too if it cannot find the name
 you gave it.
+
+**`tier=auto`** is a fourth marker, and it is not a label: it lets that
+binding's spell step down a tier when it cannot be cast, Fire V to Fire IV
+(see [Auto spell tier](../Home.md#auto-spell-tier)). It goes among the labels
+in any order - `bind 1L1 ma "Fire V" stnpc alias=Nuke tier=auto` - and the
+`tier` verb sets or clears it on a slot that is already bound, with the same
+`context=`: `tier 1L1 auto`, `tier 1L1 off`. Binding a slot again without it
+clears it. It is refused on anything but a spell, and on a spell with no
+lower tier that could take its place.
 
 **`<icon>` is the name of a picture, not an action.** The addon's own icons are
 named by their path inside its icon pack, so a top-level one is a bare word -
@@ -634,6 +644,13 @@ In edit mode:
   layer holds shows as you open its menu.
 - **You must pick a layer before the action list appears.** Nothing is
   assumed, and the layer you are editing is named on screen the whole time.
+- A layer's row that holds **a spell with a lower tier** has `auto tier [ off ]`
+  at its right end. Clicking it lets that binding step down a tier when the
+  spell cannot be cast, and clicking again stops it (see
+  [Auto spell tier](../Home.md#auto-spell-tier)). It changes nothing else
+  about the binding and picks no layer: click anywhere else on the row for
+  that. The window comes back to this list after every bind, so the switch for
+  what you just bound is in front of you.
 - Picking a layer row also **previews the crossbar as if that buff were up**, so
   you can build your Addendum side while looking at your Addendum side. The
   preview stands in for your real buffs, so a context that really is up goes

@@ -38,7 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local READ_FAILED = "gamepad: data/gamepad.lua could not be read - fix it first"
 local SPACED = "gamepad: a gesture is one word with no spaces, like lt+y"
-local BIND_FORM = "gamepad bind <gesture> <type> [<action>] [<target>] - or a behavior, or key <key name>;"
+local BIND_FORM = "gamepad bind <gesture> <type> [<action>] [<target>] [tier=auto] - or a behavior, or key <key name>;"
   .. " a gesture is buttons joined by +, the trigger last, like lt+y"
 local UNBIND_FORM = "gamepad unbind <gesture>"
 -- Asked every frame the bridge is on, so nothing is built to say nothing.

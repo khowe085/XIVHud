@@ -123,6 +123,12 @@ local function build_stubs(boot, options)
           return kind ~= "nope"
         end,
       }
+      -- The tier walk's answer for a binding's spell: nothing is under Fire.
+      service.spell_tier = {
+        has_lower = function(record)
+          return record.type == "ma" and record.action ~= "Fire"
+        end,
+      }
       boot.service = service
       return service
     end,

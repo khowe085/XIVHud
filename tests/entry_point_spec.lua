@@ -148,6 +148,17 @@ describe("entry point", function()
       assert.is_true(actions.validate({ type = "ma", action = "Cure" }))
     end)
 
+    it("has a gesture's tier=auto judged by the action service's own tier walk", function()
+      local actions = boot.core_deps.behavior_actions
+      assert.are.same(
+        { type = "ma", action = "Fire V", target = "t", tier = "auto" },
+        actions.parse({ "ma", "Fire V", "<t>", "tier=auto" })
+      )
+      local record, why = actions.parse({ "ma", "Fire", "tier=auto" })
+      assert.is_nil(record)
+      assert.are.equal("Fire has no tier under it - drop tier=auto", why)
+    end)
+
     it("asks core whether each behaviour can work, to name the map's dead entries", function()
       boot = harness.boot({ xinput = fake_module(0) })
       boot.gamepad_config = { enabled = true, map = { a = "nope" } }

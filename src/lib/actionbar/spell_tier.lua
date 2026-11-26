@@ -31,6 +31,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      never to one above it. With no tier that can go, the spell goes as it
      was pressed and the game refuses it.
 
+     Which spells step down is each BINDING's to say (Kevin, 2026-11-25):
+     `tier = "auto"` in its record, which the tier that stands in carries on.
+     A binding without it goes as it is, and so does a ladder's pick, which
+     is no binding of a spell.
+
      A tier is read off the spell's own name: a Roman numeral on the end, the
      first tier carrying none, or ninjutsu's Ichi, Ni and San. A Trust is
      never tiered, Shantotto II being no tier of Shantotto, and a tier that
@@ -47,12 +52,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      the better one. MP is not asked: Penury, Light Arts and gear cut the cost below
      what the resource says.
 
-     Pure: the setting, the spell lookup, the client reads and the queue's
+     Pure: the spell lookup, the client reads and the queue's
      two answers arrive as deps, with `note` for the queue's debug log and
      what a line there quotes: a recast's seconds (`recast_left`) and what
      the queue is busy with (`doing`). ]]
 
 local castable = require("lib/actionbar/castable")
+
+-- What a binding's `tier` holds where it steps down. Anything else is off:
+-- it changes which spell a press casts.
+local AUTO = "auto"
 
 -- The numeral each tier is written with. The first is written with none.
 local NUMERALS = { "", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X" }
@@ -114,14 +123,29 @@ end
 local function new(deps)
   local self = {}
 
-  function self.defaults()
-    return { autospelltier = false }
-  end
-
-  --- Only an explicit `true` is on: it changes which spell a press casts.
-  function self.enabled()
-    local live = deps.config ~= nil and deps.config() or nil
-    return type(live) == "table" and live.autospelltier == true
+  --[[ Whether a binding's spell has a tier under it that could stand in for
+       it, which is what makes the flag worth offering. Asked of the
+       resources alone, so it says nothing of now. False for anything but a
+       spell, and nil for a name the resources do not know, which is not for
+       this to refuse. ]]
+  function self.has_lower(record)
+    if type(record) ~= "table" or record.type ~= "ma" or type(record.action) ~= "string" then
+      return false
+    end
+    local spell = deps.find_spell(record.action)
+    if type(spell) ~= "table" or type(spell.en) ~= "string" then
+      return nil
+    end
+    if spell.type == "Trust" then
+      return false
+    end
+    for _, name in ipairs(tiers_under(spell.en)) do
+      local entry = deps.find_spell(name)
+      if type(entry) == "table" and type(entry.en) == "string" and aims_as(entry, spell) then
+        return true
+      end
+    end
+    return false
   end
 
   local function note(line)
@@ -166,7 +190,7 @@ local function new(deps)
        spell kept though its recast runs says so too, so a log shows the walk
        was asked. ]]
   function self.lower(record, where)
-    if not self.enabled() or type(record) ~= "table" or record.type ~= "ma" or type(record.action) ~= "string" then
+    if type(record) ~= "table" or record.tier ~= AUTO or record.type ~= "ma" or type(record.action) ~= "string" then
       return record
     end
     local spell = deps.find_spell(record.action)
@@ -218,7 +242,7 @@ local function new(deps)
         -- which the name lookup leaves out.
         said[#said + 1] = name .. " no such spell"
       else
-        local lowered = { type = "ma", action = entry.en, target = record.target }
+        local lowered = { type = "ma", action = entry.en, target = record.target, tier = record.tier }
         local passed = uncastable(entry)
         if passed == nil and not aims_as(entry, spell) then
           passed = "cannot be aimed as " .. spell.en

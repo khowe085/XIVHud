@@ -1,7 +1,7 @@
 # Auto spell tier
 
-`//hud autospelltier on` makes a tiered spell fall back to a lower tier when
-it cannot be cast. The rules are under
+A binding marked `tier=auto` makes its spell fall back to a lower tier when
+it cannot be cast. The rules, and how to mark a binding, are under
 [Auto spell tier](Home.md#auto-spell-tier) on the home page. This page has
 what to look for in the debug log, and the ladders it walks.
 

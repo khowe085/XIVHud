@@ -730,14 +730,14 @@ local function new(deps)
     return (recasts[entry.recast_id] or 0) / per_second
   end
 
-  --[[ AutoSpellTier (lib/actionbar/spell_tier): a spell that cannot go gives
-       way to a lower tier that can. It is walked wherever a spell's command
-       is settled - at a press, here, and by the queue at a cursor's OK and
-       at a held press's release - and what the queue would refuse a tier's
-       recast on is the queue's to say, so each is built over the other. ]]
+  --[[ AutoSpellTier (lib/actionbar/spell_tier): a spell whose binding says
+       `tier = "auto"` gives way, where it cannot go, to a lower tier that
+       can. It is walked wherever a spell's command is settled - at a press,
+       here, and by the queue at a cursor's OK and at a held press's release
+       - and what the queue would refuse a tier's recast on is the queue's
+       to say, so each is built over the other. ]]
   local queue
   local tiers = new_spell_tier({
-    config = config,
     find_spell = function(name)
       return self.find_resource("spells", name)
     end,
@@ -1450,7 +1450,6 @@ local function new(deps)
     return {
       delay = travel.defaults().delay,
       queue = queue.defaults().queue,
-      autospelltier = tiers.defaults().autospelltier,
     }
   end
 

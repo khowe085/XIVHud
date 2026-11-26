@@ -119,9 +119,6 @@ local HELP = {
   "  //hud queue lock [<kind> <seconds>]",
   "                            how long the queue waits after an action: spell,",
   "                            weaponskill, ability, item, ranged or interrupted",
-  "  //hud autospelltier [on|off]",
-  "                            cast the next tier down when a tiered spell is on",
-  "                            its recast or out of reach: Fire V, then Fire IV",
   "  //hud gamepad [on|off]     whether an XInput pad's gestures drive their",
   "                            behaviors, which pad is read, and the map's problems",
   "  //hud gamepad list | bind <gesture> ... | unbind <gesture>",
@@ -1728,34 +1725,15 @@ local function new(deps)
     return usage
   end
 
-  -- Answers the switch as the walk itself reads it, so a hand-broken value
-  -- reports what is in force.
-  local function tune_autospelltier(words)
-    local usage = "autospelltier [on|off]"
-    if #words > 1 then
-      return usage
-    end
-    if words[1] ~= nil then
-      local on = parse_switch(words[1])
-      if on == nil then
-        return usage
-      end
-      core_config().autospelltier = on
-      core_handle.save()
-    end
-    return "auto spell tier: " .. (deps.actions.spell_tier.enabled() and "on" or "off")
-  end
-
   local TUNERS = {
     delay = tune_delay,
     hidecutscene = tune_hidecutscene,
     queue = tune_queue,
-    autospelltier = tune_autospelltier,
     gamepad = tune_gamepad,
     keyboard = tune_keyboard,
   }
   -- The ones that are the action service's own tuning, and need it loaded.
-  local SERVICE_TUNERS = { delay = true, queue = true, autospelltier = true }
+  local SERVICE_TUNERS = { delay = true, queue = true }
 
   local function run_tune(action)
     -- The bridge's file and the keyboard map's are no character's, so they
@@ -1835,14 +1813,6 @@ local function new(deps)
             command = { "queue", "lock", lock },
           }
         end
-      end
-      if deps.actions.spell_tier ~= nil then
-        rows[#rows + 1] = {
-          label = "Auto spell tier",
-          kind = "toggle",
-          value = deps.actions.spell_tier.enabled(),
-          command = { "autospelltier" },
-        }
       end
     end
     rows[#rows + 1] = {

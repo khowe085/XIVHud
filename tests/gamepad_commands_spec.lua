@@ -5,7 +5,7 @@ local new_bar_commands = require("lib/actionbar/commands")
 
 local READ_FAILED = "gamepad: data/gamepad.lua could not be read - fix it first"
 local SPACED = "gamepad: a gesture is one word with no spaces, like lt+y"
-local BIND_FORM = "gamepad bind <gesture> <type> [<action>] [<target>] - or a behavior, or key <key name>;"
+local BIND_FORM = "gamepad bind <gesture> <type> [<action>] [<target>] [tier=auto] - or a behavior, or key <key name>;"
   .. " a gesture is buttons joined by +, the trigger last, like lt+y"
 
 describe("gamepad commands", function()
@@ -210,6 +210,21 @@ describe("gamepad commands", function()
       assert.are.same(
         { "gamepad: assist takes no action name or target - drop Bob" },
         commands.handle({ "bind", "lb+y", "assist", "Bob" })
+      )
+    end)
+
+    it("binds a spell flagged to step down a tier, and lists it so", function()
+      assert.are.same(
+        { "gamepad: bound lt+r3 to ma Fire V <stnpc> tier=auto" },
+        commands.handle({ "bind", "lt+r3", "ma", "Fire V", "<stnpc>", "tier=auto" })
+      )
+      assert.are.same({ type = "ma", action = "Fire V", target = "stnpc", tier = "auto" }, config.map["lt+r3"])
+      assert.is_not_nil(
+        table.concat(commands.handle({ "list" }), "\n"):find("\n  lt+r3 ma Fire V <stnpc> tier=auto", 1, true)
+      )
+      assert.are.same(
+        { "gamepad: only a spell steps down a tier - drop tier=auto" },
+        commands.handle({ "bind", "lt+r3", "open", "map", "tier=auto" })
       )
     end)
 

@@ -117,7 +117,7 @@ None of these needs a character logged in: one map serves every character.
 | `//hud gamepad list` | every gesture and what it does, written the way `bind` takes it |
 | `//hud gamepad bind <gesture> <behaviour>` | give a gesture a named behaviour: `bind a accept`, `bind lt crossbar.left` |
 | `//hud gamepad bind <gesture> key <key>` | have it hold a key for as long as it is held: `bind lt+l3 key f9` |
-| `//hud gamepad bind <gesture> <type> [<action>] [<target>]` | give it an action, in a slot's words: `bind lt+r3 ma "Cure IV" t` |
+| `//hud gamepad bind <gesture> <type> [<action>] [<target>] [tier=auto]` | give it an action, in a slot's words: `bind lt+r3 ma "Cure IV" t` |
 | `//hud gamepad unbind <gesture>` | take a gesture off the map, a shipped one included |
 
 `bind` replaces whatever the gesture did before. Every change is saved at once
@@ -187,7 +187,9 @@ as a slot's `bind` - see the crossbar's
 when the gesture is pressed, exactly as a slot holding it would: the
 [action queue](Home.md#the-action-queue) holds it through a cast, and a mount
 or a warp counts down first. `alias=`, `icon=` and `context=` belong to slots
-and are refused. As on a slot, the action's name is not checked: a misspelt one
+and are refused; `tier=auto` is taken, and lets that spell step down a tier
+when it cannot be cast (`bind lt+y ma "Fire V" stnpc tier=auto` - see
+[Auto spell tier](Home.md#auto-spell-tier)). As on a slot, the action's name is not checked: a misspelt one
 binds, and the game refuses it when pressed.
 
 The three differ in when they go. A key always goes - at the character

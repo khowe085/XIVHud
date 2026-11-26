@@ -136,10 +136,11 @@ there.
 | `//hud hotbar set <1-8>` | switch the active set (and so row 1) |
 | `//hud hotbar cycle` / `cycle back` | move to the next or previous set in the rotation |
 | `//hud hotbar list [<set>]` | list what is bound on this job, layer by layer |
-| `//hud hotbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>]` | bind a slot |
+| `//hud hotbar bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>] [tier=auto]` | bind a slot |
 | `//hud hotbar unbind <address> [context=<layer>]` | clear a slot in one layer - the one `context=` names, or the job base without it |
 | `//hud hotbar alias <address> [<name>] [context=<layer>]` | change the label under a slot; omit the name to clear it |
 | `//hud hotbar icon <address> [<icon>] [context=<layer>]` | change a slot's icon; omit it to clear |
+| `//hud hotbar tier <address> [auto\|off] [context=<layer>]` | let a slot's spell step down a tier when it cannot be cast, or stop it (see [Auto spell tier](../Home.md#auto-spell-tier)). Without a word it says how the slot stands |
 | `//hud hotbar swap <address> <address>` | swap two slots, every layer at once |
 | `//hud hotbar share <set> on\|off` | share a set across every job, or keep it to this one |
 | `//hud hotbar cycle <set> drawn\|sheathed\|both\|none` | choose which rotations a set belongs to |
@@ -149,7 +150,7 @@ there.
 | `//hud show hotbar <bar>` / `//hud hide hotbar <bar>` | switch one row on or off |
 
 A set is a set whatever row draws it, so the binding verbs take no row word.
-The `<type>`, `<target>`, `alias=`, `icon=` and `context=` rules are the
+The `<type>`, `<target>`, `alias=`, `icon=`, `context=` and `tier=` rules are the
 crossbar's, described under [Binding](crossbar.md#binding),
 [Labels and icons](crossbar.md#labels-and-icons) and
 [Naming the layer](crossbar.md#naming-the-layer) on its page.

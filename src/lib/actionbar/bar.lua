@@ -96,6 +96,9 @@ local function new(deps)
   local roulette = service.roulette
   local skillchain = service.skillchain
   local actions = service.actions
+  -- Whether a binding's spell has a tier under it: what makes the tier flag
+  -- worth offering, to the CLI and the binder alike.
+  local tiered = service.spell_tier ~= nil and service.spell_tier.has_lower or nil
   local icon_for = actions.icon_for
 
   local function config()
@@ -275,6 +278,7 @@ local function new(deps)
     get_config = config,
     file_exists = file_exists,
     validate = actions.validate,
+    tiered = tiered,
     action_exists = function(kind, action)
       local table_name = RESOURCE_TABLES[kind]
       if resources == nil or table_name == nil then
@@ -830,6 +834,7 @@ local function new(deps)
     end,
     catalog = catalog,
     validate = actions.validate,
+    tiered = tiered,
     icon = function(record)
       local candidate = record ~= nil and self.pick_icon(record, meta_for(record), draw_state()) or nil
       return candidate ~= nil and ctx.asset(candidate.path) or nil

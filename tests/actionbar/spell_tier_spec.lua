@@ -39,8 +39,9 @@ end
 describe("the spell tier walk", function()
   local env, tier
 
+  -- A binding flagged to step down, which is the only kind the walk reads.
   local function fire(tier_name, target)
-    return { type = "ma", action = tier_name, target = target or "t" }
+    return { type = "ma", action = tier_name, target = target or "t", tier = "auto" }
   end
 
   --[[ The queue's two answers about a recast, by the spell's name. One in
@@ -49,9 +50,6 @@ describe("the spell tier walk", function()
        is not far off. ]]
   local function deps_over(by_name, overrides)
     local deps = {
-      config = function()
-        return env.config
-      end,
       find_spell = function(name)
         return by_name[name:lower()]
       end,
@@ -96,7 +94,6 @@ describe("the spell tier walk", function()
 
   before_each(function()
     env = {
-      config = { autospelltier = true },
       known = {},
       on_recast = {},
       nearly_ready = {},
@@ -108,28 +105,63 @@ describe("the spell tier walk", function()
     tier = build()
   end)
 
-  describe("the setting", function()
-    it("is on only where it is exactly true", function()
-      assert.is_true(tier.enabled())
-      for _, value in ipairs({ false, "on", 1 }) do
-        env.config.autospelltier = value
-        assert.is_false(tier.enabled(), tostring(value))
-      end
-      env.config = {}
-      assert.is_false(tier.enabled())
-      env.config = nil
-      assert.is_false(tier.enabled())
-    end)
-
-    it("ships off", function()
-      assert.are.same({ autospelltier = false }, tier.defaults())
-    end)
-
-    it("leaves a spell that cannot go alone while it is off", function()
-      env.config.autospelltier = false
+  describe("the binding's flag", function()
+    it("walks only a binding that says tier = auto, exactly", function()
       env.on_recast["Fire V"] = true
-      local pressed = fire("Fire V")
-      assert.are.equal(pressed, tier.lower(pressed))
+      for _, value in ipairs({ false, true, "on", "AUTO", 1 }) do
+        local pressed = { type = "ma", action = "Fire V", target = "t", tier = value }
+        assert.are.equal(pressed, tier.lower(pressed), tostring(value))
+      end
+      local plain = { type = "ma", action = "Fire V", target = "t" }
+      assert.are.equal(plain, tier.lower(plain))
+      assert.are.same({}, env.notes)
+    end)
+
+    it("is carried on by the tier that stands in, which may step down again", function()
+      env.on_recast["Fire V"] = true
+      local lowered = tier.lower(fire("Fire V"))
+      assert.are.equal("auto", lowered.tier)
+      env.on_recast["Fire IV"] = true
+      assert.are.same(fire("Fire III"), tier.lower(lowered))
+    end)
+  end)
+
+  describe("whether a binding has a tier to step down to", function()
+    it("is so for a spell with a tier under it, flagged or not", function()
+      assert.is_true(tier.has_lower(fire("Fire V")))
+      assert.is_true(tier.has_lower({ type = "ma", action = "fire ii" }))
+      assert.is_true(tier.has_lower(fire("Utsusemi: Ni", "me")))
+    end)
+
+    it("is not for a first tier, a Trust, or anything but a spell", function()
+      for _, record in ipairs({
+        fire("Fire"),
+        fire("Utsusemi: Ichi", "me"),
+        fire("Shantotto II", "me"),
+        { type = "ja", action = "Fire V" },
+        { type = "ma" },
+      }) do
+        assert.is_false(tier.has_lower(record), tostring(record.action))
+      end
+      assert.is_false(tier.has_lower(nil))
+    end)
+
+    it("is not where no tier under it can be aimed as it can", function()
+      assert.is_false(tier.has_lower(fire("Warp II", "p1")))
+      assert.is_false(tier.has_lower(fire("Phalanx II", "p1")))
+    end)
+
+    it("counts a tier past one the resources do not carry", function()
+      assert.is_true(tier.has_lower(fire("Gap III")))
+    end)
+
+    it("cannot say of a name the resources do not know", function()
+      assert.is_nil(tier.has_lower(fire("Fira V")))
+    end)
+
+    it("asks nothing of the client or the queue", function()
+      tier = build({ far_off = false, refused = false, get_spells = false, get_player = false })
+      assert.is_true(tier.has_lower(fire("Fire V")))
     end)
   end)
 
@@ -173,11 +205,14 @@ describe("the spell tier walk", function()
       assert.are.equal(second, tier.lower(second), "and Fire III is above the second")
     end)
 
-    it("keeps the press's target, or its lack of one, and nothing else of it", function()
+    it("keeps the press's target, or its lack of one, and its flag, and nothing else of it", function()
       env.on_recast["Fire V"] = true
-      local labelled = { type = "ma", action = "Fire V", target = "bt", alias = "Nuke", icon = "fire" }
-      assert.are.same({ type = "ma", action = "Fire IV", target = "bt" }, tier.lower(labelled))
-      assert.are.same({ type = "ma", action = "Fire IV" }, tier.lower({ type = "ma", action = "Fire V" }))
+      local labelled = { type = "ma", action = "Fire V", target = "bt", alias = "Nuke", icon = "fire", tier = "auto" }
+      assert.are.same({ type = "ma", action = "Fire IV", target = "bt", tier = "auto" }, tier.lower(labelled))
+      assert.are.same(
+        { type = "ma", action = "Fire IV", tier = "auto" },
+        tier.lower({ type = "ma", action = "Fire V", tier = "auto" })
+      )
     end)
 
     it("reads the name in any case and answers the resource's own spelling", function()
@@ -279,10 +314,10 @@ describe("the spell tier walk", function()
     it("is a spell alone", function()
       env.on_recast["Fire V"] = true
       for _, record in ipairs({
-        { type = "ja", action = "Fire V" },
-        { type = "ws", action = "Fire V", target = "t" },
-        { type = "ma" },
-        { type = "ma", action = 5 },
+        { type = "ja", action = "Fire V", tier = "auto" },
+        { type = "ws", action = "Fire V", target = "t", tier = "auto" },
+        { type = "ma", tier = "auto" },
+        { type = "ma", action = 5, tier = "auto" },
       }) do
         assert.are.equal(record, tier.lower(record))
       end

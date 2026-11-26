@@ -92,7 +92,8 @@ return {
 
 - **An entry does what a pad gesture does**: a [named behaviour](gamepad.md#what-a-gesture-can-do),
   `{ key = "<setkey name>" }` for a game key, or an action as a slot would
-  hold it.
+  hold it. A spell's action can carry `tier = "auto"` to step down a tier when
+  it cannot be cast (see [Auto spell tier](Home.md#auto-spell-tier)).
 - **Key names** are `a` to `z`, `0` to `9`, `f1` to `f12`, `semicolon`,
   `apostrophe`, `grave`, `backslash`, `equals`, `minus`, `comma`, `period`,
   `slash`, `lbracket`, `rbracket`, `space`, `tab`, `enter`, `escape`,

@@ -119,6 +119,15 @@ local BASE_DETAILS_WIDTH = 280
 local BASE_ICON_SIZE = 16
 -- Between an entry's icon and its label.
 local BASE_ICON_GAP = 4
+-- A layer row's tier toggle, at the row's far end.
+local BASE_TIER_WIDTH = 190
+
+--[[ What a binding's `tier` holds where its spell steps down a tier
+     (lib/actionbar/spell_tier), and the toggle a row draws for one that
+     can (Kevin, 2026-11-25): the flag is the binding's own, so it is set on
+     the row that shows the binding, with no step of its own. ]]
+local TIER_AUTO = "auto"
+local TIER_LABELS = { [true] = "auto tier [ on ]", [false] = "auto tier [ off ]" }
 -- A dragged slot's ghost: see-through, so the slot it is over still reads.
 local GHOST_ALPHA = 180
 
@@ -250,7 +259,7 @@ local function new(deps)
   local inside, draw_rows = chrome.inside, chrome.draw_rows
   -- The lengths at this screen's scale, set by apply_scale on every open.
   local ROW_HEIGHT, GAP
-  local CATEGORY_WIDTH, DETAILS_WIDTH, ICON_SIZE, ICON_GAP
+  local CATEGORY_WIDTH, DETAILS_WIDTH, ICON_SIZE, ICON_GAP, TIER_WIDTH
   local metrics = chrome.metrics()
   --[[ The entry list gives one row of the body back to the pager; the
        category column and the details pane use all of it.
@@ -385,6 +394,7 @@ local function new(deps)
     ROW_HEIGHT, GAP = scaled.row_height, scaled.gap
     CATEGORY_WIDTH, DETAILS_WIDTH = BASE_CATEGORY_WIDTH * scaled.scale, BASE_DETAILS_WIDTH * scaled.scale
     ICON_SIZE, ICON_GAP = BASE_ICON_SIZE * scaled.scale, BASE_ICON_GAP * scaled.scale
+    TIER_WIDTH = BASE_TIER_WIDTH * scaled.scale
   end
 
   --[[ Prims ---------------------------------------------------------------- ]]
@@ -722,12 +732,17 @@ local function new(deps)
         rows[#rows + 1] = { menu = item.menu, label = item.label, winner = winner, selected = selected }
       else
         local layer = found[item.source]
+        local record = layer ~= nil and layer.entry or nil
         rows[#rows + 1] = {
           source = item.source,
           label = item.label,
           text = item.text,
           entry = layer ~= nil and label_of(layer.entry) or "-",
-          record = layer ~= nil and layer.entry or nil,
+          record = record,
+          -- Only a spell with a tier under it has anything to step down to.
+          -- A binding that carries the flag regardless - the CLI takes it
+          -- for a name the resources do not know - must still be clearable.
+          tiered = record ~= nil and (record.tier == TIER_AUTO or (deps.tiered ~= nil and deps.tiered(record) == true)),
           winner = layer ~= nil and layer.active == true,
           selected = cursor ~= nil and cursor.source == item.source,
         }
@@ -744,6 +759,9 @@ local function new(deps)
     for index, row in ipairs(rows) do
       row.x, row.width = frame.list.x, frame.list.width
       row.y, row.height = frame.list.y + (index - 1) * ROW_HEIGHT, ROW_HEIGHT
+      if row.tiered then
+        row.toggle = { x = row.x + row.width - TIER_WIDTH, y = row.y, width = TIER_WIDTH, height = ROW_HEIGHT }
+      end
     end
     return { rows = rows }
   end
@@ -1069,6 +1087,12 @@ local function new(deps)
 
     local categories, rows, pager = {}, {}, nil
     local icons = {}
+    --[[ The layer step's tier toggles, by the row's index, so a row with none
+         leaves its prim hidden. They are drawn on the category column's
+         prims, which that step has no other use for: the row prims are
+         shared across the steps, and a set of their own would be prims no
+         other step could ever show. ]]
+    local tiers = {}
     if layer_view ~= nil then
       for index, row in ipairs(layer_view.rows) do
         local tail = row.menu ~= nil and " >" or (": " .. row.entry)
@@ -1077,6 +1101,10 @@ local function new(deps)
           x = row.x,
           y = row.y,
         }
+        if row.toggle ~= nil then
+          -- Anything but the walk's own word is off, as the walk reads it.
+          tiers[index] = { text = TIER_LABELS[row.record.tier == TIER_AUTO], x = row.toggle.x, y = row.toggle.y }
+        end
       end
     elseif catalog_view ~= nil then
       for index, category in ipairs(catalog_view.categories) do
@@ -1113,7 +1141,7 @@ local function new(deps)
         rect = target_view.pager,
       }
     end
-    draw_rows(prims.categories, categories)
+    draw_rows(prims.categories, layer_view ~= nil and tiers or categories)
     draw_rows(prims.entries, rows)
     for index, prim in ipairs(prims.entry_icons) do
       local entry = icons[index]
@@ -1200,6 +1228,11 @@ local function new(deps)
       end
       if layer_view ~= nil then
         for index, row in ipairs(layer_view.rows) do
+          -- The toggle before the row it lies on: the rest of the row is
+          -- still the way into the catalog.
+          if inside(x, y, row.toggle) then
+            return { kind = "tier", row = row, rect = row.toggle }
+          end
           if inside(x, y, row) then
             return { kind = "row", index = index, row = row, rect = row }
           end
@@ -1349,6 +1382,29 @@ local function new(deps)
     changed()
   end
 
+  --- Flip a binding's tier flag where it stands: its own layer's entry,
+  --- written back with nothing else of it touched, and no layer picked.
+  local function toggle_tier(row)
+    local bindings = model()
+    local address = window ~= nil and window.address or slot
+    if bindings == nil or address == nil or type(row.record) ~= "table" then
+      return
+    end
+    local record = copy_record(row.record)
+    local on = record.tier ~= TIER_AUTO
+    record.tier = on and TIER_AUTO or nil
+    local wrote, err = bindings.bind(address_for(row.source, address.set), address.side, address.slot, record)
+    if wrote == nil then
+      say(bar_name .. ": " .. tostring(err))
+      return
+    end
+    -- By the spell's own name: what steps down is the spell, whatever the
+    -- slot calls it.
+    local told = "auto tier " .. (on and "on" or "off") .. " for " .. tostring(record.action)
+    say(bar_name .. ": " .. told .. " -> " .. address_text(address, row.label))
+    changed()
+  end
+
   local function clear_layer(address)
     local bindings = model()
     -- With no layer selected there is nothing to clear, so the gesture is a
@@ -1481,6 +1537,8 @@ local function new(deps)
       close_panel()
     elseif target.kind == "slot" then
       select_slot(target)
+    elseif target.kind == "tier" then
+      toggle_tier(target.row)
     elseif target.kind == "row" and target.row ~= nil and target.row.menu ~= nil then
       layer_path[#layer_path + 1] = target.row.menu
       details, hovered = nil, nil

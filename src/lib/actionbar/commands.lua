@@ -117,6 +117,9 @@ local CYCLE_ORDER = { "both", "drawn", "sheathed", "none" }
      their unspaced pipe, `on|off`, because that is what they are. Built per
      bar: the name is the bar's, the address form its grammar's, and the two
      view verbs are the crossbar's alone. ]]
+local BIND_FORM = "<address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>] [tier=auto]"
+local TIER_FORM = "tier <address> [auto|off] [context=<layer>]"
+
 local function help_lines(name, grammar, with_views, extra)
   local hud = "  //hud " .. name
   local lines = {
@@ -135,11 +138,11 @@ local function help_lines(name, grammar, with_views, extra)
   for _, line in ipairs(extra or {}) do
     lines[#lines + 1] = hud .. " " .. line
   end
-  lines[#lines + 1] = hud
-    .. " bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>]"
+  lines[#lines + 1] = hud .. " bind " .. BIND_FORM
   lines[#lines + 1] = hud .. " unbind <address> [context=<layer>]"
   lines[#lines + 1] = hud .. " alias <address> [<name>] [context=<layer>] - omit the name to clear"
   lines[#lines + 1] = hud .. " icon <address> [<name>] [context=<layer>] - omit the name to clear"
+  lines[#lines + 1] = hud .. " " .. TIER_FORM .. " - a spell that cannot go casts the next tier down"
   lines[#lines + 1] = hud .. " swap <address> <address>"
   if with_views then
     lines[#lines + 1] = hud .. " view <wxhb-L|wxhb-R|exp-LR|exp-RL> <set><L|R>"
@@ -171,6 +174,13 @@ local NO_ACTION_TYPES =
 -- Types whose action IS the rest of the line: a chat line or a console
 -- command may end in anything, so no target word is split off it.
 local WHOLE_LINE_TYPES = { ct = true, ex = true }
+
+-- Whether a type could have been given a target at all, which decides how a
+-- target word inside a label reads: a late aim on the types that take one,
+-- an ordinary word of the alias on the types that do not.
+local function takes_target(kind)
+  return kind == "ra" or not (NO_ACTION_TYPES[kind] or WHOLE_LINE_TYPES[kind] or kind == "open" or kind == "jc")
+end
 
 --[[ FFXI's target tokens. The grammar is `<type> [<action>] [<target>]` over
      words Windower already split on spaces, and an action name may be
@@ -295,14 +305,33 @@ local function join(words, from, to)
   return table.concat(kept, " ")
 end
 
---[[ The label markers, `alias=`, `icon=` and `context=`. The value one
-     opens runs to the next marker or the end of the line, which makes
+--[[ The label markers, `alias=`, `icon=`, `context=` and `tier=`. The value
+     one opens runs to the next marker or the end of the line, which makes
      `alias="My Alias"` read the same however the client hands it over: as
      one argument with the quotes stripped (what a live client does, settled
      2026-08-30), as two with the quotes still on, or as two bare words. The
      addon has no say in which of those it gets, and quotes alone -- the
      grammar this replaced -- survive none of them. ]]
-local LABEL_MARKERS = { alias = true, icon = true, context = true }
+local LABEL_MARKERS = { alias = true, icon = true, context = true, tier = true }
+
+--[[ What a binding's `tier` holds where its spell steps down a tier
+     (lib/actionbar/spell_tier), and the word `tier=` sets it with. ]]
+local TIER_AUTO = "auto"
+
+--- What a `tier=` value asks for: the flag, or nil for `off` and for none
+--- given. Answers false and why for a word that is neither.
+local function tier_word(value)
+  if value == nil then
+    return nil
+  end
+  local word = value:lower()
+  if word == "off" then
+    return nil
+  elseif word == TIER_AUTO then
+    return TIER_AUTO
+  end
+  return false, "tier=auto or tier=off, not tier=" .. value
+end
 
 --- The field a word opens a label for and the first of its value, or nil.
 --- Matched case-insensitively, exactly as every verb and component name is.
@@ -381,7 +410,7 @@ local function take_labels(words, from, targetable, targeted)
       -- Unreachable from `bind`, which starts at a marker and lets every
       -- value run to the next one. Answering rather than assuming keeps a
       -- later caller from dropping words in silence.
-      return nil, "a label starts at alias=, icon= or context= - drop " .. join(words, index)
+      return nil, "a label starts at alias=, icon=, context= or tier= - drop " .. join(words, index)
     end
     local stop = index
     while stop < #words and label_marker(words[stop + 1]) == nil do
@@ -862,7 +891,39 @@ local function new(deps)
     if record.icon ~= nil then
       parts[#parts + 1] = 'icon="' .. tostring(record.icon) .. '"'
     end
+    if record.tier == TIER_AUTO then
+      parts[#parts + 1] = "tier=" .. TIER_AUTO
+    end
     return table.concat(parts, " ")
+  end
+
+  --- Why a record cannot be flagged to step down a tier, or nil where it
+  --- can - and where nothing can say what is under its spell.
+  local function tier_complaint(record)
+    if record.type ~= "ma" then
+      return "only a spell steps down a tier"
+    end
+    if deps.tiered ~= nil and deps.tiered(record) == false then
+      return tostring(record.action) .. " has no tier under it"
+    end
+    return nil
+  end
+
+  --- Put a `tier=` marker's flag on a record just parsed. Answers why not,
+  --- for a value that is neither word and for a record that cannot carry it.
+  local function flag_tier(record, value)
+    local flag, complaint = tier_word(value)
+    if flag == false then
+      return complaint
+    end
+    if flag ~= nil then
+      local refusal = tier_complaint(record)
+      if refusal ~= nil then
+        return refusal .. " - drop tier=" .. value
+      end
+    end
+    record.tier = flag
+    return nil
   end
 
   --[[ Three answers, not two: the dep says true (a real action), false
@@ -983,13 +1044,10 @@ local function new(deps)
     return " - try it " .. table.concat(ways, " or ")
   end
 
-  --- `bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>]`.
+  --- `bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>] [tier=auto]`.
   local function bind(args)
     if #args < 3 then
-      return hint(
-        "bind <address> <type> [<action>] [<target>] [alias=<name>] [icon=<name>] [context=<layer>] - an address is "
-          .. ADDRESS_FORM
-      )
+      return hint("bind " .. BIND_FORM .. " - an address is " .. ADDRESS_FORM)
     end
     local address, side, slot = parse_address(args[2])
     if address == nil then
@@ -1004,22 +1062,21 @@ local function new(deps)
          name. ]]
     local labels_at = labels_begin(rest)
     local head = slice(rest, 1, labels_at - 1)
-    -- Whether a target could have been given at all, which decides how a
-    -- target word inside a label reads: a late aim on the types that take
-    -- one, an ordinary word of the alias on the types that do not.
-    local targetable = kind == "ra"
-      or not (NO_ACTION_TYPES[kind] or WHOLE_LINE_TYPES[kind] or kind == "open" or kind == "jc")
     local labelled = has_alias(rest, labels_at)
     local record, absorbed, record_complaint = parse_record(kind, head, not labelled, bar_name)
     if record == nil then
       return hint(record_complaint)
     end
     if labels_at <= #rest then
-      local labels, labels_complaint = take_labels(rest, labels_at, targetable, record.target ~= nil)
+      local labels, labels_complaint = take_labels(rest, labels_at, takes_target(kind), record.target ~= nil)
       if labels == nil then
         return hint(labels_complaint)
       end
       record.alias, record.icon = labels.alias or record.alias, labels.icon
+      local tier_refusal = flag_tier(record, labels.tier)
+      if tier_refusal ~= nil then
+        return hint(tier_refusal)
+      end
     end
     --[[ A weaponskill belongs to ONE weapon type, the resources' own, and
          is filed there (Kevin, 2026-10-13) - never the one in hand, since a
@@ -1132,16 +1189,31 @@ local function new(deps)
     if type(words) ~= "table" or #words == 0 then
       return nil, "an empty action"
     end
-    local rest = slice(words, 2)
-    if labels_begin(rest) <= #rest then
-      return nil, "alias=, icon= and context= need a slot - drop them"
+    local kind, rest = words[1]:lower(), slice(words, 2)
+    local labels_at = labels_begin(rest)
+    -- Of the markers only tier= says something of the action itself.
+    for index = labels_at, #rest do
+      local field = label_marker(rest[index])
+      if field ~= nil and field ~= "tier" then
+        return nil, "alias=, icon= and context= need a slot - drop them"
+      end
     end
-    local record, _, complaint = parse_record(words[1]:lower(), rest, false, bar_name)
+    local record, _, complaint = parse_record(kind, slice(rest, 1, labels_at - 1), false, bar_name)
     if record == nil then
       return nil, complaint
     end
     -- A label is a slot's to show, and `jc` writes its sub job as one.
     record.alias = nil
+    if labels_at <= #rest then
+      local labels, labels_complaint = take_labels(rest, labels_at, takes_target(kind), record.target ~= nil)
+      if labels == nil then
+        return nil, labels_complaint
+      end
+      local tier_refusal = flag_tier(record, labels.tier)
+      if tier_refusal ~= nil then
+        return nil, tier_refusal
+      end
+    end
     local ok, why = deps.validate(record)
     if ok == nil then
       return nil, why
@@ -1186,52 +1258,69 @@ local function new(deps)
     return hint("unbound " .. address_label(address, side, slot, layer)), false, true
   end
 
-  --[[ `alias` and `icon`: per-entry overrides, not separate state. Both read
-       the addressed layer's own entry, write one field of it and put it
-       back through bind, so a context= means the same thing it does
-       everywhere else. Omitting the final argument clears the override. ]]
-  local function override(args, field, value, check, context)
+  --[[ `alias`, `icon` and `tier`: per-entry overrides, not separate state.
+       Each reads the addressed layer's own entry, writes one field of it
+       and puts it back through bind, so a context= means the same thing it
+       does everywhere else. ]]
+
+  --- The entry an override's address names and where it is, or nil and the
+  --- reply saying why there is none - to give `field` to, where one is to
+  --- be written.
+  local function addressed(args, context, field)
     local address, side, slot = parse_address(args[2])
     if address == nil then
-      return side
+      return nil, side
     end
     if context.repeated ~= nil then
-      return hint("one context= only - drop " .. context.repeated)
+      return nil, hint("one context= only - drop " .. context.repeated)
     end
     local layer, layer_complaint = resolve_layer(context.found, context.value)
     if layer == false then
-      return hint(layer_complaint)
+      return nil, hint(layer_complaint)
     end
     local entry, err = bindings().entry_at(set_arg(address, layer), side, slot)
     if entry == nil then
       if err ~= nil then
-        return hint(err)
+        return nil, hint(err)
       end
-      return hint(
-        "nothing bound at "
-          .. address_label(address, side, slot, layer)
-          .. " to give "
-          .. field
-          .. " to"
-          .. held_hint(address, side, slot)
-      )
+      local wanted = field ~= nil and (" to give " .. field .. " to") or ""
+      return nil,
+        hint(
+          "nothing bound at " .. address_label(address, side, slot, layer) .. wanted .. held_hint(address, side, slot)
+        )
+    end
+    return entry,
+      {
+        set = set_arg(address, layer),
+        side = side,
+        slot = slot,
+        label = address_label(address, side, slot, layer),
+      }
+  end
+
+  --- Write one field of the addressed entry; a nil value clears it. `check`
+  --- is asked of the entry first, and answers the reply that refuses it.
+  local function override(args, field, value, check, context)
+    local entry, at = addressed(args, context, field)
+    if entry == nil then
+      return at
     end
     -- Value checks run AFTER the address does: "no job loaded yet" and
     -- "nothing bound there" are the more fundamental refusals, and a user
     -- who sees the icon complaint first would go hunting for the wrong bug.
     if check ~= nil then
-      local complaint_text = check()
+      local complaint_text = check(entry)
       if complaint_text ~= nil then
         return complaint_text
       end
     end
     entry[field] = value
-    local wrote, write_err = bindings().bind(set_arg(address, layer), side, slot, entry)
+    local wrote, write_err = bindings().bind(at.set, at.side, at.slot, entry)
     if wrote == nil then
       return hint(write_err)
     end
     local phrase = value == nil and (field .. " cleared on ") or (field .. " '" .. value .. "' on ")
-    return hint(phrase .. address_label(address, side, slot, layer)), false, true
+    return hint(phrase .. at.label), false, true
   end
 
   local function alias(args)
@@ -1265,6 +1354,34 @@ local function new(deps)
     return override(args, "icon", name, function()
       return icon_complaint(name)
     end, { found = has_context, value = context_value, repeated = repeated })
+  end
+
+  --[[ `tier <address> [auto|off] [context=<layer>]`: whether the addressed
+       binding's spell steps down a tier where it cannot go (Kevin,
+       2026-11-25). With no word it says how the binding stands. ]]
+  local function tier(args)
+    if #args < 2 then
+      return hint(TIER_FORM)
+    end
+    local words, has_context, context_value, repeated = extract_context(args, 3)
+    local context = { found = has_context, value = context_value, repeated = repeated }
+    if #words == 0 then
+      -- Only asked how it stands: an empty slot is no refused write.
+      local entry, at = addressed(args, context)
+      if entry == nil then
+        return at
+      end
+      return hint("tier is " .. (entry.tier == TIER_AUTO and TIER_AUTO or "off") .. " on " .. at.label)
+    end
+    local flag = tier_word(words[1])
+    if #words > 1 or flag == false then
+      return hint(TIER_FORM)
+    end
+    -- Clearing is never refused: a flag nothing reads is one worth dropping.
+    return override(args, "tier", flag, flag ~= nil and function(entry)
+      local refusal = tier_complaint(entry)
+      return refusal ~= nil and hint(refusal) or nil
+    end or nil, context)
   end
 
   --[[ `swap <address> <address>` -- both addresses' ENTIRE
@@ -1580,6 +1697,7 @@ local function new(deps)
     unbind = unbind,
     alias = alias,
     icon = icon,
+    tier = tier,
     swap = swap,
     list = list,
     view = with_views and view or nil,
