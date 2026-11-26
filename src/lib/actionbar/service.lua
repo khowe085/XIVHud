@@ -138,8 +138,9 @@ local PINNED_TARGETS = { t = true, bt = true }
      first. <bt> and <ht> are not among them: Windower's reading of each is
      "not guaranteed to return the same mob" as the game's (the wiki's FFXI
      Functions page), so only a slot typed with <bt> ever goes under it.
-     UNVERIFIED in a live client: that <lastst> takes a cursor's pick whose
-     line the queue kept from the game. ]]
+     <lastst> takes a cursor's pick whose line the queue kept from the game,
+     by the frame after its OK (seen in a live client with GearSwap on,
+     2026-11-25; UNVERIFIED with it off). ]]
 local NAMING_TARGETS = {
   "me",
   "lastst",

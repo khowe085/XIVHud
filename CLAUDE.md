@@ -572,9 +572,13 @@ and others, 37 in all) GearSwap cast the next tier down in the press's place ins
 aborting; held, such a press now waits for the tier that was pressed, as one in a lock
 always did. One 0.7s or less from ready still goes as
 it is (Kevin's pick), since 13 of 13 with 0.73s or less left went and started, and one
-more than two seconds off goes out as before. **Unverified in a live client** (row 53 of
-the plan), and for an ability: GearSwap aborts one above 0.5s, so an ability 0.5 to 0.7s
-from ready is still lost as it was. **The grace is unverified in a live client at two seconds** (row 34 of the plan). The
+more than two seconds off goes out as before. **Seen in a live client for a cursor's OK**
+(Kevin's run of 2026-11-25 on `15738b7`, row 53 of the plan): three of Haste II 1.18 to
+1.62s from ready were held; two went when the recast read ready, 5.00 and 5.01s after the
+last finish, and started, and the third he OK'd again 0.05s from ready, which went 0.05s
+on. Three 0.57s or less from ready went as pressed and started, and GearSwap aborted no
+spell for its recast in the hour. **Unverified**: a plain press, and an ability: GearSwap
+aborts one above 0.5s, so an ability 0.5 to 0.7s from ready is still lost as it was. **The grace is unverified in a live client at two seconds** (row 34 of the plan). The
 `not held` and `dropped ... on recast` lines in `debug` say the recast and lock left, which
 is how the margin was measured. Three rules beside that one
 (Kevin, 2026-10-31): the four ABILITY recasts a charged family shares read as no
@@ -699,17 +703,20 @@ ready or 0.7s or less from it) or the recast
 outlasts it by more than two seconds. It is sent under a word that names the pick,
 as every pinned press is (above), never under the id (Kevin, 2026-11-25): `<lastst>`
 is the one a pick is expected under, `<me>` or a party member's own word where it is
-one of those, `<t>` where it is your target. Nothing says when the game takes a pick
-for `<lastst>` - before its line comes through `outgoing text`, or once the handler
-has answered - so a pick no word names at OK is judged on the next frame instead
-(`nothing names <id> yet` in `debug`), and goes nowhere if none names it then: one
-that would have gone at once is dropped there, and one a lock holds is dropped at its
-release. A pick of yourself went under `<me>` and landed, six of six (Kevin's run of
-2026-11-25 on `625391e`). **Unverified in a live client** (row 51 of the plan): that `<lastst>` takes a
-pick at all from a `/ta` line the queue kept from the game. If it does not, a cursor
-cast at a mob that is neither your target, your pet nor in your party or alliance
-goes nowhere, with GearSwap or without (Kevin's call, made knowing that), and `debug`
-says which it was. GearSwap sees nothing until the send, and reads the word as it
+one of those, `<t>` where it is your target. The game takes a pick for `<lastst>`
+only once the handler has answered (below), so a pick no word names at OK is judged
+on the next frame instead (`nothing names <id> yet` in `debug`), and goes nowhere if
+none names it then (Kevin's call): one that would have gone at once is dropped there,
+and one a lock holds is dropped at its release. A pick of yourself went under `<me>`
+and landed, six of six (Kevin's run of 2026-11-25 on `625391e`). **`<lastst>` does take
+a pick from a `/ta` line the queue kept from the game** (his run on `15738b7` the same
+evening, GearSwap on, row 51 of the plan): 67 sends under it each landed on its pick, 19
+of them a pick other than the one before - five party members in a row among them.
+Inside the OK it still names the pick before, so a new pick goes at once under `<t>`
+where it is your target or under a party member's own word (`<p1>`, once), and one no
+word names - a mob that is not your target, once - goes a frame later, under
+`<lastst>`. **Unverified**: with GearSwap off, and a pick of a player outside the party
+and alliance. GearSwap sees nothing until the send, and reads the word as it
 reads a macro's, `pretarget` and precast both. No load order
 is needed. Free counts too because a lock can begin after the press: GearSwap
 sends weaponskills of its own, and a Sleep II opened free and OK'd in one went
@@ -1077,7 +1084,14 @@ made again for the first's). Two more went down a tier on 2026-11-25, Refresh
 III to Refresh II at an OK in a lock and Haste II to Haste with nothing busy,
 and each was cast. The one-line wording was written once, on `625391e`
 (2026-11-25): `at OK: Refresh III on recast 2.63s, lock 0.44s; down to Refresh
-II`, cast on himself for "No effect", Refresh III being on him already.
+II`, cast on himself for "No effect", Refresh III being on him already. On
+`15738b7` the same evening twelve more were settled, ten at an OK and two at a
+release, Fire V walking down to Fire II through a mash; and Haste II went to
+Haste twice on one player in a round of Haste II, the second for "No effect"
+again. **Open** (Kevin, 2026-11-25): "I don't want Refresh III being downgraded
+to Refresh II, but I also don't want to build in a bunch of exceptions which
+are my preference" - he wants the step-down opt-in per BINDING in place of the
+one switch, and how the binder sets that is undecided.
 **Unverified**: a step-down at
 a plain press, a spell unavailable rather than on its recast, and that
 `requirements` bit 4 marks the black-side Addendum

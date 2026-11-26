@@ -1059,11 +1059,11 @@ local function new(deps)
        second answer is what to send now.
 
        The id is never sent on: only GearSwap reads one. The cast goes under a
-       word that names the pick (see aimed), and nothing says when the game
-       takes a pick for <lastst> - before its line comes through here, or once
-       this has answered - so a pick no word names yet is judged on the next
-       frame instead. UNVERIFIED in a live client: that it takes one at all
-       from a line this keeps from it. ]]
+       word that names the pick (see aimed), and the game takes a pick for
+       <lastst> only once this has answered - in here it still names the pick
+       before - so a pick no word names yet is judged on the next frame
+       instead (seen in a live client with GearSwap on, 2026-11-25; UNVERIFIED
+       with it off). ]]
   function self.on_text(text)
     if cursor == nil or type(text) ~= "string" then
       return false
