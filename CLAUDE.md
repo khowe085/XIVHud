@@ -560,7 +560,10 @@ read as idle, a mash of the slot went out beside it): a newer one replaces it, u
 its own recast runs more than two seconds on, which goes out as against a lock of
 nothing. A cast still running counts as a lock of nothing too, its own still to
 come. A press on its recast with nothing busy and nothing held on its recast goes
-out as before. **The grace is unverified in a live client at two seconds** (row 34 of the plan). The
+out as before. With GearSwap handling it, a spell sent that way with more than 0.8s of
+recast left never leaves the client: its `check_recast` aborts it with a line of chat
+(`Abort: [<spell>] waiting on recast.`), eight of eight between 0.8 and 2s over the runs of
+2026-11-24 and 11-25, where 13 of 13 at 0.8s or less went. **The grace is unverified in a live client at two seconds** (row 34 of the plan). The
 `not held` and `dropped ... on recast` lines in `debug` say the recast and lock left, which
 is how the margin was measured. Three rules beside that one
 (Kevin, 2026-10-31): the four ABILITY recasts a charged family shares read as no
@@ -860,7 +863,11 @@ Nine went - two spells sent at +2.56 and +2.66, weaponskills sent 1.82 to 1.86s 
 spell's finish three times of three, and the WS buff's second send landing after the lock
 twice. Three were refused (a weaponskill 1.73s after a spell's finish, by the lock; one for
 sight; one behind a job ability GearSwap sent 0.18s before it) and one lost its target. No
-single press was thrown away for it. **Unverified**: that the press holds GearSwap's next
+single press was thrown away for it. In the run of 2026-11-25 two were: a Sleepga OK'd 2.03
+and 2.12s after a Stonega cast from outside the bar was refused both times, where three sent
+2.18 to 2.43s after went. And it does not reach an alternation: in that run three Cure IVs
+each waited 3.4 to 3.9s behind a Trust GearSwap summoned 0.14 to 0.20s ahead of the release,
+standing aside having ended between them. **Unverified**: that the press holds GearSwap's next
 cast back.
 
 `debug` is `on` plus a line per edge in `<addon>/debug.log`, appended with raw `io`,
@@ -1040,8 +1047,14 @@ Haste at an OK in a lock, Fire V to Fire IV twice at an OK with nothing busy,
 and Gravity II to Gravity at a held press's release. That last was OK'd 1.3s
 into its own cast with no recast far off yet, so the client counts a spell's
 recast from its FINISH and the release is what catches a mash (one sample).
-18 sends two seconds or less from ready, with nothing busy, went as pressed:
-16 started and none was refused for its recast. **Unverified**: a step-down at
+Of 18 presses two seconds or less from ready, with nothing busy, the 12 with
+0.73s or less left went and started, and the six with 0.97s or more never left
+the client, GearSwap aborting a spell more than 0.8s from ready (corrected
+2026-11-25: the first reading had 16 starting, and took the start of the press
+made again for the first's). Two more went down a tier on 2026-11-25, Refresh
+III to Refresh II at an OK in a lock and Haste II to Haste with nothing busy,
+and each was cast.
+**Unverified**: a step-down at
 a plain press, a spell unavailable rather than on its recast, the one-line
 wording above, and that `requirements` bit 4 marks the black-side Addendum
 spells as it does the white.
