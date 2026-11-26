@@ -672,7 +672,11 @@ for. GearSwap reads a word as it reads a macro's, so its `pretarget` runs for a 
 press, where an id skipped it. In `debug` the sign of who sent a release is how soon its
 packet leaves: within 0.04s where GearSwap sends it (284 of 286 that night), spread over
 the client's own 0.4s beat where the game reads the line (0.01 to 0.40s, all 32 on
-DRK). **Unverified in a live client**: all of it (row 50 of the plan). A `sneak`, `invisible` or
+DRK). **Seen in a live client with GearSwap handling it** (Kevin's run of 2026-11-25 on
+`625391e`, row 50 of the plan): of 28 releases 23 cast, each packet within 0.05s, and
+none drew a command error; the four in that chat log were presses made with nothing
+under `<t>`, sent as typed. **Unverified**: with GearSwap off, and a target changed
+before the release, since no word but the one typed was needed. A `sneak`, `invisible` or
 `reraise` slot walks its ladder at the press and the rung it picks is held exactly
 as a slot bound to that action would be (Kevin, 2026-10-31: an Invisible pressed in
 Sneak's lock was refused), so a rung gone stale by the release is the game's to
@@ -700,7 +704,8 @@ for `<lastst>` - before its line comes through `outgoing text`, or once the hand
 has answered - so a pick no word names at OK is judged on the next frame instead
 (`nothing names <id> yet` in `debug`), and goes nowhere if none names it then: one
 that would have gone at once is dropped there, and one a lock holds is dropped at its
-release. **Unverified in a live client** (row 51 of the plan): that `<lastst>` takes a
+release. A pick of yourself went under `<me>` and landed, six of six (Kevin's run of
+2026-11-25 on `625391e`). **Unverified in a live client** (row 51 of the plan): that `<lastst>` takes a
 pick at all from a `/ta` line the queue kept from the game. If it does not, a cursor
 cast at a mob that is neither your target, your pet nor in your party or alliance
 goes nowhere, with GearSwap or without (Kevin's call, made knowing that), and `debug`
@@ -1070,10 +1075,12 @@ the client, GearSwap aborting a spell more than 0.8s from ready (corrected
 2026-11-25: the first reading had 16 starting, and took the start of the press
 made again for the first's). Two more went down a tier on 2026-11-25, Refresh
 III to Refresh II at an OK in a lock and Haste II to Haste with nothing busy,
-and each was cast.
+and each was cast. The one-line wording was written once, on `625391e`
+(2026-11-25): `at OK: Refresh III on recast 2.63s, lock 0.44s; down to Refresh
+II`, cast on himself for "No effect", Refresh III being on him already.
 **Unverified**: a step-down at
-a plain press, a spell unavailable rather than on its recast, the one-line
-wording above, and that `requirements` bit 4 marks the black-side Addendum
+a plain press, a spell unavailable rather than on its recast, and that
+`requirements` bit 4 marks the black-side Addendum
 spells as it does the white.
 
 Buffs. The order and filter verbs of every component that draws buff icons
@@ -1594,10 +1601,13 @@ later press names. **Seen in a live client while it was an alias** (Kevin's
 run of 2026-11-24 on `3c91c54`): `//hud gamepad bind y assist`, `//hud assist
 zaon`, and 24 presses, each one `out assist` packet. The game answered 15 of
 the 22 that named that player with a target (a `0x058`, a median 0.36s on).
-**Unverified**: the direct send, `input /assist <target>` from `send_command`
-where the alias ran that same line; whether Windower hands the addon `<t>` as
-typed or as the target's name; and the press lines above, which that build did
-not write.
+**The direct send was seen too** (Kevin's run of 2026-11-25 on `625391e`, row
+52 of the queue plan): 13 presses before any target each wrote `assist pressed,
+a gesture or a key` and the chat hint and sent no packet; `//hud assist zaon`
+wrote `assist target set: /assist zaon`; and the 25 presses after it, in seven
+seconds, drew six `out assist` packets 1.21s apart, the game sending one no
+more often than that. **Unverified**: whether Windower hands the addon `<t>` as
+typed or as the target's name, and that no alias called `assist` is left.
 
 Quotes now do exactly one thing in the parser: a value that arrives wrapped in
 a MATCHED pair is unwrapped and trimmed (commands.lua's file-local
