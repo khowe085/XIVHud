@@ -1724,10 +1724,10 @@ describe("the action queue", function()
         queue.on_outgoing(0x01A, outgoing_action(MAGIC, HASTE_II))
       end
 
-      it("keeps the bar busy for its cast time and the server's beat", function()
+      it("keeps the bar busy for its cast time and two of the server's beats", function()
         local queue, env = world()
         haste_out(queue, env)
-        env.now = env.now + 3.39
+        env.now = env.now + 3.79
         assert.is_true(queue.busy())
         env.now = env.now + 0.02
         assert.is_false(queue.busy())
@@ -1746,6 +1746,17 @@ describe("the action queue", function()
         queue.on_outgoing(0x01A, outgoing_action(MAGIC, 999))
         env.now = env.now + 1.99
         assert.is_true(queue.busy())
+        env.now = env.now + 0.02
+        assert.is_false(queue.busy())
+      end)
+
+      it("takes a finish just inside that wait for its own and locks", function()
+        local queue, env = world()
+        haste_out(queue, env)
+        env.now = env.now + 3.77
+        queue.on_action(action(4, HASTE_II))
+        env.now = env.now + 2.69
+        assert.is_true(queue.busy(), "the finish's own lock, where the wait alone ended long since")
         env.now = env.now + 0.02
         assert.is_false(queue.busy())
       end)
@@ -1780,7 +1791,7 @@ describe("the action queue", function()
         env.casts.spell[HASTE_II] = 3
         env.locks = { spell = 1.2 }
         queue.on_action(start_of(8, HASTE_II))
-        env.now = env.now + 3.4
+        env.now = env.now + 3.8
         queue.step()
         env.now = env.now + 1.19
         assert.is_true(queue.busy())
@@ -1796,7 +1807,7 @@ describe("the action queue", function()
         haste_out(queue, env)
         env.now = env.now + 2.36
         queue.on_action(action(4, 1))
-        env.now = env.now + 1.05
+        env.now = env.now + 1.45
         assert.is_false(queue.busy())
       end)
 
@@ -1805,7 +1816,7 @@ describe("the action queue", function()
         haste_out(queue, env)
         env.now = env.now + 2.36
         queue.on_action(paralyzed_round())
-        env.now = env.now + 1.05
+        env.now = env.now + 1.45
         assert.is_false(queue.busy())
       end)
 
@@ -1819,7 +1830,7 @@ describe("the action queue", function()
       it("ignores a finish after the cast time", function()
         local queue, env = world()
         haste_out(queue, env)
-        env.now = env.now + 3.41
+        env.now = env.now + 3.81
         queue.on_action(action(4, HASTE_II))
         assert.is_false(queue.busy())
       end)
@@ -2111,16 +2122,33 @@ describe("the action queue", function()
       assert.is_false(queue.busy())
     end)
 
-    it("waits on a spell's finish for its cast time and one server beat, then its lock", function()
+    it("waits on a spell's finish for its cast time and two server beats, then its lock", function()
       local queue, env = world()
       env.casts.spell[511] = 3
       queue.on_action(start_of(8, 511))
-      env.now = env.now + 6.09
+      env.now = env.now + 6.49
       queue.step()
       assert.is_true(queue.busy())
       env.now = env.now + 0.02
       queue.step()
       assert.is_false(queue.busy())
+    end)
+
+    --[[ With no Fast Cast on it a cast's finish follows its cast time by 0.42
+         to 0.77s: 27 of 27 in Kevin's log of 2026-11-26, where a wait of one
+         beat ran out before every one of them. ]]
+    it("is still waiting for a finish 0.77s past the cast time", function()
+      local queue, env = world({ mode = "debug" })
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 3.77
+      queue.step()
+      assert.is_nil(logged(env):find("no finish yet", 1, true))
+      queue.on_action(action(4, 511))
+      env.now = env.now + 2.69
+      assert.is_true(queue.busy())
+      env.now = env.now + 0.02
+      assert.is_false(queue.busy(), "the lock runs from the finish itself")
     end)
 
     it("still locks on a finish that lands after that wait", function()
@@ -2130,7 +2158,7 @@ describe("the action queue", function()
       env.now = env.now + 4
       queue.step()
       queue.on_action(action(4, 511))
-      env.now = env.now + 2.2
+      env.now = env.now + 2.6
       queue.step()
       assert.is_true(queue.busy())
     end)
@@ -2140,7 +2168,7 @@ describe("the action queue", function()
       env.casts.spell[511] = 3
       queue.on_action(start_of(8, 511))
       queue.press(spell(), command())
-      env.now = env.now + 3.41
+      env.now = env.now + 3.81
       assert.is_nil(queue.step())
       assert.is_not_nil(queue.held())
       env.now = env.now + 2.7
@@ -2151,7 +2179,7 @@ describe("the action queue", function()
       local queue, env = world()
       env.casts.spell[511] = 3
       queue.on_action(start_of(8, 511))
-      env.now = env.now + 3.41
+      env.now = env.now + 3.81
       assert.is_true(queue.press(spell(), command()))
     end)
 
@@ -2159,7 +2187,7 @@ describe("the action queue", function()
       local queue, env = world()
       env.casts.spell[511] = 3
       queue.on_action(start_of(8, 511))
-      env.now = env.now + 3.41
+      env.now = env.now + 3.81
       queue.step()
       env.now = env.now + 1
       queue.on_action(action(4, 511))
@@ -2173,7 +2201,7 @@ describe("the action queue", function()
     local function past_the_wait(queue, env)
       env.casts.spell[511] = 3
       queue.on_action(start_of(8, 511))
-      env.now = env.now + 3.41
+      env.now = env.now + 3.81
       queue.step()
       env.now = env.now + 2.71
       queue.step()
@@ -2223,7 +2251,7 @@ describe("the action queue", function()
       queue.on_action(action(4, 0))
       env.now = env.now + 2.71
       assert.is_true(queue.busy(), "still the start's wait")
-      env.now = env.now + 2.5
+      env.now = env.now + 2.9
       queue.step()
       assert.is_false(queue.busy(), "the start's wait and its lock are over")
       queue.on_action(action(4, 511))
@@ -2574,9 +2602,9 @@ describe("the action queue", function()
       local queue, env = world()
       env.casts.spell[511] = 3
       queue.on_action(start_of(8, 511))
-      env.now = env.now + 3.41
+      env.now = env.now + 3.81
       queue.step()
-      env.now = env.now + 26.2
+      env.now = env.now + 25.8
       queue.step()
       assert.is_false(queue.press(spell("Cure"), command("Cure")))
       assert.is_true(queue.press(spell("Fire"), command("Fire")))
@@ -4072,7 +4100,7 @@ describe("the action queue", function()
       local queue, env = world({ mode = "debug" })
       env.casts.spell[511] = 3
       queue.on_action(start_of(8, 511))
-      env.now = env.now + 3.41
+      env.now = env.now + 3.81
       queue.step()
       env.now = env.now + 2.71
       queue.step()
@@ -4509,7 +4537,7 @@ describe("the action queue", function()
       local queue, env = world({ mode = "debug" })
       env.casts.spell[511] = 3
       queue.on_action(start_of(8, 511))
-      env.now = env.now + 3.41
+      env.now = env.now + 3.81
       queue.step()
       assert.is_not_nil(logged(env):find("no finish yet for the last start, lock 2.70s", 1, true))
     end)

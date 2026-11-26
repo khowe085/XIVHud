@@ -145,8 +145,8 @@ that action on the selected sub-target", which is what the resent token drew.
 
 | Fact | Set by | Cleared by | Backstop |
 | --- | --- | --- | --- |
-| `sent`: something went out, nothing back yet | a bar press or release, outgoing `0x01A` (3 magic, 7 ws, 9 ja, 16 ranged, 25 monster skill), outgoing `0x037` (item) | any `0x028` start or finish of ours, a refusal | 0.6s until the packet is seen, 2s after, or a spell's `cast_time` + 0.4s where longer (2026-11-06) |
-| `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787), and while a weaponskill's start runs a 4 naming no spell (2026-11-10) | a spell's `cast_time` + 0.4s, a weaponskill 1.2s (3s until 2026-11-10), an item's `cast_time` + 1s, else 30s; a finish is still read as one for 30s (2026-11-06) |
+| `sent`: something went out, nothing back yet | a bar press or release, outgoing `0x01A` (3 magic, 7 ws, 9 ja, 16 ranged, 25 monster skill), outgoing `0x037` (item) | any `0x028` start or finish of ours, a refusal | 0.6s until the packet is seen, 2s after, or a spell's `cast_time` + 0.8s where longer (2026-11-06; 0.4s until 2026-11-26) |
+| `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787), and while a weaponskill's start runs a 4 naming no spell (2026-11-10) | a spell's `cast_time` + 0.8s (0.4s until 2026-11-26), a weaponskill 1.2s (3s until 2026-11-10), an item's `cast_time` + 1s, else 30s; a finish is still read as one for 30s (2026-11-06) |
 | `lock_until`: the lock's end | a finish (2, 3, 5, 6, 11, 14, 15 of ours, and 4 naming a spell while a cast is running (2026-11-08), within 30s of a start of ours when it names that start's spell or the start named none, or naming a spell that went out and is unanswered (2026-11-07), or naming no spell while a weaponskill's start runs, which takes the weaponskill lock (2026-11-10)), an interrupt, the end of a start's wait | time | none needed |
 
 Busy is any of the three. A held press goes on the first tick nothing is busy, or once
@@ -740,6 +740,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 52 | After a `//lua reload hud`, press an `assist` slot or pad button; then `//hud assist <name>` and press again, and check `//alias` for one called `assist` | First `assist pressed, ...` in the log, `assist has no target yet - //hud assist <target>` in chat and no packet. Then `assist target set: /assist <name>`, and per press `assist pressed, ...` and `out assist <id>`, your target moving to theirs. No alias called `assist` unless you made one | Assist without the alias (2026-11-25): `input /assist <name>` sent straight from `send_command`, where the alias ran that same line (seen 24 times of 24 on `3c91c54`). Seen on `625391e` (2026-11-25): the hint and no packet 13 times of 13 before a target, `assist target set: /assist zaon`, then six `out assist` for 25 presses in seven seconds, 1.21s apart. On `15738b7`: 59 presses and 26 `out assist`. `//alias` was not checked |
 | 53 | With nothing going on, press a spell slot (and OK a `<stpc>` one) about a second after that spell's last cast came off its lock, so its recast has 0.8 to 2s left; then one with half a second left; then one with five | `hold <name>`, `<name> waits <n>s on its recast` and `release <name> after <n>s`, an `out spell` within 0.04s and its `start`, with no `Abort: [<name>] waiting on recast.` in chat. At half a second: `not held: <name> on recast 0.5xs, lock 0.00s`, `out spell` and a `start`. At five: `not held`, and GearSwap's `Abort:` line or the game's refusal, as before. A Sleep II pressed 1 to 2s from ready is held and cast as Sleep II, where GearSwap used to cast Sleep in its place | The hold with nothing busy (2026-11-25). That a press 0.7 to 2s from ready now casts on its one press, that one 0.7s or less still goes at once and is taken, and that the release at a recast reading zero is taken too. Seen on `15738b7` (2026-11-25), for a cursor's OK: three of Haste II 1.18 to 1.62s from ready were held, two going when the recast read ready (5.00 and 5.01s after the last finish) and starting, the third replaced by a second OK 0.05s from ready, which went 0.05s on; three 0.57s or less from ready went as pressed and started; and the chat log has no `waiting on recast` abort for a spell in the hour. A plain press at the short end on 2026-11-26: a Dread Spikes 0.23s from ready went as pressed and started. Not seen: the hold for a plain press, an ability, a spell in GearSwap's `spell_stepdown` |
 | 54 | In edit mode click a slot holding Fire V (or any spell with a tier under it) and click `auto tier [ off ]` at the end of its row; leave edit mode and mash the slot through a cast, the queue in `debug`. Do the same mash on a Haste II slot left unflagged. Then `//hud crossbar list`, `//hud crossbar tier <address> off`, and a `//lua reload hud` between any two of them | The row then reads `auto tier [ on ]` and chat says `crossbar: auto tier on for Fire V -> base / set <n> / <side> / slot <n>`; the mash logs `at the press` / `at OK` / `at the release: Fire V ...; down to Fire IV` and Fire IV casts. The Haste II slot writes no `down to` line and is never replaced. `list` shows `tier=auto` on the flagged binding, after a reload too, and not after `tier ... off` | The tier flag on the binding (2026-11-25). That the toggle sits clear of the row's own text and takes its click, that only a flagged binding steps down, and that the flag is saved with the binding. Unverified |
+| 55 | With no Fast Cast on (a naked set, or GearSwap's precast off), cast a few spells of two seconds and over from anywhere, the queue in `debug` | No `no finish yet for the last start` line ahead of a `finish spell`: each cast's `start spell` is followed by its own `finish spell`, and the next bar press goes when that lock ends | The lost-finish margin at 0.8s (2026-11-26). At 0.4s the count ran out before the real finish 27 times of 27, by 0.02 to 0.37s. That two beats covers a cast with no Fast Cast; what a slow (Addle) lengthens it by is still unknown. Unverified |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -2286,7 +2287,21 @@ bar's, so it says nothing of rows 48, 51 or 54.
   to 3.8, the 2s -ga spells at 2.41 against 2.4 to 2.6, a 1.5s cast at 1.91 against 2.0
   to 2.1. No release fell between the two and each real finish replaced the counted lock, so
   nothing was lost. Where the finish itself is lost the lock would end that much early.
-  Open, Kevin's call: a margin of 0.8s would have covered all 27.
+  **Kevin: "Yes, 0.8s"**: the margin (`SPELL_SLACK`) is two of the server's beats now,
+  which would have covered all 27, at 0.4s more wait when a finish never comes. The
+  constant is shared with the wait on a spell sent and never answered, which moves with
+  it ("Both at 0.8s"): a spell the server drops in silence holds the bar 0.4s longer.
+  Sixteen specs that predate the branch stepped the clock by the old margin and were
+  moved to the new one with his go-ahead ("Yes, change them", "Yes, move them too"),
+  three of them renamed from one beat to two ("Reword them"), and a seventeenth, which
+  the review found no longer told a late finish taken from one ignored, was re-timed
+  ("Yes, re-time it"). In-client row 55.
+  - **What 0.8s does not cover** (from review): the wait on a spell sent and never
+    answered runs from the send, a median 0.59s ahead of the start, so with no Fast
+    Cast its finish comes about 1.0 to 1.4s past the cast time and that wait still
+    ends first. It moved for the cost alone. And the worst of the 27 was 0.77s against
+    the 0.8, two frames to spare, so a rare `no finish yet` in row 55's run would not
+    by itself say the margin is wrong.
 - **He died at 03:34:16 with nothing of the bar's held.**
 - **Who moved the target** (row 47): of 48 deaths of the mob he was on, 32 drew a `status
   0` and 16 an auto-target.

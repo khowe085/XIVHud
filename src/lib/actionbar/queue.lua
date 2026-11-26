@@ -115,8 +115,15 @@ local ARROW_BACKSTOP = 2
 local FINISH_BACKSTOP = 30
 --[[ How long a start keeps the bar busy without its finish (Kevin, 2026-11-06:
      lag lost finishes, and FINISH_BACKSTOP made each one 30s of a dead bar).
-     Fast Cast shortens a spell's resource cast time, so SPELL_SLACK covers the
-     server's 0.4s beat. The wait's end is taken for the lost finish and starts
+     Fast Cast shortens a spell's resource cast time, so SPELL_SLACK covers what
+     follows it: two of the server's 0.4s beats. With no Fast Cast on the cast
+     the finish packet follows the cast time by 0.42 to 0.77s, 27 times of 27
+     (Kevin's log of 2026-11-26), and at one beat this wait ran out ahead of
+     every one of them. That is measured from the START. The wait on a spell
+     sent and never answered shares the constant and runs from the SEND, about
+     0.6s sooner, so with no Fast Cast it still ends ahead of the finish: it
+     moved with this one for the cost alone (Kevin, "Both at 0.8s"), not on
+     that evidence. The wait's end is taken for the lost finish and starts
      that kind's lock, since the server locked from the real one. A finish later
      than this still locks: a start stays open for one until FINISH_BACKSTOP,
      though a spell finish then has to name the spell the start named.
@@ -129,7 +136,7 @@ local FINISH_BACKSTOP = 30
      held the bar 5.4s. ITEM_SLACK is a guess, as are the items resource's
      `cast_time` being the seconds from an item's start to its finish and a
      category 9 start naming its item in `targets[1].actions[1].param`. ]]
-local SPELL_SLACK = 0.4
+local SPELL_SLACK = 0.8
 local WEAPONSKILL_BACKSTOP = 1.2
 local ITEM_SLACK = 1
 --[[ How soon the server finishes a weaponskill it has started: its beat. The

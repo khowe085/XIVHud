@@ -407,13 +407,14 @@ off, every press goes at once and the game decides.
   mode, or while the HUD is hidden, the bars fire nothing anyway.
 - **Lag.** The game tells the queue when a cast starts and when it finishes,
   and lag can lose either message. If the finish never comes, a spell counts
-  as finished at its cast time plus 0.4 seconds, a weaponskill after 1.2 seconds
+  as finished at its cast time plus 0.8 seconds, a weaponskill after 1.2 seconds
   and an item at its cast time plus 1 second; the wait for that kind then runs
   and a held press goes. If the start is lost, a spell you sent waits for an
-  answer as long as its cast time plus 0.4 seconds, so its finish still starts
-  the wait. A spell the server drops with no answer at all holds the bar that
-  long. A cast slowed past these times by a debuff can let a held press go
-  early, and the game then refuses it.
+  answer as long as its cast time plus 0.8 seconds, so with Fast Cast on its
+  finish still starts the wait. A spell the server drops with no answer at all
+  holds the bar that long. A cast that runs past these times - one slowed by a
+  debuff, or one with no Fast Cast whose start was lost - can let a held press
+  go early, and the game then refuses it.
 - **A Trust the game will not call.** When the game refuses a Trust cast -
   you have called your maximum, that alter ego is already out, you hold
   enmity, you are seeking a party, you have just invited someone, or you are

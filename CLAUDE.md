@@ -633,17 +633,23 @@ lock no later than it sends that packet, so latency can only make a release
 late, never early - where MiniQueue takes a guessed `latency = .5` off the same
 anchor and aims early. The one exception is a finish that never comes (Kevin,
 2026-11-06: lag lost several in one event, and each held the bar for 30s): a
-start then counts as finished at its spell's `cast_time` plus 0.4s, 1.2s for a
+start then counts as finished at its spell's `cast_time` plus 0.8s, 1.2s for a
 weaponskill (three of the server's 0.4s beats: about 80 weaponskills in Kevin's
 log of 2026-11-10 each finished within 0.89s of starting, and the 3s it was until
 then held the bar 5.4s when a finish never came) or an item's `cast_time` plus 1s, and that lock's anchor
-is not a packet, so a cast lengthened past it can release early. **A cast with no Fast
-Cast on it runs past it too** (Kevin's run of 2026-11-26): 27 of 27 such spells were
-counted finished 0.02 to 0.37s before the real finish came (three of them an interrupt),
-the finish packet following `cast_time` by 0.42 to 0.77s. Each real finish replaced the
-counted lock and no release fell between the two, so nothing was lost; where the finish
-itself is lost, the lock ends that much early. Open, Kevin's call: 0.8s in place of 0.4
-would have covered all 27, at 0.4s more wait when a finish never comes. (The lock after a
+is not a packet, so a cast lengthened past it can release early. **The 0.8s is two of
+the server's 0.4s beats, and was one until 2026-11-26** (Kevin: "Yes, 0.8s"): in his run
+of that night 27 of 27 spells cast with no Fast Cast on them were counted finished 0.02
+to 0.37s before the real finish came (three of them an interrupt), the finish packet
+following `cast_time` by 0.42 to 0.77s. Nothing was lost there, each real finish
+replacing the counted lock with no release between the two, but a finish that never
+came would have ended its lock that much early. It costs 0.4s more wait when one never
+comes, and the same on a spell sent and never answered (below), which shares the
+constant and moved with it for that cost alone (Kevin: "Both at 0.8s"): that wait runs
+from the SEND, about 0.6s ahead of the start the figures above are measured from, so
+with no Fast Cast it still ends before the finish comes. **Unverified in a live client**
+at 0.8 (row 55 of the plan), where the worst of the 27 left 0.03s to spare, so a rare
+`no finish yet` line there is not by itself the margin being wrong. (The lock after a
 weaponskill whose target died, below, has the only other: 0.4s after the start, where
 the death is reported sooner than that.) A held
 press then goes once that lock ends; a finish arriving late still replaces the
@@ -778,7 +784,7 @@ lock is unverified** after a too-far: two runs bracket it between a send refused
 at +2.03 and one accepted at +2.57. The other exception is a spell that went out, from
 anything, and is still unanswered (Kevin, 2026-11-06: lag lost seven starts whose
 finishes came, and the next send went into the lock): it waits for an answer for
-its `cast_time` plus 0.4s where that is longer than 2s, and a finish inside that
+its `cast_time` plus 0.8s where that is longer than 2s (0.4s until 2026-11-26, above), and a finish inside that
 naming it (its `param`) is its own and locks - one naming any other spell, or a
 paralysis round, is ignored (Kevin, 2026-11-07). A refusal still ends the wait at once; a spell the server
 drops without one holds the bar that long.

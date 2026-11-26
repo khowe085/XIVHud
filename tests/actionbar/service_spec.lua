@@ -1408,13 +1408,13 @@ describe("the action service", function()
       service.tick()
     end
 
-    it("waits on a spell's finish for its cast time out of the spells resource, and a beat, then its lock", function()
+    it("waits on a spell's finish for its cast time out of the spells resource, and 2 beats, then its lock", function()
       local service, env = queued()
       local start = act(8, 24931)
       start.targets = { { actions = { { param = 1 } } } }
       env.res.spells[1].cast_time = 2
       service.on_chunk(ACTION, "raw", start)
-      env.now = env.now + 5.09
+      env.now = env.now + 5.49
       service.tick()
       assert.is_true(service.queue.busy())
       env.now = env.now + 0.02
