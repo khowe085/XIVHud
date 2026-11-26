@@ -577,7 +577,9 @@ more than two seconds off goes out as before. **Seen in a live client for a curs
 1.62s from ready were held; two went when the recast read ready, 5.00 and 5.01s after the
 last finish, and started, and the third he OK'd again 0.05s from ready, which went 0.05s
 on. Three 0.57s or less from ready went as pressed and started, and GearSwap aborted no
-spell for its recast in the hour. **Unverified**: a plain press, and an ability: GearSwap
+spell for its recast in the hour. A plain press was seen only at the short end (2026-11-26): a Dread Spikes 0.23s from
+ready went as pressed and started. **Unverified**: the hold for a plain press, and an
+ability: GearSwap
 aborts one above 0.5s, so an ability 0.5 to 0.7s from ready is still lost as it was. **The grace is unverified in a live client at two seconds** (row 34 of the plan). The
 `not held` and `dropped ... on recast` lines in `debug` say the recast and lock left, which
 is how the margin was measured. Three rules beside that one
@@ -635,7 +637,13 @@ start then counts as finished at its spell's `cast_time` plus 0.4s, 1.2s for a
 weaponskill (three of the server's 0.4s beats: about 80 weaponskills in Kevin's
 log of 2026-11-10 each finished within 0.89s of starting, and the 3s it was until
 then held the bar 5.4s when a finish never came) or an item's `cast_time` plus 1s, and that lock's anchor
-is not a packet, so a cast lengthened past it can release early. (The lock after a
+is not a packet, so a cast lengthened past it can release early. **A cast with no Fast
+Cast on it runs past it too** (Kevin's run of 2026-11-26): 27 of 27 such spells were
+counted finished 0.02 to 0.37s before the real finish came (three of them an interrupt),
+the finish packet following `cast_time` by 0.42 to 0.77s. Each real finish replaced the
+counted lock and no release fell between the two, so nothing was lost; where the finish
+itself is lost, the lock ends that much early. Open, Kevin's call: 0.8s in place of 0.4
+would have covered all 27, at 0.4s more wait when a finish never comes. (The lock after a
 weaponskill whose target died, below, has the only other: 0.4s after the start, where
 the death is reported sooner than that.) A held
 press then goes once that lock ends; a finish arriving late still replaces the
