@@ -45,7 +45,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      always did and the game refuses it, and a held press whose recast is that
      far off when the lock clears is dropped. A press whose recast ends inside
      the lock, or within RECAST_GRACE after it, is held, since sent it could only
-     be refused, and its release waits for the recast. A weaponskill under its TP goes
+     be refused, and its release waits for the recast. With nothing busy that
+     is a lock of nothing: a press within RECAST_GRACE of ready is held for its
+     recast too, bar one within NEAR_READY, which goes as it is and the game
+     takes. A weaponskill under its TP goes
      nowhere, for want of anything to wait on, and so does one under a status
      GearSwap would abort it on, or aimed at a target the game has just said fell. A
      cursor slot is judged the same way at OK, when its command is really sent,
@@ -141,6 +144,14 @@ local WEAPONSKILL_BEAT = 0.4
      far off when the lock clears is dropped - unless the spell tier walk has a
      lower tier to stand in for either. ]]
 local RECAST_GRACE = 2
+--[[ How near ready a press goes as it is with nothing busy, where a lock would
+     have held it. The client's figure runs behind the server's: 13 presses of
+     13 with 0.08 to 0.73s of recast left went and started (Kevin's logs,
+     2026-11-24 and 11-25). Further off than this and within RECAST_GRACE it is
+     held for its recast instead: GearSwap aborts a spell with more than 0.8s
+     left, with a line of chat, and eight of eight in those logs cost a second
+     press. UNVERIFIED for an ability, whose own figure there is 0.5s. ]]
+local NEAR_READY = 0.7
 --[[ How long after the bar sends anything a packet that leaves is still the
      bar's own. A press's packet follows it inside a frame or two, but GearSwap
      may put another action in a press's place and send the press itself after
@@ -653,22 +664,34 @@ local function new(deps)
     return lock_until - now() <= ASIDE_SECONDS
   end
 
-  --[[ Whether a press goes to the game on its recast: one running more than
-       RECAST_GRACE past the lock, or any with nothing engaged, which counts for
-       nothing as a GearSwap filter may well cancel it. ]]
+  --[[ Whether a press goes to the game on its recast rather than being held:
+       one running more than RECAST_GRACE past the lock, which GearSwap
+       cancels or the game refuses, or with nothing engaged one within
+       NEAR_READY of ready, which the game takes. Neither counts as a send
+       until its packet is seen leaving, the first being one that may never
+       leave. Between the two, with nothing engaged, a press is held for its
+       recast as one in a lock is: see free_to_go. ]]
   local function on_recast(record)
+    local recast = deps.recast_left(record)
+    return outlasts_lock(recast) or (recast > 0 and recast <= NEAR_READY and not engaged())
+  end
+
+  --[[ Whether the spell tier walk passes a tier by for its recast: one
+       running more than RECAST_GRACE past the lock, or running at all with
+       nothing engaged. A press of such a tier would itself be held for a
+       recast within RECAST_GRACE, or go as it is within NEAR_READY, but with
+       nothing making the player wait a tier ready now beats a higher one a
+       moment off (Kevin, 2026-11-25). Off, nothing is engaged, and the game
+       refuses any recast running. ]]
+  function self.refused_on_recast(record)
     local recast = deps.recast_left(record)
     return outlasts_lock(recast) or (recast > 0 and not engaged())
   end
 
-  --- The same, for the spell tier walk: a tier it would be refused on is one
-  --- to walk past. Off, nothing is engaged and any recast running refuses.
-  self.refused_on_recast = on_recast
-
   --- Whether a recast runs further past the lock than this waits one out,
   --- which is the walk's cue to step down. A spell nearer ready than that is
-  --- never traded for a lower tier: it is waited for in a lock, and sent to
-  --- be refused with nothing busy, as it was before the walk.
+  --- never traded for a lower tier: it is waited for, in a lock or with
+  --- nothing busy, or goes as it is within NEAR_READY of ready.
   function self.far_off(record)
     return outlasts_lock(deps.recast_left(record))
   end
@@ -730,14 +753,17 @@ local function new(deps)
     listed = nil
   end
 
-  --[[ Whether a press goes now, as it is, rather than being held: nothing is
-       engaged, or this is standing aside and the press is off its recast. On
-       it, it could not go at the lock's end either, and GearSwap's recast
-       check may abort it unseen. The second answer is whether it is the
-       standing aside that lets it. ]]
+  --[[ Whether a press goes now, as it is, rather than being held: off its
+       recast, with nothing engaged or while this stands aside. On it, it
+       could not go at a lock's end either, and GearSwap's recast check
+       aborts it unseen, so with nothing engaged it is held for its recast
+       as one in a lock is (on_recast has already let go the one that goes
+       all the same). The second answer is whether it is the standing aside
+       that lets it. ]]
   local function free_to_go(record)
-    local aside_now = yielding() and deps.recast_left(record) <= 0
-    return aside_now or not engaged(), aside_now
+    local ready = deps.recast_left(record) <= 0
+    local aside_now = ready and yielding()
+    return ready and (aside_now or not engaged()), aside_now
   end
 
   --[[ Sends a press on its way where it is free to go, and answers whether
@@ -851,8 +877,8 @@ local function new(deps)
       note("swallowed " .. name .. ", " .. stop)
       return true
     end
-    -- Asked first because it counts for nothing either way: a GearSwap filter
-    -- may well cancel it, and nothing that follows should wait on that.
+    -- Asked first because it is no send until its packet is seen: a GearSwap
+    -- filter may well cancel it, and nothing that follows should wait on that.
     if on_recast(record) then
       not_held_on_recast(name, record)
       return false
@@ -978,10 +1004,10 @@ local function new(deps)
 
   --[[ A bar's press, with the command it resolved to. Answers whether it was
        taken: false sends it as it always was, and a second answer is what to
-       send in its place. A press goes as it was with nothing busy and nothing
-       held waiting on its recast, or while this stands aside (see
-       on_outgoing), and what was held gives way to it. Any other press that
-       is not held leaves one that is alone. ]]
+       send in its place. A press off its recast goes as it was with nothing
+       busy and nothing held waiting on its recast, or while this stands aside
+       (see on_outgoing), and what was held gives way to it. Any other press
+       that is not held leaves one that is alone. ]]
   function self.press(record, command)
     if not self.enabled() then
       return false

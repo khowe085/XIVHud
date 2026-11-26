@@ -1818,9 +1818,20 @@ describe("the action service", function()
       assert.are.same({ 'input /ja "Provoke" <t>' }, env.commands)
     end)
 
+    it("holds an ability two seconds or less from ready with nothing busy, and sends it when it is", function()
+      local service, env = queued()
+      env.ability_recasts[5] = 2
+      service.fire({ type = "ja", action = "Provoke", target = "t" }, {})
+      assert.are.same({}, env.commands)
+      assert.is_not_nil(service.queue.held())
+      env.ability_recasts[5] = 0
+      service.tick()
+      assert.are.same({ 'input /ja "Provoke" <t>' }, env.commands)
+    end)
+
     it("sends the next press at once after one on its own recast, which GearSwap may have cancelled", function()
       local service, env = queued()
-      env.spell_recasts[1] = 120
+      env.spell_recasts[1] = 180
       service.fire(CURE, {})
       env.commands = {}
       service.fire({ type = "ja", action = "Provoke", target = "t" }, {})
@@ -2191,13 +2202,22 @@ describe("the action service", function()
         assert.are.same({ 'input /ma "Fire IV" <t>' }, env.commands)
       end)
 
-      it("sends a spell two seconds or less from ready as it was pressed, for the game to refuse", function()
-        for _, mode in ipairs({ "off", "on" }) do
-          local service, env = tiered(mode)
-          env.spell_recasts[148] = 2 * SECONDS
-          service.fire(FIRE_V, {})
-          assert.are.same({ 'input /ma "Fire V" <t>' }, env.commands, mode)
-        end
+      it("sends a spell two seconds or less from ready as it was pressed, with the queue off", function()
+        local service, env = tiered("off")
+        env.spell_recasts[148] = 2 * SECONDS
+        service.fire(FIRE_V, {})
+        assert.are.same({ 'input /ma "Fire V" <t>' }, env.commands)
+      end)
+
+      it("holds a spell two seconds or less from ready for its recast, and sends it as pressed", function()
+        local service, env = tiered("on")
+        env.spell_recasts[148] = 2 * SECONDS
+        service.fire(FIRE_V, {})
+        assert.are.same({}, env.commands)
+        assert.are.equal('input /ma "Fire V" <t>', service.queue.held().command)
+        env.spell_recasts[148] = 0
+        service.tick()
+        assert.are.same({ 'input /ma "Fire V" <t>' }, env.commands)
       end)
 
       it("walks past a tier on its own recast, and one not learned", function()
@@ -2384,7 +2404,7 @@ describe("the action service", function()
         assert.is_nil(logged(env):find("down to", 1, true))
       end)
 
-      it("sends a cursor's spell as pressed when OK comes just short of its recast, with nothing busy", function()
+      it("holds a cursor's spell OK'd just short of its recast with nothing busy, and sends it as pressed", function()
         local service, env = tiered("on")
         env.named.lastst = { id = 12345 }
         service.fire({ type = "ma", action = "Sleep II", target = "stnpc" }, {})
@@ -2392,6 +2412,9 @@ describe("the action service", function()
         service.on_text("/ta <stnpc>")
         service.on_text("/ta 777")
         service.on_text("/ta 12345")
+        assert.are.same({ "input /ta <stnpc>" }, env.commands)
+        env.spell_recasts[259] = 0
+        service.tick()
         assert.are.same({ "input /ta <stnpc>", 'input /ma "Sleep II" <lastst>' }, env.commands)
       end)
 

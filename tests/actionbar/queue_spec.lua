@@ -405,6 +405,94 @@ describe("the action queue", function()
       assert.is_false(queue.press(spell("Stone"), command("Stone")))
       assert.is_nil(queue.held())
     end)
+
+    --[[ GearSwap aborts a spell with more than 0.8s of recast left, with a line
+         of chat: eight presses of eight between 0.8 and 2s from ready never left
+         the client, and each cost a second press. Thirteen of thirteen with
+         0.73s or less left went and started (Kevin's logs, 2026-11-24 and 11-25). ]]
+    describe("on its own recast", function()
+      it("is held where the recast is under two seconds off", function()
+        local queue, env = world()
+        env.recast.Cure = 1.03
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("goes once the recast reads ready, and not before", function()
+        local queue, env = world()
+        env.recast.Cure = 1.03
+        queue.press(spell("Cure"), command("Cure"))
+        env.now = env.now + 0.5
+        env.recast.Cure = 0.53
+        assert.is_nil(queue.step())
+        env.now = env.now + 0.53
+        env.recast.Cure = 0
+        assert.are.equal(command("Cure"), queue.step())
+        assert.is_nil(queue.held())
+      end)
+
+      it("goes at once 0.7s or less from ready, which the game takes", function()
+        local queue, env = world()
+        env.recast.Cure = 0.7
+        assert.is_false(queue.press(spell("Cure"), command("Cure")))
+        assert.is_nil(queue.held())
+        assert.is_false(queue.busy())
+      end)
+
+      it("is held just past that", function()
+        local queue, env = world()
+        env.recast.Cure = 0.71
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("is held exactly two seconds from ready", function()
+        local queue, env = world()
+        env.recast.Cure = 2
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("goes to the game further from ready than that, as it always did", function()
+        local queue, env = world()
+        env.recast.Cure = 2.01
+        assert.is_false(queue.press(spell("Cure"), command("Cure")))
+        assert.is_nil(queue.held())
+      end)
+
+      it("takes a re-press while it waits, sending nothing, however near ready by then", function()
+        local queue, env = world()
+        env.recast.Cure = 1.03
+        queue.press(spell("Cure"), command("Cure"))
+        queue.step()
+        env.recast.Cure = 0.5
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+        assert.are.equal(command("Cure"), queue.held().command)
+      end)
+
+      it("gives way while it waits to a newer press that is ready", function()
+        local queue, env = world()
+        env.recast.Cure = 1.03
+        queue.press(spell("Cure"), command("Cure"))
+        assert.is_true((queue.press(spell("Stone"), command("Stone"))))
+        assert.are.equal(command("Stone"), queue.step())
+      end)
+
+      it("is not held under a config mode or suppression", function()
+        local queue, env = world()
+        env.recast.Cure = 1.03
+        env.blocked = "edit mode"
+        assert.is_false(queue.press(spell("Cure"), command("Cure")))
+        assert.is_nil(queue.held())
+      end)
+
+      it("is not held where its target cannot be pinned", function()
+        local queue, env = world()
+        env.recast.Stone = 1.03
+        assert.is_false(queue.press(spell("Stone", "ft"), 'input /ma "Stone" <ft>'))
+        assert.is_nil(queue.held())
+      end)
+    end)
   end)
 
   describe("a press while busy", function()
@@ -611,10 +699,11 @@ describe("the action queue", function()
         assert.is_false(queue.press(spell("Cure"), command("Cure")))
       end)
 
-      it("is not held with no lock running", function()
+      it("is held with no lock running too, as against a lock of nothing", function()
         local queue, env = world()
         env.recast.Cure = 1
-        assert.is_false(queue.press(spell("Cure"), command("Cure")))
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+        assert.are.equal(command("Cure"), queue.held().command)
         assert.is_false(queue.busy())
       end)
     end)
@@ -1021,6 +1110,35 @@ describe("the action queue", function()
       assert.is_false(queue.busy())
     end)
 
+    it("holds OK for a spell under two seconds from ready with nothing busy, until it is", function()
+      local queue, env = world()
+      cursor_up(queue)
+      env.recast["Shell V"] = 1.03
+      local swallowed, send = queue.on_text("/ta 12345")
+      assert.is_true(swallowed)
+      assert.is_nil(send)
+      assert.are.equal(SHELL_COMMAND, queue.held().command)
+      assert.is_nil(queue.step())
+      env.recast["Shell V"] = 0
+      assert.are.equal(AIMED, queue.step())
+    end)
+
+    it("sends OK at once 0.7s from ready with nothing busy, and holds it just past that", function()
+      local queue, env = world()
+      cursor_up(queue)
+      env.recast["Shell V"] = 0.7
+      local _, send = queue.on_text("/ta 12345")
+      assert.are.equal(AIMED, send)
+      assert.is_nil(queue.held())
+
+      local other, there = world()
+      cursor_up(other)
+      there.recast["Shell V"] = 0.71
+      local _, held_back = other.on_text("/ta 12345")
+      assert.is_nil(held_back)
+      assert.are.equal(SHELL_COMMAND, other.held().command)
+    end)
+
     it("replaces at OK a press waiting on its recast, the newest winning", function()
       local queue, env = world()
       finish_cast(queue)
@@ -1258,6 +1376,18 @@ describe("the action queue", function()
         queue.step()
         assert.is_nil(queue.step())
         assert.is_nil(queue.held(), "and is not judged a second time, which would hold it")
+      end)
+
+      it("holds a pick it waited a frame for where its recast is near ready by then", function()
+        local queue, env = world()
+        cursor_up(queue)
+        queue.on_text(OK)
+        env.words[PICK] = "lastst"
+        env.recast["Shell V"] = 1.03
+        assert.is_nil(queue.step())
+        assert.are.equal(SHELL_COMMAND, queue.held().command)
+        env.recast["Shell V"] = 0
+        assert.are.equal('input /ma "Shell V" <lastst>', queue.step())
       end)
 
       it("sends a pick on its recast under its word, to be refused as any press on recast is", function()
@@ -3761,6 +3891,15 @@ describe("the action queue", function()
         assert.is_false(queue.refused_on_recast(spell("Cure")))
       end)
 
+      -- With nothing making the player wait, a tier ready now beats a higher
+      -- one a moment off (Kevin, 2026-11-25), though a press of it is held.
+      it("says so of one under two seconds from ready too, which a press of would be held for", function()
+        local queue, env = world()
+        env.recast.Cure = 1.5
+        assert.is_true(queue.refused_on_recast(spell("Cure")))
+        assert.is_true((queue.press(spell("Cure"), command("Cure"))))
+      end)
+
       it("says one that ends within two seconds of the lock is not", function()
         local queue, env = world()
         finish_cast(queue)
@@ -4285,6 +4424,27 @@ describe("the action queue", function()
       queue.step()
       local _, count = logged(env):gsub("Cure waits 1.00s on its recast", "")
       assert.are.equal(1, count)
+    end)
+
+    it("says a press with nothing busy was held for its recast, and when it went", function()
+      local queue, env = world({ mode = "debug" })
+      env.recast.Cure = 1.03
+      queue.press(spell("Cure"), command("Cure"))
+      queue.step()
+      env.now = env.now + 1.03
+      env.recast.Cure = 0
+      queue.step()
+      assert.is_not_nil(logged(env):find("hold Cure", 1, true))
+      assert.is_not_nil(logged(env):find("Cure waits 1.03s on its recast", 1, true))
+      assert.is_not_nil(logged(env):find("release Cure after 1.03s", 1, true))
+      assert.is_nil(logged(env):find("not held: Cure", 1, true), logged(env))
+    end)
+
+    it("says a press 0.7s or less from ready went as it was", function()
+      local queue, env = world({ mode = "debug" })
+      env.recast.Cure = 0.53
+      queue.press(spell("Cure"), command("Cure"))
+      assert.is_not_nil(logged(env):find("not held: Cure on recast 0.53s, lock 0.00s", 1, true))
     end)
 
     it("says a release lost to its recast", function()

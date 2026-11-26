@@ -314,7 +314,8 @@ After a spell, a weaponskill, a job ability, an item or a ranged attack the
 game refuses your next action for a moment, and a press made in that moment is
 lost. With the queue on, which is the default, a crossbar or hotbar press made
 during a cast or that moment is held, and goes by itself as soon as you can
-act, as in FFXIV. A press made while you are free goes at once. With the queue
+act, as in FFXIV. A press made while you are free goes at once, unless its own
+recast is a moment from ready (see Recasts below). With the queue
 off, every press goes at once and the game decides.
 
 - **What is held:** spells, job abilities, pet commands, weaponskills, items
@@ -334,8 +335,10 @@ off, every press goes at once and the game decides.
   you could act is held until it ends, and one further off is dropped. A press
   made while you are locked out after an action is held if its recast ends no
   more than two seconds after the lockout; one made during a cast, only if its
-  recast has two seconds or less to run. Otherwise it goes out at once, as does one
-  made while nothing is going on, recast or not. While a held press waits on its
+  recast has two seconds or less to run. One made while nothing is going on is
+  held the same way when its recast has between 0.7 and 2 seconds to run, and
+  goes when it is ready; with 0.7 seconds or less to run it goes at once, which
+  the game accepts. Otherwise a press goes out at once. While a held press waits on its
   recast, a newer press replaces it, as during a cast. Stratagems, Quick Draw and Ready have charges, so their recast
   does not count.
 - **Weaponskills.** A weaponskill you have under 1000 TP for does nothing at
@@ -465,8 +468,9 @@ III, and so on down. It is off by default.
   Scholar without the Addendum it needs. Your MP is not checked.
 - **A spell that is nearly ready is never replaced.** Inside those two
   seconds, a spell pressed during the wait after an action is waited for, as
-  the queue always did, and one pressed while you are free is sent and
-  refused, as it always was. Shell V does not become Shell IV for being a
+  the queue always did, and so is one pressed while you are free, unless it
+  is within 0.7 seconds of ready, when it is sent as it is (with the queue
+  off it is always sent as it is). Shell V does not become Shell IV for being a
   second early. The one exception is a press made while another spell is
   still casting: nothing says when a cast will end, so the two seconds are
   counted from the press, and a spell that would have come ready by your turn

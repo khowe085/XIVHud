@@ -42,8 +42,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      knows how long a lock has left and what it will wait out, and it is
      asked two things. `far_off` sends the walk down: a spell nearer ready
      than the queue's grace is never traded for a lower tier. `refused` is
-     what the walk passes by: a tier the game would refuse if it were settled
-     on now. MP is not asked: Penury, Light Arts and gear cut the cost below
+     what the walk passes by: a tier whose recast runs past what a lock will
+     wait out, or runs at all with nothing busy, where a tier ready now is
+     the better one. MP is not asked: Penury, Light Arts and gear cut the cost below
      what the resource says.
 
      Pure: the setting, the spell lookup, the client reads and the queue's

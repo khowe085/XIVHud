@@ -544,7 +544,8 @@ queue, in `lib/actionbar/queue`. A crossbar or hotbar press made during a cast
 or the lock after it is held and goes as invoked when the lock clears (or its
 recast, two seconds at most later, below). There is
 one held press, the newest; a press while nothing is busy goes at once, as it
-always did; a release is sent once and never again, refused or not. **It never
+always did, unless it is 0.7 to 2s from ready on its own recast, which it waits
+for (below); a release is sent once and never again, refused or not. **It never
 waits long on a recast**, which is what made Selindrile's MiniQueue unusable: a
 press whose own recast runs more than two seconds past the lock goes out and the game
 refuses it, and a held press whose recast is that far off when the lock clears is
@@ -559,11 +560,21 @@ an OK treats the queue as engaged though `busy()` stays false (Kevin, 2026-11-08
 read as idle, a mash of the slot went out beside it): a newer one replaces it, unless
 its own recast runs more than two seconds on, which goes out as against a lock of
 nothing. A cast still running counts as a lock of nothing too, its own still to
-come. A press on its recast with nothing busy and nothing held on its recast goes
-out as before. With GearSwap handling it, a spell sent that way with more than 0.8s of
-recast left never leaves the client: its `check_recast` aborts it with a line of chat
-(`Abort: [<spell>] waiting on recast.`), eight of eight between 0.8 and 2s over the runs of
-2026-11-24 and 11-25, where 13 of 13 at 0.8s or less went. **The grace is unverified in a live client at two seconds** (row 34 of the plan). The
+come. **With nothing busy and nothing held on its recast, a press is judged against a
+lock of nothing too** (Kevin, 2026-11-25: "Yes, hold it"): one two seconds or less from
+ready is held for its recast and goes when the recast reads ready, a cursor's OK the
+same. It went as pressed until then, and GearSwap's `check_recast` aborts a spell sent
+with more than 0.8s of recast left, with a line of chat (`Abort: [<spell>] waiting on
+recast.`): eight of eight between 0.8 and 2s over the runs of 2026-11-24 and 11-25 never
+left the client, each costing a second press. For the spells in its own `spell_stepdown`
+table (Sleep II, Sleepga II, Gravity II, the Raises and Reraises, the -ra bar spells
+and others, 37 in all) GearSwap cast the next tier down in the press's place instead of
+aborting; held, such a press now waits for the tier that was pressed, as one in a lock
+always did. One 0.7s or less from ready still goes as
+it is (Kevin's pick), since 13 of 13 with 0.73s or less left went and started, and one
+more than two seconds off goes out as before. **Unverified in a live client** (row 53 of
+the plan), and for an ability: GearSwap aborts one above 0.5s, so an ability 0.5 to 0.7s
+from ready is still lost as it was. **The grace is unverified in a live client at two seconds** (row 34 of the plan). The
 `not held` and `dropped ... on recast` lines in `debug` say the recast and lock left, which
 is how the margin was measured. Three rules beside that one
 (Kevin, 2026-10-31): the four ABILITY recasts a charged family shares read as no
@@ -679,7 +690,8 @@ handler, and blocking the packet afterwards would leave it `midaction` for good.
 So the press opens the same cursor over `/ta <token>`, free or busy, which GearSwap
 ignores, and `queue.on_text` takes the second number: the line is blocked, so
 your target never moves, and the real `/ma "..."` is held for that id, or sent at
-once if the lock has cleared (and no held press waits on its recast) or the recast
+once if the lock has cleared (and no held press waits on its recast, and its own is
+ready or 0.7s or less from it) or the recast
 outlasts it by more than two seconds. It is sent under a word that names the pick,
 as every pinned press is (above), never under the id (Kevin, 2026-11-25): `<lastst>`
 is the one a pick is expected under, `<me>` or a party member's own word where it is
@@ -992,12 +1004,17 @@ spell pressed inside another's cast is measured from the press and can be
 stepped down though it would have come ready by its turn. A spell nearer ready than that is
 never traded for a lower tier (Kevin, 2026-11-24, asked twice): in a lock it
 is held and WAITED for, as before - it is his Shell V on target after target -
-and with nothing busy it goes as pressed and the game refuses it, as before.
+and with nothing busy it is held and waited for too, bar one 0.7s or less from
+ready, which goes as pressed (Kevin, 2026-11-25; until then it went as pressed
+at any recast, and GearSwap aborted it above 0.8s).
 What the walk PASSES BY is a tier the game would refuse if it were settled on
 now (`queue.refused_on_recast`): any recast running with nothing engaged, and
 otherwise one that outlasts the grace, so a lower tier may be waited for as
 the pressed spell would be - in a lock, and at a release, where the held
-press it stands in for still counts as engaged.
+press it stands in for still counts as engaged. With nothing engaged that
+stands though a press of such a tier would now be held for it: with nothing
+making the player wait, a tier ready now beats a higher one a moment off
+(Kevin, 2026-11-25).
 
 The walk is made wherever a spell's command is settled. At the press, in the
 service. At a cursor slot's OK, in the queue (`deps.lower`), nothing being

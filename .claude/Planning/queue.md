@@ -738,6 +738,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 50 | With GearSwap off (a bare `gs disable`, or not loaded) and the queue in `debug`: press a `<t>` weaponskill slot in the half second after a job ability; press a `<t>` spell in a lock and tab to another mob before it goes, once at a monster and once at a party member; then all of it again with GearSwap on | `hold`, `release`, and the weaponskill starting: no id in the `>>` line and no "A command error occurred". For the press tabbed away from a monster, `dropped <name>: nothing names <id> (<t> <the new id>, <lastst> ...)` and nothing cast; from a party member, `<name> aimed at <p1>` (their own word) and the cast landing on them. With GearSwap on, the same lines, the release's packet within 0.04s and its precast gear on | A word in place of the id (2026-11-25). That the game reads a release for itself, that nothing regressed where GearSwap reads the word instead of the id (its `pretarget` now runs for a held press), and what moving off a target costs |
 | 51 | The same on cursor slots, with GearSwap off and then on: OK a `<stnpc>` spell at a mob that is NOT your target, once free and once in a lock; OK a `<stpc>` spell on a party member, on yourself, and on a player outside the party | After `OK <name> at <id>`: `<name> aimed at <lastst>` and the cast landing on the pick, your own target unmoved. Or `nothing names <id> yet` first and the `aimed at` line a frame later. Or `dropped <name>: nothing names <id> (<t> ..., <lastst> ...)` and no cast. A party member's cast lands whatever `<lastst>` does: `aimed at <lastst>` where that names them, otherwise `<t>` or their own `<p1>`-`<p5>`. `aimed at <me>` for yourself either way | The open one (2026-11-25): whether the game takes a pick for `<lastst>` from a `/ta` line the queue kept from it, and whether before or after the line comes through. If it is the drop line, a cursor cast at anyone outside the party cannot go without an id, and that needs another way: Kevin chose the drop knowing it |
 | 52 | After a `//lua reload hud`, press an `assist` slot or pad button; then `//hud assist <name>` and press again, and check `//alias` for one called `assist` | First `assist pressed, ...` in the log, `assist has no target yet - //hud assist <target>` in chat and no packet. Then `assist target set: /assist <name>`, and per press `assist pressed, ...` and `out assist <id>`, your target moving to theirs. No alias called `assist` unless you made one | Assist without the alias (2026-11-25): `input /assist <name>` sent straight from `send_command`, where the alias ran that same line (seen 24 times of 24 on `3c91c54`) |
+| 53 | With nothing going on, press a spell slot (and OK a `<stpc>` one) about a second after that spell's last cast came off its lock, so its recast has 0.8 to 2s left; then one with half a second left; then one with five | `hold <name>`, `<name> waits <n>s on its recast` and `release <name> after <n>s`, an `out spell` within 0.04s and its `start`, with no `Abort: [<name>] waiting on recast.` in chat. At half a second: `not held: <name> on recast 0.5xs, lock 0.00s`, `out spell` and a `start`. At five: `not held`, and GearSwap's `Abort:` line or the game's refusal, as before. A Sleep II pressed 1 to 2s from ready is held and cast as Sleep II, where GearSwap used to cast Sleep in its place | The hold with nothing busy (2026-11-25). That a press 0.7 to 2s from ready now casts on its one press, that one 0.7s or less still goes at once and is taken, and that the release at a recast reading zero is taken too. Unverified |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -2000,9 +2001,9 @@ to 52 are untouched.
   - Over both runs 13 of 13 at 0.8s or less went, and eight of eight between 0.8 and 2s
     cost a second press. That the game takes a spell up to two seconds from ready is not
     shown: none reached it.
-  - **Open, Kevin's call:** whether a press with nothing busy and a recast under two
-    seconds off is held for it, as one in a lock is. It was passed over on the figure
-    corrected here.
+  - Whether such a press is held for its recast, as one in a lock is, had been passed
+    over on the figure corrected here. Kevin took it the same day: see "A press near
+    ready with nothing busy" below.
 - **Standing aside threw two single presses away** (row 45), the first seen. Kevin cast
   Stonega from outside the bar 18 times from 19:11 on, and five times OK'd the bar's
   Sleepga in the last second of its lock.
@@ -2049,3 +2050,47 @@ to 52 are untouched.
   message 17, sent 2.44 and 2.45s after a Trust's finish, where seven sent 2.51 to 2.56s
   after went. Nothing was held at his death at 18:58:13: no cure had been pressed, and his
   Trusts fell in the same second.
+
+## A press near ready with nothing busy (Kevin, 2026-11-25)
+
+Asked "Hold a nothing-busy press that is under two seconds from ready?" on the corrected
+figures above, Kevin: "Yes, hold it".
+
+- **With nothing busy and nothing held on its recast, a press is judged against a lock of
+  nothing.** One whose recast has 0.7 to 2s to run is held, and released when the recast
+  reads ready, as a press waiting past a lock is. A cursor's OK is judged the same way.
+  Until now it went as pressed at any recast, and GearSwap aborted it above 0.8s.
+- **One 0.7s or less from ready still goes as it is** (Kevin: "Leave 0.7s and under",
+  over holding every press on its recast until it reads ready). 13 of 13 with 0.08 to
+  0.73s left went and started, and held they would each have waited that out.
+  `NEAR_READY` in `queue.lua`. The cost: a press at 0.8s waits 0.8s where one at 0.7s
+  goes at once.
+- **One more than two seconds from ready goes out as before**, for GearSwap or the game
+  to refuse.
+- **GearSwap no longer steps such a press down itself** (found by review). For the 37
+  spells in its `spell_stepdown` table (`Sel-Mappings.lua`: Sleep II, Sleepga II, Gravity
+  II, Aspir II and III, the Raises and Reraises, the -ra bar spells, the Lullaby and
+  Threnody IIs, Tonko: Ni) its `check_recast` casts the next tier down in place of
+  aborting. So with nothing busy a Sleep II pressed 0.8 to 2s from ready went as Sleep
+  at once, and held it now waits for Sleep II, as one pressed in a lock always did. The
+  eight presses the decision rested on were Sleepga and Haste II, which that table does
+  not hold. Kevin was told in the report, his to overturn.
+- **While it waits** the queue is engaged though `busy()` stays false, as it was for a
+  wait past a lock: a re-press replaces it and sends nothing, however near ready by
+  then, and a newer press that is ready takes its place and goes on the next frame.
+- **The spell tier walk is unchanged** (Kevin: "Keep passing it by"). With nothing
+  engaged it still walks past a lower tier with any recast running, for one that is
+  ready now: `refused_on_recast` keeps its test, and only the press path's own changed.
+  The spell that was pressed, kept as "near enough ready", is now held where it was sent
+  to be refused.
+- **Debug** writes the lines a held press always wrote: `hold <name>`, `<name> waits
+  <n>s on its recast`, `release <name> after <n>s`. A press that goes within 0.7s of
+  ready writes `not held: <name> on recast <n>s, lock 0.00s`, as it did.
+- **Two specs that predate the branch were changed, with Kevin's go-ahead** ("Yes,
+  change both"): `queue_spec`'s "is not held with no lock running" now asserts the press
+  is held, and the first press of `service_spec`'s "sends the next press at once after
+  one on its own recast" moved from 2s to 3s from ready, where it still goes as pressed.
+
+**Unverified in a live client** (row 53): all of it, and an ability. GearSwap aborts an
+ability with more than 0.5s of recast left, so one 0.5 to 0.7s from ready is still lost
+as it was; the 13 samples behind 0.7 are all spells.
