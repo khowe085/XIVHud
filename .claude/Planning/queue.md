@@ -2529,14 +2529,27 @@ on `12debed`: BLU in Sheol C (22:20 to 22:50), then Sortie and an Ambuscade.
   3. The next press went to GearSwap, which sent nothing (`nothing went out`).
   4. GearSwap cast Nat. Meditation again. The press waited out its cast and lock, 4.2s,
      and went at the lock's end.
+  - Kevin, after reading this: "The expiacion in question here had TP, and I was mashing
+    the button. I got to 3000 TP before it finally went off." It fits: Expiacion went off
+    on the Vizier every 5s or so, about 200 TP a second in that segment, so the 10.4s from
+    1000 TP took him to the cap.
   - Three minutes earlier (22:37:32, the Agon Halo) the same sequence - GearSwap's
     Mighty Guard interrupted, a press let go 1.73s into the lock - started 0.80s after it
     left. Why the server was silent the second time is unknown (an Agon Rabblerouser
-    Torrent hit Vanar a second before the send). Nothing in the queue's part of it looks
-    wrong: the 2s wait is the answer backstop, and accepted weaponskills here started up to
-    1.62s after they left.
+    Torrent hit Vanar a second before the send).
+  - **The queue's share is step 2.** Over every log kept, four presses were let go while
+    standing aside 1.70 to 1.85s into an INTERRUPTED cast's lock: two were refused
+    (message 90, 2026-11-25 01:43 and 20:24), one started (the Halo's) and one was never
+    answered (this one). Held to the lock's end, at +2.7, each would have gone where an
+    interrupted lock has always been over (every send after +2.23 was accepted), and
+    GearSwap's second Nat. Meditation came 2s after that point. A send never answered is
+    the costly case: 2s waiting for it, then GearSwap, still waiting for it too, threw
+    away a press and cast first.
   - The other Agon fights (Halo, Scallywag, Yojimbo, Adjudicator, Vizier) had Expiacion
     going off every 3 to 10s, the Vizier's six times in 27s.
+- **Open, Kevin's call**: holding a press to the end of an interrupted cast's lock while
+  standing aside, as it is held through every other part of a lock. It would have sent
+  this Expiacion 0.9s later than it went, most likely to start, and the Halo's 0.7s later.
 - **Open, Kevin's call**: taking a finish naming no spell, while a weaponskill send is
   unanswered, for that weaponskill's finish (the too far at 22:44:34). It is the
   `ends_weaponskill` rule for a weaponskill whose start never came, and would have ended
