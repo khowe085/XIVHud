@@ -2325,10 +2325,9 @@ so it says nothing of row 54.
   time, 6s, plus the 0.8, and with Fast Cast the real cast is a quarter of that.
   - He pressed nothing in either window, so nothing was held. A press there would have
     waited up to 8s.
-  - Open, Kevin's call: a finish seen another way. A spell's recast starts when its cast
-    finishes (row 48 found the client counts it from the finish), so a recast running on
-    the spell a start named would say the cast is over whatever became of the packet.
-    Not built.
+  - A finish seen another way, by the recast it begins, was built and dropped the same
+    day: the client's recast does not move without the finish packet. See "A recast for
+    a lost finish" below.
 - **A send the server never answered kept the bar busy 6.8s** (18:48:28): an Anvil
   Lightning left and drew no start and no refusal, and the wait ran the 6s cast time plus
   0.8. One press of it 1.6s on was swallowed as `already going`. Nothing in the client
@@ -2350,6 +2349,60 @@ so it says nothing of row 54.
 - **GearSwap's own**: ten Trust casts refused by the lock, sent 2.52 to 2.53s after a
   finish, and `Abort: You don't have access to [Ground Strike].` five times for a slot
   pressed on a job that lacks it.
+
+## A recast for a lost finish, built and dropped (Kevin, 2026-11-26)
+
+Offered after the run above: a spell's recast begins at its finish (row 48), so while a
+start waits for its finish, a recast beginning on that spell would say the cast is over
+whatever became of the packet. I put it at 75% that the client's table moves for a
+finish no addon was shown, and said that was unverified. **Kevin: "Yes, build it".**
+
+- **What was built**, under TDD and never committed: the started spell's recast read at
+  the start and ten times a second after (a new `spell_recast(id)` dep, off the client's
+  table by the spell's `recast_id`); a reading above the one before it taken for the
+  finish, since what is still running at a start only falls; the spell's lock from that
+  tick; the start left open, as when its wait runs out, so the finish itself would
+  replace the lock; and a `debug` line.
+- **Why it cannot work**, found while building it:
+  - The finish packet is what carries the recast: `Recast` is a field of the incoming
+    `0x028` in Windower's `fields.lua` (`func.incoming[0x028].base`), and GearSwap reads
+    it as `act.recast` on a category 4 (`helper_functions.lua`). `0x119` lists ability
+    recasts alone. So a client that never gets the finish has nothing to start one from.
+  - One event says the same, read three times: his Sleepga of 2026-11-25 on `3c91c54`
+    (the Dynamis [D] run, 19:20:53; clock 3100.62). The start came and no finish, in
+    the queue's log and the chat log alike. The cast landed all the same: the Sleepga
+    at 19:21:05 drew "No effect" from the Mender it was aimed at and from a Wyvern and a
+    Shadowstalker, all three hit at 19:20:48 and so awake then, with no other sleep in
+    the chat log between. Its end is taken 1.22s
+    after its start, as the next Sleepga's was, and its recast about 9s (`not held:
+    Sleepga on recast 8.67s` 0.31s after a later finish). Against that the client's
+    figure read **2s or less** at +1.4s (`OK Sleepga`, `hold Sleepga` with the cast
+    still counted as running, where more than 2s is `not held`), **3.5s or less** at
+    +3.4s (`hold Sleepga, replacing Sleepga`, 1.49s of the counted lock left) and
+    **nothing** at +4.9s (`release Sleepga after 1.50s`, with no `waits` line). That
+    release drew `no answer to the last send`; the next Sleepga, sent at +9.1s, started.
+  - Nothing in the other logs reads a lost finish's recast: no press of the same spell
+    followed either Anvil Lightning inside its recast.
+  - My 75% was wrong; with this it is about 10% that the read would ever have fired.
+- **Kevin: "Drop it".** The four files were restored and nothing of it is in the tree.
+- **Other starts with no finish**, seen in that Dynamis run while looking, and not
+  acted on:
+  - A Stonega started at clock 2666.21, the mob under `<t>` `fell` 1.19s on, and neither
+    a finish nor an interrupt came. Stonega was sent again 2.0s after the counted finish
+    and started, so the first never finished.
+  - A Stonega started at 3089.30, message 5 ("Unable to see") came 0.87s on, and again
+    nothing more; the one sent 2.78s after that message started. Whether the message was
+    the spell's or a swing's is not known: the queue reads messages 4 and 5 only for who
+    the server has you fighting.
+- **Open, Kevin's call: the cast time actually seen.** The 19 Anvil Lightnings that did
+  finish in the `b7499d0` run did so 1.53 to 1.69s after their start, against the
+  resource's 6s. Waiting the longest recent start-to-finish seen for a spell plus the
+  0.8s, capped at the resource's time, would have kept the bar busy about 5.2s in place
+  of 9.5s. The risk is a cast longer than any seen (Fast Cast gear missing, a slow):
+  the wait ends early, as it does now when a cast overruns the resource's time. Not
+  built.
+- Set aside: MP falling as the sign of a finish. GearSwap's midcast swap moves max MP
+  at the start of a cast, so a fall there says nothing.
 
 ## The tier flag on the binding (Kevin, 2026-11-25)
 

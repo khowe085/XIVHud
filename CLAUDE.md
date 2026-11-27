@@ -654,8 +654,18 @@ to arrive with no lag at all** (Kevin's run of 2026-11-26 on `b7499d0`): two Anv
 Lightnings, the two largest pulls of 27, each drew a start and no finish and no death
 message, in the queue's log and in his chat log's damage lines alike. Each kept the bar
 busy the resource's 6s cast time plus 0.8s plus the lock, 9.5s, where the cast took about
-1.5s with Fast Cast on; he pressed nothing in either window. Open, Kevin's call: taking
-a recast running on the started spell for its finish. (The lock after a
+1.5s with Fast Cast on; he pressed nothing in either window. **A recast cannot stand in
+for that finish** (built and dropped the same day, Kevin: "Drop it"): the finish packet
+is what carries a spell's recast (`Recast` in Windower's `fields.lua` for the incoming
+`0x028`, which GearSwap reads as `act.recast`; only abilities have a recast list of
+their own), so a client that never gets the finish never starts the recast. Seen once,
+read three times (his Sleepga of 2026-11-25, 19:20:53, on `3c91c54`): no finish reached
+the queue or the chat log, the next Sleepga drew "No effect" from the mob it was aimed
+at, and with a recast of about 9s running on the server the client's figure read 2s or less,
+3.5s or less and then nothing, 1.4, 3.4 and 4.9s after the cast should have ended; the
+release made on that last reading drew no answer. Open, Kevin's call: waiting the cast
+time actually SEEN for a spell in place of the resource's, the 19 Anvil Lightnings that
+did finish in that run each doing so 1.53 to 1.69s after their start. (The lock after a
 weaponskill whose target died, below, has the only other: 0.4s after the start, where
 the death is reported sooner than that.) A held
 press then goes once that lock ends; a finish arriving late still replaces the
