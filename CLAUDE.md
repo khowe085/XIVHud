@@ -695,8 +695,11 @@ wait early, as one overrunning the resource's time does, and its finish, late as
 teaches the longer time, which is then waited on until the next of those four moments.
 `debug` ends the wait's line `, going by the <n>s seen` where it went by one. The wait on
 a spell sent and never answered still runs the resource's time (Kevin: "Leave it"): it
-runs from the send, and would have to cover the time to the start as well. **Unverified
-in a live client** (row 56 of the plan). Everything else is a packet, whoever caused it: outgoing
+runs from the send, and would have to cover the time to the start as well. **Seen once in
+a live client** (Kevin's night of 2026-11-26 on `12debed`, row 56 of the plan): an Erratic
+Flutter's finish never came, and its wait went by the 0.89s seen where the resource lists
+2s; of about 200 other spell starts none was counted finished ahead of a finish that came.
+Unverified: a slower cast teaching its time. Everything else is a packet, whoever caused it: outgoing
 `0x01A`/`0x037` (the only sight of a macro or of what GearSwap injects),
 `0x028` starts, finishes and interrupts, `0x029` refusals (GearSwap's
 `unable_to_use` list) and the six `0x053` system messages that refuse a Trust cast
@@ -1092,10 +1095,14 @@ takes it, there being nothing to check against, and clearing is never refused.
 The tier that stands in carries the flag on, so a release can step a held
 lower tier down again, as it did live while the switch was global (Fire IV,
 held through a cast, went as Fire III). Being a marker, `tier=` also ends a
-`ct` or `ex` line, which must be quoted whole to say it. **Unverified in a live
-client**: all of the flag, and in particular the toggle's width and place on
-the row (`BASE_TIER_WIDTH`, an estimate: Windower cannot be asked how wide a
-string draws).
+`ct` or `ex` line, which must be quoted whole to say it. **Seen in a live
+client** (Kevin's Sortie of 2026-11-26 on `12debed`, row 54 of the plan): the
+toggle took its click, the flagged Fire V stepped down to Fire IV twice at an
+OK and each cast, and Haste II, unflagged, cast 22 times without a tier line.
+**Unverified**: the flag kept through a reload and `tier ... off`, and whether
+the toggle's width and place on the row (`BASE_TIER_WIDTH`, an estimate:
+Windower cannot be asked how wide a string draws) keep it clear of a long
+row's text.
 
 A tier is read off the spell's own name in the resources: a Roman numeral on
 the end, the first tier carrying none (a song's numeral too), or ninjutsu's

@@ -739,9 +739,9 @@ start bracket the true lock. Every line is in `debug.log`.
 | 51 | The same on cursor slots, with GearSwap off and then on: OK a `<stnpc>` spell at a mob that is NOT your target, once free and once in a lock; OK a `<stpc>` spell on a party member, on yourself, and on a player outside the party | After `OK <name> at <id>`: `<name> aimed at <lastst>` and the cast landing on the pick, your own target unmoved. Or `nothing names <id> yet` first and the `aimed at` line a frame later. Or `dropped <name>: nothing names <id> (<t> ..., <lastst> ...)` and no cast. A party member's cast lands whatever `<lastst>` does: `aimed at <lastst>` where that names them, otherwise `<t>` or their own `<p1>`-`<p5>`. `aimed at <me>` for yourself either way | The open one (2026-11-25): whether the game takes a pick for `<lastst>` from a `/ta` line the queue kept from it, and whether before or after the line comes through. If it is the drop line, a cursor cast at anyone outside the party cannot go without an id, and that needs another way: Kevin chose the drop knowing it. On `625391e` (2026-11-25): a pick of yourself went under `<me>` and landed, six of six. No pick of anyone else, so `<lastst>` is still open. Answered on `15738b7` (2026-11-25), GearSwap on: 67 sends under `<lastst>` each landed on its pick, 19 of them a pick other than the one before. The game takes a pick once the handler has answered: inside the OK `<lastst>` still names the pick before, so a new pick goes at once under `<t>` or the party member's own word (`<p1>`, once), and one no word names (a mob not targeted, once) is `nothing names <id> yet` and goes a frame later. GearSwap off, and a player outside the party, were not exercised |
 | 52 | After a `//lua reload hud`, press an `assist` slot or pad button; then `//hud assist <name>` and press again, and check `//alias` for one called `assist` | First `assist pressed, ...` in the log, `assist has no target yet - //hud assist <target>` in chat and no packet. Then `assist target set: /assist <name>`, and per press `assist pressed, ...` and `out assist <id>`, your target moving to theirs. No alias called `assist` unless you made one | Assist without the alias (2026-11-25): `input /assist <name>` sent straight from `send_command`, where the alias ran that same line (seen 24 times of 24 on `3c91c54`). Seen on `625391e` (2026-11-25): the hint and no packet 13 times of 13 before a target, `assist target set: /assist zaon`, then six `out assist` for 25 presses in seven seconds, 1.21s apart. On `15738b7`: 59 presses and 26 `out assist`. `//alias` was not checked |
 | 53 | With nothing going on, press a spell slot (and OK a `<stpc>` one) about a second after that spell's last cast came off its lock, so its recast has 0.8 to 2s left; then one with half a second left; then one with five | `hold <name>`, `<name> waits <n>s on its recast` and `release <name> after <n>s`, an `out spell` within 0.04s and its `start`, with no `Abort: [<name>] waiting on recast.` in chat. At half a second: `not held: <name> on recast 0.5xs, lock 0.00s`, `out spell` and a `start`. At five: `not held`, and GearSwap's `Abort:` line or the game's refusal, as before. A Sleep II pressed 1 to 2s from ready is held and cast as Sleep II, where GearSwap used to cast Sleep in its place | The hold with nothing busy (2026-11-25). That a press 0.7 to 2s from ready now casts on its one press, that one 0.7s or less still goes at once and is taken, and that the release at a recast reading zero is taken too. Seen on `15738b7` (2026-11-25), for a cursor's OK: three of Haste II 1.18 to 1.62s from ready were held, two going when the recast read ready (5.00 and 5.01s after the last finish) and starting, the third replaced by a second OK 0.05s from ready, which went 0.05s on; three 0.57s or less from ready went as pressed and started; and the chat log has no `waiting on recast` abort for a spell in the hour. A plain press at the short end on 2026-11-26: a Dread Spikes 0.23s from ready went as pressed and started. On `b7499d0` the same day a plain press was held, `Anvil Lightning waits 1.68s on its recast`, and dropped at the release for its target (row 50), so its cast was not seen. Not seen: a plain press held and cast, an ability, a spell in GearSwap's `spell_stepdown` |
-| 54 | In edit mode click a slot holding Fire V (or any spell with a tier under it) and click `auto tier [ off ]` at the end of its row; leave edit mode and mash the slot through a cast, the queue in `debug`. Do the same mash on a Haste II slot left unflagged. Then `//hud crossbar list`, `//hud crossbar tier <address> off`, and a `//lua reload hud` between any two of them | The row then reads `auto tier [ on ]` and chat says `crossbar: auto tier on for Fire V -> base / set <n> / <side> / slot <n>`; the mash logs `at the press` / `at OK` / `at the release: Fire V ...; down to Fire IV` and Fire IV casts. The Haste II slot writes no `down to` line and is never replaced. `list` shows `tier=auto` on the flagged binding, after a reload too, and not after `tier ... off` | The tier flag on the binding (2026-11-25). That the toggle sits clear of the row's own text and takes its click, that only a flagged binding steps down, and that the flag is saved with the binding. Unverified |
+| 54 | In edit mode click a slot holding Fire V (or any spell with a tier under it) and click `auto tier [ off ]` at the end of its row; leave edit mode and mash the slot through a cast, the queue in `debug`. Do the same mash on a Haste II slot left unflagged. Then `//hud crossbar list`, `//hud crossbar tier <address> off`, and a `//lua reload hud` between any two of them | The row then reads `auto tier [ on ]` and chat says `crossbar: auto tier on for Fire V -> base / set <n> / <side> / slot <n>`; the mash logs `at the press` / `at OK` / `at the release: Fire V ...; down to Fire IV` and Fire IV casts. The Haste II slot writes no `down to` line and is never replaced. `list` shows `tier=auto` on the flagged binding, after a reload too, and not after `tier ... off` | The tier flag on the binding (2026-11-25). That the toggle sits clear of the row's own text and takes its click, that only a flagged binding steps down, and that the flag is saved with the binding. Seen on `12debed` (2026-11-26, Sortie): the toggle took its click (`crossbar: auto tier on for Fire V -> base / set 6 / right / slot 3`), the flagged Fire V stepped down to Fire IV twice at an OK and Fire IV cast both times, and Haste II, unflagged, cast 22 times with no tier line. Not checked: `list` after a reload, `tier ... off` |
 | 55 | With no Fast Cast on (a naked set, or GearSwap's precast off), cast a few spells of two seconds and over from anywhere, the queue in `debug` | No `no finish yet for the last start` line ahead of a `finish spell`: each cast's `start spell` is followed by its own `finish spell`, and the next bar press goes when that lock ends | The lost-finish margin at 0.8s (2026-11-26). At 0.4s the count ran out before the real finish 27 times of 27, by 0.02 to 0.37s. That two beats covers a cast with no Fast Cast; what a slow (Addle) lengthens it by is still unknown. On `b7499d0` (2026-11-26), Fast Cast on: of 77 spell starts none was counted ahead of a finish that came, and the two that were counted never had one. Unverified with no Fast Cast |
-| 56 | With the queue in `debug`, cast one spell a few times without zoning, then cast it at a mob that dies before it lands (or step out of sight as it ends), and press a bar slot while it casts. Also cast it once with GearSwap's precast off | `no finish yet for the last start, lock 2.70s, going by the <n>s seen`, `<n>` the longest of that spell's `start spell` to `finish spell` since the last zone, the line coming `<n>` + 0.8s after the start and the held press going 2.7s after it. For every cast that does finish, no `no finish yet` ahead of its `finish spell` - bar the one with precast off, where the line may come first and the `finish spell` after it, the next wait then going by that longer time | The cast time seen (2026-11-26). That a lost finish costs the cast's real length and not the resource's, that the shorter wait never runs out ahead of a finish that comes with the gear unchanged, and that a slower cast teaches its own time. Unverified |
+| 56 | With the queue in `debug`, cast one spell a few times without zoning, then cast it at a mob that dies before it lands (or step out of sight as it ends), and press a bar slot while it casts. Also cast it once with GearSwap's precast off | `no finish yet for the last start, lock 2.70s, going by the <n>s seen`, `<n>` the longest of that spell's `start spell` to `finish spell` since the last zone, the line coming `<n>` + 0.8s after the start and the held press going 2.7s after it. For every cast that does finish, no `no finish yet` ahead of its `finish spell` - bar the one with precast off, where the line may come first and the `finish spell` after it, the next wait then going by that longer time | The cast time seen (2026-11-26). That a lost finish costs the cast's real length and not the resource's, that the shorter wait never runs out ahead of a finish that comes with the gear unchanged, and that a slower cast teaches its own time. Seen on `12debed` (2026-11-26): one finish lost, an Erratic Flutter listed at 2s and seen at 0.89s, counted finished 1.70s after its start (`going by the 0.89s seen`), and of about 200 other spell starts none was counted ahead of a finish that came. Not seen: a slower cast teaching its time |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -2486,6 +2486,61 @@ to 1.69s seen, 19 times of 19).
   time (`no finish yet for the last start, lock 2.70s, going by the 1.69s seen`).
 - Spells alone: an item still waits its resource's time plus 1s.
 - **Unverified in a live client** (row 56).
+
+## A night on `12debed`: Sheol C, Sortie and an Ambuscade (Kevin, 2026-11-26 22:14 to 2026-11-27 00:14)
+
+Kevin: "Had a few missing server packets and when fighting one of the Lamia in sheol,
+expiacion didn't want to go off. In Sortie, I tested the new auto tier and it seemed to
+work. Haste II didn't tier down, but Fire V did when I enabled it." 9,499 lines, the first
+on `12debed`: BLU in Sheol C (22:20 to 22:50), then Sortie and an Ambuscade.
+
+- **The tier flag** (row 54): the toggle wrote `crossbar: auto tier on for Fire V -> base /
+  set 6 / right / slot 3` at 23:34:36. Fire V then stepped down to Fire IV at an OK twice,
+  `on recast 3.08s, free` and `on recast 12.80s, lock 0.50s`, and each Fire IV cast, the
+  first a magic burst. Twice Fire V was `near enough ready, kept` (0.75 and 0.97s from
+  ready), waited out its recast and cast. Haste II, unflagged, cast 22 times with no tier
+  line.
+- **The cast time seen** (row 56): one finish was lost, an Erratic Flutter at 22:35:28
+  (listed at 2s, seen at 0.89s). It was counted finished 1.70s after its start, so the bar
+  was busy 4.4s where the listed time gives 5.5s; nothing was pressed then. No other spell
+  start of about 200 drew a `no finish yet`. Starts and finishes 0.02s apart (Cocoon, Nat.
+  Meditation: the two packets bunched) fell under the fifth-of-the-resource floor, which
+  kept them from teaching a near-zero time.
+- **The other missing packets**: 3 spell starts and 2 weaponskill starts lost, each finish
+  locking as before; and 5 weaponskill sends never answered, each a 2s wait:
+  - 22:28:25: GearSwap's own Expiacion, sent 1.10s after it used Berserk in a press's
+    place. The TP was kept (the next release passed the TP test), GearSwap sent nothing
+    for the next three presses (`nothing went out`, its `ws_buff_lock`), then used Aggressor.
+  - 22:40:13: the Lamia, below.
+  - 22:44:34: a Nostos Wamoura too far away. The server answered with a finish-shaped
+    packet naming no spell, message 78, and no start, which the queue ignored (`ignored a
+    finish with no cast running, message 78`), so it waited out the 2s. The TP was spent:
+    every press after it read `no TP` until melee had built it back.
+  - 22:46:58 (a Nostos Black Pudding) and 23:09:22 (Sortie, Black Halo): sent 0.14s and
+    0.07s after a "You cannot see" refusal (message 219). The first spent the TP with no
+    action packet reaching the client, the chat log included; after the second, a third
+    send passed the TP test and started.
+- **The Lamia was the Agon Rabblerouser** (22:39:54 to 22:40:19). Expiacion was first
+  pressed with TP at 22:40:09 and went off at 22:40:19, 10.4s later:
+  1. GearSwap cast Nat. Meditation itself (Attack Boost had worn off at 22:40:07), and it
+     was interrupted 0.03s after its start. The interrupted lock, 2.7s, held the presses.
+  2. Standing aside let one go 1.79s into that lock. The server never answered it: no
+     start, no refusal, no message of any kind, and the TP was kept. 2s of `already going`.
+  3. The next press went to GearSwap, which sent nothing (`nothing went out`).
+  4. GearSwap cast Nat. Meditation again. The press waited out its cast and lock, 4.2s,
+     and went at the lock's end.
+  - Three minutes earlier (22:37:32, the Agon Halo) the same sequence - GearSwap's
+    Mighty Guard interrupted, a press let go 1.73s into the lock - started 0.80s after it
+    left. Why the server was silent the second time is unknown (an Agon Rabblerouser
+    Torrent hit Vanar a second before the send). Nothing in the queue's part of it looks
+    wrong: the 2s wait is the answer backstop, and accepted weaponskills here started up to
+    1.62s after they left.
+  - The other Agon fights (Halo, Scallywag, Yojimbo, Adjudicator, Vizier) had Expiacion
+    going off every 3 to 10s, the Vizier's six times in 27s.
+- **Open, Kevin's call**: taking a finish naming no spell, while a weaponskill send is
+  unanswered, for that weaponskill's finish (the too far at 22:44:34). It is the
+  `ends_weaponskill` rule for a weaponskill whose start never came, and would have ended
+  the wait 0.45s sooner and locked as the server did. Once in every log so far. Not built.
 
 ## The tier flag on the binding (Kevin, 2026-11-25)
 
