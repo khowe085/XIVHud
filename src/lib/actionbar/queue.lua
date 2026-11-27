@@ -420,6 +420,8 @@ local function new(deps)
   local fallen = {}
   -- Standing aside: a packet the bar did not send has left. See on_outgoing.
   local aside = false
+  -- Whether the lock running is an interrupt's, which nothing stands aside in.
+  local interrupt_lock = false
   -- When the bar last sent anything, and whether the packet `sent_until`
   -- waits on an answer to was its own.
   local bar_sent_at, sent_ours = nil, false
@@ -725,10 +727,15 @@ local function new(deps)
     return self.busy() or (held ~= nil and deps.recast_left(held.record) > 0)
   end
 
-  -- Standing aside, with the last ASIDE_SECONDS of a lock all that is left of
-  -- what is busy: see on_outgoing.
+  --[[ Standing aside, with the last ASIDE_SECONDS of a lock all that is left
+       of what is busy: see on_outgoing. Never in an interrupt's lock (Kevin,
+       2026-11-27): four presses let go 1.70 to 1.85s into one, of 2.7, were
+       refused twice and once never answered at all - a 10s stall, the press
+       waiting 2s on that answer and GearSwap, waiting on it too, dropping the
+       next and casting first - and started once, where every send after
+       +2.23 has been accepted. Held, a press goes at the lock's end. ]]
   local function yielding()
-    if not aside or acting_until ~= nil or running(sent_until) or not running(lock_until) then
+    if not aside or interrupt_lock or acting_until ~= nil or running(sent_until) or not running(lock_until) then
       return false
     end
     return lock_until - now() <= ASIDE_SECONDS
@@ -783,7 +790,7 @@ local function new(deps)
     held, cursor, picked = nil, nil, nil
     answered()
     ended()
-    lock_until, finished_at = nil, nil
+    lock_until, finished_at, interrupt_lock = nil, nil, false
     aside, bar_sent_at = false, nil
     fighting = nil
     -- Not a fresh table each time: this runs every frame while the queue is off.
@@ -1240,7 +1247,7 @@ local function new(deps)
       acting_kind = started
       acting_id = id
       acting_target = first_target(act)
-      lock_until = nil
+      lock_until, interrupt_lock = nil, false
       return
     end
     local lock
@@ -1263,6 +1270,7 @@ local function new(deps)
     ended()
     finished_at = now()
     lock_until = finished_at + lock
+    interrupt_lock = finished == nil
   end
 
   --- A raw 0x029. A refusal ends the wait for an answer and nothing else: if
@@ -1399,7 +1407,8 @@ local function new(deps)
          for a command it has seen, and a held press is one it never sees. So
          from a packet the bar did not send until one of the bar's own is
          accepted, or nothing is busy, a press made in a lock's last second
-         goes as it is: refused, as before the queue, but seen. A press made
+         goes as it is: refused, as before the queue, but seen - except in an
+         interrupt's lock, where it is held to the end (see yielding). A press made
          sooner is held as ever: in the cast, or with a send unanswered, it
          could only be refused, and GearSwap takes that refusal for the end of
          the cast it is in. A macro's packet stands the bar aside as much, with
@@ -1448,7 +1457,7 @@ local function new(deps)
       local lock = self.lock("weaponskill")
       finished_at = math.max(fallen[acting_target], acting_at + WEAPONSKILL_BEAT)
       ended()
-      lock_until = finished_at + lock
+      lock_until, interrupt_lock = finished_at + lock, false
       note(("the target died, no finish to come, lock %.2fs"):format(lock))
     end
   end
@@ -1478,7 +1487,7 @@ local function new(deps)
       local went_by = acting_seen ~= nil and (", going by the %.2fs seen"):format(acting_seen) or ""
       note(("no finish yet for the last start, lock %.2fs%s"):format(lock, went_by))
       finished_at, acting_until = acting_until, nil
-      lock_until = finished_at + lock
+      lock_until, interrupt_lock = finished_at + lock, false
     end
     if lock_until ~= nil and clock >= lock_until then
       lock_until = nil

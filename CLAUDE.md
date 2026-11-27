@@ -923,8 +923,16 @@ second send is refused too and the mash goes nowhere for five seconds. A press s
 its own recast is held as ever too, whenever it is made (from review, 2026-11-22; Kevin,
 2026-11-23: "Yes, hold it"): sent, it could not go at the lock's end either, and once
 GearSwap's own wait is over its recast check aborts the press unseen, with a line of
-chat. A packet is the bar's own when it leaves within two seconds of the bar sending
-anything - a press it let through, a release, an OK's cast - which is what keeps that
+chat. **Nor is an interrupt's lock ever stood aside in** (Kevin, 2026-11-27: "Build it"),
+whatever was interrupted - a cast, a weaponskill, an item or a ranged attack: there a
+press is held to the lock's end. Over every log kept, four presses let go 1.70 to 1.85s
+into one were refused twice, started once and once drew no answer at all, on an Agon
+Rabblerouser in Sheol C (2026-11-26): 2s waiting on it, then GearSwap, waiting on it too,
+dropped the next press and cast its own Nat. Meditation, and Kevin mashed from 1000 TP to
+the cap before Expiacion went. Every send after +2.23 into an interrupt's lock has been
+accepted, and the lock's end is +2.7. A packet is the bar's own when it leaves within two
+seconds of the bar sending anything - a press it let through, a release, an OK's cast -
+which is what keeps that
 second send from counting (1.08 to 1.12s after the ability left, 69 of 69). **What it
 costs**, accepted: a SINGLE press made in that second is refused and lost where it was
 held, a cursor's OK included, and after an ability or an item, whose lock is a second
@@ -932,9 +940,10 @@ or less, that second is the whole lock; a macro's packet, or another addon's, st
 the bar aside as much as GearSwap's, so the last second of the lock after one no longer
 queues; the first automatic cast always gets in, and so does one within two seconds of
 a bar send (0.4s after an ability the bar sent) and GearSwap's retry of a cast of its
-own that was interrupted, which its source puts 1.35s after the interrupt and so ahead
-of that lock's last second; and what the service sends without asking the queue - an
-enchanted item's use, at the press or after its warm-up, a reraise slot's gear, a
+own that was interrupted, which its source puts 1.35s after the interrupt, and an
+interrupt's lock is never stood aside in anyway; and what the service sends without
+asking the queue - an enchanted item's use, at the press or after its warm-up, a
+reraise slot's gear, a
 warp's cast - is not counted as the bar's. It is fixed in XIVHud alone, by
 decision: nothing in GearSwap changes for it and no hook is asked of it (Kevin: "We are
 not modifying gearswap for this addon"). `debug` says `standing aside for <kind>

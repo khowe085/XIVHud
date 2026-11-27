@@ -391,7 +391,9 @@ off, every press goes at once and the game decides.
   it goes as the wait ends. After a job ability or an item the whole wait is
   that last second, being a second or less. A press made sooner, during the
   cast or earlier in the wait, is held as usual, and so is one whose own
-  recast is still running. This is for addons that act the moment you can:
+  recast is still running, and so is every press in the wait after anything
+  that was interrupted: the game has refused one sent there, or never
+  answered it. This is for addons that act the moment you can:
   GearSwap's automatic casts leave a hair before a held press would, and a
   held press could sit behind one automatic cast after another. GearSwap waits
   when it sees you pressing, and a held press is one it never sees. Anything

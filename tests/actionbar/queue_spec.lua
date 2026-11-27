@@ -3837,6 +3837,84 @@ describe("the action queue", function()
       assert.is_nil(queue.held())
     end)
 
+    --[[ Kevin's Agon Rabblerouser, 2026-11-26: GearSwap's own Nat. Meditation
+         was interrupted, an Expiacion let go 1.79s into that lock was never
+         answered, and GearSwap, waiting on it too, threw away the next press and
+         cast first: 10.4s of mashing, from 1000 TP to the cap. Of four presses
+         let go 1.70 to 1.85s into an interrupted lock, two were refused and one
+         was never answered, where every send after +2.23 has been accepted. ]]
+    describe("in an interrupted cast's lock", function()
+      -- GearSwap's own cast, cut short after its start.
+      local function outside_cast_interrupted(queue)
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC))
+        start_cast(queue)
+        queue.on_action(action(8, INTERRUPTED))
+      end
+
+      it("holds a press made in the lock's last second, and sends it at the lock's end", function()
+        local queue, env = world()
+        outside_cast_interrupted(queue)
+        env.now = env.now + 1.79
+        assert.is_true(queue.press(BLADE, BLADE_COMMAND))
+        assert.are.equal(BLADE_COMMAND, queue.held().command)
+        env.now = env.now + 0.9
+        assert.is_nil(queue.step())
+        env.now = env.now + 0.02
+        assert.are.equal(BLADE_COMMAND, queue.step())
+      end)
+
+      it("holds a cursor's cast at OK in the lock's last second", function()
+        local queue, env = world()
+        queue.press(spell("Shell V", "stpc"), 'input /ma "Shell V" <stpc>')
+        queue.on_text("/ta <stpc>")
+        queue.on_text("/ta 777")
+        outside_cast_interrupted(queue)
+        env.now = env.now + 2
+        local swallowed, send = queue.on_text("/ta 12345")
+        assert.is_true(swallowed)
+        assert.is_nil(send)
+        assert.are.equal('input /ma "Shell V" <stpc>', queue.held().command)
+      end)
+
+      it("stands aside again once a finish has replaced the interrupt's lock", function()
+        local queue, env = world()
+        outside_cast_interrupted(queue)
+        env.now = env.now + 0.5
+        queue.on_outgoing(0x01A, outgoing_action(ABILITY, 31))
+        queue.on_action(action(6, 31))
+        env.now = env.now + 0.1
+        assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      end)
+
+      it("stands aside again in the lock a start's wait runs out into", function()
+        local queue, env = world()
+        env.casts.spell[511] = 3
+        outside_cast_interrupted(queue)
+        env.now = env.now + 2.71
+        queue.step()
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, 511))
+        queue.on_action(start_of(8, 511))
+        env.now = env.now + 3.81
+        queue.step()
+        env.now = env.now + 2
+        assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      end)
+
+      it("stands aside again in the lock a weaponskill's dead target leaves", function()
+        local queue, env = world()
+        outside_cast_interrupted(queue)
+        env.now = env.now + 2.71
+        queue.step()
+        queue.on_outgoing(0x01A, outgoing_action(WEAPONSKILL, 42, MOB))
+        queue.on_action(weaponskill_at(MOB))
+        env.now = env.now + 0.4
+        falls(queue, MOB)
+        queue.step()
+        env.now = env.now + 1.5
+        assert.is_false(queue.press(BLADE, BLADE_COMMAND))
+      end)
+    end)
+
     it("holds again once one of the bar's own has gone", function()
       local queue, env = world()
       outside_cast(queue)
