@@ -649,7 +649,13 @@ constant and moved with it for that cost alone (Kevin: "Both at 0.8s"): that wai
 from the SEND, about 0.6s ahead of the start the figures above are measured from, so
 with no Fast Cast it still ends before the finish comes. **Unverified in a live client**
 at 0.8 (row 55 of the plan), where the worst of the 27 left 0.03s to spare, so a rare
-`no finish yet` line there is not by itself the margin being wrong. (The lock after a
+`no finish yet` line there is not by itself the margin being wrong. **A finish can fail
+to arrive with no lag at all** (Kevin's run of 2026-11-26 on `b7499d0`): two Anvil
+Lightnings, the two largest pulls of 27, each drew a start and no finish and no death
+message, in the queue's log and in his chat log's damage lines alike. Each kept the bar
+busy the resource's 6s cast time plus 0.8s plus the lock, 9.5s, where the cast took about
+1.5s with Fast Cast on; he pressed nothing in either window. Open, Kevin's call: taking
+a recast running on the started spell for its finish. (The lock after a
 weaponskill whose target died, below, has the only other: 0.4s after the start, where
 the death is reported sooner than that.) A held
 press then goes once that lock ends; a finish arriving late still replaces the
