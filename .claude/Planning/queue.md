@@ -146,7 +146,7 @@ that action on the selected sub-target", which is what the resent token drew.
 | Fact | Set by | Cleared by | Backstop |
 | --- | --- | --- | --- |
 | `sent`: something went out, nothing back yet | a bar press or release, outgoing `0x01A` (3 magic, 7 ws, 9 ja, 16 ranged, 25 monster skill), outgoing `0x037` (item) | any `0x028` start or finish of ours, a refusal | 0.6s until the packet is seen, 2s after, or a spell's `cast_time` + 0.8s where longer (2026-11-06; 0.4s until 2026-11-26) |
-| `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787), and while a weaponskill's start runs a 4 naming no spell (2026-11-10) | a spell's `cast_time` + 0.8s (0.4s until 2026-11-26), a weaponskill 1.2s (3s until 2026-11-10), an item's `cast_time` + 1s, else 30s; a finish is still read as one for 30s (2026-11-06) |
+| `acting`: a cast is running | `0x028` 7, 8, 9, 12 of ours | a finish, an interrupt (the same category with param 28787), and while a weaponskill's start runs a 4 naming no spell (2026-11-10) | a spell's `cast_time` + 0.8s (0.4s until 2026-11-26), or the longest that spell was seen to take + 0.8s where sooner (2026-11-26), a weaponskill 1.2s (3s until 2026-11-10), an item's `cast_time` + 1s, else 30s; a finish is still read as one for 30s (2026-11-06) |
 | `lock_until`: the lock's end | a finish (2, 3, 5, 6, 11, 14, 15 of ours, and 4 naming a spell while a cast is running (2026-11-08), within 30s of a start of ours when it names that start's spell or the start named none, or naming a spell that went out and is unanswered (2026-11-07), or naming no spell while a weaponskill's start runs, which takes the weaponskill lock (2026-11-10)), an interrupt, the end of a start's wait | time | none needed |
 
 Busy is any of the three. A held press goes on the first tick nothing is busy, or once
@@ -741,6 +741,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 53 | With nothing going on, press a spell slot (and OK a `<stpc>` one) about a second after that spell's last cast came off its lock, so its recast has 0.8 to 2s left; then one with half a second left; then one with five | `hold <name>`, `<name> waits <n>s on its recast` and `release <name> after <n>s`, an `out spell` within 0.04s and its `start`, with no `Abort: [<name>] waiting on recast.` in chat. At half a second: `not held: <name> on recast 0.5xs, lock 0.00s`, `out spell` and a `start`. At five: `not held`, and GearSwap's `Abort:` line or the game's refusal, as before. A Sleep II pressed 1 to 2s from ready is held and cast as Sleep II, where GearSwap used to cast Sleep in its place | The hold with nothing busy (2026-11-25). That a press 0.7 to 2s from ready now casts on its one press, that one 0.7s or less still goes at once and is taken, and that the release at a recast reading zero is taken too. Seen on `15738b7` (2026-11-25), for a cursor's OK: three of Haste II 1.18 to 1.62s from ready were held, two going when the recast read ready (5.00 and 5.01s after the last finish) and starting, the third replaced by a second OK 0.05s from ready, which went 0.05s on; three 0.57s or less from ready went as pressed and started; and the chat log has no `waiting on recast` abort for a spell in the hour. A plain press at the short end on 2026-11-26: a Dread Spikes 0.23s from ready went as pressed and started. On `b7499d0` the same day a plain press was held, `Anvil Lightning waits 1.68s on its recast`, and dropped at the release for its target (row 50), so its cast was not seen. Not seen: a plain press held and cast, an ability, a spell in GearSwap's `spell_stepdown` |
 | 54 | In edit mode click a slot holding Fire V (or any spell with a tier under it) and click `auto tier [ off ]` at the end of its row; leave edit mode and mash the slot through a cast, the queue in `debug`. Do the same mash on a Haste II slot left unflagged. Then `//hud crossbar list`, `//hud crossbar tier <address> off`, and a `//lua reload hud` between any two of them | The row then reads `auto tier [ on ]` and chat says `crossbar: auto tier on for Fire V -> base / set <n> / <side> / slot <n>`; the mash logs `at the press` / `at OK` / `at the release: Fire V ...; down to Fire IV` and Fire IV casts. The Haste II slot writes no `down to` line and is never replaced. `list` shows `tier=auto` on the flagged binding, after a reload too, and not after `tier ... off` | The tier flag on the binding (2026-11-25). That the toggle sits clear of the row's own text and takes its click, that only a flagged binding steps down, and that the flag is saved with the binding. Unverified |
 | 55 | With no Fast Cast on (a naked set, or GearSwap's precast off), cast a few spells of two seconds and over from anywhere, the queue in `debug` | No `no finish yet for the last start` line ahead of a `finish spell`: each cast's `start spell` is followed by its own `finish spell`, and the next bar press goes when that lock ends | The lost-finish margin at 0.8s (2026-11-26). At 0.4s the count ran out before the real finish 27 times of 27, by 0.02 to 0.37s. That two beats covers a cast with no Fast Cast; what a slow (Addle) lengthens it by is still unknown. On `b7499d0` (2026-11-26), Fast Cast on: of 77 spell starts none was counted ahead of a finish that came, and the two that were counted never had one. Unverified with no Fast Cast |
+| 56 | With the queue in `debug`, cast one spell a few times without zoning, then cast it at a mob that dies before it lands (or step out of sight as it ends), and press a bar slot while it casts. Also cast it once with GearSwap's precast off | `no finish yet for the last start, lock 2.70s, going by the <n>s seen`, `<n>` the longest of that spell's `start spell` to `finish spell` since the last zone, the line coming `<n>` + 0.8s after the start and the held press going 2.7s after it. For every cast that does finish, no `no finish yet` ahead of its `finish spell` - bar the one with precast off, where the line may come first and the `finish spell` after it, the next wait then going by that longer time | The cast time seen (2026-11-26). That a lost finish costs the cast's real length and not the resource's, that the shorter wait never runs out ahead of a finish that comes with the gear unchanged, and that a slower cast teaches its own time. Unverified |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -2394,15 +2395,97 @@ finish no addon was shown, and said that was unverified. **Kevin: "Yes, build it
     nothing more; the one sent 2.78s after that message started. Whether the message was
     the spell's or a swing's is not known: the queue reads messages 4 and 5 only for who
     the server has you fighting.
-- **Open, Kevin's call: the cast time actually seen.** The 19 Anvil Lightnings that did
-  finish in the `b7499d0` run did so 1.53 to 1.69s after their start, against the
-  resource's 6s. Waiting the longest recent start-to-finish seen for a spell plus the
-  0.8s, capped at the resource's time, would have kept the bar busy about 5.2s in place
-  of 9.5s. The risk is a cast longer than any seen (Fast Cast gear missing, a slow):
-  the wait ends early, as it does now when a cast overruns the resource's time. Not
-  built.
+- **Offered in its place: the cast time actually seen.** The 19 Anvil Lightnings that
+  did finish in the `b7499d0` run did so 1.53 to 1.69s after their start, against the
+  resource's 6s. Built the same day: see "The cast time seen" below.
 - Set aside: MP falling as the sign of a finish. GearSwap's midcast swap moves max MP
   at the start of a cast, so a fall there says nothing.
+
+## The cast time seen (Kevin, 2026-11-26)
+
+**Kevin: "Build it"**, to waiting on the cast time actually seen for a spell. A start
+whose finish never comes keeps the bar busy the resource's cast time, the 0.8s and the
+lock; with Fast Cast the real cast is a quarter of that (Anvil Lightning: 6s listed, 1.53
+to 1.69s seen, 19 times of 19).
+
+- **The rule.** At the started spell's own finish the queue notes how long the cast took,
+  start packet to finish packet, and keeps the longest per spell id (`seen` in
+  `queue.lua`). A later start of that spell waits that long plus `SPELL_SLACK` for its
+  finish, wherever that is sooner than the resource's time; otherwise as before. Anvil
+  Lightning's two lost finishes would have kept the bar busy about 5.2s (1.69 + 0.8 +
+  2.7) in place of 9.5s.
+- **Kevin's two picks**, asked before it was written:
+  - "Longest since a zone": the longest seen since the last zone, death, job change or
+    logout (`queue.clear`), never the last and never a window of the last few. It does
+    not shrink in between, so a cast made at once cannot shorten the next wait; the cost
+    is that one slow cast (a finish lag delayed, a cast with Fast Cast gear off) is
+    waited on until the next of those four.
+  - "Leave it": the wait on a spell sent and never answered still runs the resource's
+    time (the 6.8s of 18:48:28). It runs from the send, so it would have to cover the
+    time to the start as well; going by start-to-finish there leaves about 0.2s to
+    spare, and a finish landing after that wait takes no lock.
+- **A cast made at once teaches nothing** (written as mine, to keep the first pick true
+  of the first cast seen, and flagged by both reviewers as never asked; asked then,
+  **Kevin: "Ignore it"**): a finish under a fifth of the resource's time after its start
+  is not learned (`QUICKEST_CAST`). Casting time reduction stops at 80% (bg-wiki's Fast
+  Cast page: "Casting Time reduction cap is 80%"), so anything quicker was most likely
+  Chainspell or Quick Magic. Learned as the first one seen for a spell, it would end the
+  next cast's wait inside the cast: a 6s spell with little Fast Cast would be counted
+  finished 1.2s in, and a held press released 2.7s after that, before the cast was over.
+  Whatever made a cast that quick, not learning it is the safe side: the wait stays the
+  resource's. The cost he took with it: anything cast past the cap is never learned.
+- **What can still go wrong**, as it can today when a cast overruns the resource's time:
+  a cast longer than any seen ends its wait early: Fast Cast gear gone, a slow, or a
+  spell first seen under something that shortens it and then cast without (review,
+  round 4, names Celerity, Alacrity and Nightingale, each said to halve a cast and so
+  to clear the fifth-of-the-resource floor). The
+  counted lock runs 2.7s, so a held press is let go inside the cast only where the cast
+  outlasts what was seen by more than 3.5s, which takes a spell listed above about
+  3.4s. While standing aside it is 2.5s and a spell listed above about 2.2s (review,
+  round 2): a press made in the counted lock's last second goes as pressed. Its finish,
+  late as it is, replaces the lock and teaches the longer time, so it happens once.
+- **Also learned from**: a finish that comes after the wait has run out, while the start
+  is still open for one. **Not learned from**: an interrupt, a finish naming another
+  spell, the wait's own end, a finish with no start open, or a spell the resources list
+  no cast time for.
+- **Two packets lost in a row on one spell fall back to the listed time** (Kevin, asked
+  after three review rounds: "Fall back to listed time"). A start whose finish never
+  came stays open for one for 30s, wait and lock long over. The same spell cast again
+  inside that, its own start lost, finishes against the old start, and timed from there
+  reads far slower than it is (7.51s on a 6s spell in the round 1 reviewer's case).
+  Until the next clear the spell waits that or the resource's time, whichever is
+  sooner: at worst what it did before any cast was seen.
+  - Review built a rule against that over three rounds. An outgoing packet naming the
+    started spell marked the start, and its finish taught nothing (round 1). Unless a
+    refusal answered that send: the queue's own release of a held press sends the
+    spell into a cast counted finished early, and the mark then kept that cast's late
+    finish from teaching, on every cast (round 2). Or unless the finish came sooner
+    after the send than a fifth of the resource's time: the server can finish the cast
+    before the send reaches it, and the refusal then trails the finish (round 3).
+  - What that still left: a re-send into the cast the server never answers, on a spell
+    listed above about 4.5s and cast with next to no Fast Cast after being seen with
+    it capped, repeating the early wait on every cast until a zone.
+  - No packet tells the two finishes apart for certain. The rule failed on the side
+    that sends a press into a cast; its absence fails on the side that only waits
+    longer. So it is out, its specs with it, and one spec pins the choice: a finish that
+    follows the spell being sent again is timed from the open start.
+- **Three specs could not fail for the rule they named** (review, round 1), each ending
+  under the fifth-of-the-resource floor added after them: the second cast of "the
+  longest, not the last", the interrupt and the finish naming another spell. They end
+  1.3 to 1.4s in now, the wait's own end is checked against a time already seen, and
+  "Leave it" has a spec of its own. Checked by mutation at the time: with the longest
+  swapped for the last, the started-spell check dropped and the wait's end made to
+  teach, those three failed (and a fourth, since removed, that shared a helper with
+  one of them), and no other. The interrupt's still cannot fail alone, an interrupt
+  naming no spell either way (review, round 4), so an ability's finish that names the
+  spell's id has a spec for the check at the call, and a spell the resources list no
+  cast time for has one for the finish that must not throw.
+- **Review**: four rounds, the fourth clean. Its optional notes were taken after the
+  verdict and are not themselves reviewed: those two specs, a spec's name, and wording.
+- **`debug`**: the wait's line ends `, going by the <n>s seen` where it went by a seen
+  time (`no finish yet for the last start, lock 2.70s, going by the 1.69s seen`).
+- Spells alone: an item still waits its resource's time plus 1s.
+- **Unverified in a live client** (row 56).
 
 ## The tier flag on the binding (Kevin, 2026-11-25)
 

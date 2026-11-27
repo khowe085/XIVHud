@@ -409,12 +409,17 @@ off, every press goes at once and the game decides.
   and lag can lose either message. If the finish never comes, a spell counts
   as finished at its cast time plus 0.8 seconds, a weaponskill after 1.2 seconds
   and an item at its cast time plus 1 second; the wait for that kind then runs
-  and a held press goes. If the start is lost, a spell you sent waits for an
-  answer as long as its cast time plus 0.8 seconds, so with Fast Cast on its
-  finish still starts the wait. A spell the server drops with no answer at all
-  holds the bar that long. A cast that runs past these times - one slowed by a
-  debuff, or one with no Fast Cast whose start was lost - can let a held press
-  go early, and the game then refuses it.
+  and a held press goes. Fast Cast makes a real cast far shorter than the
+  listed one, so once the queue has seen you finish a spell it goes by the
+  longest that spell has taken you, plus 0.8 seconds, where that is sooner. It
+  forgets those times when you zone, die, change job or log out. If the start
+  is lost, a spell you sent waits for an answer as long as its listed cast time
+  plus 0.8 seconds, so with Fast Cast on its finish still starts the wait. A
+  spell the server drops with no answer at all holds the bar that long. A cast
+  that runs past these times - one slowed by a debuff, one cast with less Fast
+  Cast than the queue has seen you use or without a buff that shortened the
+  casts it saw, or one with no Fast Cast whose start was lost - can let a held
+  press go early, and the game then refuses it.
 - **A Trust the game will not call.** When the game refuses a Trust cast -
   you have called your maximum, that alter ego is already out, you hold
   enmity, you are seeking a party, you have just invited someone, or you are

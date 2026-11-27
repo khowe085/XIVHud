@@ -130,15 +130,41 @@ local FINISH_BACKSTOP = 30
      UNVERIFIED: what lengthens a cast (Addle, an Arts penalty). A cast that
      overruns its wait, or a finish lag delays past the wait and the lock,
      releases a held press inside the cast, where it is refused and GearSwap
-     leaves its midcast set. WEAPONSKILL_BACKSTOP is three of the server's
-     0.4s beats: about 80 weaponskills in Kevin's log of 2026-11-10 each
-     finished within 0.89s of starting, and at 3s one whose finish never came
-     held the bar 5.4s. ITEM_SLACK is a guess, as are the items resource's
-     `cast_time` being the seconds from an item's start to its finish and a
-     category 9 start naming its item in `targets[1].actions[1].param`. ]]
+     leaves its midcast set.
+
+     A spell that has been SEEN to finish waits only as long as it took, and
+     SPELL_SLACK, where that is sooner than the resource's time (Kevin,
+     2026-11-26). Two Anvil Lightnings whose finish never came each kept the
+     bar busy the resource's 6s, the 0.8s and the lock, where with Fast Cast
+     the 19 that did finish took 1.53 to 1.69s. It goes by the LONGEST it has
+     seen since the last clear and never the last (Kevin's pick), so a cast
+     made at once shortens nothing (nor teaches anything: QUICKEST_CAST), and
+     one slow cast is waited on until the next clear. A cast longer than any
+     seen (Fast Cast gear gone, a buff that shortened the casts seen worn
+     off, a slow) ends the wait early as one overrunning the resource's time
+     does, and its finish, late as it is, teaches the longer time. The wait
+     on a spell sent and never answered does NOT go by it (Kevin): that one
+     runs from the send, and would have to cover the time to the start as
+     well. UNVERIFIED in a live client.
+
+     WEAPONSKILL_BACKSTOP is three of the server's 0.4s beats: about 80
+     weaponskills in Kevin's log of 2026-11-10 each finished within 0.89s of
+     starting, and at 3s one whose finish never came held the bar 5.4s.
+     ITEM_SLACK is a guess, as are the items resource's `cast_time` being the
+     seconds from an item's start to its finish and a category 9 start naming
+     its item in `targets[1].actions[1].param`. ]]
 local SPELL_SLACK = 0.8
 local WEAPONSKILL_BACKSTOP = 1.2
 local ITEM_SLACK = 1
+--[[ The least share of its resource time a cast is taken to need: casting
+     time reduction stops at 80% (bg-wiki's Fast Cast page). A finish sooner
+     after its start than that was most likely a cast made at once -
+     Chainspell, Quick Magic - which says nothing of how long the next takes,
+     and learned as the first one seen it would end that next cast's wait
+     inside the cast. Whatever made it that quick, not learning it is the
+     safe side: the wait stays the resource's (Kevin, 2026-11-26: "Ignore
+     it"). ]]
+local QUICKEST_CAST = 0.2
 --[[ How soon the server finishes a weaponskill it has started: its beat. The
      client saw 233 of Kevin's finish 0.44s after their start at the median
      (2026-11-17). ]]
@@ -339,14 +365,19 @@ local function cast_seconds(deps, kind, id)
   return type(seconds) == "number" and seconds >= 0 and seconds or nil
 end
 
--- How long the start `act` of `started` may go unfinished.
-local function finish_backstop(deps, started, act)
+-- How long the start `act` of `started` may go unfinished. `seen` is the
+-- longest that spell has been seen to take, where it has been seen to finish,
+-- and the second answer is that time where the wait goes by it.
+local function finish_backstop(deps, started, act, seen)
   if started == "weaponskill" then
     return WEAPONSKILL_BACKSTOP
   end
   if started == "spell" or started == "item" then
     local seconds = cast_seconds(deps, started, first_action(act).param)
     if seconds ~= nil then
+      if started == "spell" and seen ~= nil and seen < seconds then
+        return seen + SPELL_SLACK, seen
+      end
       return seconds + (started == "item" and ITEM_SLACK or SPELL_SLACK)
     end
   end
@@ -371,6 +402,11 @@ local function new(deps)
   local acting_id = nil
   -- When the last start came.
   local acting_at = nil
+  -- The longest each spell has been seen to take from its start to its
+  -- finish, by id, since the last clear: see SPELL_SLACK.
+  local seen = {}
+  -- The seen time the last start's wait goes by, where it goes by one.
+  local acting_seen = nil
   -- Whether what `sent_until` waits on has been seen leaving the client.
   local sent_left = false
   -- The id of the spell `sent_until` waits on, whose finish can come without its start.
@@ -484,7 +520,34 @@ local function new(deps)
   -- A start that is over, by its finish or without one.
   local function ended()
     acting_until, open_until, acting_kind, acting_id, acting_target = nil, nil, nil, nil, nil
-    acting_at = nil
+    acting_at, acting_seen = nil, nil
+  end
+
+  --[[ The started spell's own finish says how long it took, whether or not
+       its wait had run out by then. One made at once says nothing:
+       QUICKEST_CAST.
+
+       A finish is timed from the open start whatever was sent meanwhile
+       (Kevin, 2026-11-26: "Fall back to listed time"). A start whose finish
+       never came stays open for one until FINISH_BACKSTOP, so the same spell
+       cast again inside that, its own start lost, finishes against the old
+       start and reads far slower than it is: two packets lost in a row, and
+       until the next clear the spell waits that or the resource's time,
+       whichever is sooner. No packet tells that finish from the
+       open start's own late one, which has to be learned: a cast that
+       outlasts its seen time is counted finished early, a press held through
+       it goes out into the cast, and unlearned every cast of the spell would
+       go the same way. A rule to tell them apart was tried, and each form of
+       it left some such cast unlearned. ]]
+  local function learn_cast_time(finish)
+    if acting_kind ~= "spell" or acting_id == nil or finish.param ~= acting_id then
+      return
+    end
+    local resource_seconds = cast_seconds(deps, "spell", acting_id)
+    local took = now() - acting_at
+    if resource_seconds ~= nil and took >= resource_seconds * QUICKEST_CAST then
+      seen[acting_id] = math.max(seen[acting_id] or 0, took)
+    end
   end
 
   --[[ Whether that target is dead, by the game's word alone. The client's mob
@@ -758,6 +821,10 @@ local function new(deps)
     -- The list was the old zone's, life's, job's or character's: the client's
     -- own answers until the next 0x063.
     listed = nil
+    -- And the cast times seen with it. A job change or another character can
+    -- make them wrong, a zone or a death cannot: forgetting them there too
+    -- bounds how long one slow cast is waited on.
+    seen = {}
   end
 
   --[[ Whether a press goes now, as it is, rather than being held: off its
@@ -1164,11 +1231,14 @@ local function new(deps)
     if started ~= nil and act.param ~= INTERRUPT_PARAM then
       note("start " .. started .. since_finish())
       local at = now()
+      local id = first_action(act).param
+      local wait, went_by = finish_backstop(deps, started, act, id ~= nil and seen[id] or nil)
       acting_at = at
-      acting_until = at + finish_backstop(deps, started, act)
+      acting_until = at + wait
+      acting_seen = went_by
       open_until = at + FINISH_BACKSTOP
       acting_kind = started
-      acting_id = first_action(act).param
+      acting_id = id
       acting_target = first_target(act)
       lock_until = nil
       return
@@ -1186,6 +1256,9 @@ local function new(deps)
     else
       lock = self.lock(finished or "interrupted")
       note(("%s, lock %.2fs"):format(finished ~= nil and "finish " .. finished or "interrupted " .. started, lock))
+      if finished == "spell" then
+        learn_cast_time(act)
+      end
     end
     ended()
     finished_at = now()
@@ -1402,7 +1475,8 @@ local function new(deps)
     end
     if acting_until ~= nil and clock >= acting_until then
       local lock = self.lock(acting_kind)
-      note(("no finish yet for the last start, lock %.2fs"):format(lock))
+      local went_by = acting_seen ~= nil and (", going by the %.2fs seen"):format(acting_seen) or ""
+      note(("no finish yet for the last start, lock %.2fs%s"):format(lock, went_by))
       finished_at, acting_until = acting_until, nil
       lock_until = finished_at + lock
     end

@@ -637,7 +637,13 @@ start then counts as finished at its spell's `cast_time` plus 0.8s, 1.2s for a
 weaponskill (three of the server's 0.4s beats: about 80 weaponskills in Kevin's
 log of 2026-11-10 each finished within 0.89s of starting, and the 3s it was until
 then held the bar 5.4s when a finish never came) or an item's `cast_time` plus 1s, and that lock's anchor
-is not a packet, so a cast lengthened past it can release early. **The 0.8s is two of
+is not a packet, so a cast lengthened past it can release early. (The lock after a
+weaponskill whose target died, below, has the only other: 0.4s after the start, where
+the death is reported sooner than that.) A held
+press then goes once that lock ends; a finish arriving late still replaces the
+lock, but a spell finish then has to name the spell the start named (Kevin,
+2026-11-07), so a paralysis round cannot lock an idle bar. A start nothing can time (ranged, an unknown id) keeps the 30s backstop,
+and what it held is dropped. **The 0.8s is two of
 the server's 0.4s beats, and was one until 2026-11-26** (Kevin: "Yes, 0.8s"): in his run
 of that night 27 of 27 spells cast with no Fast Cast on them were counted finished 0.02
 to 0.37s before the real finish came (three of them an interrupt), the finish packet
@@ -663,15 +669,34 @@ read three times (his Sleepga of 2026-11-25, 19:20:53, on `3c91c54`): no finish 
 the queue or the chat log, the next Sleepga drew "No effect" from the mob it was aimed
 at, and with a recast of about 9s running on the server the client's figure read 2s or less,
 3.5s or less and then nothing, 1.4, 3.4 and 4.9s after the cast should have ended; the
-release made on that last reading drew no answer. Open, Kevin's call: waiting the cast
-time actually SEEN for a spell in place of the resource's, the 19 Anvil Lightnings that
-did finish in that run each doing so 1.53 to 1.69s after their start. (The lock after a
-weaponskill whose target died, below, has the only other: 0.4s after the start, where
-the death is reported sooner than that.) A held
-press then goes once that lock ends; a finish arriving late still replaces the
-lock, but a spell finish then has to name the spell the start named (Kevin,
-2026-11-07), so a paralysis round cannot lock an idle bar. A start nothing can time (ranged, an unknown id) keeps the 30s backstop,
-and what it held is dropped. Everything else is a packet, whoever caused it: outgoing
+release made on that last reading drew no answer. **So a spell that has been seen to
+finish waits only as long as it took** (Kevin, 2026-11-26: "Build it"): the longest
+start-to-finish the queue has seen for that spell since the last zone, death, job change
+or logout, plus the 0.8s, wherever that is sooner than the resource's time. The 19 Anvil
+Lightnings that did finish in that run took 1.53 to 1.69s, which would have kept the bar
+busy about 5.2s in place of 9.5s. The longest and never the last (Kevin's pick), so a
+cast made at once shortens nothing. A finish under a fifth of the resource's time after
+its start teaches nothing at all (Kevin: "Ignore it", asked after it was written):
+casting time reduction stops at 80% (bg-wiki's Fast Cast page), so one that quick was
+most likely Chainspell or Quick Magic, and learned first it would end the next cast's
+wait inside the cast. The cost is that anything cast past that cap is never learned, and
+waits the resource's time. Two packets lost in a row on one spell cost the shortcut and
+nothing more (Kevin: "Fall back to listed time"): a start whose finish never came stays
+open for one for 30s, so the same spell cast again inside that, its own start lost,
+finishes against the old start and is timed from there, far longer than it took; until
+the next of those four moments the spell waits that or the resource's time, whichever is
+sooner. A rule to tell that finish from the open start's own late
+one was built over three review rounds and taken out again: no packet tells the two apart,
+and every form of it left some cast that outlasts its seen time unlearned, which repeats
+the early wait on each cast of the spell. A cast
+longer than any seen (Fast Cast gear gone, a buff that shortened the casts seen worn off,
+a slow) ends its
+wait early, as one overrunning the resource's time does, and its finish, late as it is,
+teaches the longer time, which is then waited on until the next of those four moments.
+`debug` ends the wait's line `, going by the <n>s seen` where it went by one. The wait on
+a spell sent and never answered still runs the resource's time (Kevin: "Leave it"): it
+runs from the send, and would have to cover the time to the start as well. **Unverified
+in a live client** (row 56 of the plan). Everything else is a packet, whoever caused it: outgoing
 `0x01A`/`0x037` (the only sight of a macro or of what GearSwap injects),
 `0x028` starts, finishes and interrupts, `0x029` refusals (GearSwap's
 `unable_to_use` list) and the six `0x053` system messages that refuse a Trust cast

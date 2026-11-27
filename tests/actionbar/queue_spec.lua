@@ -2258,6 +2258,289 @@ describe("the action queue", function()
       assert.is_true(queue.busy(), "the real finish locks")
     end)
 
+    --[[ Kevin's Anvil Lightning, 2026-11-26: two starts drew no finish, and each
+         kept the bar busy the resource's 6s cast time, the 0.8s and the lock.
+         With Fast Cast the 19 that did finish took 1.53 to 1.69s. So a start
+         waits for its finish only as long as that spell was seen to take. ]]
+    describe("a spell that has been seen to finish", function()
+      local SPELL, OTHER = 511, 512
+
+      local function casts_six_seconds(opts)
+        local queue, env = world(opts)
+        env.casts.spell[SPELL], env.casts.spell[OTHER] = 6, 6
+        return queue, env
+      end
+
+      -- One cast of that spell, taking `seconds` from start to finish, and
+      -- its lock run out.
+      local function cast(queue, env, seconds)
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + seconds
+        queue.on_action(action(4, SPELL))
+        env.now = env.now + 2.71
+        queue.step()
+      end
+
+      it("waits on its next finish that long and two beats, where the resource's time is longer", function()
+        local queue, env = casts_six_seconds()
+        cast(queue, env, 1.69)
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 2.48
+        queue.step()
+        assert.are.equal("casting", queue.doing())
+        env.now = env.now + 0.02
+        queue.step()
+        assert.is_not_nil(queue.doing():find("lock", 1, true), "the wait ran out 1.69s and 0.8s after the start")
+      end)
+
+      it("sends what it held once that wait and its lock are over", function()
+        local queue, env = casts_six_seconds()
+        cast(queue, env, 1.69)
+        queue.on_action(start_of(8, SPELL))
+        queue.press(spell(), command())
+        env.now = env.now + 2.5
+        assert.is_nil(queue.step())
+        env.now = env.now + 2.6
+        assert.is_nil(queue.step())
+        env.now = env.now + 0.1
+        assert.are.equal(command(), queue.step())
+      end)
+
+      it("goes by the longest it was seen to take, not the last", function()
+        local queue, env = casts_six_seconds()
+        cast(queue, env, 1.69)
+        cast(queue, env, 1.4)
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 2.48
+        queue.step()
+        assert.are.equal("casting", queue.doing())
+        env.now = env.now + 0.02
+        queue.step()
+        assert.is_not_nil(queue.doing():find("lock", 1, true))
+      end)
+
+      --[[ With no Fast Cast a finish follows the resource's time by 0.42 to
+           0.77s, so what is seen is longer than what is listed. ]]
+      it("never waits longer than the resource's time and two beats", function()
+        local queue, env = world()
+        env.casts.spell[SPELL] = 3
+        cast(queue, env, 3.6)
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 3.81
+        queue.step()
+        assert.is_not_nil(queue.doing():find("lock", 1, true))
+      end)
+
+      it("is learned from a cast as quick as Fast Cast can make one, a fifth of the resource's time", function()
+        local queue, env = casts_six_seconds()
+        cast(queue, env, 1.21)
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 2.02
+        queue.step()
+        assert.is_not_nil(queue.doing():find("lock", 1, true))
+      end)
+
+      it("says nothing of another spell's wait", function()
+        local queue, env = casts_six_seconds()
+        cast(queue, env, 1.69)
+        queue.on_action(start_of(8, OTHER))
+        env.now = env.now + 6.79
+        queue.step()
+        assert.are.equal("casting", queue.doing())
+      end)
+
+      it("learns from a finish that comes after the wait has run out", function()
+        local queue, env = casts_six_seconds()
+        cast(queue, env, 1.69)
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 2.5
+        queue.step()
+        env.now = env.now + 1.5
+        queue.on_action(action(4, SPELL))
+        env.now = env.now + 2.71
+        queue.step()
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 4.79
+        queue.step()
+        assert.are.equal("casting", queue.doing(), "that cast took 4s")
+        env.now = env.now + 0.02
+        queue.step()
+        assert.is_not_nil(queue.doing():find("lock", 1, true))
+      end)
+
+      -- A new spell or Trust the resources do not list yet has no cast time.
+      it("is not learned for a spell the resources list no cast time for, whose finish must not throw", function()
+        local queue, env = world()
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 1.5
+        assert.has_no.errors(function()
+          queue.on_action(action(4, SPELL))
+        end)
+        env.now = env.now + 2.71
+        queue.step()
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 29.9
+        queue.step()
+        assert.are.equal("casting", queue.doing(), "still the 30s wait of a start nothing can time")
+      end)
+
+      it("is forgotten at a clear, which a zone, a death, a job change and a logout each are", function()
+        local queue, env = casts_six_seconds()
+        cast(queue, env, 1.69)
+        queue.clear("zone")
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 6.79
+        queue.step()
+        assert.are.equal("casting", queue.doing())
+      end)
+
+      -- Kevin's pick: that wait runs from the send, and would have to cover
+      -- the time to the start as well.
+      it("leaves a spell sent and never answered waiting the resource's time", function()
+        local queue, env = casts_six_seconds()
+        cast(queue, env, 1.69)
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, SPELL))
+        env.now = env.now + 6.79
+        queue.step()
+        assert.is_true(queue.busy())
+        env.now = env.now + 0.02
+        queue.step()
+        assert.is_false(queue.busy())
+      end)
+
+      -- The cast after a finish that never came is the one worth learning.
+      it("is learned from a cast made again after a finish that never came, its own start seen", function()
+        local queue, env = casts_six_seconds()
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 6.81
+        queue.step()
+        env.now = env.now + 2.71
+        queue.step()
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, SPELL))
+        env.now = env.now + 0.6
+        cast(queue, env, 1.69)
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 2.48
+        queue.step()
+        assert.are.equal("casting", queue.doing())
+        env.now = env.now + 0.02
+        queue.step()
+        assert.is_not_nil(queue.doing():find("lock", 1, true))
+      end)
+
+      --[[ A finish that follows the spell being sent again has two readings.
+           It is the open start's own, late: the cast outlasted its seen time,
+           was counted finished early, and a press of that spell held through
+           it went out into the cast. Or it is a later cast's, whose own start
+           was lost. Nothing tells the two apart for certain, and Kevin's pick
+           (2026-11-26) is to time it from the open start either way. The
+           first then teaches the longer time, where unlearned every such cast
+           would go the same way; the second costs a wait as long as the
+           resource's, or near it, until the next clear. ]]
+      it("is learned from a finish that follows the spell being sent again, timed from the open start", function()
+        local queue, env = casts_six_seconds()
+        cast(queue, env, 1.69)
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 2.5
+        queue.step()
+        env.now = env.now + 2.71
+        queue.step()
+        queue.on_outgoing(0x01A, outgoing_action(MAGIC, SPELL))
+        env.now = env.now + 1.3
+        queue.on_action(action(4, SPELL))
+        env.now = env.now + 2.71
+        queue.step()
+        queue.on_action(start_of(8, SPELL))
+        env.now = env.now + 6.79
+        queue.step()
+        assert.are.equal("casting", queue.doing(), "6.5s from the open start, so the resource's wait again")
+      end)
+
+      it("says nothing of an item's wait, though the item's id is that spell's", function()
+        local queue, env = casts_six_seconds()
+        env.casts.item[SPELL] = 6
+        cast(queue, env, 1.69)
+        queue.on_action(start_of(9, SPELL))
+        env.now = env.now + 6.99
+        queue.step()
+        assert.are.equal("casting", queue.doing())
+      end)
+
+      describe("is not learned from", function()
+        -- After `ending` has ended one start of the spell 1.3s in, late
+        -- enough to be a cast's own time, the next still waits the resource's.
+        local function still_unseen(ending)
+          local queue, env = casts_six_seconds()
+          queue.on_action(start_of(8, SPELL))
+          env.now = env.now + 1.3
+          ending(queue, env)
+          env.now = env.now + 2.71
+          queue.step()
+          queue.on_action(start_of(8, SPELL))
+          env.now = env.now + 6.79
+          queue.step()
+          assert.are.equal("casting", queue.doing())
+        end
+
+        -- A start that has been seen to take 1.69s still waits that and two
+        -- beats after `between` has happened.
+        local function still_seen_as_before(between)
+          local queue, env = casts_six_seconds()
+          cast(queue, env, 1.69)
+          between(queue, env)
+          queue.on_action(start_of(8, SPELL))
+          env.now = env.now + 2.48
+          queue.step()
+          assert.are.equal("casting", queue.doing())
+          env.now = env.now + 0.02
+          queue.step()
+          assert.is_not_nil(queue.doing():find("lock", 1, true))
+        end
+
+        it("an interrupt", function()
+          still_unseen(function(queue)
+            queue.on_action(action(8, INTERRUPTED))
+          end)
+        end)
+
+        --[[ Casting time reduction stops at 80%, so a finish under a fifth of
+             the resource's time after its start was most likely a cast made at
+             once (Chainspell, Quick Magic). Learned as the first one seen, it
+             would end the next cast's wait inside the cast. ]]
+        it("a cast made at once, in under a fifth of the resource's time", function()
+          local queue, env = casts_six_seconds()
+          cast(queue, env, 1.19)
+          queue.on_action(start_of(8, SPELL))
+          env.now = env.now + 6.79
+          queue.step()
+          assert.are.equal("casting", queue.doing())
+        end)
+
+        it("a finish naming another spell", function()
+          still_unseen(function(queue)
+            queue.on_action(action(4, OTHER))
+          end)
+        end)
+
+        -- Ids are numbered per kind, so an ability can carry the spell's.
+        it("an ability's finish that names its id", function()
+          still_unseen(function(queue)
+            queue.on_action(action(14, SPELL))
+          end)
+        end)
+
+        it("its own wait running out", function()
+          still_seen_as_before(function(queue, env)
+            queue.on_action(start_of(8, SPELL))
+            env.now = env.now + 2.5
+            queue.step()
+            env.now = env.now + 2.71
+            queue.step()
+          end)
+        end)
+      end)
+    end)
+
     --[[ The server answers a weaponskill that started and then could not land
          with a finish naming no spell. Ignored as a paralysis round, it held
          the bar for the start's whole wait and a lock on top (Kevin, 2026-11-10). ]]
@@ -4540,6 +4823,40 @@ describe("the action queue", function()
       env.now = env.now + 3.81
       queue.step()
       assert.is_not_nil(logged(env):find("no finish yet for the last start, lock 2.70s", 1, true))
+    end)
+
+    it("says the seen time a start's wait went by when it ran out", function()
+      local queue, env = world({ mode = "debug" })
+      env.casts.spell[511] = 6
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 1.69
+      queue.on_action(action(4, 511))
+      env.now = env.now + 2.71
+      queue.step()
+      env.log = {}
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 2.5
+      queue.step()
+      assert.is_not_nil(
+        logged(env):find("no finish yet for the last start, lock 2.70s, going by the 1.69s seen", 1, true),
+        logged(env)
+      )
+    end)
+
+    it("says nothing of a seen time where the wait was the resource's", function()
+      local queue, env = world({ mode = "debug" })
+      env.casts.spell[511] = 3
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 3.6
+      queue.on_action(action(4, 511))
+      env.now = env.now + 2.71
+      queue.step()
+      env.log = {}
+      queue.on_action(start_of(8, 511))
+      env.now = env.now + 3.81
+      queue.step()
+      assert.is_not_nil(logged(env):find("no finish yet for the last start, lock 2.70s", 1, true))
+      assert.is_nil(logged(env):find("seen", 1, true), logged(env))
     end)
 
     it("says a weaponskill's target died, before its answer and before its finish", function()
