@@ -58,9 +58,12 @@ local RESERVED = {
   invisible = true,
   reraise = true,
   draw = true,
+  assist = true,
   delay = true,
   hidecutscene = true,
   queue = true,
+  gamepad = true,
+  keyboard = true,
 }
 
 -- The settings window's panel for what is not a component's.
@@ -68,10 +71,11 @@ local GLOBAL_PANEL = "global"
 
 -- Framework-level presses: run by the action service, never by a bar.
 local ACTION_VERBS = { mr = true, sneak = true, invisible = true, reraise = true, draw = true }
--- The options core.lua carries - the service's tuning and the framework's
--- own: the words after the verb go through untouched, and core answers them
--- over its own config.
-local TUNING_VERBS = { delay = true, hidecutscene = true, queue = true }
+-- The framework's own options - the service's tuning and core's in core.lua,
+-- the gamepad bridge's in data/gamepad.lua, the keyboard map's in
+-- data/keyboard.lua: the words after the verb go through untouched, and core
+-- answers them over the file that holds them.
+local TUNING_VERBS = { delay = true, hidecutscene = true, queue = true, gamepad = true, keyboard = true }
 
 local SLOT_OPS = { list = true, create = true, delete = true }
 
@@ -296,6 +300,13 @@ local function new(deps)
         return fail("'//hud warp [all]' - all sends every instance home")
       end
       return { action = "action", verb = "warp", all = all }
+    elseif verb == "assist" then
+      -- Bare, it is the press; a word after it is whom a press assists from
+      -- then on, kept as typed for the action service to judge.
+      if #words > 2 then
+        return fail("'//hud assist [<target>]' takes one name, or one target like <p1>")
+      end
+      return { action = "action", verb = "assist", target = words[2] }
     elseif ACTION_VERBS[verb] then
       return no_extra(words, verb) or { action = "action", verb = verb }
     elseif TUNING_VERBS[verb] then

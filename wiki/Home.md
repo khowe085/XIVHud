@@ -28,6 +28,10 @@ edit by hand to get started.
   logged out, and comes back on its own.
 - **Short names.** Every component answers to a short alias wherever its
   name is taken (`//hud show pb`).
+- **Gamepad.** XIVHud can read an Xbox-style pad itself and play the crossbar
+  from it, with what every button and chord does changed by command (see
+  [Gamepad](gamepad.md)). It is on by default, and `//hud gamepad off`
+  switches it off.
 
 ## Installation
 
@@ -44,7 +48,9 @@ edit by hand to get started.
 4. To load it every time you start the game, add the line `lua load xivhud`
    to `Windower4/scripts/init.txt`.
 
-To update, unzip the new release over the old folder. Your settings (`data/`),
+To update, close the game and unzip the new release over the old folder:
+Windows will not replace `bin/_LuaXInput.dll` while the game has it loaded.
+Your settings (`data/`),
 your own art (`icons/custom/`) and the icon cache (`cache/`) are not in the zip
 and survive the update.
 
@@ -93,7 +99,9 @@ empty. It also changes set on CTRL+Up and CTRL+Down, which the game still sees.
 The bars also take a left-click on a drawn slot or the sword, and the status
 bar a click on one of its icons. If you would
 rather keep those keys, switch the component off with `//hud hide crossbar`
-or `//hud hide hotbar`; a hotbar row you hide gives its chord back too.
+or `//hud hide hotbar`; a hotbar row you hide gives its chord back too. Both
+bars get their keys through the [keyboard map](keyboard.md), so
+`//hud keyboard off` gives every one of them back.
 
 Components can also be switched from the console: `//hud hide giltracker`,
 `//hud show partylist alliance1`.
@@ -102,7 +110,7 @@ Components can also be switched from the console: `//hud hide giltracker`,
 
 | Component | Alias | On by default | What it shows |
 | --- | --- | --- | --- |
-| [Crossbar](components/crossbar.md) | `cb` | yes | FFXIV's cross hotbar: sixteen slots per set, driven by held keys, or a controller through Steam Input |
+| [Crossbar](components/crossbar.md) | `cb` | yes | FFXIV's cross hotbar: sixteen slots per set, driven by held keys or a [gamepad](gamepad.md) |
 | [Hotbar](components/hotbar.md) | `hb` | yes (row 1) | FFXIV's hotbar: ten slots in a row on the number keys, up to eight rows, with the same kinds of binding and the same commands as the crossbar |
 | [Parameter bar](components/parambar.md) | `pb` | yes | HP, MP and TP bars with numbers, plus melee accuracy and multi-attack rows |
 | [Party list](components/partylist.md) | `pl` | yes (main party) | your party (HP/MP/TP, jobs, buffs, distance) and both alliance parties (HP and MP) |
@@ -121,8 +129,8 @@ All commands start with `//hud` (`//xivhud` is registered as a second name).
 Verbs and component names are not case-sensitive, and a component's alias
 stands in for its name anywhere: `//hud reset tb` is `//hud reset targetbar`.
 Settings are per character, so until one is loaded everything but `help`,
-`list` and `copy` answers `log in first - XIVHud configuration is per
-character`.
+`list`, `copy` and `gamepad` answers `log in first - XIVHud configuration is
+per character`.
 
 | Command | What it does |
 | --- | --- |
@@ -140,11 +148,14 @@ character`.
 | `//hud copy <from> <to>` | replace character `<to>`'s configuration with character `<from>`'s |
 | `//hud buffs active` | list every buff on you right now, with ids, in the shipped priority order |
 | `//hud buffs <component> ...` | a component's buff order and filter settings (see below) |
-| `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise` | the bars' built-in actions (see Action commands below) |
+| `//hud draw`, `mr`, `warp`, `sneak`, `invisible`, `reraise`, `assist` | the bars' built-in actions (see Action commands below) |
 | `//hud delay [<seconds>]` | the mount and warp countdown, shared by the crossbar and hotbar; without a number it prints the current value (see Action commands below) |
 | `//hud queue [on\|debug\|off]` | hold a bar press made during a cast or the moment after it, and send it when you can act; on by default. Without a word it prints the current setting (see [The action queue](#the-action-queue)) |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action |
 | `//hud hidecutscene [on\|off]` | hide the HUD during cutscenes; on by default, and a change applies at once. Without a word it prints the current setting |
+| `//hud gamepad [on\|off]` | the [gamepad bridge](gamepad.md): which pad it reads, or switch it on or off; on by default |
+| `//hud gamepad list`, `bind`, `unbind` | what each button and chord of the pad does, changed in game (see [Gamepad](gamepad.md#commands)) |
+| `//hud keyboard [on\|off]`, `list` | the [keyboard map](keyboard.md): the keys that drive the crossbar and the hotbar, handed to them the way the pad's buttons are; on by default, and off no key reaches either bar |
 | `//hud config [<component>\|global]` | open the settings window, to change settings with the mouse (see below) |
 | `//hud <component> ...` | a command belonging to that component (see its page) |
 
@@ -235,9 +246,11 @@ set, with the same limits, so anything you change here you can also type. A
 control at its limit does nothing, and a press that slides off a control
 before release does nothing either.
 
-`global` holds the travel delay, the action queue and its waits (see
-[Action commands](#action-commands)) and whether the HUD hides during
-cutscenes. The components with a page of their own are the parameter bar,
+`global` holds the travel delay and the action queue and its waits (see
+[Action commands](#action-commands)), whether the HUD
+hides during cutscenes,
+the [gamepad bridge](gamepad.md)'s switch, unless `//hud gamepad` says the
+bridge is unavailable, and the [keyboard map](keyboard.md)'s switch. The components with a page of their own are the parameter bar,
 target bar, party list, status bar, equipment viewer, inventory tracker,
 crossbar and hotbar; each one's page says what is on it. A number that needs a
 value the steps do not land on, the buff order and filter lists, and anything
@@ -279,6 +292,7 @@ or the console too, and their settings are shared by both bars.
 | `//hud warp [all]` | warp home by the best means you have (a Warp spell, a Warp Ring, an Instant Warp, ...); `all` sends your other characters running XIVHud too |
 | `//hud sneak` / `//hud invisible` | the cheapest sneak or invisible this character can manage: the spell, then Spectral Jig, then the ninjutsu, then an oil or powder. Silenced or muted, the spells and ninjutsu are passed over |
 | `//hud reraise` | the best reraise you can get right now: Reraise IV, III, II or I if you can cast it (a scholar needs Addendum: White or Enlightenment up), then a Super Reraiser, Hi-Reraiser, Reraiser or Instant Reraise from your inventory, then a Reraise Ring, Earring, Hairpin or Gorget your job can wear, equipped and waited out for you the way an enchanted item is. Refused while Reraise is already on, since the game cannot say which tier you have. No countdown. |
+| `//hud assist [<target>]` | the game's `/assist`: target what another player is targeting. With a target it sets whom - a name (`//hud assist Bob`) or a target in brackets (`//hud assist <p1>`) - and alone it assists them. Set again after restarting the game or reloading the addon. See [`assist`](components/crossbar.md#built-ins) on the crossbar page |
 | `//hud delay [<seconds>]` | how long a mount or warp counts down before it goes; fractions are fine, there is no upper limit, and `0` switches the countdown off |
 | `//hud queue [on\|debug\|off]` | [the action queue](#the-action-queue); without a word it prints the current setting. `debug` also writes each step to `debug.log` in the addon's folder |
 | `//hud queue lock [<kind> [<seconds>]]` | how long the queue waits after each kind of action, 0 to 5 seconds in tenths. Alone it lists them all; with only a kind it prints that one |
@@ -298,15 +312,16 @@ After a spell, a weaponskill, a job ability, an item or a ranged attack the
 game refuses your next action for a moment, and a press made in that moment is
 lost. With the queue on, which is the default, a crossbar or hotbar press made
 during a cast or that moment is held, and goes by itself as soon as you can
-act, as in FFXIV. A press made while you are free goes at once. With the queue
+act, as in FFXIV. A press made while you are free goes at once, unless its own
+recast is a moment from ready (see Recasts below). With the queue
 off, every press goes at once and the game decides.
 
 - **What is held:** spells, job abilities, pet commands, weaponskills, items
   and ranged attacks. A `sneak`, `invisible` or `reraise` slot picks its best
   way when you press it and holds that, unless the best way is gear to put on,
   which has a wait of its own. Every other kind of slot goes at once: chat and
-  Windower commands, game screens, job changes, mounts, warps, `draw` and
-  enchanted gear.
+  Windower commands, game screens, job changes, mounts, warps, `draw`,
+  `assist` and enchanted gear.
 - **One press.** Only one press is held, across both bars, and a newer one
   replaces it. A held press is sent once, and not again if the game refuses
   it. Nothing is said in chat when a press is held or dropped.
@@ -318,46 +333,111 @@ off, every press goes at once and the game decides.
   you could act is held until it ends, and one further off is dropped. A press
   made while you are locked out after an action is held if its recast ends no
   more than two seconds after the lockout; one made during a cast, only if its
-  recast has two seconds or less to run. Otherwise it goes out at once, as does one
-  made while nothing is going on, recast or not. While a held press waits on its
+  recast has two seconds or less to run. One made while nothing is going on is
+  held the same way when its recast has between 0.7 and 2 seconds to run, and
+  goes when it is ready; with 0.7 seconds or less to run it goes at once, which
+  the game accepts. Otherwise a press goes out at once. While a held press waits on its
   recast, a newer press replaces it, as during a cast. Stratagems, Quick Draw and Ready have charges, so their recast
   does not count.
 - **Weaponskills.** A weaponskill you have under 1000 TP for does nothing at
   all, not even the game's usual message, and one held is dropped if the TP is
-  gone when you could act.
-- **Targets.** A held press aimed at `<t>` or `<bt>` stays on the target you
-  had when you pressed, and with nothing targeted it is not held. A slot bound
-  with no target takes whatever the game gives it when it goes, and `<me>` and
-  `<pet>` are held as they are. `<ft>`, party targets and the other tokens are
-  not held and go at once.
+  gone when you could act. The same goes for a weaponskill pressed while you
+  cannot use one: asleep, petrified, stunned, charmed, terrorized, animated,
+  under Amnesia or Impairment, dead, or doing something other than standing or
+  fighting (resting, mounted, in a cutscene) - and for one pressed in the three
+  seconds after the game reports its target dead, which is not sent at the
+  corpse, where the slot is aimed at `<t>`, `<bt>` or a cursor. Range is not
+  checked: a weaponskill pressed out of range still goes, and the game answers
+  it.
+- **Targets.** A held press aimed at `<t>` or `<bt>` is for the target you
+  had when you pressed, and with nothing targeted it is not held. It goes as
+  you bound it while that target is still the one under `<t>` (or `<bt>`). If
+  you have moved off it, it goes under another of the game's own target words
+  that names it now - `<me>`, `<lastst>`, `<t>`, `<pet>`, a party member's
+  `<p1>`-`<p5>` or an alliance member's - and if none does, the press is
+  dropped rather than sent at something else. No target id is ever sent, so
+  none of this needs GearSwap. A slot bound with no target takes whatever the
+  game gives it when it goes, and `<me>` and `<pet>` are held as they are.
+  `<ft>`, party targets and the other tokens are not held and go at once.
 - **Cursor slots.** A slot that opens a cursor (`<st>`, `<stpc>` and the like)
   is decided when you press OK rather than when you press the slot, so you can
   pick your target during a cast and press OK whenever you like. OK is then
-  judged as a press is: a weaponskill under 1000 TP sends nothing, an action
+  judged as a press is: a weaponskill under 1000 TP, one you cannot use, or
+  one aimed at a target the game has just reported dead sends nothing, an action
   whose recast outlasts the lockout by more than two seconds goes at once, and
   otherwise it is held or goes
   at once as the queue stands. Pressing another cursor slot while the arrow is
-  up sends nothing and only changes what OK will cast; an arrow a macro raised
-  is left alone. GearSwap's `pretarget` does not run for such a slot.
+  up sends nothing and only changes what OK will cast. Under an arrow XIVHud
+  did not raise (a macro's), a cursor slot does nothing at all, and OK still
+  casts the macro's spell. A press that raises no arrow at all is forgotten
+  after two seconds. The cast goes at your pick under one of the game's own
+  target words: `<me>` for yourself, `<lastst>` (the last sub-target picked),
+  `<t>` if it is your target, `<pet>`, or a party or alliance member's. A pick
+  none of them names is dropped: a frame after OK where the cast would have
+  gone at once, and when its wait ends where it was held. That
+  `<lastst>` holds a pick made this way has not been watched in a live client
+  yet, so until it has, a cast at a monster that is not your target may not
+  go: `//hud queue debug` writes `aimed at <lastst>` when it does and
+  `nothing names <id>` when it does not.
 - **Macros and typed commands** are not held, but they do count towards the
   wait, as does anything another addon sends. A press made before the game has
   answered the last one is held too.
+- **When something else acts for you.** An action the bars did not send - a
+  macro, a typed command, another addon, GearSwap casting a buff on its own -
+  makes the queue stand aside. Until one of the bars' own actions has gone, or
+  you are free to act, a press made in the last second of the wait is not
+  held, and neither is a cursor slot's OK: it goes at once, as with the queue
+  off, so the game may refuse it, and it is not sent again. Keep pressing and
+  it goes as the wait ends. After a job ability or an item the whole wait is
+  that last second, being a second or less. A press made sooner, during the
+  cast or earlier in the wait, is held as usual, and so is one whose own
+  recast is still running, and so is every press in the wait after anything
+  that was interrupted: the game has refused one sent there, or never
+  answered it. This is for addons that act the moment you can:
+  GearSwap's automatic casts leave a hair before a held press would, and a
+  held press could sit behind one automatic cast after another. GearSwap waits
+  when it sees you pressing, and a held press is one it never sees. Anything
+  that leaves within two seconds of a press the bars let through counts as
+  theirs.
 - **What drops a held press:** zoning, dying, changing job or logging out; a
   cutscene that hides the HUD; opening `//hud layout`, `//hud config` or edit
   mode; anything that reloads a bar - a reset, a slot switch, a copy, a login;
-  switching the queue off or unloading the addon; and 30 seconds passing, held
-  or waiting for a ranged attack or an unknown action to end. A press made
-  while `//hud config` is open goes at once; in layout or edit mode, or while
-  the HUD is hidden, the bars fire nothing anyway.
+  switching the queue off or unloading the addon; the target of a held
+  weaponskill dying, or the monster a held spell is aimed at; and 30 seconds
+  passing, held or waiting for a ranged attack or an unknown action to end. A
+  press made while `//hud config` is open goes at once; in layout or edit
+  mode, or while the HUD is hidden, the bars fire nothing anyway.
 - **Lag.** The game tells the queue when a cast starts and when it finishes,
   and lag can lose either message. If the finish never comes, a spell counts
-  as finished at its cast time plus 0.4 seconds, a weaponskill after 3 seconds
+  as finished at its cast time plus 0.8 seconds, a weaponskill after 1.2 seconds
   and an item at its cast time plus 1 second; the wait for that kind then runs
-  and a held press goes. If the start is lost, a spell you sent waits for an
-  answer as long as its cast time plus 0.4 seconds, so its finish still starts
-  the wait. A spell the server drops with no answer at all holds the bar that
-  long. A cast slowed past these times by a debuff can let a held press go
-  early, and the game then refuses it.
+  and a held press goes. Fast Cast makes a real cast far shorter than the
+  listed one, so once the queue has seen you finish a spell it goes by the
+  longest that spell has taken you, plus 0.8 seconds, where that is sooner. It
+  forgets those times when you zone, die, change job or log out. If the start
+  is lost, a spell you sent waits for an answer as long as its listed cast time
+  plus 0.8 seconds, so with Fast Cast on its finish still starts the wait. A
+  spell the server drops with no answer at all holds the bar that long. A cast
+  that runs past these times - one slowed by a debuff, one cast with less Fast
+  Cast than the queue has seen you use or without a buff that shortened the
+  casts it saw, or one with no Fast Cast whose start was lost - can let a held
+  press go early, and the game then refuses it.
+- **A Trust the game will not call.** When the game refuses a Trust cast -
+  you have called your maximum, that alter ego is already out, you hold
+  enmity, you are seeking a party, you have just invited someone, or you are
+  in a party you do not lead - the queue stops waiting on it at once.
+- **A weaponskill whose target dies.** The game sends nothing more for one: no
+  answer if it was sent as the target died, no finish if it had started. The
+  queue stops waiting for either as soon as the game reports the death. A
+  weaponskill that was never answered leaves nothing to wait out, and a held
+  press goes at once. One that had started still costs the usual wait after a
+  weaponskill, as the game makes you wait there too: it runs from the death,
+  or from 0.4 seconds after the start if the death is reported sooner, and a
+  held press goes after it. A death reported more than 1.2 seconds after the
+  weaponskill started changes nothing: the usual wait has begun by then, and
+  runs its course. A weaponskill held for a target that dies before it can
+  go is dropped rather than sent at the corpse, and so is a held spell aimed
+  at a monster that has died. A Raise held for a fallen player still goes.
 
 If you use Selindrile's GearSwap files, leave their MiniQueue off.
 
@@ -376,6 +456,73 @@ finishes:
 A wait you set yourself is kept in `core.lua` (below), and stays yours even if
 it equals the shipped one. To follow the shipped wait again, remove that kind's
 entry from `queue_locks` with the game closed.
+
+### Auto spell tier
+
+A binding marked `tier=auto` makes its spell fall back when it cannot be
+cast: press Fire V while it is on cooldown and Fire IV goes instead, then Fire
+III, and so on down. It is set per binding, and every binding starts without
+it: a nuke is worth stepping down, where Haste for Haste II, or Refresh II for
+Refresh III, does nothing on a target that already has the better one.
+
+- **Turning it on for a binding:**
+  - in edit mode (`//hud crossbar edit`), click the slot: the row showing a
+    spell with a tier under it has `auto tier [ off ]` at its right end. Click
+    it to switch it on, and again to switch it off;
+  - `//hud crossbar tier 1L1 auto` (or `off`), which takes `context=` like
+    `alias` and `icon` do; without a word it says how the binding stands;
+  - `tier=auto` on the end of a `bind`, on a bar or on a pad gesture:
+    `//hud gamepad bind lt+y ma "Fire V" <stnpc> tier=auto`.
+  - Binding a slot again without `tier=auto` switches it off, and
+    `//hud crossbar list` shows `tier=auto` on each binding that has it.
+  - It is refused on anything but a spell, and on a spell with no lower tier
+    that could take its place.
+
+- **What counts as tiered:** a spell whose name ends in a Roman numeral, down
+  to the plain name (Fire V, IV, III, II, Fire; Sleep II, Sleep; a song's
+  numeral too), and ninjutsu's San, Ni and Ichi. Trusts are never stepped:
+  Shantotto II is not a tier of Shantotto.
+- **When it steps down:** the spell's cooldown runs more than two seconds past
+  the moment you can next act - the end of the wait after your last action, or
+  now if you are not in one - or you have not learned it, or neither of your
+  jobs can cast it at your level right now: under a level sync, say, or a
+  Scholar without the Addendum it needs. Your MP is not checked.
+- **A spell that is nearly ready is never replaced.** Inside those two
+  seconds, a spell pressed during the wait after an action is waited for, as
+  the queue always did, and so is one pressed while you are free, unless it
+  is within 0.7 seconds of ready, when it is sent as it is (with the queue
+  off it is always sent as it is). Shell V does not become Shell IV for being a
+  second early. The one exception is a press made while another spell is
+  still casting: nothing says when a cast will end, so the two seconds are
+  counted from the press, and a spell that would have come ready by your turn
+  can still be stepped down.
+- **Which tier goes:** the highest one below the spell you pressed that you
+  know, can cast and the game would not refuse. It only ever goes down, never
+  up. If none qualifies, the spell you pressed is sent and the game refuses
+  it, as it would have - or, if the queue was holding it, it is dropped, as it
+  would have been.
+- **With the action queue:** a slot that asks you to pick a target (`<stnpc>`)
+  decides when you confirm the target. And if a spell you pressed during its
+  own cast is still on cooldown when its turn comes, the next tier down goes
+  in its place, at the same target.
+- **Where it applies:** crossbar and hotbar bindings marked `tier=auto`, and
+  actions bound to a pad button or a key that carry it. Macros, the game's
+  menus and typed commands are untouched, and so are the `sneak`, `invisible`
+  and `reraise` slots, which pick their own spell. A slot's icon and cooldown
+  still show the spell it is bound to.
+- **A lower tier that cannot be aimed where the spell you pressed can** never
+  goes in its place: Warp is never cast for Warp II, nor Phalanx for Phalanx
+  II.
+
+Nothing is said in chat. With `//hud queue debug`, each decision is one line
+in `debug.log`: when it was made, why the spell you pressed could not go, each
+tier that was passed by and why, and what went. The
+[Auto spell tier](autospelltier.md) page says how to read that line, and lists
+every ladder, job by job. In a live client it has stepped a spell down when a
+target was confirmed and when a held press had its turn; a plain press, and a
+spell out of your level's reach, have not been watched yet. Those runs were
+made while it was one switch for every spell (`//hud autospelltier`, which is
+gone): marking a binding has not been tried in a live client yet.
 
 ## Layout slots
 
@@ -412,6 +559,8 @@ Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/config.lua  the comp
 Windower4/addons/XIVHud/data/<Character>/<slot>/<component>/layout.lua  its position, scale and on/off state
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/<JOB>.lua     the crossbar's bindings for that job (the hotbar's sit beside it in hotbar/)
 Windower4/addons/XIVHud/data/<Character>/<slot>/crossbar/SHARED.lua    the bindings of the sets marked shared across jobs
+Windower4/addons/XIVHud/data/gamepad.lua                                the gamepad map, one for every character
+Windower4/addons/XIVHud/data/keyboard.lua                               the keyboard map, one for every character
 Windower4/addons/XIVHud/cache/items/                                    item icons read from the game (a cache: delete it only with the addon unloaded)
 Windower4/addons/XIVHud/cache/packets/<Character>/                      the last character-stats packet per job, for the experience bar and the binder's subjob level cap (a cache)
 Windower4/addons/XIVHud/icons/custom/                                   your own crossbar and hotbar art
@@ -516,8 +665,10 @@ when the message changes, not every frame. After five errors in one handler
 over the session chat says `the <name> handler has been disabled after 5
 failures - '//lua reload xivhud' to try again` and that part of the addon
 stops: a disabled mouse or keyboard handler hands your input back to the game,
-a disabled `prerender` handler freezes the whole HUD, and a disabled `command`
-handler leaves `//hud` silent. Reload to try again, and report the message.
+a disabled `prerender` handler freezes the whole HUD and stops the pad, a
+disabled `command` handler leaves `//hud` silent, and a disabled `gamepad`
+handler stops the pad alone. A stopped pad or keyboard lets go of whatever it
+held. Reload to try again, and report the message.
 
 **`item icons are not being read: the game's item data has changed`.** A game
 update has moved the item icons and XIVHud needs an update. It applies to the
@@ -525,13 +676,19 @@ equipment viewer and both action bars, which share one icon cache; the
 [equipment viewer](components/equipviewer.md) page has `icons probe` and the
 rest.
 
+**The gamepad does nothing.** `//hud gamepad` says why; the
+[gamepad page](gamepad.md#troubleshooting) lists its answers.
+
 **`crossbar: DIK <n> is bound to more than one thing`.** A hand-edited key map
 in the crossbar's `config.lua` gives one key two jobs; the first keeps it.
 
 **A press the action queue dropped or held.** `//hud queue debug` writes every
 step to `debug.log` beside `XIVHud.lua`, appended and never trimmed, so switch
-it back to `on` and delete the file when you are done.
+it back to `on` and delete the file when you are done. A line naming the build
+that wrote it - its version, when it loaded and the size of its `queue.lua` -
+comes before the first line after each load and again in any file started
+since, which narrows down the build a log you send came from.
 
 **Two clients on one addon folder** share these files: `load.log` holds only
-the last client to load, and both write to `debug.log` with nothing to tell
-their lines apart.
+the last client to load, and with `debug` on in both, `debug.log` gets a build
+line each time the other client has written.

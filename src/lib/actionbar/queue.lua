@@ -35,7 +35,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      can only arrive late, by about a round trip, and never early. Everything
      else is a packet: what went out, what started, what finished and what was
      refused - a macro's as much as a bar's. A cast time bounds only how long a
-     spell or a start may go unanswered when lag loses its packet.
+     spell or a start may go unanswered when lag loses its packet. A weaponskill
+     whose target dies before it lands has no finish to measure from, and the
+     death's packet stands in for it (see target_died).
 
      It holds ONE press, the newest, and sends it once. It never waits long on
      a recast, which is the defect that made Selindrile's MiniQueue unusable: a
@@ -43,10 +45,26 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      always did and the game refuses it, and a held press whose recast is that
      far off when the lock clears is dropped. A press whose recast ends inside
      the lock, or within RECAST_GRACE after it, is held, since sent it could only
-     be refused, and its release waits for the recast. A weaponskill under its TP goes
-     nowhere, for want of anything to wait on. A
+     be refused, and its release waits for the recast. With nothing busy that
+     is a lock of nothing: a press within RECAST_GRACE of ready is held for its
+     recast too, bar one within NEAR_READY, which goes as it is and the game
+     takes. A weaponskill under its TP goes
+     nowhere, for want of anything to wait on, and so does one under a status
+     GearSwap would abort it on, or aimed at a target the game has just said fell. A
      cursor slot is judged the same way at OK, when its command is really sent,
-     rather than at the press. ]]
+     rather than at the press. A held weaponskill or spell whose target has
+     died since is dropped rather than sent at the corpse.
+
+     What is sent for a target names it by a word of the game's own - <t>,
+     <lastst>, <p1> - and never by its id, which only GearSwap reads: see
+     aimed. A press no word names the target of goes nowhere.
+
+     Where the action service's spell tier walk has a lower tier to offer
+     (`deps.lower`), that tier takes the place of a cursor's spell at OK, and
+     of a held one that would otherwise be dropped on its recast.
+
+     It stands aside for a packet the bar did not send, so that an addon acting
+     on its own cannot take every window from a held press: see on_outgoing. ]]
 
 --[[ The seconds after a finish before the next action goes: too long costs a
      moment and too short loses the press. These are the shipped lengths, and
@@ -91,32 +109,97 @@ local LOCK_RANGE = { min = 0, max = 5, step = 0.1 }
 local LEAVE_BACKSTOP = 0.6
 -- How long what left may go unanswered.
 local ANSWER_BACKSTOP = 2
+-- How long a cursor's token may go without its arrow's number.
+local ARROW_BACKSTOP = 2
 -- Past the longest cast there is, and the longest a press is held.
 local FINISH_BACKSTOP = 30
 --[[ How long a start keeps the bar busy without its finish (Kevin, 2026-11-06:
      lag lost finishes, and FINISH_BACKSTOP made each one 30s of a dead bar).
-     Fast Cast shortens a spell's resource cast time, so SPELL_SLACK covers the
-     server's 0.4s beat. The wait's end is taken for the lost finish and starts
+     Fast Cast shortens a spell's resource cast time, so SPELL_SLACK covers what
+     follows it: two of the server's 0.4s beats. With no Fast Cast on the cast
+     the finish packet follows the cast time by 0.42 to 0.77s, 27 times of 27
+     (Kevin's log of 2026-11-26), and at one beat this wait ran out ahead of
+     every one of them. That is measured from the START. The wait on a spell
+     sent and never answered shares the constant and runs from the SEND, about
+     0.6s sooner, so with no Fast Cast it still ends ahead of the finish: it
+     moved with this one for the cost alone (Kevin, "Both at 0.8s"), not on
+     that evidence. The wait's end is taken for the lost finish and starts
      that kind's lock, since the server locked from the real one. A finish later
      than this still locks: a start stays open for one until FINISH_BACKSTOP,
      though a spell finish then has to name the spell the start named.
      UNVERIFIED: what lengthens a cast (Addle, an Arts penalty). A cast that
      overruns its wait, or a finish lag delays past the wait and the lock,
      releases a held press inside the cast, where it is refused and GearSwap
-     leaves its midcast set. WEAPONSKILL_BACKSTOP and ITEM_SLACK are guesses,
-     as are the items resource's `cast_time` being the seconds from an item's
-     start to its finish and a category 9 start naming its item in
-     `targets[1].actions[1].param`. ]]
-local SPELL_SLACK = 0.4
-local WEAPONSKILL_BACKSTOP = 3
+     leaves its midcast set.
+
+     A spell that has been SEEN to finish waits only as long as it took, and
+     SPELL_SLACK, where that is sooner than the resource's time (Kevin,
+     2026-11-26). Two Anvil Lightnings whose finish never came each kept the
+     bar busy the resource's 6s, the 0.8s and the lock, where with Fast Cast
+     the 19 that did finish took 1.53 to 1.69s. It goes by the LONGEST it has
+     seen since the last clear and never the last (Kevin's pick), so a cast
+     made at once shortens nothing (nor teaches anything: QUICKEST_CAST), and
+     one slow cast is waited on until the next clear. A cast longer than any
+     seen (Fast Cast gear gone, a buff that shortened the casts seen worn
+     off, a slow) ends the wait early as one overrunning the resource's time
+     does, and its finish, late as it is, teaches the longer time. The wait
+     on a spell sent and never answered does NOT go by it (Kevin): that one
+     runs from the send, and would have to cover the time to the start as
+     well. UNVERIFIED in a live client.
+
+     WEAPONSKILL_BACKSTOP is three of the server's 0.4s beats: about 80
+     weaponskills in Kevin's log of 2026-11-10 each finished within 0.89s of
+     starting, and at 3s one whose finish never came held the bar 5.4s.
+     ITEM_SLACK is a guess, as are the items resource's `cast_time` being the
+     seconds from an item's start to its finish and a category 9 start naming
+     its item in `targets[1].actions[1].param`. ]]
+local SPELL_SLACK = 0.8
+local WEAPONSKILL_BACKSTOP = 1.2
 local ITEM_SLACK = 1
+--[[ The least share of its resource time a cast is taken to need: casting
+     time reduction stops at 80% (bg-wiki's Fast Cast page). A finish sooner
+     after its start than that was most likely a cast made at once -
+     Chainspell, Quick Magic - which says nothing of how long the next takes,
+     and learned as the first one seen it would end that next cast's wait
+     inside the cast. Whatever made it that quick, not learning it is the
+     safe side: the wait stays the resource's (Kevin, 2026-11-26: "Ignore
+     it"). ]]
+local QUICKEST_CAST = 0.2
+--[[ How soon the server finishes a weaponskill it has started: its beat. The
+     client saw 233 of Kevin's finish 0.44s after their start at the median
+     (2026-11-17). ]]
+local WEAPONSKILL_BEAT = 0.4
 --[[ How long past the lock a press waits for its own recast. Shell V cast on
      target after target ends its recast just after its lock, and sent on it the
      press was refused (Kevin, 2026-11-07). Without haste that was 1.28 to 1.31s
      after, eleven times of eleven, so 2 (Kevin, 2026-11-08). A press whose recast
      runs longer is sent to be refused, and a held one whose recast is still that
-     far off when the lock clears is dropped. ]]
+     far off when the lock clears is dropped - unless the spell tier walk has a
+     lower tier to stand in for either. ]]
 local RECAST_GRACE = 2
+--[[ How near ready a press goes as it is with nothing busy, where a lock would
+     have held it. The client's figure runs behind the server's: 13 presses of
+     13 with 0.08 to 0.73s of recast left went and started (Kevin's logs,
+     2026-11-24 and 11-25). Further off than this and within RECAST_GRACE it is
+     held for its recast instead: GearSwap aborts a spell with more than 0.8s
+     left, with a line of chat, and eight of eight in those logs cost a second
+     press. UNVERIFIED for an ability, whose own figure there is 0.5s. ]]
+local NEAR_READY = 0.7
+--[[ How long after the bar sends anything a packet that leaves is still the
+     bar's own. A press's packet follows it inside a frame or two, but GearSwap
+     may put another action in a press's place and send the press itself after
+     it: Kevin's uses Berserk for a weaponskill and sends the weaponskill 1.08
+     to 1.12s after the ability left, 69 times of 69 (2026-11-21). A guess past
+     that. ]]
+local OWN_SECONDS = 2
+--[[ How much of a lock's end a press goes as it is in, while standing aside.
+     GearSwap's own cast comes a tenth or two before the lock's end, so a mash
+     has a press in this second ahead of it. No earlier in the lock: Kevin's
+     GearSwap answers a weaponskill by using a buff in its place, sending the
+     weaponskill again 1.1s later and dropping every other weaponskill press
+     for 5s, and sent sooner than this that second send would land in the lock
+     too (Kevin, 2026-11-22). ]]
+local ASIDE_SECONDS = 1
 
 local MODES = { "off", "on", "debug" }
 local KNOWN_MODES = { off = true, on = true, debug = true }
@@ -130,6 +213,25 @@ local CURSOR_TARGETS = { st = true, stpc = true, stal = true, stnpc = true, stpt
 local NUMBERS_AT_OK = 2
 -- What any weaponskill takes.
 local WEAPONSKILL_TP = 1000
+--[[ The statuses no weaponskill goes under: the ones Selindrile's GearSwap
+     aborts one on, his disable_list and check_amnesia's two, under the ids
+     Windower's buffs resource gives those names. Range is deliberately not a
+     test: the client misjudges the reach of some monsters. ]]
+local WEAPONSKILL_STOPPERS = {
+  [2] = "sleep",
+  [7] = "petrification",
+  [10] = "stun",
+  [14] = "charm",
+  [16] = "amnesia",
+  [17] = "charm",
+  [19] = "sleep",
+  [28] = "terror",
+  [193] = "lullaby",
+  [261] = "impairment",
+  [633] = "animated",
+}
+-- Idle and engaged, the two his check_disable lets an action through in.
+local ACTING_STATUSES = { [0] = true, [1] = true }
 
 -- The 0x028 categories, as atom0s' GP_SERV_COMMAND_BATTLE2 notes number them.
 local START_KINDS = { [7] = "weaponskill", [8] = "spell", [9] = "item", [12] = "ranged" }
@@ -153,10 +255,19 @@ local ITEM_OUT = 0x037
 -- GearSwap's outgoing_action_category_table, and its 0x037 for an item.
 local OUTGOING_KINDS = { [3] = "spell", [7] = "weaponskill", [9] = "ability", [16] = "ranged", [25] = "monster skill" }
 -- 1-based, header included.
+local TARGET_OFFSET = 5
 local CATEGORY_OFFSET = 11
 local PARAM_OFFSET = 13
 local ACTOR_OFFSET = 5
 local MESSAGE_OFFSET = 25
+-- Who a 0x029 is about, at 0x08.
+local ABOUT_OFFSET = 9
+-- The order of a 0x063 that lists the buffs on you, and how many it lists.
+local BUFFS_ORDER = 9
+local BUFF_SLOTS = 32
+-- A 0x053's parameter at 0x04 and its message at 0x0C.
+local SYSTEM_PARAM_OFFSET = 5
+local SYSTEM_MESSAGE_OFFSET = 13
 
 -- GearSwap's `unable_to_use` (statics.lua): the 0x029 messages that mean the
 -- last action did not happen. 94 stays out, as it does there: it answers an
@@ -174,6 +285,50 @@ for message in
 do
   REFUSALS[tonumber(message)] = true
 end
+
+--[[ The 0x053 messages that say a Trust was not called, by LandSandBoat's
+     system message table: seeking a party, just after an invite, the maximum
+     number already called, that alter ego already out, enmity held, and a
+     caster neither solo nor the party leader. GearSwap's own handler takes
+     the last four for the cast interrupted (packet_parsing.lua); the first
+     two rest on that table alone (Kevin, 2026-11-13). ]]
+local TRUST_REFUSALS = { [296] = true, [297] = true, [298] = true, [299] = true, [300] = true, [301] = true }
+
+--[[ The 0x029 messages that say their target died, the Debuffed addon's list:
+     defeats, falls to the ground, and that fall after a spell, a weaponskill,
+     an added effect or an ability. ]]
+local DEATHS = { [6] = true, [20] = true, [113] = true, [406] = true, [605] = true, [646] = true }
+-- How long a death is remembered: as long as a press can be held for it.
+local FALLEN_SECONDS = FINISH_BACKSTOP
+--[[ How long after a death a weaponskill pressed at the corpse goes nowhere.
+     Far short of the memory: a mob back up under its id inside that - an NM
+     popped again, one that reraises - would take no weaponskill from the bar
+     until it acted. It was 2 (Kevin, 2026-11-16) until a run on it: 52
+     presses came up to 1.76s after the death, nine of them past a second,
+     and the last mob of a pull leaves the target on the corpse (Kevin,
+     2026-11-18). ]]
+local CORPSE_SECONDS = 3
+-- An id from here up is a monster's, an NPC's or a pet's, never a player's.
+local FIRST_NPC_ID = 0x01000000
+--[[ The 0x029 message that says the game picked your next target for you. Ten
+     of ten in Kevin's logs came the second the chat log said "Auto-targeting
+     the <mob>." (2026-11-22). ]]
+local AUTO_TARGET = 234
+--[[ The 0x029 messages the game answers a melee round with when its mob is
+     too far or out of sight. Four of four and six of six in Kevin's log came
+     the second the chat log said "is out of range." and "Unable to see"
+     (2026-11-23). UNVERIFIED: that each names the mob the server has you on
+     at 0x08, as a death and an auto-target name theirs; no log has printed
+     it. ]]
+local FIGHTING_MESSAGES = { [4] = "out of range of", [5] = "unable to see" }
+local MELEE_ROUND = 1
+-- The outgoing 0x01A categories that move your target or your stance, as
+-- Windower's packets library names them (fields.lua, enums.action).
+local TARGETING_OUT = { [2] = "engage", [4] = "disengage", [12] = "assist", [15] = "switch target" }
+-- An incoming 0x058 by the same library: whose target it sets at 0x04, and
+-- the target at 0x08.
+local SET_FOR_OFFSET = 5
+local SET_TARGET_OFFSET = 9
 
 local function u16(data, offset)
   local low, high = data:byte(offset, offset + 1)
@@ -196,6 +351,12 @@ local function first_message(act)
   return first_action(act).message
 end
 
+-- The id of who an action is aimed at.
+local function first_target(act)
+  local target = type(act.targets) == "table" and act.targets[1] or nil
+  return type(target) == "table" and target.id or nil
+end
+
 local function cast_seconds(deps, kind, id)
   if deps.cast_seconds == nil or type(id) ~= "number" then
     return nil
@@ -204,14 +365,19 @@ local function cast_seconds(deps, kind, id)
   return type(seconds) == "number" and seconds >= 0 and seconds or nil
 end
 
--- How long the start `act` of `started` may go unfinished.
-local function finish_backstop(deps, started, act)
+-- How long the start `act` of `started` may go unfinished. `seen` is the
+-- longest that spell has been seen to take, where it has been seen to finish,
+-- and the second answer is that time where the wait goes by it.
+local function finish_backstop(deps, started, act, seen)
   if started == "weaponskill" then
     return WEAPONSKILL_BACKSTOP
   end
   if started == "spell" or started == "item" then
     local seconds = cast_seconds(deps, started, first_action(act).param)
     if seconds ~= nil then
+      if started == "spell" and seen ~= nil and seen < seconds then
+        return seen + SPELL_SLACK, seen
+      end
       return seconds + (started == "item" and ITEM_SLACK or SPELL_SLACK)
     end
   end
@@ -226,17 +392,41 @@ local function new(deps)
   local going = nil
   -- A cursor this opened, waiting for OK.
   local cursor = nil
+  -- A cursor's pick that no word named at OK, waiting a frame for one.
+  local picked = nil
   -- Each nil until its packet sets it, and the moment it stops counting after.
   local sent_until, acting_until, lock_until = nil, nil, nil
   -- Until when a finish still answers the last start, which outlasts `acting_until`.
   local open_until, acting_kind = nil, nil
   -- The id the last start named, which a finish must name once its wait has locked.
   local acting_id = nil
+  -- When the last start came.
+  local acting_at = nil
+  -- The longest each spell has been seen to take from its start to its
+  -- finish, by id, since the last clear: see SPELL_SLACK.
+  local seen = {}
+  -- The seen time the last start's wait goes by, where it goes by one.
+  local acting_seen = nil
   -- Whether what `sent_until` waits on has been seen leaving the client.
   local sent_left = false
   -- The id of the spell `sent_until` waits on, whose finish can come without its start.
   local sent_spell = nil
+  -- Who a weaponskill is aimed at: the one `sent_until` waits on, and the one started.
+  local sent_target, acting_target = nil, nil
   local finished_at = nil
+  -- The buffs the last 0x063 listed, or nil before one has come.
+  local listed = nil
+  -- When each target fell, by id, as a 0x029 said.
+  local fallen = {}
+  -- Standing aside: a packet the bar did not send has left. See on_outgoing.
+  local aside = false
+  -- Whether the lock running is an interrupt's, which nothing stands aside in.
+  local interrupt_lock = false
+  -- When the bar last sent anything, and whether the packet `sent_until`
+  -- waits on an answer to was its own.
+  local bar_sent_at, sent_ours = nil, false
+  -- The last thing debug said of the mob the server has you fighting.
+  local fighting = nil
 
   local function now()
     return deps.now()
@@ -281,13 +471,18 @@ local function new(deps)
     end
   end
 
+  --- A line for the debug log from the action service's side of a press,
+  --- said as this says its own.
+  self.note = note
+
   -- How long after the last finish this happened: printed on what went out,
   -- what started and what was refused, which together bracket the real lock.
+  -- Signed, since a finish a death is taken for can lie a beat ahead.
   local function since_finish()
     if finished_at == nil then
       return ""
     end
-    return (" +%.2fs after finish"):format(now() - finished_at)
+    return (" %+.2fs after finish"):format(now() - finished_at)
   end
 
   local function running(until_at)
@@ -309,11 +504,106 @@ local function new(deps)
   --- chunk` fires after one, and a second press inside that gap must not go
   --- straight out too.
   local function leaving(record)
-    sent_until, sent_left, sent_spell, going = now() + LEAVE_BACKSTOP, false, nil, record
+    bar_sent_at = now()
+    sent_until, sent_left, sent_spell, going = bar_sent_at + LEAVE_BACKSTOP, false, nil, record
+    sent_target = nil
   end
 
   local function answered()
-    sent_until, going = nil, nil
+    sent_until, going, sent_target = nil, nil, nil
+    sent_ours = false
+  end
+
+  -- A send has been seen leaving the client and nothing has answered it yet.
+  local function unanswered()
+    return sent_left and running(sent_until)
+  end
+
+  -- A start that is over, by its finish or without one.
+  local function ended()
+    acting_until, open_until, acting_kind, acting_id, acting_target = nil, nil, nil, nil, nil
+    acting_at, acting_seen = nil, nil
+  end
+
+  --[[ The started spell's own finish says how long it took, whether or not
+       its wait had run out by then. One made at once says nothing:
+       QUICKEST_CAST.
+
+       A finish is timed from the open start whatever was sent meanwhile
+       (Kevin, 2026-11-26: "Fall back to listed time"). A start whose finish
+       never came stays open for one until FINISH_BACKSTOP, so the same spell
+       cast again inside that, its own start lost, finishes against the old
+       start and reads far slower than it is: two packets lost in a row, and
+       until the next clear the spell waits that or the resource's time,
+       whichever is sooner. No packet tells that finish from the
+       open start's own late one, which has to be learned: a cast that
+       outlasts its seen time is counted finished early, a press held through
+       it goes out into the cast, and unlearned every cast of the spell would
+       go the same way. A rule to tell them apart was tried, and each form of
+       it left some such cast unlearned. ]]
+  local function learn_cast_time(finish)
+    if acting_kind ~= "spell" or acting_id == nil or finish.param ~= acting_id then
+      return
+    end
+    local resource_seconds = cast_seconds(deps, "spell", acting_id)
+    local took = now() - acting_at
+    if resource_seconds ~= nil and took >= resource_seconds * QUICKEST_CAST then
+      seen[acting_id] = math.max(seen[acting_id] or 0, took)
+    end
+  end
+
+  --[[ Whether that target is dead, by the game's word alone. The client's mob
+       table is not asked: it shows a mob dead a third of a second or more
+       before the packets of the weaponskill that killed it arrive, which ended
+       21 of 65 waits early over a weekend (Kevin, 2026-11-16). One the game
+       has said nothing of lives. ]]
+  local function dead(id)
+    if id == nil then
+      return false
+    end
+    local fell_at = fallen[id]
+    return fell_at ~= nil and now() - fell_at < FALLEN_SECONDS
+  end
+
+  -- A target the game says died. The stale ones go as a new one comes.
+  local function fell(id)
+    local clock = now()
+    for other, at in pairs(fallen) do
+      if clock - at >= FALLEN_SECONDS then
+        fallen[other] = nil
+      end
+    end
+    fallen[id] = clock
+  end
+
+  --[[ Whether a held press is pinned to a corpse it can do nothing with: a
+       weaponskill at any, a spell at a monster's alone, since a Raise is aimed
+       at a player's. The rest are the game's to refuse. ]]
+  local function at_a_corpse(press)
+    local kind = press.record.type
+    if kind == "ma" and (press.target or 0) < FIRST_NPC_ID then
+      return false
+    end
+    return (kind == "ws" or kind == "ma") and dead(press.target)
+  end
+
+  --[[ What keeps a weaponskill from a target that has only just fallen, or
+       nil. 44 went out at a corpse over a weekend (Kevin, 2026-11-16), each
+       costing GearSwap its precast and a packet the server ignores, and about
+       13 of them were pressed after the game's word, all inside half a second
+       of it. Weaponskills alone, and a target nothing names is the game's.
+       The id sets the line beside its `fell`, and the age says how long after
+       a death presses still come. ]]
+  local function at_the_fallen(record, target)
+    local fell_at = target ~= nil and fallen[target] or nil
+    if record.type ~= "ws" or fell_at == nil then
+      return nil
+    end
+    local ago = now() - fell_at
+    if ago >= CORPSE_SECONDS then
+      return nil
+    end
+    return ("the target died (%d fell %.2fs ago)"):format(target, ago)
   end
 
   --[[ A mash. Held, a second tap would spend a weaponskill's TP or an item
@@ -330,21 +620,91 @@ local function new(deps)
       and going.target == record.target
   end
 
-  --[[ No packet leaves for a weaponskill under its TP, so there is no answer to
-       wait out, and held across one that spent the TP it cannot go (73 of 73 in
-       Kevin's logs). A client that reports no TP leaves it to the game. ]]
-  local function no_tp(record)
+  --[[ A status in that list no weaponskill goes under: its id and its name.
+       Whatever numbers key the list, since nobody has seen the client's own
+       raw; a key that is no number is no slot, and a count is no status. ]]
+  local function stopping_buff(buffs)
+    if type(buffs) ~= "table" then
+      return nil
+    end
+    for key, buff in pairs(buffs) do
+      if type(key) == "number" and WEAPONSKILL_STOPPERS[buff] ~= nil then
+        return buff, WEAPONSKILL_STOPPERS[buff]
+      end
+    end
+    return nil
+  end
+
+  --[[ What debug says of the client's own list beside a status the packet
+       named: nothing where an array walk reaches that status there, which is
+       how every other reader of that list walks it. ]]
+  local function client_note(buffs, id)
+    if type(buffs) == "table" then
+      for _, buff in ipairs(buffs) do
+        if buff == id then
+          return ""
+        end
+      end
+      for key, buff in pairs(buffs) do
+        if type(key) == "number" and buff == id then
+          return " (in the client's list, where ipairs does not reach)"
+        end
+      end
+    end
+    return " (not in the client's list)"
+  end
+
+  --[[ What keeps a weaponskill from going, or nil. No packet leaves for one
+       under its TP, so there is no answer to wait out, and held across one that
+       spent the TP it cannot go (73 of 73 in Kevin's logs). The rest is what
+       GearSwap aborts one on, each abort a line of chat. What the client does
+       not report is left to the game. ]]
+  local function what_stops(record)
     if record.type ~= "ws" then
-      return false
+      return nil
     end
     local player = deps.get_player()
-    local vitals = player ~= nil and player.vitals or nil
-    local tp = type(vitals) == "table" and vitals.tp or nil
-    return type(tp) == "number" and tp < WEAPONSKILL_TP
+    if type(player) ~= "table" then
+      return nil
+    end
+    local vitals = type(player.vitals) == "table" and player.vitals or nil
+    local tp = vitals ~= nil and vitals.tp or nil
+    if type(tp) == "number" and tp < WEAPONSKILL_TP then
+      return "no TP"
+    end
+    --[[ The 0x063's list once one has come, which is all GearSwap judges by,
+         and the client's own before then. Stunned, the client's list never
+         named the stun while GearSwap aborted eight presses on it (Kevin,
+         2026-11-12), and debug says when the two disagree. ]]
+    local id, name = stopping_buff(listed or player.buffs)
+    if id ~= nil then
+      return listed ~= nil and name .. client_note(player.buffs, id) or name
+    end
+    if vitals ~= nil and vitals.hp == 0 then
+      return "dead"
+    end
+    if type(player.status) == "number" and not ACTING_STATUSES[player.status] then
+      return "status " .. player.status
+    end
+    return nil
   end
 
   local function lock_left()
     return running(lock_until) and lock_until - now() or 0
+  end
+
+  --[[ What this is busy with, in the words of a debug line, for the spell
+       tier walk's: the lock and what it has left, a cast still running (no
+       lock yet, so a recast is measured from now), a send nothing has
+       answered, or nothing. ]]
+  function self.doing()
+    if running(lock_until) then
+      return ("lock %.2fs"):format(lock_left())
+    end
+    if acting_until ~= nil then
+      return "casting"
+    end
+    return running(sent_until) and "unanswered" or "free"
   end
 
   --[[ Whether the recast runs more than RECAST_GRACE past the lock. Only a lock
@@ -367,23 +727,83 @@ local function new(deps)
     return self.busy() or (held ~= nil and deps.recast_left(held.record) > 0)
   end
 
-  --[[ Whether a press goes to the game on its recast: one running more than
-       RECAST_GRACE past the lock, or any with nothing engaged, which counts for
-       nothing as a GearSwap filter may well cancel it. ]]
+  --[[ Standing aside, with the last ASIDE_SECONDS of a lock all that is left
+       of what is busy: see on_outgoing. Never in an interrupt's lock (Kevin,
+       2026-11-27): four presses let go 1.70 to 1.85s into one, of 2.7, were
+       refused twice and once never answered at all - a 10s stall, the press
+       waiting 2s on that answer and GearSwap, waiting on it too, dropping the
+       next and casting first - and started once, where every send after
+       +2.23 has been accepted. Held, a press goes at the lock's end. ]]
+  local function yielding()
+    if not aside or interrupt_lock or acting_until ~= nil or running(sent_until) or not running(lock_until) then
+      return false
+    end
+    return lock_until - now() <= ASIDE_SECONDS
+  end
+
+  --[[ Whether a press goes to the game on its recast rather than being held:
+       one running more than RECAST_GRACE past the lock, which GearSwap
+       cancels or the game refuses, or with nothing engaged one within
+       NEAR_READY of ready, which the game takes. Neither counts as a send
+       until its packet is seen leaving, the first being one that may never
+       leave. Between the two, with nothing engaged, a press is held for its
+       recast as one in a lock is: see free_to_go. ]]
   local function on_recast(record)
+    local recast = deps.recast_left(record)
+    return outlasts_lock(recast) or (recast > 0 and recast <= NEAR_READY and not engaged())
+  end
+
+  --[[ Whether the spell tier walk passes a tier by for its recast: one
+       running more than RECAST_GRACE past the lock, or running at all with
+       nothing engaged. A press of such a tier would itself be held for a
+       recast within RECAST_GRACE, or go as it is within NEAR_READY, but with
+       nothing making the player wait a tier ready now beats a higher one a
+       moment off (Kevin, 2026-11-25). Off, nothing is engaged, and the game
+       refuses any recast running. ]]
+  function self.refused_on_recast(record)
     local recast = deps.recast_left(record)
     return outlasts_lock(recast) or (recast > 0 and not engaged())
   end
 
-  local function forget()
-    held, going, cursor = nil, nil, nil
-    sent_until, acting_until, lock_until, finished_at = nil, nil, nil, nil
-    open_until, acting_kind, acting_id = nil, nil, nil
+  --- Whether a recast runs further past the lock than this waits one out,
+  --- which is the walk's cue to step down. A spell nearer ready than that is
+  --- never traded for a lower tier: it is waited for, in a lock or with
+  --- nothing busy, or goes as it is within NEAR_READY of ready.
+  function self.far_off(record)
+    return outlasts_lock(deps.recast_left(record))
   end
 
-  local function hold(name, record, command)
+  --[[ The spell tier walk, the action service's: the record and command to
+       settle on in place of these, which are themselves where no lower tier
+       stands in. Asked where a command is settled after its press - a
+       cursor's at OK, a held one's at the release - with the id it is to be
+       aimed at, and which of the two moments it is, for the walk's debug
+       line. ]]
+  local function lower(record, command, pinned, where)
+    if deps.lower == nil then
+      return record, command
+    end
+    return deps.lower(record, command, pinned, where)
+  end
+
+  local function forget()
+    held, cursor, picked = nil, nil, nil
+    answered()
+    ended()
+    lock_until, finished_at, interrupt_lock = nil, nil, false
+    aside, bar_sent_at = false, nil
+    fighting = nil
+    -- Not a fresh table each time: this runs every frame while the queue is off.
+    if next(fallen) ~= nil then
+      fallen = {}
+    end
+  end
+
+  -- `command` is the press as it was typed, and `target` the id it was pinned
+  -- to, where it was pinned to one: see aimed.
+  local function hold(name, record, command, target)
     note("hold " .. name .. (held ~= nil and ", replacing " .. held.name or ""))
-    held = { name = name, record = record, command = command, at = now() }
+    held = { name = name, record = record, command = command, target = target, at = now() }
   end
 
   --- What is held, or nil. Introspection.
@@ -405,6 +825,75 @@ local function new(deps)
       note("cleared: " .. reason)
     end
     forget()
+    -- The list was the old zone's, life's, job's or character's: the client's
+    -- own answers until the next 0x063.
+    listed = nil
+    -- And the cast times seen with it. A job change or another character can
+    -- make them wrong, a zone or a death cannot: forgetting them there too
+    -- bounds how long one slow cast is waited on.
+    seen = {}
+  end
+
+  --[[ Whether a press goes now, as it is, rather than being held: off its
+       recast, with nothing engaged or while this stands aside. On it, it
+       could not go at a lock's end either, and GearSwap's recast check
+       aborts it unseen, so with nothing engaged it is held for its recast
+       as one in a lock is (on_recast has already let go the one that goes
+       all the same). The second answer is whether it is the standing aside
+       that lets it. ]]
+  local function free_to_go(record)
+    local ready = deps.recast_left(record) <= 0
+    local aside_now = ready and yielding()
+    return ready and (aside_now or not engaged()), aside_now
+  end
+
+  --[[ Sends a press on its way where it is free to go, and answers whether
+       it was. What was held gives way to a press that goes: the lock can run
+       out between two frames, with the release still owed. ]]
+  local function goes_now(name, record)
+    local free, aside_now = free_to_go(record)
+    if not free then
+      return false
+    end
+    if aside_now then
+      note("not held: " .. name .. ", standing aside")
+    end
+    self.drop("replaced by " .. name)
+    leaving(record)
+    return true
+  end
+
+  --[[ Why a press went nowhere for want of a word for its target, with what
+       <t> and <lastst> read: the two a cursor's pick is most often under.
+       Those reads are debug's alone. ]]
+  local function unnamed(target)
+    if self.mode() ~= "debug" then
+      return "nothing names its target"
+    end
+    local function under(word)
+      local id = deps.target_id(word)
+      return id ~= nil and tostring(id) or "none"
+    end
+    return ("nothing names %d (<t> %s, <lastst> %s)"):format(target, under("t"), under("lastst"))
+  end
+
+  --[[ What a press is sent as: its command as it stands where it was pinned
+       to nothing, and otherwise under a word of the game's own that names its
+       target now - the one it was typed with while that still does, another
+       once it has moved on. Nil where no word names the target, which is a
+       press with nowhere to go: an id in the word's place is GearSwap's alone
+       to read, and without it the game answers one "A command error
+       occurred" (Kevin, 2026-11-25). Debug says a word that is not the one
+       typed. ]]
+  local function aimed(name, record, command, target)
+    if target == nil then
+      return command
+    end
+    local sent, word = deps.aim(command, target)
+    if sent ~= nil and word ~= tostring(record.target):lower() then
+      note(("%s aimed at <%s>"):format(name, word))
+    end
+    return sent
   end
 
   --[[ A cursor slot is judged at OK, when the command is really sent. Nothing
@@ -417,8 +906,11 @@ local function new(deps)
        With an arrow already up the token raises no new one, and the game answers
        it "You cannot perform that action on the selected sub-target". OK would
        then be counted as the arrow, the /ta would run and nothing would cast, so
-       nothing is sent and the press only changes what OK will cast. An arrow
-       this did not open is a macro's, and its OK sends its own command. ]]
+       nothing is sent and the press only changes what OK will cast. Under an
+       arrow this did not open nothing is sent either, and OK stays its owner's:
+       sent as typed, the press was refused the same way, and the next OK this
+       sent reached the game unparsed. UNVERIFIED: that GearSwap's st_flag, set
+       for the refused token, is why. ]]
   local function open_cursor(record, command, name)
     local blocked = deps.blocked()
     if blocked ~= nil then
@@ -427,7 +919,8 @@ local function new(deps)
     end
     if deps.arrow_up() then
       if cursor == nil then
-        return false
+        note("swallowed " .. name .. ", another arrow is up")
+        return true
       end
       note("cursor up, OK takes " .. name)
       cursor.record, cursor.command, cursor.name, cursor.at = record, command, name, now()
@@ -438,32 +931,40 @@ local function new(deps)
     return true, "input /ta <" .. record.target .. ">"
   end
 
-  --[[ A bar's press, with the command it resolved to. Answers whether it was
-       taken: false sends it as it always was, which is every press made while
-       nothing is busy or held waiting on its recast, and a second answer is what to send in its place. A
-       press that is not held leaves one that is alone. ]]
-  function self.press(record, command)
-    if not self.enabled() or not HELD_TYPES[record.type] then
+  --- Whether a press of this opens a cursor here, to be judged at OK rather
+  --- than now.
+  function self.judged_at_ok(record)
+    return self.enabled()
+      and HELD_TYPES[record.type] == true
+      and type(record.target) == "string"
+      and CURSOR_TARGETS[record.target:lower()] == true
+  end
+
+  -- What press answers, for a queue that is on.
+  local function take(record, command)
+    if not HELD_TYPES[record.type] then
       return false
     end
     local name = record.action or record.type
-    if type(record.target) == "string" and CURSOR_TARGETS[record.target:lower()] then
+    if self.judged_at_ok(record) then
       return open_cursor(record, command, name)
     end
-    if no_tp(record) then
-      note("swallowed " .. name .. ", no TP")
+    local holdable, target = true, nil
+    if record.target ~= nil then
+      holdable, target = deps.pin(command, record.target)
+    end
+    local stop = what_stops(record) or at_the_fallen(record, target)
+    if stop ~= nil then
+      note("swallowed " .. name .. ", " .. stop)
       return true
     end
-    -- Asked first because it counts for nothing either way: a GearSwap filter
-    -- may well cancel it, and nothing that follows should wait on that.
+    -- Asked first because it is no send until its packet is seen: a GearSwap
+    -- filter may well cancel it, and nothing that follows should wait on that.
     if on_recast(record) then
       not_held_on_recast(name, record)
       return false
     end
-    if not engaged() then
-      -- The lock can run out between two frames, with the release still owed.
-      self.drop("replaced by " .. name)
-      leaving(record)
+    if goes_now(name, record) then
       return false
     end
     local blocked = deps.blocked()
@@ -475,16 +976,160 @@ local function new(deps)
       note("swallowed " .. name .. ", already going")
       return true
     end
-    local pinned = command
-    if record.target ~= nil then
-      pinned = deps.pin(command, record.target)
-      if pinned == nil then
-        note("not held: " .. name .. ", <" .. record.target .. "> cannot be pinned")
-        return false
-      end
+    if not holdable then
+      note("not held: " .. name .. ", <" .. record.target .. "> cannot be pinned")
+      return false
     end
-    hold(name, record, pinned)
+    hold(name, record, command, target)
     return true
+  end
+
+  --[[ Debug's alone, and nothing acts on it: a press aimed at <t> with
+       nothing under it, or with a mob there the game has said fell, and the
+       status it was made in. Kevin was left engaged with no battle target
+       through a Dynamis run, and no log could say whether the client still
+       read engaged (2026-11-22); the last mob of a pull leaves the target on
+       its corpse. on_status and the auto-target line in on_message are for
+       the same question. A press aimed elsewhere says nothing, or every buff
+       cast with nothing targeted would write a line. This read of <t> is
+       debug's alone. ]]
+  local function note_targetless(record)
+    if type(record.target) ~= "string" or record.target:lower() ~= "t" then
+      return
+    end
+    if self.mode() ~= "debug" then
+      return
+    end
+    local id = deps.target_id("t")
+    if id ~= nil and not dead(id) then
+      return
+    end
+    local target = id == nil and "no target" or ("target %d fell %.2fs ago"):format(id, now() - fallen[id])
+    local player = deps.get_player()
+    local status = type(player) == "table" and player.status or nil
+    note(
+      ("%s for %s, status %s"):format(
+        target,
+        record.action or record.type,
+        status ~= nil and tostring(status) or "unknown"
+      )
+    )
+  end
+
+  --[[ Debug's alone, and nothing acts on it: the mob the server has you
+       fighting - the one a melee round of yours lands on, or the game calls
+       out of range or out of sight - said each time it changes, with what
+       the client holds under <t> beside it. Three times in one run Kevin
+       was left engaged with no auto-target, and at one a press of his found
+       <t> empty in the second his swing landed on a mob (2026-11-23).
+       Whether the server had moved him there untold or he had switched by
+       hand a moment later took three things no log had: this, the server's
+       own target packet (on_target), and the targeting packets he sends
+       himself (on_outgoing). One that comes `waiting`, with a send
+       unanswered, may be that send's answer - nobody has watched a ranged
+       attack refused - so it is said every time and says so, as the unlisted
+       message it used to draw did. What was last said is forgotten wherever
+       the target may have moved - a change of status, a targeting packet of
+       his own, an auto-target, the server's target packet - and with debug
+       off, so the first of these after any of them is always said: a swing
+       back on the mob last named would otherwise read as no swing at all. ]]
+  local function note_fighting(what, actor, id, waiting)
+    if self.mode() ~= "debug" then
+      fighting = nil
+      return
+    end
+    if id == nil then
+      return
+    end
+    local player = deps.get_player()
+    if player == nil or actor ~= player.id then
+      return
+    end
+    local line = what .. " " .. id
+    if line == fighting and not waiting then
+      return
+    end
+    fighting = line
+    local under = deps.target_id("t")
+    note(
+      ("%s, <t> %s%s"):format(
+        line,
+        under ~= nil and tostring(under) or "none",
+        waiting and " with the last send unanswered" .. since_finish() or ""
+      )
+    )
+  end
+
+  --- A change of the player's status, as the client reports it. What the
+  --- server has you fighting is said afresh after one.
+  function self.on_status(status)
+    fighting = nil
+    note("status " .. tostring(status))
+  end
+
+  --[[ A raw 0x058, the server setting a target: what an auto-target sends
+       beside its message, by those who have read it (Shiva.Thorny, FFXIAH).
+       Debug's alone, and nothing acts on it. Whose it is follows the target
+       where that is not known to be yours. UNVERIFIED in a live client: when
+       the game sends one. ]]
+  function self.on_target(data)
+    if self.mode() ~= "debug" or type(data) ~= "string" or #data < SET_TARGET_OFFSET + 3 then
+      return
+    end
+    fighting = nil
+    local whose = u32(data, SET_FOR_OFFSET)
+    local player = deps.get_player()
+    local yours = player ~= nil and whose == player.id
+    note(("server target %d%s"):format(u32(data, SET_TARGET_OFFSET), yours and "" or " for " .. whose))
+  end
+
+  --[[ A bar's press, with the command it resolved to. Answers whether it was
+       taken: false sends it as it always was, and a second answer is what to
+       send in its place. A press off its recast goes as it was with nothing
+       busy and nothing held waiting on its recast, or while this stands aside
+       (see on_outgoing), and what was held gives way to it. Any other press
+       that is not held leaves one that is alone. ]]
+  function self.press(record, command)
+    if not self.enabled() then
+      return false
+    end
+    note_targetless(record)
+    local taken, instead = take(record, command)
+    if not taken then
+      -- The caller sends it, whatever its kind.
+      bar_sent_at = now()
+    end
+    return taken, instead
+  end
+
+  --[[ A cursor's pick, judged as the press it stands for would be, now that
+       its command is really sent. Answers what to send at once, or nil for
+       one that was swallowed, held, or dropped for want of a word. ]]
+  local function settle(open, target)
+    local record, command = lower(open.record, open.command, target, "at OK")
+    local name = record.action or record.type
+    local stop = what_stops(record) or at_the_fallen(record, target)
+    if stop ~= nil then
+      note("swallowed " .. name .. ", " .. stop)
+      return nil
+    end
+    local refused = on_recast(record)
+    if not refused and not free_to_go(record) then
+      hold(name, record, command, target)
+      return nil
+    end
+    local sent = aimed(name, record, command, target)
+    if sent == nil then
+      note("dropped " .. name .. ": " .. unnamed(target))
+      return nil
+    end
+    if refused then
+      not_held_on_recast(name, record)
+      bar_sent_at = now()
+    else
+      goes_now(name, record)
+    end
+    return sent
   end
 
   --[[ The outgoing text, for a cursor this opened. The game puts a cursor command
@@ -492,7 +1137,14 @@ local function new(deps)
        which raises the arrow and must reach the game, then the chosen id on OK
        (Byrth; GearSwap's st_flag skips the first the same way). Answers true to
        keep the line from the game, so a /ta never moves your target, and a
-       second answer is what to send now. ]]
+       second answer is what to send now.
+
+       The id is never sent on: only GearSwap reads one. The cast goes under a
+       word that names the pick (see aimed), and the game takes a pick for
+       <lastst> only once this has answered - in here it still names the pick
+       before - so a pick no word names yet is judged on the next frame
+       instead (seen in a live client with GearSwap on, 2026-11-25; UNVERIFIED
+       with it off). ]]
   function self.on_text(text)
     if cursor == nil or type(text) ~= "string" then
       return false
@@ -516,28 +1168,27 @@ local function new(deps)
     local open = cursor
     cursor = nil
     note("OK " .. open.name .. " at " .. id)
-    if no_tp(open.record) then
-      note("swallowed " .. open.name .. ", no TP")
+    local target = tonumber(id)
+    if deps.aim(open.command, target) == nil then
+      note(("nothing names %d yet"):format(target))
+      picked = { open = open, target = target }
       return true
     end
-    local aimed = open.command:gsub("<[^<>]*>$", id)
-    if on_recast(open.record) then
-      not_held_on_recast(open.name, open.record)
-      return true, aimed
-    end
-    if not engaged() then
-      self.drop("replaced by " .. open.name)
-      leaving(open.record)
-      return true, aimed
-    end
-    hold(open.name, open.record, aimed)
-    return true
+    return true, settle(open, target)
   end
 
   --- A parsed 0x028.
   function self.on_action(act)
     if not self.enabled() or type(act) ~= "table" then
       return
+    end
+    -- What acts is alive, whatever fell under that id before. A cast cut short
+    -- is no act: dying cuts one short.
+    if act.actor_id ~= nil and act.param ~= INTERRUPT_PARAM then
+      fallen[act.actor_id] = nil
+    end
+    if act.category == MELEE_ROUND then
+      note_fighting("swing at", act.actor_id, first_target(act))
     end
     local started, finished = START_KINDS[act.category], FINISH_KINDS[act.category]
     if started == nil and finished == nil then
@@ -557,7 +1208,20 @@ local function new(deps)
     --[[ Once a start's wait has locked, the bar is idle, and only a finish
          naming what it started is that start's. ]]
     local open = running(open_until) and (running(acting_until) or acting_id == nil or act.param == acting_id)
-    if act.category == SPELL_FINISH and (act.param == 0 or not open) and not awaited then
+    --[[ The server answers a weaponskill that started and then cannot land -
+         too far away, message 78 - with a spell finish naming no spell, the
+         shape a paralysis round takes. Ignored, it held the bar for the
+         start's whole wait and a lock on top (Kevin, 2026-11-10). Any message
+         ends the start, a paralysis round's too: the weaponskill's own finish
+         is a category 3, never ignored, so one that comes after all replaces
+         the lock this one starts. UNVERIFIED: that the weaponskill's lock is
+         the right length after a too-far. Kevin's runs bracket it between a
+         send refused at +2.03 and one accepted at +2.57. ]]
+    local ends_weaponskill = act.category == SPELL_FINISH
+      and act.param == 0
+      and acting_kind == "weaponskill"
+      and running(acting_until)
+    if act.category == SPELL_FINISH and (act.param == 0 or not open) and not awaited and not ends_weaponskill then
       local message = first_message(act)
       local why = not running(open_until) and "with no cast running"
         or act.param == 0 and "naming no spell"
@@ -565,22 +1229,48 @@ local function new(deps)
       note("ignored a finish " .. why .. (message ~= nil and ", message " .. message or ""))
       return
     end
+    -- One of the bar's own was accepted: the turn it stood aside for has come.
+    if aside and sent_ours and unanswered() then
+      aside = false
+      note("no longer standing aside: the bar's own went")
+    end
     answered()
     if started ~= nil and act.param ~= INTERRUPT_PARAM then
       note("start " .. started .. since_finish())
       local at = now()
-      acting_until = at + finish_backstop(deps, started, act)
+      local id = first_action(act).param
+      local wait, went_by = finish_backstop(deps, started, act, id ~= nil and seen[id] or nil)
+      acting_at = at
+      acting_until = at + wait
+      acting_seen = went_by
       open_until = at + FINISH_BACKSTOP
       acting_kind = started
-      acting_id = first_action(act).param
-      lock_until = nil
+      acting_id = id
+      acting_target = first_target(act)
+      lock_until, interrupt_lock = nil, false
       return
     end
-    local lock = self.lock(finished or "interrupted")
-    note(("%s, lock %.2fs"):format(finished ~= nil and "finish " .. finished or "interrupted " .. started, lock))
-    acting_until, open_until, acting_kind, acting_id = nil, nil, nil, nil
+    local lock
+    if ends_weaponskill then
+      lock = self.lock("weaponskill")
+      local message = first_message(act)
+      note(
+        ("finish weaponskill naming no spell%s, lock %.2fs"):format(
+          message ~= nil and ", message " .. message or "",
+          lock
+        )
+      )
+    else
+      lock = self.lock(finished or "interrupted")
+      note(("%s, lock %.2fs"):format(finished ~= nil and "finish " .. finished or "interrupted " .. started, lock))
+      if finished == "spell" then
+        learn_cast_time(act)
+      end
+    end
+    ended()
     finished_at = now()
     lock_until = finished_at + lock
+    interrupt_lock = finished == nil
   end
 
   --- A raw 0x029. A refusal ends the wait for an answer and nothing else: if
@@ -590,15 +1280,94 @@ local function new(deps)
       return
     end
     local message = u16(data, MESSAGE_OFFSET) % 32768
-    if not REFUSALS[message] then
+    if DEATHS[message] then
+      local id = u32(data, ABOUT_OFFSET)
+      fell(id)
+      note(("fell %d, message %d"):format(id, message))
+      return
+    end
+    if message == AUTO_TARGET then
+      local player = deps.get_player()
+      if player ~= nil and u32(data, ACTOR_OFFSET) == player.id then
+        fighting = nil
+        note(("auto-target %d"):format(u32(data, ABOUT_OFFSET)))
+      end
+      return
+    end
+    local fighting_word = FIGHTING_MESSAGES[message]
+    if fighting_word ~= nil then
+      note_fighting(fighting_word, u32(data, ACTOR_OFFSET), u32(data, ABOUT_OFFSET), unanswered())
+      return
+    end
+    local refusal = REFUSALS[message]
+    if not refusal and not unanswered() then
       return
     end
     local player = deps.get_player()
     if player == nil or u32(data, ACTOR_OFFSET) ~= player.id then
       return
     end
+    if not refusal then
+      -- Named for a log to show a refusal the list above is missing.
+      note(("unlisted message %d with the last send unanswered%s"):format(message, since_finish()))
+      return
+    end
     note("refused, message " .. message .. since_finish())
     answered()
+  end
+
+  --- The entry point's one parse of a 0x063, whether the queue is on or not:
+  --- its ninth order lists the buffs on you, and the list must be the current
+  --- one when it is switched on. nil when the parse failed.
+  function self.on_update(parsed)
+    if type(parsed) ~= "table" or parsed.Order ~= BUFFS_ORDER or type(parsed["Buffs 1"]) ~= "number" then
+      return
+    end
+    local buffs = {}
+    for slot = 1, BUFF_SLOTS do
+      buffs[slot] = parsed["Buffs " .. slot]
+    end
+    listed = buffs
+  end
+
+  --[[ A raw 0x053. The server answers a Trust cast it refuses ("You have called
+       forth your maximum number of alter egos") with one of these and no
+       0x029, and waited out as unanswered each held the bar 2.4s, ten times in
+       one of Kevin's runs (2026-11-12). The Trust refusals end the wait for
+       whatever spell went out and is unanswered, Trust or not, as GearSwap's
+       handler takes its four for its newest command; and no other wait, so one
+       arriving late frees neither a weaponskill's nor a press still on its way
+       out. Debug names any other that comes while a send is unanswered.
+       UNVERIFIED in a live client. ]]
+  function self.on_system_message(data)
+    if not self.enabled() or type(data) ~= "string" or #data < SYSTEM_MESSAGE_OFFSET + 1 then
+      return
+    end
+    local message = u16(data, SYSTEM_MESSAGE_OFFSET)
+    if TRUST_REFUSALS[message] then
+      local waiting = sent_spell ~= nil and running(sent_until)
+      note(
+        ("refused, system message %d (param %d)%s%s"):format(
+          message,
+          u32(data, SYSTEM_PARAM_OFFSET),
+          since_finish(),
+          waiting and "" or ", no spell was waiting"
+        )
+      )
+      if waiting then
+        answered()
+      end
+      return
+    end
+    if unanswered() then
+      note(
+        ("system message %d (param %d) with the last send unanswered%s"):format(
+          message,
+          u32(data, SYSTEM_PARAM_OFFSET),
+          since_finish()
+        )
+      )
+    end
   end
 
   --- A raw outgoing packet, whoever sent it: a bar, a macro, GearSwap.
@@ -611,7 +1380,18 @@ local function new(deps)
       if type(data) ~= "string" or #data < CATEGORY_OFFSET + 1 then
         return
       end
-      kind = OUTGOING_KINDS[u16(data, CATEGORY_OFFSET)]
+      local category = u16(data, CATEGORY_OFFSET)
+      local targeting = TARGETING_OUT[category]
+      if targeting ~= nil then
+        -- No action, so nothing waits on it and nothing stands aside for it:
+        -- said for debug to tell a target the player moved from one the
+        -- server did (see note_fighting).
+        local whom = u32(data, TARGET_OFFSET)
+        fighting = nil
+        note("out " .. targeting .. (whom ~= 0 and " " .. whom or ""))
+        return
+      end
+      kind = OUTGOING_KINDS[category]
       if kind == nil then
         return
       end
@@ -621,6 +1401,23 @@ local function new(deps)
       end
     end
     note("out " .. kind .. name .. since_finish())
+    --[[ Standing aside (Kevin, 2026-11-22). GearSwap casting on its own sends
+         a hair ahead of every release, and a mashed weaponskill sat held
+         behind one automatic cast after another. It holds its own casts back
+         for a command it has seen, and a held press is one it never sees. So
+         from a packet the bar did not send until one of the bar's own is
+         accepted, or nothing is busy, a press made in a lock's last second
+         goes as it is: refused, as before the queue, but seen - except in an
+         interrupt's lock, where it is held to the end (see yielding). A press made
+         sooner is held as ever: in the cast, or with a send unanswered, it
+         could only be refused, and GearSwap takes that refusal for the end of
+         the cast it is in. A macro's packet stands the bar aside as much, with
+         nothing gained. UNVERIFIED in a live client. ]]
+    sent_ours = bar_sent_at ~= nil and now() - bar_sent_at < OWN_SECONDS
+    if not sent_ours and not aside then
+      aside = true
+      note("standing aside for " .. kind .. name)
+    end
     --[[ A spell is answered by its start, which lag can lose while its finish
          still comes, so it may go unanswered for as long as it casts. A spell
          the server drops unanswered holds the bar as long, not 2s. ]]
@@ -631,17 +1428,55 @@ local function new(deps)
     end
     sent_until, sent_left = now() + wait, true
     sent_spell = kind == "spell" and action ~= 0 and action or nil
+    sent_target = kind == "weaponskill" and u32(data, TARGET_OFFSET) or nil
+  end
+
+  --[[ A weaponskill whose target has died gets nothing more. Sent as the mob
+       died it is never answered, and started it is never finished, its TP
+       kept: thirteen in one of Kevin's runs (2026-11-11), each 2s or 3.6s of a
+       dead bar. Weaponskills alone, since a Raise is aimed at a corpse and a
+       cast cut short has its interrupt.
+
+       One never answered locks nothing: the next weaponskill went 0.19 to
+       0.48s later and started, three times of three (Kevin, 2026-11-17). One
+       that had started locks as if it had finished: twice in that run the
+       bar was freed at the death, and the next weaponskill went unanswered
+       0.88s after the one start and was refused 2.45s after the other, while
+       one sent 2.95s after a start was accepted. So the death is taken for
+       the finish, and no sooner than a beat after the start, where the
+       server would have finished it. The word of a death can trail that, so
+       this may hold a few tenths longer than the game does. UNVERIFIED: that
+       it never holds shorter. Two samples, and a beat after the start is not
+       a packet. ]]
+  local function target_died()
+    if unanswered() and dead(sent_target) then
+      answered()
+      note("the target died, no answer to come")
+    end
+    if acting_kind == "weaponskill" and running(acting_until) and dead(acting_target) then
+      local lock = self.lock("weaponskill")
+      finished_at = math.max(fallen[acting_target], acting_at + WEAPONSKILL_BEAT)
+      ended()
+      lock_until, interrupt_lock = finished_at + lock, false
+      note(("the target died, no finish to come, lock %.2fs"):format(lock))
+    end
   end
 
   local function expire()
     local clock = now()
+    target_died()
     if sent_until ~= nil and clock >= sent_until then
+      local line = "nothing went out for the last press"
+      if sent_left then
+        -- With who a weaponskill left for, to set beside the deaths debug names.
+        line = "no answer to the last send" .. (sent_target ~= nil and ", a weaponskill at " .. sent_target or "")
+      end
       answered()
-      note(sent_left and "no answer to the last send" or "nothing went out for the last press")
+      note(line)
     end
     if open_until ~= nil and clock >= open_until then
       local waiting = acting_until ~= nil
-      open_until, acting_until, acting_kind, acting_id = nil, nil, nil, nil
+      ended()
       if waiting then
         note("no finish for the last start")
         self.drop("no finish for the last start")
@@ -649,9 +1484,10 @@ local function new(deps)
     end
     if acting_until ~= nil and clock >= acting_until then
       local lock = self.lock(acting_kind)
-      note(("no finish yet for the last start, lock %.2fs"):format(lock))
+      local went_by = acting_seen ~= nil and (", going by the %.2fs seen"):format(acting_seen) or ""
+      note(("no finish yet for the last start, lock %.2fs%s"):format(lock, went_by))
       finished_at, acting_until = acting_until, nil
-      lock_until = finished_at + lock
+      lock_until, interrupt_lock = finished_at + lock, false
     end
     if lock_until ~= nil and clock >= lock_until then
       lock_until = nil
@@ -661,6 +1497,15 @@ local function new(deps)
     -- catch it the /ta would move your target.
     if cursor ~= nil and clock - cursor.at >= FINISH_BACKSTOP and not deps.arrow_up() then
       note("no OK for " .. cursor.name)
+      cursor = nil
+    end
+    --[[ The arrow's number comes back within a frame or two of the token. One
+         that has not come by now never will: the token raised no arrow, and
+         the next numbers through here are another cursor's, whose OK this
+         would take and cast its own spell at. Not counted off a second token,
+         since another addon may send this one's own line through twice. ]]
+    if cursor ~= nil and cursor.numbers == 0 and clock - cursor.at >= ARROW_BACKSTOP and not deps.arrow_up() then
+      note("no arrow for " .. cursor.name)
       cursor = nil
     end
   end
@@ -673,6 +1518,18 @@ local function new(deps)
       return nil
     end
     expire()
+    if aside and not self.busy() then
+      aside = false
+      note("no longer standing aside: nothing is busy")
+    end
+    if picked ~= nil then
+      local pick = picked
+      picked = nil
+      local sent = settle(pick.open, pick.target)
+      if sent ~= nil then
+        return sent
+      end
+    end
     if held == nil then
       return nil
     end
@@ -690,6 +1547,15 @@ local function new(deps)
     end
     local recast = deps.recast_left(held.record)
     if recast > RECAST_GRACE then
+      -- A lower tier stands in where the walk has one, and waits out its own
+      -- recast below as any held press does.
+      local record, command = lower(held.record, held.command, held.target, "at the release")
+      if record ~= held.record then
+        held.record, held.command, held.name, held.waiting = record, command, record.action or record.type, nil
+        recast = deps.recast_left(record)
+      end
+    end
+    if recast > RECAST_GRACE then
       self.drop(("on recast %.2fs"):format(recast))
       return nil
     end
@@ -700,15 +1566,25 @@ local function new(deps)
       end
       return nil
     end
-    if no_tp(held.record) then
-      self.drop("no TP")
+    local stop = what_stops(held.record)
+    if stop ~= nil then
+      self.drop(stop)
+      return nil
+    end
+    if at_a_corpse(held) then
+      self.drop("the target died")
+      return nil
+    end
+    local sent = aimed(held.name, held.record, held.command, held.target)
+    if sent == nil then
+      self.drop(unnamed(held.target))
       return nil
     end
     local release = held
     held = nil
     note(("release %s after %.2fs"):format(release.name, now() - release.at))
     leaving(release.record)
-    return release.command
+    return sent
   end
 
   return self

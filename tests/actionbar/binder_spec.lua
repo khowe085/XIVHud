@@ -158,6 +158,7 @@ local function build(opts)
       env.window_pos = { x = x, y = y }
       env.window_saves = (env.window_saves or 0) + 1
     end,
+    tiered = opts.tiered,
     drop_target = opts.drop_target,
     bar_at = opts.bar_at,
     other_window = opts.other_window,
@@ -1371,6 +1372,171 @@ describe("crossbar binder", function()
       pick(binder, env, "Berserk")
       assert.are.equal(1, #writes, "one write, not a clear and an insert")
       assert.are.same({ type = "ja", action = "Berserk" }, writes[1])
+    end)
+  end)
+
+  describe("a binding's tier toggle", function()
+    local OFF, ON = "auto tier [ off ]", "auto tier [ on ]"
+
+    --[[ Whether a binding's spell has a tier under it, as the tier walk
+         answers for the bar: true, false, or nil for a name the resources
+         do not know. ]]
+    local function tiered(record)
+      if type(record) ~= "table" or record.type ~= "ma" then
+        return false
+      end
+      return ({ ["Fire V"] = true, ["Fire"] = false })[record.action]
+    end
+
+    --[[ A WAR/SCH with Fire V on slot 3, by the job base and under Light Arts,
+         Fire on slot 4 and an ability on slot 5. `left3` is slot 3's base
+         binding where a spec wants another: the model copies its file as it
+         loads, so one changed in the file afterwards is never seen. ]]
+    local function nuking(opts)
+      opts = opts or {}
+      opts.tiered = opts.tiered == nil and tiered or opts.tiered or nil
+      opts.files = {
+        WAR = {
+          sets = {
+            [1] = {
+              left = {
+                [3] = opts.left3 or { type = "ma", action = "Fire V", target = "stnpc", alias = "Nuke" },
+                [4] = { type = "ma", action = "Fire" },
+                [5] = { type = "ja", action = "Provoke" },
+              },
+            },
+          },
+          contexts = { ["light-arts"] = { [1] = { left = { [3] = { type = "ma", action = "Fire V" } } } } },
+        },
+      }
+      return build(opts)
+    end
+
+    it("is on the row of a binding whose spell has a tier under it, and shows it off", function()
+      local binder, env = nuking()
+      open_stack(binder, env, "left", 3)
+      local toggle = row_named(env, "base").toggle
+      assert.is_table(toggle)
+      local prim = shown_text(env, OFF)
+      assert.is_not_nil(prim)
+      assert.are.same({ toggle.x, toggle.y }, { prim.x, prim.y })
+      assert.is_true(toggle.x > row_named(env, "base").x, "at the row's far end, not over its name")
+    end)
+
+    it("is on no row whose binding cannot step down, nor on a menu's", function()
+      local binder, env = nuking()
+      for _, slot in ipairs({ 4, 5, 6 }) do
+        open_stack(binder, env, "left", slot)
+        for _, row in ipairs(binder.layer_view().rows) do
+          assert.is_nil(row.toggle, "slot " .. slot .. " " .. tostring(row.source or row.menu))
+        end
+        assert.is_nil(shown_text(env, OFF))
+        binder.close()
+      end
+    end)
+
+    it("flips the flag on a click, writing the binding back and staying on the step", function()
+      local binder, env = nuking()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base").toggle))
+      assert.are.same(
+        { type = "ma", action = "Fire V", target = "stnpc", alias = "Nuke", tier = "auto" },
+        env.files.WAR.sets[1].left[3]
+      )
+      assert.is_not_nil(binder.layer_view(), "still the layer step")
+      assert.is_nil(binder.catalog_view())
+      assert.is_not_nil(shown_text(env, ON))
+      assert.is_nil(shown_text(env, OFF))
+      assert.are.equal(1, env.repaints)
+      click(binder, centre(row_named(env, "base").toggle))
+      assert.are.same(
+        { type = "ma", action = "Fire V", target = "stnpc", alias = "Nuke" },
+        env.files.WAR.sets[1].left[3]
+      )
+      assert.is_not_nil(shown_text(env, OFF))
+    end)
+
+    it("says what it did, by the action's name and where", function()
+      local binder, env = nuking()
+      open_stack(binder, env, "left", 3)
+      click(binder, centre(row_named(env, "base").toggle))
+      assert.are.equal("crossbar: auto tier on for Fire V -> base / set 1 / left / slot 3", env.said[#env.said])
+      click(binder, centre(row_named(env, "base").toggle))
+      assert.are.equal("crossbar: auto tier off for Fire V -> base / set 1 / left / slot 3", env.said[#env.said])
+    end)
+
+    it("picks no layer: the cursor, the preview and the other layers stay as they were", function()
+      local binder, env = nuking()
+      open_stack(binder, env, "left", 3)
+      local previews = #env.previews
+      click(binder, centre(row_named(env, "base").toggle))
+      assert.is_nil(binder.layer())
+      assert.are.equal(previews, #env.previews)
+      assert.is_nil(env.files.WAR.contexts["light-arts"][1].left[3].tier)
+    end)
+
+    it("leaves the rest of the row the way into the catalog", function()
+      local binder, env = nuking()
+      open_stack(binder, env, "left", 3)
+      local row = row_named(env, "base")
+      click(binder, row.x + 4, row.y + row.height / 2)
+      assert.is_not_nil(binder.catalog_view())
+      assert.is_nil(env.files.WAR.sets[1].left[3].tier)
+    end)
+
+    it("is on a layer's row inside a menu too, and writes that layer alone", function()
+      local binder, env = nuking()
+      open_stack(binder, env, "left", 3)
+      local row = layer_row(binder, env, "ctx:light-arts")
+      assert.is_table(row.toggle)
+      click(binder, centre(row.toggle))
+      assert.are.equal("auto", env.files.WAR.contexts["light-arts"][1].left[3].tier)
+      assert.is_nil(env.files.WAR.sets[1].left[3].tier)
+    end)
+
+    it("reads a hand-broken flag as off, and sets it on a click", function()
+      local binder, env = nuking({ left3 = { type = "ma", action = "Fire V", tier = true } })
+      assert.is_true(env.bindings.resolve(1, "left", 3).tier, "the model holds the broken value")
+      open_stack(binder, env, "left", 3)
+      assert.is_not_nil(shown_text(env, OFF))
+      click(binder, centre(row_named(env, "base").toggle))
+      assert.are.equal("auto", env.files.WAR.sets[1].left[3].tier)
+    end)
+
+    it("is not offered where nothing answers for tiers", function()
+      local binder, env = nuking({ tiered = false })
+      open_stack(binder, env, "left", 3)
+      assert.is_nil(row_named(env, "base").toggle)
+      assert.is_nil(shown_text(env, OFF))
+    end)
+
+    it("is not offered for a spell the resources cannot place", function()
+      local binder, env = nuking({ left3 = { type = "ma", action = "Fira V" } })
+      assert.are.equal("Fira V", env.bindings.resolve(1, "left", 3).action)
+      open_stack(binder, env, "left", 3)
+      assert.is_nil(row_named(env, "base").toggle)
+      assert.is_nil(shown_text(env, OFF))
+    end)
+
+    it("is on a binding that carries the flag already, whatever is under its spell, so it can be cleared", function()
+      for _, action in ipairs({ "Fira V", "Fire" }) do
+        local binder, env = nuking({ left3 = { type = "ma", action = action, tier = "auto" } })
+        open_stack(binder, env, "left", 3)
+        assert.is_not_nil(shown_text(env, ON), action)
+        click(binder, centre(row_named(env, "base").toggle))
+        assert.are.same({ type = "ma", action = action }, env.files.WAR.sets[1].left[3])
+        assert.is_nil(row_named(env, "base").toggle, action .. ": cleared, there is nothing to set again")
+      end
+    end)
+
+    it("goes with the window: no toggle is left drawn on another step or after a close", function()
+      local binder, env = nuking()
+      open_stack(binder, env, "left", 3)
+      local row = row_named(env, "base")
+      click(binder, row.x + 4, row.y + row.height / 2)
+      assert.is_nil(shown_text(env, OFF), "the catalog step draws none")
+      binder.close()
+      assert.is_nil(shown_text(env, OFF))
     end)
   end)
 

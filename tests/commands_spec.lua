@@ -300,6 +300,20 @@ describe("commands", function()
       assert_error(parse("reraise", "x"), "takes no arguments")
     end)
 
+    it("reserves assist, and parses it bare as the press", function()
+      assert.is_true(commands.reserved.assist)
+      assert.are.same({ action = "action", verb = "assist" }, parse("Assist"))
+    end)
+
+    it("takes one word after assist as whom to assist, as typed", function()
+      assert.are.same({ action = "action", verb = "assist", target = "Bob" }, parse("assist", "Bob"))
+      assert.are.same({ action = "action", verb = "assist", target = "<P1>" }, parse("ASSIST", "<P1>"))
+    end)
+
+    it("refuses more than one word after assist", function()
+      assert_error(parse("assist", "Bob", "Smith"), "//hud assist [<target>]")
+    end)
+
     it("no longer knows the removed cast retry and weaponskill gate verbs", function()
       for _, verb in ipairs({ "retry", "wsgate" }) do
         assert.is_nil(commands.reserved[verb], verb)
@@ -322,6 +336,25 @@ describe("commands", function()
       assert.is_true(commands.reserved.queue)
       assert.are.same({ action = "tune", verb = "queue", words = {} }, parse("queue"))
       assert.are.same({ action = "tune", verb = "queue", words = { "debug" } }, parse("Queue", "debug"))
+    end)
+
+    it("no longer knows autospelltier, which is each binding's own flag now", function()
+      assert.is_nil(commands.reserved.autospelltier)
+      local parsed = parse("autospelltier", "on")
+      assert.are.equal("error", parsed.action)
+      assert.is_not_nil(parsed.message:find("unknown command 'autospelltier'", 1, true), parsed.message)
+    end)
+
+    it("passes gamepad through the same way, and reserves it", function()
+      assert.is_true(commands.reserved.gamepad)
+      assert.are.same({ action = "tune", verb = "gamepad", words = {} }, parse("gamepad"))
+      assert.are.same({ action = "tune", verb = "gamepad", words = { "off" } }, parse("GamePad", "off"))
+    end)
+
+    it("passes keyboard through the same way, and reserves it", function()
+      assert.is_true(commands.reserved.keyboard)
+      assert.are.same({ action = "tune", verb = "keyboard", words = {} }, parse("keyboard"))
+      assert.are.same({ action = "tune", verb = "keyboard", words = { "list" } }, parse("KeyBoard", "list"))
     end)
   end)
 

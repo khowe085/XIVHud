@@ -83,7 +83,7 @@ local function world(opts)
       return { id = 99, distance = 4, model_size = 1 }
     end,
     get_spells = function()
-      return { [1] = true }
+      return env.known_spells or { [1] = true }
     end,
     get_abilities = function()
       return { job_abilities = { 605 }, weapon_skills = { 42 } }
@@ -307,6 +307,21 @@ describe("one bar's state", function()
       assert.are.same({}, env.commands)
     end)
 
+    it("tells the service which slot it came from, in the bar's own address", function()
+      local presses = { hotbar = { 1, "row", 3, "hotbar 1:3" }, crossbar = { 2, "left", 5, "crossbar 2L5" } }
+      for name, press in pairs(presses) do
+        local bar, _, ctx, store = world({ name = name })
+        bar.attach(store)
+        bar.try_scope()
+        local from
+        ctx.actions.fire = function(_, opts)
+          from = opts.from
+        end
+        bar.fire(press[1], press[2], press[3], function() end)
+        assert.are.equal(press[4], from)
+      end
+    end)
+
     it("mirrors the service's weapon state into the rotation and repaints", function()
       local bar, env, ctx, store = world()
       bar.attach(store)
@@ -466,6 +481,67 @@ describe("one bar's state", function()
       assert.is_not_nil(bar.command({ "edit" }):find("edit mode off", 1, true))
       assert.is_false(bar.editing())
       assert.are.same({ true, false }, env.edits)
+    end)
+  end)
+
+  describe("a binding's tier flag", function()
+    local LEFT_DOWN, LEFT_UP = 1, 2
+
+    -- A bar whose slot 3 holds Fire V, a warrior who knows it and the Fire
+    -- under it, and the queue off so a press goes as it is settled.
+    local function nuking()
+      local res = resources()
+      res.spells[144] = { id = 144, en = "Fire", type = "BlackMagic", recast_id = 144, levels = { [1] = 1 } }
+      res.spells[148] = { id = 148, en = "Fire V", type = "BlackMagic", recast_id = 148, levels = { [1] = 1 } }
+      local bar, env, ctx, store = world({
+        resources = res,
+        store_files = {
+          WAR = { sets = { [1] = { row = { [3] = { type = "ma", action = "Fire V", target = "t" } } } } },
+        },
+      })
+      env.service_config.queue = "off"
+      env.known_spells = { [144] = true, [148] = true }
+      bar.attach(store)
+      bar.try_scope()
+      return bar, env, ctx
+    end
+
+    it("is the CLI's to refuse by what the service's tier walk finds under a spell", function()
+      local bar = nuking()
+      local refused = bar.command({ "bind", "1:4", "ma", "Fire", "tier=auto" })
+      assert.is_not_nil(refused:find("Fire has no tier under it", 1, true), refused)
+      local reply = bar.command({ "tier", "1:3", "auto" })
+      assert.are.equal("auto", bar.bindings().resolve(1, "row", 3).tier, reply)
+    end)
+
+    it("is on the binder's row for a spell that walk finds a tier under", function()
+      local bar, env = nuking()
+      env.rects = { { x = 100, y = 100, width = 40, height = 40, key = "bar3", set = 1, side = "row", slot = 3 } }
+      bar.command({ "edit" })
+      local binder = bar.binder()
+      binder.mouse(LEFT_DOWN, 120, 120, 0)
+      binder.mouse(LEFT_UP, 120, 120, 0)
+      local toggle = binder.layer_view().rows[1].toggle
+      assert.is_table(toggle)
+      binder.mouse(LEFT_DOWN, toggle.x + 5, toggle.y + 5, 0)
+      binder.mouse(LEFT_UP, toggle.x + 5, toggle.y + 5, 0)
+      assert.are.equal("auto", env.store_files.WAR.sets[1].row[3].tier)
+      -- What the toggle wrote is what the walk reads: the press steps down.
+      bar.command({ "edit" })
+      env.spell_recasts = { [148] = 600 }
+      bar.fire(1, "row", 3)
+      assert.are.same({ 'input /ma "Fire" <t>' }, env.commands)
+    end)
+
+    it("is what a press reads: a flagged binding's spell steps down, and no other's", function()
+      local bar, env = nuking()
+      env.spell_recasts = { [148] = 600 }
+      bar.fire(1, "row", 3)
+      assert.are.same({ 'input /ma "Fire V" <t>' }, env.commands)
+      bar.command({ "tier", "1:3", "auto" })
+      env.commands = {}
+      bar.fire(1, "row", 3)
+      assert.are.same({ 'input /ma "Fire" <t>' }, env.commands)
     end)
   end)
 

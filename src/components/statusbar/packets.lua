@@ -30,10 +30,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      list of your buffs WITH their expiry times - the only place a duration
      is ever reported (get_player().buffs and 0x076 carry ids alone).
 
-     It arrives here already decoded: the packet id has three readers (the
-     crossbar's skillchain engine for this order's ids, expbar for order 2,
-     and this), so the entry point parses it ONCE through Windower's
-     packets.parse and dispatches the table, the rule every multi-reader id
+     It arrives here already decoded: the packet id has four readers (the
+     crossbar's skillchain engine and the action queue for this order's ids,
+     expbar for order 2, and this), so the entry point parses it ONCE through
+     Windower's packets.parse and dispatches the table, the rule every multi-reader id
      follows. That parser's field definition for 0x063 switches on the order
      byte and, for order 9 (verified against Windower/Lua@dev
      packets/fields.lua on 2026-09-04), reads

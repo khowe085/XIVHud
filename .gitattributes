@@ -6,6 +6,7 @@
 
 # Consumed by the Linux devcontainer — must stay LF.
 .devcontainer/Dockerfile text eol=lf
+# native/xinput carries its own rules, so they leave with it.
 
 # Component art. text=auto would normally detect these, but say it outright so
 # no line-ending rule can ever corrupt a texture.

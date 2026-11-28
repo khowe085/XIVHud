@@ -669,8 +669,6 @@ local function new(ctx)
   end
 
   local function flash(group_key, slot)
-    -- A hand-edited config can name a ninth slot key: the binding still
-    -- fires, but there is no ninth prim to flash.
     local slots = prims ~= nil and prims.groups[group_key] or nil
     local cell = slots ~= nil and slots[slot] or nil
     if cell ~= nil then
@@ -697,7 +695,7 @@ local function new(ctx)
     return nil
   end
 
-  --[[ Fire one slot of one (set, side), whatever pointed at it. A KEY press
+  --[[ Fire one slot of one (set, side), whatever pointed at it. A behaviour
        reads the hold state for that pair; a CLICK has no hold state to read
        and takes the pair off the group it landed on. Everything after the
        resolve is the bar's and then the service's, so two ways in cannot
@@ -708,7 +706,8 @@ local function new(ctx)
     end)
   end
 
-  -- The keyboard's way in: the pair comes from whichever side is held.
+  -- A behaviour's way in, from a key or the pad: the pair comes from
+  -- whichever side is held.
   local function fire_slot(slot)
     if bar.scoped() == nil or machine == nil then
       return
@@ -800,38 +799,6 @@ local function new(ctx)
           prims.groups[group.key][slot].tick(facts)
         end
       end
-    end
-  end
-
-  --[[ A shortcut key's verb: a `//hud crossbar` line without the prefix, OR
-       one of the framework's own verbs - `draw`, `mr`, `sneak`, `invisible`
-       and `warp [all]` left the bar's dispatcher on 2026-09-06 and a pad
-       button bound to one must still fire it, as must `reraise`. ]]
-  local FRAMEWORK_VERBS = { draw = true, mr = true, sneak = true, invisible = true, reraise = true }
-  local function run_shortcut(verb)
-    if type(verb) ~= "string" then
-      return
-    end
-    local words = {}
-    for word in verb:gmatch("%S+") do
-      words[#words + 1] = word
-    end
-    local first = type(words[1]) == "string" and words[1]:lower() or nil
-    if first == "warp" then
-      service.warp(type(words[2]) == "string" and words[2]:lower() == "all")
-      return
-    end
-    if FRAMEWORK_VERBS[first] then
-      local hint = service.builtin(first)
-      bar.sync_weapon()
-      if hint ~= nil then
-        say(hint)
-      end
-      return
-    end
-    local reply = bar.command(words)
-    if reply ~= nil then
-      say(reply)
     end
   end
 
@@ -927,11 +894,7 @@ local function new(ctx)
     render = new_render({ config = config, icon_for = icon_for })
     bar.attach(store)
     reset_contents()
-    -- A hand-broken input block degrades to the shipped defaults rather
-    -- than crashing attach: one bad config file at login would otherwise
-    -- leave every component after this one unattached.
     machine = new_input({
-      keys = type(config.input) == "table" and config.input or self.defaults.input,
       chat_open = ctx.chat_open,
       suppressed = ctx.suppressed,
       layout_mode = ctx.layout_active,
@@ -961,22 +924,6 @@ local function new(ctx)
         return not visible and not (ctx.suppressed ~= nil and ctx.suppressed() == true)
       end,
     })
-    --[[ A hand-edited key map can give one DIK two jobs; input.lua keeps the
-         first claim and drops the rest, and this is the only place the player
-         would ever hear about it - said once per config read, not once per
-         press, and one line per key so a map broken twice reads as two
-         problems. ]]
-    if ctx.say ~= nil then
-      for _, clash in ipairs(machine.conflicts()) do
-        ctx.say(
-          ("crossbar: DIK %d is bound to more than one thing - %s wins, and %s is ignored"):format(
-            clash.dik,
-            clash.kept,
-            table.concat(clash.dropped, " and ")
-          )
-        )
-      end
-    end
     active_state = "none"
     dress()
     layout()
@@ -996,20 +943,17 @@ local function new(ctx)
     -- Core's save belongs to the attached config; holding it past a detach
     -- would write a config this widget no longer has.
     save = nil
-    -- The machine is rebuilt on attach (the plan's detach handshake): a key
-    -- released while detached would otherwise strand held/down/latch state
-    -- and make the next press read as an auto-repeat.
+    -- The machine is rebuilt on attach (the plan's detach handshake): a
+    -- behaviour let go while detached never reaches it, so a machine kept
+    -- across would still hold it and read its next press as a repeat.
     machine = nil
     active_state = "none"
     reset_contents()
     refresh()
   end
 
-  function self.on_keyboard(key, down, flags, blocked)
-    if not machine then
-      return false
-    end
-    local intents, block = machine.on_key(key, down, flags, blocked)
+  -- The machine's intents, from a behaviour.
+  local function apply(intents)
     for _, intent in ipairs(intents) do
       if intent.type == "activate" then
         --[[ Activations are silent: the panel shows which side is active.
@@ -1065,11 +1009,39 @@ local function new(ctx)
           service.close_edit_all()
           say("crossbar: edit mode off")
         else
-          run_shortcut(intent.verb)
+          local reply = bar.command({ intent.verb })
+          if reply ~= nil then
+            say(reply)
+          end
         end
       end
     end
-    return block
+  end
+
+  local BEHAVIORS = { "left", "right", "wxhb_left", "wxhb_right", "layer", "switch", "binder", "select", "draw" }
+  for slot = 1, 8 do
+    BEHAVIORS[#BEHAVIORS + 1] = "slot" .. slot
+  end
+
+  --- What this bar answers as a behaviour, `crossbar.<name>` to everything
+  --- outside it.
+  function self.behaviors()
+    local names = {}
+    for index, name in ipairs(BEHAVIORS) do
+      names[index] = name
+    end
+    return names
+  end
+
+  --- A behaviour's edge, through the machine the keys go through; a press
+  --- answers whether the key behind it is the bar's.
+  function self.on_behavior(name, down, cancelled)
+    if machine == nil then
+      return false
+    end
+    local intents, block = machine.on_behavior(name, down, cancelled)
+    apply(intents)
+    return block == true
   end
 
   function self.update(event, a, ...)

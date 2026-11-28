@@ -39,10 +39,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      per-job files, keyed one side, `row`), the job scoping, the counts, the
      binder and the authoring CLI; lib/actionbar/slot draws each cell;
      lib/actionbar/service executes every press. What is this file's own is
-     the geometry (render.lua), the keys (input.lua - the number row under
-     a CTRL/ALT/SHIFT chord, one chord per row for rows 1-6, nothing of the
-     crossbar's), the prims, and the framework contract routed by anchor the
-     way partylist routes it.
+     the geometry (render.lua), its behaviours (input.lua - each row's slots
+     and the set cycle, which the keyboard map ships on CTRL/ALT/SHIFT chords
+     over the number row; nothing of the crossbar's), the prims, and the
+     framework contract routed by anchor the way partylist routes it.
 
      A row's prims are built the first time it is shown, not all 720 in the
      factory the way the crossbar builds its 365: seven of the eight rows
@@ -101,8 +101,9 @@ local function new(ctx)
   local visible = false
   local preview = false
   local swallow_left_up = false
-  -- The key machine, rebuilt on attach and dropped on detach: its absence is
-  -- what says the widget is detached, and a detached bar draws nothing.
+  -- The behaviour machine, rebuilt on attach and dropped on detach: its
+  -- absence is what says the widget is detached, and a detached bar draws
+  -- nothing.
   local machine = nil
   local bar
   local function editing()
@@ -413,10 +414,11 @@ local function new(ctx)
     end
   end
 
-  --[[ Fire one slot of one row, whatever pointed at it - a key or a click.
-       Everything after the resolve is the bar's and then the service's. A
-       row the user hid never reaches this: the key machine refuses its
-       chord (`row_hidden`, below) and an undrawn slot takes no click. ]]
+  --[[ Fire one slot of one row, whatever pointed at it - a behaviour or a
+       click. Everything after the resolve is the bar's and then the
+       service's. A row the user hid never reaches this: the machine refuses
+       its behaviour (`row_hidden`, below) and an undrawn slot takes no
+       click. ]]
   local function fire_at(anchor, slot)
     local set = set_of(anchor)
     if set == nil then
@@ -772,14 +774,35 @@ local function new(ctx)
     refresh()
   end
 
-  function self.on_keyboard(key, down, flags, blocked)
+  -- Every row's slots, then the set cycle: `hotbar.<name>` to everything
+  -- outside it.
+  local BEHAVIORS = {}
+  for row = 1, #ANCHORS do
+    for slot = 1, 10 do
+      BEHAVIORS[#BEHAVIORS + 1] = ANCHORS[row] .. "_slot" .. slot
+    end
+  end
+  BEHAVIORS[#BEHAVIORS + 1] = "cycle"
+  BEHAVIORS[#BEHAVIORS + 1] = "cycle_back"
+
+  function self.behaviors()
+    local names = {}
+    for index, name in ipairs(BEHAVIORS) do
+      names[index] = name
+    end
+    return names
+  end
+
+  --- A behaviour's edge; a press answers whether the key behind it is the
+  --- hotbar's.
+  function self.on_behavior(name, down)
     if machine == nil then
       return false
     end
-    local intent, block = machine.on_key(key, down, flags, blocked)
+    local intent, block = machine.on_behavior(name, down)
     if intent ~= nil and intent.cycle ~= nil then
       -- The active set moves row 1, through the same path the CLI's cycle
-      -- takes (the machine's edit_mode guard keeps a key out while a
+      -- takes (the machine's edit_mode guard keeps a press out while a
       -- binder is open, so the put-away in set_changed never fires here).
       local before = bar.bindings().active_set()
       if bar.bindings().cycle(intent.cycle) ~= nil then
@@ -788,7 +811,7 @@ local function new(ctx)
     elseif intent ~= nil then
       fire_at(intent.bar, intent.slot)
     end
-    return block
+    return block == true
   end
 
   function self.update(event, a, ...)
@@ -796,11 +819,7 @@ local function new(ctx)
       tick()
       return
     end
-    if event == "lose focus" then
-      if machine ~= nil then
-        machine.focus_lost()
-      end
-    elseif event == "job change" then
+    if event == "job change" then
       bar.on_job_change(a, ...)
     elseif event == "gain buff" or event == "lose buff" then
       bar.sync_buffs()

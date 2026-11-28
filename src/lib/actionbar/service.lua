@@ -27,7 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
 --[[ The action service: the ONE place a press is executed, shared by every
-     bar and by the framework's own `//hud warp|mr|sneak|invisible|reraise|draw`.
+     bar and by the framework's own
+     `//hud warp|mr|sneak|invisible|reraise|draw|assist`.
 
      It exists because the crossbar's execution glue held process-wide
      invariants - "only one wait of any kind is in flight", the GearSwap hold
@@ -47,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 local new_actions = require("lib/actionbar/actions")
 local new_queue = require("lib/actionbar/queue")
+local new_spell_tier = require("lib/actionbar/spell_tier")
 local new_travel = require("lib/actionbar/travel")
 local new_enchanteditem = require("lib/actionbar/enchanteditem")
 local enchanted = require("lib/actionbar/enchanted")
@@ -116,16 +118,52 @@ local MOUNTED_BUFF = 252
 local ACTION_CHUNK = 0x028
 local MESSAGE_CHUNK = 0x029
 local ZONE_OUT_CHUNK = 0x0B
-local SC_CHUNKS = { [MESSAGE_CHUNK] = true, [0x63] = true, [ZONE_OUT_CHUNK] = true }
+local CHARACTER_UPDATE_CHUNK = 0x063
+local SYSTEM_MESSAGE_CHUNK = 0x053
+-- The server setting your target, for the queue's debug log alone.
+local TARGET_CHUNK = 0x058
+local SC_CHUNKS = { [MESSAGE_CHUNK] = true, [CHARACTER_UPDATE_CHUNK] = true, [ZONE_OUT_CHUNK] = true }
 local DEAD_STATUSES = { [2] = true, [3] = true }
 
 --[[ A deferred use's target pinning. A command's target is resolved by the
      GAME when the command is sent, so one sent late would otherwise land
      wherever the token points THEN. PINNED tokens are resolved to a mob id
-     at the press and sent as the id; FIXED ones (yourself, your pet) need
-     no pin; anything else cannot be pinned and the press is refused. ]]
+     at the press, which the command is aimed by when it goes (see
+     aimed_command); FIXED ones (yourself, your pet) need no pin; anything
+     else cannot be pinned and the press is refused. ]]
 local FIXED_TARGETS = { me = true, pet = true }
 local PINNED_TARGETS = { t = true, bt = true }
+--[[ The game's own words a pinned mob can go under where the one it was
+     typed with has moved on, in the order they are asked: the steadiest
+     first. <bt> and <ht> are not among them: Windower's reading of each is
+     "not guaranteed to return the same mob" as the game's (the wiki's FFXI
+     Functions page), so only a slot typed with <bt> ever goes under it.
+     <lastst> takes a cursor's pick whose line the queue kept from the game,
+     by the frame after its OK (seen in a live client with GearSwap on,
+     2026-11-25; UNVERIFIED with it off). ]]
+local NAMING_TARGETS = {
+  "me",
+  "lastst",
+  "t",
+  "pet",
+  "p1",
+  "p2",
+  "p3",
+  "p4",
+  "p5",
+  "a10",
+  "a11",
+  "a12",
+  "a13",
+  "a14",
+  "a15",
+  "a20",
+  "a21",
+  "a22",
+  "a23",
+  "a24",
+  "a25",
+}
 
 --[[ The ability recasts a family with charges shares: stratagems, Quick Draw
      and the two of Ready. The timer running there says a charge was spent, not
@@ -345,6 +383,10 @@ local function new(deps)
     end,
   })
 
+  -- What an `assist` press sends: the command `//hud assist <target>` last
+  -- left here. The session's, so it is nil again once the addon reloads.
+  local assist_command = nil
+
   local actions = new_actions({
     roulette = roulette or {
       ride = function()
@@ -354,6 +396,9 @@ local function new(deps)
     warp = warp,
     enchanteditem = enchanteditem,
     stealth = stealth,
+    assist = function()
+      return assist_command
+    end,
   })
   self.actions = actions
 
@@ -589,39 +634,78 @@ local function new(deps)
   end
   self.mode = config_mode
 
+  --[[ The id under a target word, or nil. A read that throws names nothing:
+       this is asked under the frame tick's guard and the text handler's,
+       where five errors switch the handler off, and of words no live client
+       has been asked for yet (<lastst>, the party's and the alliance's). ]]
   local function selected_id(token)
-    local mob = deps.get_mob_by_target ~= nil and deps.get_mob_by_target(token) or nil
-    return mob ~= nil and mob.id or nil
+    if deps.get_mob_by_target == nil then
+      return nil
+    end
+    local read, mob = pcall(deps.get_mob_by_target, token)
+    return read and type(mob) == "table" and mob.id or nil
   end
 
-  --[[ The command a deferred use SENDS for a press, or nil for one whose
-       target cannot be pinned. A pinned token becomes the id it stood for
-       at the press; the suffix is matched literally over a tail of the
-       command's own length, and a command that does not end in the
-       expected `<token>` is refused - a substitution this cannot prove
-       correct is worse than no press. ]]
-  local function pinned_command(command, target)
+  -- Whether a command ends in that `<token>`, matched literally over a tail
+  -- of the command's own length.
+  local function ends_in(command, target)
+    local suffix = " <" .. target .. ">"
+    return command:sub(-#suffix):lower() == suffix
+  end
+
+  --[[ Whether a command can be sent later than its press, and the id it is
+       pinned to: what a token that moves stood for at the press. A fixed one
+       pins nothing and goes as written. Refused - false - for a token that
+       cannot be pinned, one with nothing under it, and a command that does
+       not end in the expected `<token>`: an aim this cannot prove correct is
+       worse than no press. ]]
+  local function pin_target(command, target)
     if type(command) ~= "string" then
-      return nil
+      return false
     end
     target = type(target) == "string" and target:lower() or target
     if FIXED_TARGETS[target] then
-      return command
+      return true
     end
-    if not PINNED_TARGETS[target] then
-      return nil
+    if not PINNED_TARGETS[target] or not ends_in(command, target) then
+      return false
     end
     local id = selected_id(target)
-    if id == nil then
-      return nil
-    end
-    local suffix = " <" .. target .. ">"
-    if command:sub(-#suffix):lower() ~= suffix then
-      return nil
-    end
-    return command:sub(1, #command - #suffix) .. " " .. tostring(id)
+    return id ~= nil, id
   end
-  self.pinned_command = pinned_command
+  self.pin_target = pin_target
+
+  --[[ What a pinned command is SENT as: itself, while the token it was typed
+       with still names the mob it was pinned to, and otherwise with that
+       token replaced by another of the game's own words that names the mob
+       now. The word goes beside it. Nil where none does, which is a press
+       with nowhere to go.
+
+       Never the id: only GearSwap reads one, sending the packet itself, and
+       where it does not the game answers the line "A command error occurred"
+       - four held weaponskills of four on a job whose GearSwap file had not
+       loaded (Kevin, 2026-11-25). A word is read by the game and by GearSwap
+       alike, as a macro's is. ]]
+  local function aimed_command(command, id)
+    if type(command) ~= "string" or id == nil then
+      return nil
+    end
+    local head, typed = command:match("^(.*) <([^<>]*)>$")
+    if head == nil then
+      return nil
+    end
+    typed = typed:lower()
+    if PINNED_TARGETS[typed] and selected_id(typed) == id then
+      return command, typed
+    end
+    for _, word in ipairs(NAMING_TARGETS) do
+      if selected_id(word) == id then
+        return head .. " <" .. word .. ">", word
+      end
+    end
+    return nil
+  end
+  self.aimed_command = aimed_command
 
   -- What the action's own recast has left, in seconds: a spell's comes in
   -- sixtieths, as render reads it, and an ability's as it is. Anything
@@ -646,7 +730,56 @@ local function new(deps)
     return (recasts[entry.recast_id] or 0) / per_second
   end
 
-  local queue = new_queue({
+  --[[ AutoSpellTier (lib/actionbar/spell_tier): a spell whose binding says
+       `tier = "auto"` gives way, where it cannot go, to a lower tier that
+       can. It is walked wherever a spell's command is settled - at a press,
+       here, and by the queue at a cursor's OK and at a held press's release
+       - and what the queue would refuse a tier's recast on is the queue's
+       to say, so each is built over the other. ]]
+  local queue
+  local tiers = new_spell_tier({
+    find_spell = function(name)
+      return self.find_resource("spells", name)
+    end,
+    get_spells = deps.get_spells,
+    get_player = get_player,
+    far_off = function(record)
+      return queue.far_off(record)
+    end,
+    refused = function(record)
+      return queue.refused_on_recast(record)
+    end,
+    recast_left = recast_left,
+    doing = function()
+      return queue.doing()
+    end,
+    note = function(line)
+      queue.note(line)
+    end,
+  })
+  self.spell_tier = tiers
+
+  --- The record and command to settle on in place of these: themselves,
+  --- unless a lower tier stands in. `pinned` is the id the command is to be
+  --- aimed at, where it is pinned to one, and a lower tier whose own command
+  --- could not be aimed the same way does not stand in. `where` is the moment
+  --- it is asked, for the walk's debug line.
+  local function lower_tier(record, command, pinned, where)
+    local lowered = tiers.lower(record, where)
+    if lowered == record then
+      return record, command
+    end
+    local plan = actions.resolve(lowered)
+    if plan == nil or plan.kind ~= "command" then
+      return record, command
+    end
+    if pinned ~= nil and not ends_in(plan.command, tostring(lowered.target):lower()) then
+      return record, command
+    end
+    return lowered, plan.command
+  end
+
+  queue = new_queue({
     no_packets = deps.no_packets,
     now = frame_now,
     config = config,
@@ -657,7 +790,9 @@ local function new(deps)
       end
     end,
     recast_left = recast_left,
-    pin = pinned_command,
+    lower = lower_tier,
+    pin = pin_target,
+    aim = aimed_command,
     blocked = function()
       if deps.suppressed ~= nil and deps.suppressed() then
         return "suppressed"
@@ -679,6 +814,7 @@ local function new(deps)
     arrow_up = function()
       return selected_id("st") ~= nil
     end,
+    target_id = selected_id,
   })
   self.queue = queue
 
@@ -779,13 +915,15 @@ local function new(deps)
       --[[ The target is resolved HERE, at the press, or the press does not
            happen: the command goes when the enchantment comes up, as much
            as a minute later, and a token carried that far would land on
-           whatever had been tabbed to since. Refused before anything is
-           held, so a press that will not happen leaves no GearSwap slot
-           disabled behind it. ]]
-      local deferred = plan.command
+           whatever had been tabbed to since. So the use is aimed by the id
+           pinned here (tick_pending). Refused before anything is held, so a
+           press that will not happen leaves no GearSwap slot disabled
+           behind it. ]]
+      local pinned = nil
       if plan.target ~= nil then
-        deferred = pinned_command(plan.command, plan.target)
-        if deferred == nil then
+        local sendable
+        sendable, pinned = pin_target(plan.command, plan.target)
+        if not sendable then
           local token = type(plan.target) == "string" and plan.target:lower() or plan.target
           if PINNED_TARGETS[token] then
             say(noun .. " pressed with nothing targeted - " .. tostring(plan.name))
@@ -826,7 +964,8 @@ local function new(deps)
         noun = noun,
         equipped = plan.equipped == true,
         name = plan.name,
-        command = deferred,
+        command = plan.command,
+        target = pinned,
         item_id = plan.id,
         bag = plan.bag,
         bag_slot = plan.bag_slot,
@@ -961,8 +1100,16 @@ local function new(deps)
       end
     end
     if step == "use" and hold <= 0 then
+      local command = pending_item.command
+      if pending_item.target ~= nil then
+        command = aimed_command(command, pending_item.target)
+        if command == nil then
+          abandon("lost its target")
+          return
+        end
+      end
       local broadcast = pending_item.broadcast
-      send_command(pending_item.command)
+      send_command(command)
       abort_pending(nil)
       if broadcast ~= nil then
         broadcast()
@@ -1035,9 +1182,19 @@ local function new(deps)
     return true
   end
 
+  --[[ Debug's alone: an assist press, and what it came from where the caller
+       said. The queue sees an assist only as the targeting packet the game
+       sends for it, and a press with no target to go at sends none. ]]
+  local function note_assist(record, from)
+    if record.type == "assist" then
+      queue.note("assist pressed" .. (from ~= nil and (", " .. from) or ""))
+    end
+  end
+
   --[[ A bar's press, whatever pointed at it - a key or a click. `record` is
        the bar's resolved binding (nil for an empty slot, which is silent);
-       `opts.flash` is called before the send.
+       `opts.flash` is called before the send, and `opts.from` names what
+       pressed it, for the debug log.
 
        Everything after the resolve - the flash and the travel countdown -
        is the same for every way in, deliberately. ]]
@@ -1049,15 +1206,22 @@ local function new(deps)
     if opts.flash ~= nil then
       opts.flash()
     end
+    note_assist(record, opts.from)
     local plan, hint = actions.resolve(record, self.draw_state())
     if plan ~= nil and plan.kind == "command" then
-      local taken, instead = queue.press(plan.held_as or record, plan.command)
+      local pressed, command = plan.held_as or record, plan.command
+      -- A cursor the queue opens is walked at OK, where its recast is known.
+      if not queue.judged_at_ok(pressed) then
+        pressed, command = lower_tier(pressed, command, nil, "at the press")
+      end
+      local taken, instead = queue.press(pressed, command)
       if instead ~= nil then
         send_command(instead)
       end
       if taken then
         return
       end
+      plan.command = command
     end
     if not delay_travel(record, plan) then
       execute(plan, hint)
@@ -1065,19 +1229,35 @@ local function new(deps)
   end
 
   -- A built-in by name from the console (`draw`, `mr`, `sneak`, `invisible`,
-  -- `reraise`, `open <name>`). Answers a hint for a name or argument it
+  -- `reraise`, `assist`, `open <name>`). Answers a hint for a name or argument it
   -- cannot run, nil when the press went - or was refused in words already
   -- said.
   function self.builtin(name, arg)
+    local record = { type = type(name) == "string" and name:lower() or name, action = arg }
+    -- Before the plan: a press with no target to go at is a press all the same.
+    note_assist(record, "//hud assist")
     local plan, hint = actions.resolve_builtin(name, arg, self.draw_state())
     if plan == nil then
       return hint
     end
-    local record = { type = type(name) == "string" and name:lower() or name, action = arg }
     if not delay_travel(record, plan) then
       execute(plan, hint)
     end
     return nil
+  end
+
+  --- `//hud assist <target>`: whom an `assist` press assists from here on.
+  --- Nothing is sent until one is pressed. Answers the line to say - whom, or
+  --- the form a target takes. The debug log keeps the target, which no later
+  --- press names.
+  function self.assist(target)
+    local command, form = actions.assist_command(target)
+    if command == nil then
+      return form
+    end
+    assist_command = command
+    queue.note("assist target set: /assist " .. target)
+    return "assist: " .. target
   end
 
   -- The sword's click, one way in each direction and no state read -
@@ -1190,6 +1370,12 @@ local function new(deps)
     end
     if id == MESSAGE_CHUNK then
       queue.on_message(data)
+    elseif id == CHARACTER_UPDATE_CHUNK then
+      queue.on_update(parsed)
+    elseif id == SYSTEM_MESSAGE_CHUNK then
+      queue.on_system_message(data)
+    elseif id == TARGET_CHUNK then
+      queue.on_target(data)
     end
   end
 
@@ -1207,6 +1393,7 @@ local function new(deps)
   end
 
   function self.on_status(status)
+    queue.on_status(status)
     if DEAD_STATUSES[status] then
       self.end_trip("cancelled")
       queue.clear("death")
@@ -1260,7 +1447,10 @@ local function new(deps)
   -- What core seeds its own config with, so the tuning has a home and a
   -- name before anyone types a verb.
   function self.config_defaults()
-    return { delay = travel.defaults().delay, queue = queue.defaults().queue }
+    return {
+      delay = travel.defaults().delay,
+      queue = queue.defaults().queue,
+    }
   end
 
   return self

@@ -90,6 +90,7 @@ local BUILTINS = {
   -- The first tier's art, on the same rule: whichever rung fires.
   reraise = { icon = "spells/00135" },
   open = {},
+  assist = { icon = "switchtarget" },
 }
 -- Derived, sorted: the name walk can never drift from the table, so the two
 -- frontends need no edit of their own (the spec's roster still does).
@@ -105,6 +106,17 @@ table.sort(BUILTIN_NAMES)
 -- BUILTINS, so it needs no exception here; its bare-vs-args overload is the
 -- command parser's concern.)
 local COLLISION_EXCEPTIONS = { open = true }
+
+--[[ An `assist` slot holds no target of its own: whom it assists is what
+     `//hud assist <target>` last said, which the action service keeps while
+     the addon is loaded and answers through `deps.assist`, as the command
+     the press sends. No Windower alias stands between (Kevin, 2026-11-25).
+     The target goes into a console command, where a `;` would start
+     another, so it is one name or one target token. ]]
+local ASSIST_NAME = "^%w+$"
+local ASSIST_TOKEN = "^<%w+>$"
+local ASSIST_FORM = "assist <target> - one name, or one target like <p1>"
+local ASSIST_UNSET = "assist has no target yet - //hud assist <target>"
 
 local function target_suffix(target)
   if target == nil then
@@ -304,6 +316,13 @@ local function new(deps)
     if kind == "draw" then
       return draw_plan(state)
     end
+    if kind == "assist" then
+      local command = deps.assist ~= nil and deps.assist() or nil
+      if command == nil then
+        return nil, ASSIST_UNSET
+      end
+      return command_plan(command)
+    end
     if kind == "mr" then
       -- Mounted, the press dismounts, and getting out is never held up by
       -- the recast that says when you could mount again.
@@ -373,6 +392,15 @@ local function new(deps)
     return draw_plan_one_way()
   end
 
+  --- The console command an `assist` press sends for that target, the game's
+  --- own /assist of it, or nil and the form a target takes.
+  function self.assist_command(target)
+    if type(target) ~= "string" or not (target:match(ASSIST_NAME) or target:match(ASSIST_TOKEN)) then
+      return nil, ASSIST_FORM
+    end
+    return "input /assist " .. target
+  end
+
   -- The command frontend: `//hud crossbar <name> [<arg>]` -> the same record
   -- shape a slot binds, resolved through the same path.
   function self.resolve_builtin(name, arg, state)
@@ -412,6 +440,18 @@ local function new(deps)
     return entry and entry.icon
   end
 
+  --- Whether `bind` has a type of that name. Validate asks it first, so a
+  --- type it does not know can never be one validate passes.
+  function self.is_type(kind)
+    return GAME_TYPES[kind] == true
+      or kind == "ct"
+      or kind == "ex"
+      or kind == "enchanteditem"
+      or kind == "jc"
+      or kind == "ra"
+      or (kind ~= nil and BUILTINS[kind] ~= nil)
+  end
+
   --- Bind-time validation: is this record something resolve() could fire?
   --- Answers true, or nil + a hint naming what is wrong. Nothing is executed
   --- -- `mr` and `warp` resolve through their collaborators, and validating
@@ -423,6 +463,9 @@ local function new(deps)
     local kind = record.type
     if record.target ~= nil and type(record.target) ~= "string" then
       return nil, "target must be a string when present"
+    end
+    if not self.is_type(kind) then
+      return nil, "unknown action type: " .. tostring(kind)
     end
     if GAME_TYPES[kind] then
       if not valid_name(record.action) then

@@ -105,9 +105,20 @@ local function build(opts)
       return world.icons[path] == true
     end,
     validate = new_actions({}).validate,
+    tiered = opts.tiered,
   })
   world.bindings = bindings
   return commands, world
+end
+
+--[[ Whether a binding's spell has a tier under it, as the tier walk answers
+     for the widget: true, false, or nil for a name the resources do not
+     know. ]]
+local function tiered(record)
+  if record.type ~= "ma" then
+    return false
+  end
+  return ({ ["Fire V"] = true, ["Fire"] = false })[record.action]
 end
 
 -- Reads a stored slot without assuming any of the path exists -- a rejected
@@ -472,6 +483,18 @@ describe("crossbar commands", function()
       commands.command({ "bind", "1L2", "reraise" })
       assert.are.same({ type = "reraise" }, stored(world, "SCH", 1, "left", 2))
       local reply, _, repaint = commands.command({ "bind", "1L3", "reraise", "me" })
+      assert.is_not_nil(tostring(reply):find("takes no action name or target", 1, true), tostring(reply))
+      assert.is_falsy(repaint)
+      assert.is_nil(stored(world, "SCH", 1, "left", 3))
+    end)
+
+    it("binds assist bare and refuses a name after it", function()
+      -- Whom it assists is `//hud assist <target>`'s to say, so a name here is
+      -- refused rather than stored on a record that never sends it.
+      local commands, world = build()
+      commands.command({ "bind", "1L2", "assist" })
+      assert.are.same({ type = "assist" }, stored(world, "SCH", 1, "left", 2))
+      local reply, _, repaint = commands.command({ "bind", "1L3", "assist", "Bob" })
       assert.is_not_nil(tostring(reply):find("takes no action name or target", 1, true), tostring(reply))
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3))
@@ -1227,6 +1250,190 @@ describe("crossbar commands", function()
       assert.is_string(reply)
       assert.is_falsy(repaint)
       assert.is_nil(stored(world, "SCH", 1, "left", 3).icon)
+    end)
+  end)
+
+  describe("tier", function()
+    local function stepping(opts)
+      opts = opts or {}
+      opts.tiered = tiered
+      return build(opts)
+    end
+
+    describe("as a bind's marker", function()
+      it("stores the flag on the binding, beside its labels and in either order", function()
+        local commands, world = stepping()
+        local reply, _, repaint =
+          commands.command({ "bind", "1L1", "ma", "Fire", "V", "stnpc", "alias=Nuke", "tier=auto" })
+        assert.are.same(
+          { type = "ma", action = "Fire V", target = "stnpc", alias = "Nuke", tier = "auto" },
+          stored(world, "SCH", 1, "left", 1),
+          text_of(reply)
+        )
+        assert.is_true(repaint)
+        commands.command({ "bind", "1L2", "ma", "Fire V", "TIER=Auto", "alias=Nuke" })
+        assert.are.same(
+          { type = "ma", action = "Fire V", alias = "Nuke", tier = "auto" },
+          stored(world, "SCH", 1, "left", 2)
+        )
+      end)
+
+      it("ends the action name, as every marker does", function()
+        local commands, world = stepping()
+        commands.command({ "bind", "1L1", "ma", "Fire", "V", "tier=auto" })
+        assert.are.same({ type = "ma", action = "Fire V", tier = "auto" }, stored(world, "SCH", 1, "left", 1))
+      end)
+
+      it("stores no flag for tier=off, an empty marker or none, so a rebind starts off", function()
+        local commands, world = stepping()
+        for _, last in ipairs({ "tier=off", "tier=", false }) do
+          commands.command({ "bind", "1L1", "ma", "Fire V", "tier=auto" })
+          local words = { "bind", "1L1", "ma", "Fire V" }
+          words[#words + 1] = last or nil
+          commands.command(words)
+          assert.are.same({ type = "ma", action = "Fire V" }, stored(world, "SCH", 1, "left", 1), tostring(last))
+        end
+      end)
+
+      it("refuses a value that is neither, and the marker twice", function()
+        local commands, world = stepping()
+        local reply, _, repaint = commands.command({ "bind", "1L1", "ma", "Fire V", "tier=maybe" })
+        assert.is_not_nil(text_of(reply):find("tier=auto or tier=off", 1, true), text_of(reply))
+        assert.is_falsy(repaint)
+        reply = commands.command({ "bind", "1L1", "ma", "Fire V", "tier=auto", "tier=off" })
+        assert.is_not_nil(text_of(reply):find("one tier= only - drop tier=off", 1, true), text_of(reply))
+        assert.is_nil(stored(world, "SCH", 1, "left", 1))
+      end)
+
+      it("refuses it on anything but a spell, and on a spell with no tier under it", function()
+        local commands, world = stepping()
+        local reply = commands.command({ "bind", "1L1", "ja", "Light Arts", "tier=auto" })
+        assert.is_not_nil(
+          text_of(reply):find("only a spell steps down a tier - drop tier=auto", 1, true),
+          text_of(reply)
+        )
+        reply = commands.command({ "bind", "1L1", "ma", "Fire", "tier=auto" })
+        assert.is_not_nil(text_of(reply):find("Fire has no tier under it - drop tier=auto", 1, true), text_of(reply))
+        assert.is_nil(stored(world, "SCH", 1, "left", 1))
+        assert.are.same({}, world.saved)
+      end)
+
+      it("takes it where nothing can say what is under a spell", function()
+        local commands, world = stepping()
+        commands.command({ "bind", "1L1", "ma", "Fira V", "tier=auto" })
+        assert.are.equal("auto", stored(world, "SCH", 1, "left", 1).tier)
+        local unwired, plain = build()
+        unwired.command({ "bind", "1L1", "ma", "Fire", "tier=auto" })
+        assert.are.equal("auto", stored(plain, "SCH", 1, "left", 1).tier)
+      end)
+
+      it("turns away a target typed after it, as the other markers do", function()
+        local commands, world = stepping()
+        local reply = commands.command({ "bind", "1L1", "ma", "Fire V", "tier=auto", "t" })
+        assert.is_not_nil(text_of(reply):find("a target goes before the labels", 1, true), text_of(reply))
+        assert.is_nil(stored(world, "SCH", 1, "left", 1))
+      end)
+    end)
+
+    describe("as a verb", function()
+      it("sets and clears the flag on the addressed binding, and leaves the rest of it", function()
+        local commands, world = stepping()
+        commands.command({ "bind", "1L1", "ma", "Fire V", "stnpc", "alias=Nuke" })
+        local reply, save_config, repaint = commands.command({ "tier", "1L1", "auto" })
+        assert.is_not_nil(text_of(reply):find("tier 'auto' on 1L1", 1, true), text_of(reply))
+        assert.is_falsy(save_config)
+        assert.is_true(repaint)
+        assert.are.same(
+          { type = "ma", action = "Fire V", target = "stnpc", alias = "Nuke", tier = "auto" },
+          stored(world, "SCH", 1, "left", 1)
+        )
+        reply = commands.command({ "TIER", "1L1", "OFF" })
+        assert.is_not_nil(text_of(reply):find("tier cleared on 1L1", 1, true), text_of(reply))
+        assert.are.same(
+          { type = "ma", action = "Fire V", target = "stnpc", alias = "Nuke" },
+          stored(world, "SCH", 1, "left", 1)
+        )
+      end)
+
+      it("says how the binding stands when given no word, and writes nothing", function()
+        local commands, world = stepping()
+        commands.command({ "bind", "1L1", "ma", "Fire V" })
+        local reply, _, repaint = commands.command({ "tier", "1L1" })
+        assert.is_not_nil(text_of(reply):find("tier is off on 1L1", 1, true), text_of(reply))
+        assert.is_falsy(repaint)
+        commands.command({ "tier", "1L1", "auto" })
+        reply = commands.command({ "tier", "1L1" })
+        assert.is_not_nil(text_of(reply):find("tier is auto on 1L1", 1, true), text_of(reply))
+        assert.are.equal(2, world.saved.SCH, "the bind and the one write")
+      end)
+
+      it("follows the context= layer", function()
+        local commands, world = stepping()
+        commands.command({ "bind", "1L1", "ma", "Fire V" })
+        commands.command({ "bind", "1L1", "ma", "Fire V", "context=buf:light-arts" })
+        commands.command({ "tier", "1L1", "auto", "context=buf:light-arts" })
+        assert.are.equal("auto", world.files.SCH.contexts["light-arts"][1].left[1].tier)
+        assert.is_nil(stored(world, "SCH", 1, "left", 1).tier, "the base entry is untouched")
+      end)
+
+      it("refuses a word that is neither, and more than one", function()
+        local commands, world = stepping()
+        commands.command({ "bind", "1L1", "ma", "Fire V" })
+        for _, words in ipairs({ { "tier", "1L1", "maybe" }, { "tier", "1L1", "auto", "off" } }) do
+          local reply, _, repaint = commands.command(words)
+          assert.is_not_nil(text_of(reply):find("tier <address> [auto|off] [context=<layer>]", 1, true), text_of(reply))
+          assert.is_falsy(repaint, table.concat(words, " "))
+        end
+        assert.is_nil(stored(world, "SCH", 1, "left", 1).tier)
+      end)
+
+      it("refuses a binding that is no spell, or has no tier under it, and clears either all the same", function()
+        local commands, world = stepping()
+        commands.command({ "bind", "1L1", "ja", "Light Arts" })
+        commands.command({ "bind", "1L2", "ma", "Fire" })
+        local reply, _, repaint = commands.command({ "tier", "1L1", "auto" })
+        assert.is_not_nil(text_of(reply):find("only a spell steps down a tier", 1, true), text_of(reply))
+        assert.is_falsy(repaint)
+        reply = commands.command({ "tier", "1L2", "auto" })
+        assert.is_not_nil(text_of(reply):find("Fire has no tier under it", 1, true), text_of(reply))
+        assert.is_nil(stored(world, "SCH", 1, "left", 1).tier)
+        assert.is_nil(stored(world, "SCH", 1, "left", 2).tier)
+        reply = commands.command({ "tier", "1L2", "off" })
+        assert.is_not_nil(text_of(reply):find("tier cleared on 1L2", 1, true), text_of(reply))
+      end)
+
+      it("refuses an empty slot, and hints on wrong arity, a bad address and no job", function()
+        local commands, world = stepping()
+        local reply, _, repaint = commands.command({ "tier", "1L3", "auto" })
+        assert.is_not_nil(text_of(reply):find("nothing bound at 1L3 to give tier to", 1, true), text_of(reply))
+        assert.is_falsy(repaint)
+        assert.are.same({}, world.saved)
+        for _, words in ipairs({ { "tier" }, { "tier", "1" }, { "tier", "1L9", "auto" } }) do
+          assert.is_string(commands.command(words), #words .. " words")
+        end
+        local unscoped = stepping({ job = false })
+        assert.is_not_nil(unscoped.command({ "tier", "1L3", "auto" }):find("job"))
+      end)
+
+      it("says an empty slot is empty when only asked how it stands, as no refused write", function()
+        local commands = stepping()
+        local reply = text_of(commands.command({ "tier", "1L3" }))
+        assert.is_not_nil(reply:find("nothing bound at 1L3", 1, true), reply)
+        assert.is_nil(reply:find("to give", 1, true), reply)
+      end)
+    end)
+
+    it("is printed by list in the words bind takes", function()
+      local commands = stepping()
+      commands.command({ "bind", "1L1", "ma", "Fire V", "stnpc", "alias=Nuke", "tier=auto" })
+      local text = text_of(commands.command({ "list" }))
+      assert.is_not_nil(text:find('ma Fire V <stnpc> alias="Nuke" tier=auto', 1, true), text)
+    end)
+
+    it("is in the help, as a verb and as bind's marker", function()
+      local text = text_of(build().command({ "help" }))
+      assert.is_not_nil(text:find("tier <address> [auto|off] [context=<layer>]", 1, true), text)
+      assert.is_not_nil(text:find("[tier=auto]", 1, true), text)
     end)
   end)
 
@@ -2845,5 +3052,133 @@ describe("the action bars' tabs in the settings window", function()
       world.config.always_show_wxhb = 1
       assert.is_false(tab(commands, "general")[1].value)
     end)
+  end)
+end)
+
+--[[ An action with no slot to hold it - a behaviour's - written exactly as
+     `bind` takes one after the address, and read by the same code. ]]
+describe("an action outside a slot", function()
+  it("reads the type and its words as bind does", function()
+    local commands = build()
+    assert.are.same({ type = "open", action = "map" }, commands.parse_action({ "open", "map" }))
+    assert.are.same(
+      { type = "ja", action = "Light Arts", target = "t" },
+      commands.parse_action({ "ja", "Light", "Arts", "<t>" })
+    )
+    assert.are.same({ type = "ra", target = "t" }, commands.parse_action({ "ra", "t" }))
+  end)
+
+  it("takes a quoted run as the client hands it, one word", function()
+    local commands = build()
+    assert.are.same(
+      { type = "ma", action = "Cure IV", target = "t" },
+      commands.parse_action({ "ma", "Cure IV", "<t>" })
+    )
+    assert.are.same(
+      { type = "ct", action = '/p "Hello there"' },
+      commands.parse_action({ "ct", "/p", "Hello there" }),
+      "and a chat line keeps the quoting its words were given"
+    )
+  end)
+
+  it("takes the type in any case", function()
+    local commands = build()
+    assert.are.same({ type = "open", action = "map" }, commands.parse_action({ "OPEN", "map" }))
+  end)
+
+  it("answers what bind refuses, without a bar's name in front", function()
+    local commands = build()
+    local record, why = commands.parse_action({ "open" })
+    assert.is_nil(record)
+    assert.are.equal("open takes one screen name - try //hud crossbar open for the list", why)
+  end)
+
+  it("refuses what nothing could run", function()
+    local commands = build()
+    local record, why = commands.parse_action({ "cast", "Cure" })
+    assert.is_nil(record)
+    assert.are.equal("unknown action type: cast", why)
+    record, why = commands.parse_action({ "open", "mapp" })
+    assert.is_nil(record)
+    assert.are.equal("unknown open target: mapp", why)
+  end)
+
+  it("refuses a label or a layer, which need a slot", function()
+    local commands = build()
+    for _, words in ipairs({
+      { "open", "map", "alias=M" },
+      { "open", "map", "icon=map" },
+      { "ma", "Cure", "context=sub:whm" },
+    }) do
+      local record, why = commands.parse_action(words)
+      assert.is_nil(record, table.concat(words, " "))
+      assert.are.equal("alias=, icon= and context= need a slot - drop them", why, table.concat(words, " "))
+    end
+  end)
+
+  it("reads tier=auto, which needs no slot, and says it back", function()
+    local commands = build({ tiered = tiered })
+    local record = commands.parse_action({ "ma", "Fire", "V", "stnpc", "tier=auto" })
+    assert.are.same({ type = "ma", action = "Fire V", target = "stnpc", tier = "auto" }, record)
+    assert.are.equal("ma Fire V <stnpc> tier=auto", commands.describe_action(record))
+    assert.are.same({ type = "ma", action = "Fire V" }, commands.parse_action({ "ma", "Fire V", "tier=off" }))
+  end)
+
+  it("refuses tier= where bind would, without a bar's name in front", function()
+    local commands = build({ tiered = tiered })
+    for _, case in ipairs({
+      { { "ma", "Fire", "tier=auto" }, "Fire has no tier under it - drop tier=auto" },
+      { { "ja", "Light Arts", "tier=auto" }, "only a spell steps down a tier - drop tier=auto" },
+      { { "ma", "Fire V", "tier=maybe" }, "tier=auto or tier=off, not tier=maybe" },
+      { { "ma", "Fire V", "tier=auto", "tier=off" }, "one tier= only - drop tier=off" },
+    }) do
+      local record, why = commands.parse_action(case[1])
+      assert.is_nil(record, table.concat(case[1], " "))
+      assert.are.equal(case[2], why)
+    end
+  end)
+
+  it("still refuses the labels that need a slot, beside a tier=", function()
+    local commands = build({ tiered = tiered })
+    local record, why = commands.parse_action({ "ma", "Fire V", "tier=auto", "alias=N" })
+    assert.is_nil(record)
+    assert.are.equal("alias=, icon= and context= need a slot - drop them", why)
+  end)
+
+  it("advises no alias, which it would refuse", function()
+    local commands = build()
+    local record, why = commands.parse_action({ "mr", "now" })
+    assert.is_nil(record)
+    assert.are.equal("mr takes no action name or target - drop now", why)
+  end)
+
+  it("refuses an empty action", function()
+    local commands = build()
+    for _, words in ipairs({ {}, "open map", 5 }) do
+      local record, why = commands.parse_action(words)
+      assert.is_nil(record, tostring(words))
+      assert.are.equal("an empty action", why)
+    end
+  end)
+
+  it("takes no label from a job change, which only a slot can show", function()
+    local commands = build()
+    assert.are.same({ type = "jc", action = "WAR/BLM" }, commands.parse_action({ "jc", "WAR/BLM" }))
+  end)
+
+  it("reads assist bare, for a gesture to carry as a slot would", function()
+    local commands = build()
+    assert.are.same({ type = "assist" }, commands.parse_action({ "assist" }))
+    assert.are.equal("assist", commands.describe_action({ type = "assist" }))
+    local record, why = commands.parse_action({ "assist", "Bob" })
+    assert.is_nil(record)
+    assert.are.equal("assist takes no action name or target - drop Bob", why)
+  end)
+
+  it("describes an action as bind takes it, so a listed one retyped binds the same", function()
+    local commands = build()
+    assert.are.equal("ma Cure IV <t>", commands.describe_action({ type = "ma", action = "Cure IV", target = "t" }))
+    assert.are.equal("open map", commands.describe_action({ type = "open", action = "map" }))
+    assert.are.equal("ra <t>", commands.describe_action({ type = "ra", target = "t" }))
   end)
 end)

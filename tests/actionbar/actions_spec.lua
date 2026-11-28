@@ -32,6 +32,10 @@ local function build(state)
         return state.stealth_command or 'input /magic "Sneak" <me>'
       end,
     },
+    -- What `//hud assist <target>` last left with the action service.
+    assist = function()
+      return state.assist
+    end,
   })
   return actions, state
 end
@@ -44,7 +48,7 @@ end
 
 -- The shipped built-ins, spelled out. Two specs read it: one proves each
 -- name resolves, the other proves the table holds these and nothing else.
-local SHIPPED_BUILTINS = { "draw", "mr", "warp", "sneak", "invisible", "reraise", "open" }
+local SHIPPED_BUILTINS = { "draw", "mr", "warp", "sneak", "invisible", "reraise", "open", "assist" }
 
 describe("crossbar actions", function()
   describe("game action commands", function()
@@ -477,6 +481,89 @@ describe("crossbar actions", function()
     end)
   end)
 
+  describe("assist", function()
+    local FORM = "assist <target> - one name, or one target like <p1>"
+    local UNSET = "assist has no target yet - //hud assist <target>"
+
+    it("sends the command the service was left with, and nothing of its own", function()
+      assert.equal("input /assist Bob", command_of(build({ assist = "input /assist Bob" }), { type = "assist" }))
+    end)
+
+    it("goes nowhere while no target has been given, and says how to give one", function()
+      local plan, hint = build().resolve({ type = "assist" })
+      assert.is_nil(plan)
+      assert.equal(UNSET, hint)
+    end)
+
+    it("goes nowhere where no service keeps a target", function()
+      local plan, hint = new_actions({}).resolve({ type = "assist" })
+      assert.is_nil(plan)
+      assert.equal(UNSET, hint)
+    end)
+
+    it("resolves the command form as the slot form", function()
+      local actions = build({ assist = "input /assist Bob" })
+      assert.same(actions.resolve({ type = "assist" }), actions.resolve_builtin("Assist"))
+      assert.equal("input /assist Bob", actions.resolve_builtin("Assist").command)
+    end)
+
+    it("binds bare, and refuses an action name", function()
+      local actions = build()
+      assert.is_true(actions.validate({ type = "assist" }))
+      local ok, hint = actions.validate({ type = "assist", action = "Bob" })
+      assert.is_nil(ok)
+      assert.equal("assist takes no action name", hint)
+    end)
+
+    it("wears the switch-target art, which ships and is load-checked", function()
+      assert.equal("switchtarget", build().icon_for({ type = "assist" }))
+      local art = io.open("src/assets/icons/switchtarget.png", "rb")
+      assert.is_not_nil(art, "switchtarget.png does not ship")
+      art:close()
+      local source = assert(io.open("src/XIVHud.lua", "r"))
+      local body = source:read("*a")
+      source:close()
+      assert.is_not_nil(body:find('"icons/switchtarget.png"', 1, true), "switchtarget.png is not load-checked")
+    end)
+
+    describe("the command for a target", function()
+      it("is the game's own /assist of it, with no Windower alias between", function()
+        assert.equal("input /assist Bob", build().assist_command("Bob"))
+      end)
+
+      it("keeps a target token as typed, for the game to read at the press", function()
+        local actions = build()
+        for _, token in ipairs({ "<t>", "<p1>", "<stpc>", "<a10>", "<BT>" }) do
+          assert.equal("input /assist " .. token, actions.assist_command(token), token)
+        end
+      end)
+
+      it("refuses what is not one name or one token, a second console command among it", function()
+        local actions = build()
+        for _, target in ipairs({
+          "Bob;quit",
+          "Bob Smith",
+          "",
+          "<p1",
+          "p1>",
+          "<>",
+          '"Bob"',
+          "<p1>;quit",
+          "<p 1>",
+          "Bob\nquit",
+          5,
+        }) do
+          local command, hint = actions.assist_command(target)
+          assert.is_nil(command, tostring(target))
+          assert.equal(FORM, hint, tostring(target))
+        end
+        local command, hint = actions.assist_command(nil)
+        assert.is_nil(command)
+        assert.equal(FORM, hint)
+      end)
+    end)
+  end)
+
   describe("built-in dual frontend", function()
     it("resolves the command form and the slot form identically", function()
       local actions, state = build()
@@ -648,6 +735,21 @@ describe("crossbar actions", function()
       local actions, state = build({ ride = 'input /mount "Raptor"' })
       assert.is_true(actions.validate({ type = "mr" }))
       assert.is_nil(state.fired)
+    end)
+
+    -- What a gesture's bind asks before reading a word as a type.
+    it("knows every type it validates, and nothing else", function()
+      local actions = build()
+      for _, kind in ipairs({ "ma", "ja", "ws", "item", "pet", "mount", "ct", "ex", "enchanteditem", "jc", "ra" }) do
+        assert.is_true(actions.is_type(kind), kind)
+      end
+      for _, kind in ipairs(SHIPPED_BUILTINS) do
+        assert.is_true(actions.is_type(kind), kind)
+      end
+      for _, kind in ipairs({ "spell", "accept", "key", "" }) do
+        assert.is_false(actions.is_type(kind), kind)
+      end
+      assert.is_false(actions.is_type(nil))
     end)
   end)
 

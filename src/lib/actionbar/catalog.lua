@@ -171,6 +171,7 @@ local BUILTIN_ENTRIES = {
   { label = "Invisible", type = "invisible" },
   { label = "Reraise", type = "reraise" },
   { label = "Ranged Attack", type = "ra" },
+  { label = "Assist", type = "assist" },
 }
 
 local function call(accessor, ...)

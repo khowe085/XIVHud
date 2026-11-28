@@ -27,7 +27,14 @@
          packet: what the pre-parse is asserted on is WHICH ids reach WHICH
          parser, never the decode itself (partylist_packets_spec owns that).
        - `io` is in memory. The addon traces every load step to load.log, and
-         a spec must not put that on disk.
+         a spec must not put that on disk. A handle's `seek` answers "end"
+         alone, with the size the file would have; a real one answers every
+         whence, and on a text-mode file in Windows its figure is the C
+         library's, which nothing here can establish.
+       - `_LuaXInput`, the gamepad bridge's native module, never loads unless
+         a spec hands one in as `options.xinput`, so the bridge boots
+         unavailable by default. `package` is the entry point's own, so the
+         `cpath` it extends is not the one busted itself runs on.
        - lib/core and every component factory are stubs, so this exercises the
          wiring alone: what the entry point registers, what it builds each ctx
          out of, and what it dispatches. Component behaviour belongs in the
@@ -106,6 +113,25 @@ local function build_stubs(boot, options)
           boot.service_calls[#boot.service_calls + 1] = { name = name, n = select("#", ...), ... }
         end
       end
+      -- The bind-time check, refusing only the type `nope`, which is the one
+      -- type it does not know.
+      service.actions = {
+        validate = function(record)
+          if record.type == "nope" then
+            return nil, "unknown action type: nope"
+          end
+          return true
+        end,
+        is_type = function(kind)
+          return kind ~= "nope"
+        end,
+      }
+      -- The tier walk's answer for a binding's spell: nothing is under Fire.
+      service.spell_tier = {
+        has_lower = function(record)
+          return record.type == "ma" and record.action ~= "Fire"
+        end,
+      }
       boot.service = service
       return service
     end,
@@ -128,11 +154,19 @@ local function build_stubs(boot, options)
     boot.require_fails[name] = failure
   end
 
+  -- The native module: whatever a spec hands in, and otherwise the load
+  -- failure an addon without its DLL meets.
+  if options.xinput ~= nil then
+    stubs._LuaXInput = options.xinput
+  elseif boot.require_fails._LuaXInput == nil then
+    boot.require_fails._LuaXInput = "module '_LuaXInput' not found"
+  end
+
   return stubs
 end
 
 -- In-memory io. Only the calls the load path makes are supported: the trace
--- writes, the safe_mode probe and read_file.
+-- writes, the safe_mode probe, read_file and debug.log's size at its end.
 local function build_io(boot)
   local function handle(path, mode)
     local buffer = {}
@@ -143,7 +177,15 @@ local function build_io(boot)
       read = function()
         return boot.files[path]
       end,
-      seek = function() end,
+      -- Only "end" answers: the size the file would have, what is stored plus
+      -- what this handle holds, since writes land at close.
+      seek = function(_, whence)
+        if whence ~= "end" then
+          return nil
+        end
+        local stored = (not mode:find("w")) and boot.files[path] or ""
+        return #(stored or "") + #table.concat(buffer)
+      end,
       close = function()
         if mode:find("w") or mode:find("a") then
           local existing = (mode:find("a") and boot.files[path]) or ""
@@ -167,7 +209,7 @@ end
 
 local function build_windower(boot)
   return {
-    addon_path = "addons/XIVHud/",
+    addon_path = boot.addon_path,
     windower_path = "Windower4/",
     ffxi_path = "FFXI/",
     pol_path = "POL/",
@@ -194,7 +236,13 @@ local function build_windower(boot)
     get_windower_settings = function()
       return { ui_x_res = 1920, ui_y_res = 1080 }
     end,
-    send_command = function() end,
+    send_command = function(command)
+      boot.commands[#boot.commands + 1] = command
+    end,
+    -- Focused unless a spec sets `boot.focused = false`.
+    has_focus = function()
+      return boot.focused ~= false
+    end,
     send_ipc_message = function() end,
     -- Core API, not a library: available even when resources/packets did not
     -- load, which is why the action packet can be parsed at all in that case.
@@ -244,7 +292,7 @@ local function build_windower(boot)
       end,
       get_info = function()
         boot.client_calls.info = boot.client_calls.info + 1
-        return { logged_in = boot.logged_in, chat_open = false }
+        return { logged_in = boot.logged_in, chat_open = boot.chat_open == true }
       end,
       -- Every call is recorded with its arguments: get_items(bag) answers one
       -- bag and get_items() the lot, and which of the two a component is wired
@@ -289,8 +337,13 @@ local function build_core(boot)
   --[[ Stands in for a component reading the target during its per-frame update.
        What that buys a spec is the ordering of `begin_frame` against
        `core.on_prerender`: a component must never see the memo a key press
-       filled during the previous frame. ]]
+       filled during the previous frame. `prerender_raises` stands in for a
+       component throwing in its frame tick. ]]
   function core.on_prerender()
+    boot.prerenders = boot.prerenders + 1
+    if boot.prerender_raises then
+      error("prerender failed", 0)
+    end
     local component = boot.ctxs.targetbar
     if component ~= nil and component.get_mob_by_target ~= nil then
       boot.prerender_targets[#boot.prerender_targets + 1] = component.get_mob_by_target("t")
@@ -299,6 +352,53 @@ local function build_core(boot)
 
   function core.wants_keyboard()
     return false
+  end
+
+  -- Every behaviour works unless a spec names the ones that do in
+  -- `boot.known_behaviors`.
+  function core.behavior_check(value)
+    if boot.known_behaviors == nil or boot.known_behaviors[value] == true then
+      return true
+    end
+    return nil, "no behavior " .. tostring(value)
+  end
+
+  -- lib/behaviors' own reading: a component's behaviour is `<component>.<name>`.
+  function core.behavior_is_component(value)
+    return type(value) == "string" and value:find(".", 1, true) ~= nil
+  end
+
+  -- The bridge's machine-wide settings: a spec sets `boot.gamepad_config`.
+  function core.gamepad_config()
+    return boot.gamepad_config
+  end
+
+  -- `pump_raises` stands in for a component throwing on a pad's key.
+  function core.pump_gamepad()
+    boot.pumps = boot.pumps + 1
+    if boot.pump_raises then
+      error("pump failed", 0)
+    end
+  end
+
+  function core.release_gamepad()
+    boot.pad_releases = boot.pad_releases + 1
+  end
+
+  -- `keyboard_raises` stands in for a component throwing on a key.
+  function core.on_keyboard()
+    if boot.keyboard_raises then
+      error("key failed", 0)
+    end
+    return false
+  end
+
+  function core.release_keyboard()
+    boot.key_releases = boot.key_releases + 1
+  end
+
+  function core.on_focus(focused)
+    boot.focus[#boot.focus + 1] = focused
   end
 
   function core.wants_mouse()
@@ -351,13 +451,17 @@ end
 --[[ Runs the entry point and returns the recorder. `options`:
        files         - seeded in-memory files (an entry named
                        "addons/XIVHud/safe_mode" boots the addon in safe mode)
-       require_fails - module name -> message, for a library that will not load ]]
+       require_fails - module name -> message, for a library that will not load
+       xinput        - what `require("_LuaXInput")` answers; absent, it fails
+       addon_path    - what windower.addon_path answers ("addons/XIVHud/") ]]
 -- `options.logged_out` boots at the character screen (get_info reports
 -- logged_in = false); `require_fails` maps a module to the error it raises.
 function M.boot(options)
   options = options or {}
 
   local boot = {
+    -- Where the addon lives, as windower.addon_path answers it.
+    addon_path = options.addon_path or "addons/XIVHud/",
     files = options.files or {},
     opens = {},
     handlers = {},
@@ -368,6 +472,15 @@ function M.boot(options)
     built = {},
     registered = {},
     dispatches = {},
+    -- Every windower.send_command, in order.
+    commands = {},
+    -- core.pump_gamepad, core.release_gamepad, core.release_keyboard and
+    -- core.on_prerender calls, and every core.on_focus.
+    pumps = 0,
+    pad_releases = 0,
+    key_releases = 0,
+    prerenders = 0,
+    focus = {},
     service_calls = {},
     parsed_packets = {},
     action_parses = {},
@@ -404,6 +517,7 @@ function M.boot(options)
     _addon = {},
     io = build_io(boot),
     windower = build_windower(boot),
+    package = { cpath = "?.dll" },
     require = function(name)
       local failure = boot.require_fails[name]
       if failure then
@@ -422,6 +536,7 @@ function M.boot(options)
   local chunk = assert(loadfile(ENTRY_POINT))
   -- The fake client, so a spec can change what it answers after the boot.
   boot.windower = env.windower
+  boot.package = env.package
   setfenv(chunk, env)
   chunk()
 
