@@ -742,7 +742,7 @@ start bracket the true lock. Every line is in `debug.log`.
 | 54 | In edit mode click a slot holding Fire V (or any spell with a tier under it) and click `auto tier [ off ]` at the end of its row; leave edit mode and mash the slot through a cast, the queue in `debug`. Do the same mash on a Haste II slot left unflagged. Then `//hud crossbar list`, `//hud crossbar tier <address> off`, and a `//lua reload hud` between any two of them | The row then reads `auto tier [ on ]` and chat says `crossbar: auto tier on for Fire V -> base / set <n> / <side> / slot <n>`; the mash logs `at the press` / `at OK` / `at the release: Fire V ...; down to Fire IV` and Fire IV casts. The Haste II slot writes no `down to` line and is never replaced. `list` shows `tier=auto` on the flagged binding, after a reload too, and not after `tier ... off` | The tier flag on the binding (2026-11-25). That the toggle sits clear of the row's own text and takes its click, that only a flagged binding steps down, and that the flag is saved with the binding. Seen on `12debed` (2026-11-26, Sortie): the toggle took its click (`crossbar: auto tier on for Fire V -> base / set 6 / right / slot 3`), the flagged Fire V stepped down to Fire IV twice at an OK and Fire IV cast both times, and Haste II, unflagged, cast 22 times with no tier line. Not checked: `list` after a reload, `tier ... off` |
 | 55 | With no Fast Cast on (a naked set, or GearSwap's precast off), cast a few spells of two seconds and over from anywhere, the queue in `debug` | No `no finish yet for the last start` line ahead of a `finish spell`: each cast's `start spell` is followed by its own `finish spell`, and the next bar press goes when that lock ends | The lost-finish margin at 0.8s (2026-11-26). At 0.4s the count ran out before the real finish 27 times of 27, by 0.02 to 0.37s. That two beats covers a cast with no Fast Cast; what a slow (Addle) lengthens it by is still unknown. On `b7499d0` (2026-11-26), Fast Cast on: of 77 spell starts none was counted ahead of a finish that came, and the two that were counted never had one. Unverified with no Fast Cast |
 | 56 | With the queue in `debug`, cast one spell a few times without zoning, then cast it at a mob that dies before it lands (or step out of sight as it ends), and press a bar slot while it casts. Also cast it once with GearSwap's precast off | `no finish yet for the last start, lock 2.70s, going by the <n>s seen`, `<n>` the longest of that spell's `start spell` to `finish spell` since the last zone, the line coming `<n>` + 0.8s after the start and the held press going 2.7s after it. For every cast that does finish, no `no finish yet` ahead of its `finish spell` - bar the one with precast off, where the line may come first and the `finish spell` after it, the next wait then going by that longer time | The cast time seen (2026-11-26). That a lost finish costs the cast's real length and not the resource's, that the shorter wait never runs out ahead of a finish that comes with the gear unchanged, and that a slower cast teaches its own time. Seen on `12debed` (2026-11-26): one finish lost, an Erratic Flutter listed at 2s and seen at 0.89s, counted finished 1.70s after its start (`going by the 0.89s seen`), and of about 200 other spell starts none was counted ahead of a finish that came. Not seen: a slower cast teaching its time |
-| 57 | With the queue in `debug` and GearSwap's automatic casts on, mash a weaponskill slot through one of GearSwap's own casts that gets interrupted (a hit while it casts, or a step to break it) | After `interrupted spell, lock 2.70s`: `hold <name>` for every press, no `not held: <name>, standing aside` in that lock, and `release <name>` at `lock over`, its `out weaponskill` 2.70s or more after the interrupt and its `start` following | Standing aside never in an interrupt's lock (2026-11-27). That a press there waits for the lock's end and is accepted there, where four let go 1.70 to 1.85s into one were refused twice and once never answered. Unverified |
+| 57 | With the queue in `debug` and GearSwap's automatic casts on, mash a weaponskill slot through one of GearSwap's own casts that gets interrupted (a hit while it casts, or a step to break it) | After `interrupted spell, lock 2.70s`: `hold <name>` for every press, no `not held: <name>, standing aside` in that lock, and `release <name>` at `lock over`, its `out weaponskill` 2.70s or more after the interrupt and its `start` following | Standing aside never in an interrupt's lock (2026-11-27). That a press there waits for the lock's end and is accepted there, where four let go 1.70 to 1.85s into one were refused twice and once never answered. Unverified. Not shown on the run of 2026-11-27 headed `2870a19`: two presses were let go standing aside in an interrupt's lock (19:03:00 and 19:16:23), which a replay of each against `2870a19` holds, so the client most likely ran the build before; Kevin cannot say whether it was reloaded |
 
 ## The finish backstop, bounded (Kevin, 2026-11-06)
 
@@ -2557,6 +2557,33 @@ on `12debed`: BLU in Sheol C (22:20 to 22:50), then Sortie and an Ambuscade.
   unanswered, for that weaponskill's finish (the too far at 22:44:34). It is the
   `ends_weaponskill` rule for a weaponskill whose start never came, and would have ended
   the wait 0.45s sooner and locked as the server did. Once in every log so far. Not built.
+
+## A day headed `2870a19`, most likely on the build before (Kevin, 2026-11-27 11:48 to 2026-11-28 00:37)
+
+Kevin: "Fighting Wamouracampa in sheol, there was a long stretch where I had TP, wasn't
+casting, mashing expiacion and it wasn't going off." 37,467 lines, headed `2870a19`.
+
+- **The Wamouracampa stall was the game's** (22:44:30 to 22:44:41, 10.5s from the first
+  send to the start). Expiacion went out seven times and every answer was a refusal:
+  "You cannot see the Nostos Wamouracampa." five times in the chat log (message 219), the
+  melee rounds drawing "Unable to see" in the same seconds. Auto-target moved Vanar to a
+  second Wamouracampa at 22:44:34, out of view as well. It went on the first send after he
+  could see it. Every press in the stretch was `already going`, none `no TP`.
+- **The queue's share was about a second.** It sends one at a time and waits for the
+  answer, 0.85 to 1.41s each here, and the refusal of the second send (22:44:32 in chat)
+  never reached the addon, so the queue waited out its 2s, a melee round landing on that
+  mob inside them. It is the blind spot seen on 2026-11-12 and left alone: 9 of 50 sends
+  made within 1.5s of a refusal went unanswered here, against 50 of 2,559 later. Four of
+  the nine followed a refusal of the same message at the same target (219 at 20:05:47 and
+  22:44:32, 72 at 00:28:57 and 00:29:06), and in each the chat log has the repeat line.
+  After message 17 (four more) it has none, so there the server may not answer at all.
+  Not acted on.
+- **Row 57 was most likely not running.** Twice a press was let go standing aside in an
+  interrupt's lock, which `2870a19` never does: Sanguine Blade 2.67s into one (19:03:00),
+  which started, and Mighty Guard 1.75s into one (19:16:23), refused with message 17.
+  Replayed against `2870a19`'s queue, line for line as logged, each press is held. Kevin
+  cannot say whether the addon was reloaded after the copy, so the run is read as the
+  build before, to 19:16 at least; no press came in an interrupt's last second after that.
 
 ## The tier flag on the binding (Kevin, 2026-11-25)
 
