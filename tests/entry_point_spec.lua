@@ -1014,6 +1014,138 @@ describe("entry point", function()
       end)
     end)
 
+    describe("the line naming the build", function()
+      local QUEUE_SOURCE = "addons/XIVHud/lib/actionbar/queue.lua"
+      local STAMP = "%d%d%d%d%-%d%d%-%d%d %d%d:%d%d:%d%d"
+
+      local function lines(written)
+        local found = {}
+        for line in written:gmatch("[^\n]+") do
+          found[#found + 1] = line
+        end
+        return found
+      end
+
+      local function version(booted)
+        return (booted.env._addon.version:gsub("%p", "%%%0"))
+      end
+
+      it("comes ahead of the first debug line, and not again while the file is as it was left", function()
+        local loaded = harness.boot({ files = { [QUEUE_SOURCE] = "abc\ndef\n" } })
+        loaded.service_deps.debug_log("queue 1.00: start spell")
+        loaded.service_deps.debug_log("queue 2.00: finish spell, lock 3.00s")
+        local written = lines(loaded.files["addons/XIVHud/debug.log"])
+        assert.are.equal(3, #written)
+        local named = "^"
+          .. STAMP
+          .. " queue %d+%.%d%d: loaded XIVHud "
+          .. version(loaded)
+          .. " at "
+          .. STAMP
+          .. ", queue%.lua 8 bytes$"
+        assert.is_not_nil(written[1]:match(named), written[1])
+        assert.is_not_nil(written[2]:match("^" .. STAMP .. " queue 1%.00: start spell$"), written[2])
+        assert.is_not_nil(written[3]:match("^" .. STAMP .. " queue 2%.00: finish spell, lock 3%.00s$"), written[3])
+      end)
+
+      it("gives the time and the size the load read, not those when it is written", function()
+        local loaded = harness.boot({ files = { [QUEUE_SOURCE] = "abc\n" } })
+        loaded.files[QUEUE_SOURCE] = "a longer source\n"
+        loaded.env.os = setmetatable({
+          date = function()
+            return "LATER "
+          end,
+          clock = function()
+            return 99999
+          end,
+        }, { __index = os })
+        loaded.service_deps.debug_log("queue 1.00: start spell")
+        local written = lines(loaded.files["addons/XIVHud/debug.log"])
+        local first = written[1]
+        assert.is_not_nil(
+          first:match("^LATER queue %d+%.%d%d: loaded XIVHud %S+ at " .. STAMP .. ", queue%.lua 4 bytes$"),
+          first
+        )
+        assert.is_nil(first:find("queue 99999.00", 1, true), first)
+        assert.are.equal("LATER queue 1.00: start spell", written[2])
+      end)
+
+      it("reads the source as text, so on Windows its size is the one git stores", function()
+        local mode
+        for _, open in ipairs(boot.opens) do
+          if open.path == QUEUE_SOURCE then
+            mode = open.mode
+          end
+        end
+        assert.are.equal("r", mode)
+      end)
+
+      it("says so where the source cannot be read", function()
+        boot.service_deps.debug_log("queue 1.00: start spell")
+        local first = lines(boot.files["addons/XIVHud/debug.log"])[1]
+        assert.is_not_nil(first:match(" at " .. STAMP .. ", queue%.lua unreadable$"), first)
+      end)
+
+      describe("in a file changed since its last line", function()
+        local DEBUG_LOG = "addons/XIVHud/debug.log"
+
+        local function with_source()
+          return harness.boot({ files = { [QUEUE_SOURCE] = "abc\n" } })
+        end
+
+        local function is_build(line)
+          local pattern = "^" .. STAMP .. " queue %d+%.%d%d: loaded XIVHud %S+ at " .. STAMP .. ", queue%.lua 4 bytes$"
+          return line:match(pattern) ~= nil
+        end
+
+        it("names the build again in a file started since", function()
+          local loaded = with_source()
+          loaded.service_deps.debug_log("queue 1.00: start spell")
+          loaded.files[DEBUG_LOG] = "SHA-1: 2870a19\n"
+          loaded.service_deps.debug_log("queue 2.00: finish spell, lock 3.00s")
+          local written = lines(loaded.files[DEBUG_LOG])
+          assert.are.equal(3, #written)
+          assert.are.equal("SHA-1: 2870a19", written[1])
+          assert.is_true(is_build(written[2]), written[2])
+          assert.is_not_nil(written[3]:find("queue 2.00: finish spell, lock 3.00s", 1, true))
+        end)
+
+        it("names it again where the file was deleted", function()
+          local loaded = with_source()
+          loaded.service_deps.debug_log("queue 1.00: start spell")
+          loaded.files[DEBUG_LOG] = nil
+          loaded.service_deps.debug_log("queue 2.00: finish spell, lock 3.00s")
+          local written = lines(loaded.files[DEBUG_LOG])
+          assert.are.equal(2, #written)
+          assert.is_true(is_build(written[1]), written[1])
+        end)
+
+        it("names it again after another client's line", function()
+          local loaded = with_source()
+          loaded.service_deps.debug_log("queue 1.00: start spell")
+          loaded.files[DEBUG_LOG] = loaded.files[DEBUG_LOG] .. "2026-11-28 10:00:00 queue 5.00: start spell\n"
+          loaded.service_deps.debug_log("queue 2.00: finish spell, lock 3.00s")
+          local written = lines(loaded.files[DEBUG_LOG])
+          assert.are.equal(5, #written)
+          assert.is_true(is_build(written[4]), written[4])
+        end)
+
+        it("names it with the first line it does write, where an earlier one failed", function()
+          local loaded = with_source()
+          local open = loaded.env.io.open
+          loaded.env.io.open = function()
+            error("locked")
+          end
+          loaded.service_deps.debug_log("queue 1.00: start spell")
+          loaded.env.io.open = open
+          loaded.service_deps.debug_log("queue 2.00: finish spell, lock 3.00s")
+          local written = lines(loaded.files[DEBUG_LOG])
+          assert.are.equal(2, #written)
+          assert.is_true(is_build(written[1]), written[1])
+        end)
+      end)
+    end)
+
     it("reads the recasts the crossbar reads", function()
       assert.are.equal(boot.ctxs.crossbar.get_spell_recasts, boot.service_deps.get_spell_recasts)
       assert.are.equal(boot.ctxs.crossbar.get_ability_recasts, boot.service_deps.get_ability_recasts)

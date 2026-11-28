@@ -73,6 +73,10 @@ local function say(lines)
   end
 end
 
+local function dated(message)
+  return os.date("%Y-%m-%d %H:%M:%S ") .. message .. "\n"
+end
+
 -- One dated line, straight to a file beside the addon with raw io. pcall'd
 -- because its callers run where a throw would cost more than the line.
 local function log_line(file_name, message, mode)
@@ -81,7 +85,7 @@ local function log_line(file_name, message, mode)
     if not file then
       return
     end
-    file:write(os.date("%Y-%m-%d %H:%M:%S ") .. message .. "\n")
+    file:write(dated(message))
     file:close()
   end)
 end
@@ -877,6 +881,21 @@ local action_service = step("building the action service", function()
   -- `random` feeds mount roulette; unseeded, Lua's generator would deal the
   -- same mount sequence every client start.
   math.randomseed(os.time())
+  --[[ Which build writes debug.log, said ahead of a line wherever the file is
+       not as this load's last line left it - before its first, and in a file
+       started, emptied or written to by another client since - so a log can
+       be matched to its commit (Kevin, 2026-11-28: "Yes, per file"). Taken
+       now, since the files on disk can change under a client that has not
+       reloaded. Read as text, so on Windows the size should be the one git
+       stores. ]]
+  local ok, source = pcall(read_file, "lib/actionbar/queue.lua")
+  local build = ("queue %.2f: loaded XIVHud %s at %s, queue.lua %s"):format(
+    os.clock(),
+    _addon.version,
+    os.date("%Y-%m-%d %H:%M:%S"),
+    ok and type(source) == "string" and #source .. " bytes" or "unreadable"
+  )
+  local left_at = nil
   return new_action_service({
     -- The queue's packets come through handlers the libraries gate, below.
     no_packets = libraries_error ~= nil,
@@ -884,7 +903,18 @@ local action_service = step("building the action service", function()
     -- `//hud queue debug`'s lines, for a client nobody is sitting at. Only that
     -- mode writes here, an edge at a time, and it is never truncated.
     debug_log = function(line)
-      log_line("debug.log", line)
+      pcall(function()
+        local file = io.open(windower.addon_path .. "debug.log", "a")
+        if not file then
+          return
+        end
+        if file:seek("end") ~= left_at then
+          file:write(dated(build))
+        end
+        file:write(dated(line))
+        left_at = file:seek("end")
+        file:close()
+      end)
     end,
     send_command = send_command,
     send_ipc = function(message)

@@ -27,7 +27,10 @@
          packet: what the pre-parse is asserted on is WHICH ids reach WHICH
          parser, never the decode itself (partylist_packets_spec owns that).
        - `io` is in memory. The addon traces every load step to load.log, and
-         a spec must not put that on disk.
+         a spec must not put that on disk. A handle's `seek` answers "end"
+         alone, with the size the file would have; a real one answers every
+         whence, and on a text-mode file in Windows its figure is the C
+         library's, which nothing here can establish.
        - `_LuaXInput`, the gamepad bridge's native module, never loads unless
          a spec hands one in as `options.xinput`, so the bridge boots
          unavailable by default. `package` is the entry point's own, so the
@@ -163,7 +166,7 @@ local function build_stubs(boot, options)
 end
 
 -- In-memory io. Only the calls the load path makes are supported: the trace
--- writes, the safe_mode probe and read_file.
+-- writes, the safe_mode probe, read_file and debug.log's size at its end.
 local function build_io(boot)
   local function handle(path, mode)
     local buffer = {}
@@ -174,7 +177,15 @@ local function build_io(boot)
       read = function()
         return boot.files[path]
       end,
-      seek = function() end,
+      -- Only "end" answers: the size the file would have, what is stored plus
+      -- what this handle holds, since writes land at close.
+      seek = function(_, whence)
+        if whence ~= "end" then
+          return nil
+        end
+        local stored = (not mode:find("w")) and boot.files[path] or ""
+        return #(stored or "") + #table.concat(buffer)
+      end,
       close = function()
         if mode:find("w") or mode:find("a") then
           local existing = (mode:find("a") and boot.files[path]) or ""

@@ -965,7 +965,19 @@ cast back.
 dated and stamped with the clock, and never in chat (Kevin, 2026-11-01; the client
 runs on another computer). What went out, started or was refused says how long after
 the last finish it did. The file is never truncated, and it is written from `debug`
-alone, a line when something happens and never one per frame. Any `0x053` system
+alone, a line when something happens and never one per frame. A line there names its
+build (Kevin, 2026-11-28): `queue <clock>: loaded XIVHud <version> at <date> <time>,
+queue.lua <n> bytes`, taken when the chunk ran, since the files can change under a
+client that has not reloaded. It goes ahead of a line wherever the file is not as that
+load's last line left it ("Yes, per file"): before the first, and in a file started,
+emptied or written to by another client since, the size at its end being the test. The
+source is read as text, so on Windows `<n>` should be the size git stores for it (`git
+cat-file -s <commit>:src/lib/actionbar/queue.lua`): a size narrows a log to the commits
+whose `queue.lua` has it, and the load time dates it, but a change elsewhere (the tier
+walk's lines, assist's) or of the same length is not told apart. A log headed `2870a19`
+had most likely run the build before, and nothing in it could say so. **Unverified in a
+live client**: that size, and that the size at the end reads true on a text-mode file -
+if it reads false, a build line comes ahead of every line. Any `0x053` system
 message but the six below that comes while a send is unanswered is named there (`system message <id>
 (param <n>)`), and so is a `0x029` of your own that is no refusal the queue knows
 (`unlisted message <id>`); nothing acts on those. **A Trust cast the server refuses

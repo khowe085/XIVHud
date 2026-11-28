@@ -684,8 +684,11 @@ in the crossbar's `config.lua` gives one key two jobs; the first keeps it.
 
 **A press the action queue dropped or held.** `//hud queue debug` writes every
 step to `debug.log` beside `XIVHud.lua`, appended and never trimmed, so switch
-it back to `on` and delete the file when you are done.
+it back to `on` and delete the file when you are done. A line naming the build
+that wrote it - its version, when it loaded and the size of its `queue.lua` -
+comes before the first line after each load and again in any file started
+since, which narrows down the build a log you send came from.
 
 **Two clients on one addon folder** share these files: `load.log` holds only
-the last client to load, and both write to `debug.log` with nothing to tell
-their lines apart.
+the last client to load, and with `debug` on in both, `debug.log` gets a build
+line each time the other client has written.
